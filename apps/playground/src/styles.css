@@ -1,0 +1,247 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% 12%, rgba(22, 115, 255, 0.2), transparent 30%),
+    radial-gradient(circle at 78% 4%, rgba(53, 215, 255, 0.14), transparent 24%),
+    #050b14;
+  color: #f5f8ff;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.playground-shell {
+  display: grid;
+  gap: 22px;
+  margin: 0 auto;
+  min-height: 100vh;
+  max-width: 1440px;
+  padding: 28px;
+  width: 100%;
+}
+
+.playground-header {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr;
+}
+
+.eyebrow {
+  color: #35d7ff;
+  display: block;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.2em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.playground-header h1 {
+  font-size: 48px;
+  line-height: 1.02;
+  margin: 0;
+  max-width: 100%;
+}
+
+.playground-controls {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+.playground-controls label {
+  color: #9daac0;
+  display: grid;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 6px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.playground-controls input,
+.playground-controls select,
+.playground-controls button {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(196, 214, 238, 0.18);
+  border-radius: 8px;
+  color: #f5f8ff;
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.playground-controls input {
+  width: 112px;
+}
+
+.playground-controls button {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.playground-controls button:hover,
+.playground-controls button:focus-visible {
+  border-color: rgba(53, 215, 255, 0.8);
+  outline: none;
+}
+
+.playground-grid {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+}
+
+.panel,
+.display-panel {
+  min-width: 0;
+}
+
+.panel {
+  background: rgba(11, 22, 34, 0.92);
+  border: 1px solid rgba(91, 143, 189, 0.28);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  padding: 18px;
+}
+
+.panel-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-heading span {
+  color: #9daac0;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.panel-heading strong {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(196, 214, 238, 0.16);
+  border-radius: 6px;
+  color: #35d7ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 6px 8px;
+}
+
+.floor-panel {
+  grid-row: span 2;
+}
+
+.floor-panel .ml-floor-preview {
+  height: min(70vh, 720px);
+  margin: 0 auto;
+  width: min(100%, 380px);
+}
+
+.example-display-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.example-display-floor {
+  display: grid;
+  gap: 10px;
+}
+
+.example-display-caption {
+  color: #9daac0;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.example-display-floor .ml-floor-preview {
+  height: 260px;
+  width: 140px;
+}
+
+.log-panel ol {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.log-panel li {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(196, 214, 238, 0.12);
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 74px 66px minmax(0, 1fr);
+  padding: 10px;
+}
+
+.log-panel code {
+  color: #9daac0;
+}
+
+.log-panel span {
+  color: #35d7ff;
+  font-weight: 800;
+}
+
+.snapshot-panel {
+  grid-column: 2;
+}
+
+.snapshot-panel pre {
+  background: #03070d;
+  border: 1px solid rgba(196, 214, 238, 0.1);
+  border-radius: 8px;
+  color: #c9d6e8;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
+  max-height: 380px;
+  overflow: auto;
+  padding: 14px;
+}
+
+@media (max-width: 920px) {
+  .playground-header h1 {
+    font-size: 38px;
+  }
+
+  .playground-controls {
+    justify-content: flex-start;
+  }
+
+  .playground-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .floor-panel,
+  .snapshot-panel {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .floor-panel .ml-floor-preview {
+    height: 520px;
+  }
+}
