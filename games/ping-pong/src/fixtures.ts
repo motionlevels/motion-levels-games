@@ -32,7 +32,19 @@ export const waitingSnapshot: PingPongSnapshot = {
   roundHits: 0,
   lastRoundHits: 0,
   lastRoundWinner: "",
-  rounds: []
+  rounds: [],
+  ball: { x: 8, y: 16, dx: 1, dy: 1 },
+  ballTrail: [],
+  rallyPace: 0,
+  pointScorer: -1,
+  pointFlashMillis: 0,
+  winnerIndex: -1,
+  impact: null,
+  motionEventId: 1,
+  initialBallSpeed: 6.9,
+  ballSpeed: 6.9,
+  returnSpeedMultiplier: 1.042,
+  difficultySpeedFactor: 1.2
 };
 
 export const runningSnapshot: PingPongSnapshot = {
@@ -42,7 +54,17 @@ export const runningSnapshot: PingPongSnapshot = {
   activeTargets: 2,
   lastEventCue: "coin",
   lastEventMessage: "Azul devuelve.",
-  roundHits: 3
+  roundHits: 3,
+  ball: { x: 11, y: 21, dx: 1, dy: 1 },
+  ballTrail: [
+    { x: 10, y: 20 },
+    { x: 9, y: 19 },
+    { x: 8, y: 18 }
+  ],
+  rallyPace: 0.1935,
+  ballSpeed: 7.8064,
+  impact: { team: 1, x: 10, y: 29, remainingMillis: 180 },
+  motionEventId: 4
 };
 
 export const finishedSnapshot: PingPongSnapshot = {
@@ -59,6 +81,9 @@ export const finishedSnapshot: PingPongSnapshot = {
   ],
   lastRoundHits: 2,
   lastRoundWinner: "Azul",
+  pointScorer: 1,
+  winnerIndex: 1,
+  motionEventId: 8,
   rounds: [
     { index: 1, winnerIndex: 0, winnerLabel: "Rojo", hits: 1 },
     { index: 2, winnerIndex: 1, winnerLabel: "Azul", hits: 2 }

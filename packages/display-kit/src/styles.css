@@ -672,6 +672,459 @@
   font-size: 60px;
 }
 
+/* Ping Pong turns the live deterministic game state into a coordinated motion
+ * system. All selectors are namespaced so other versus displays stay neutral. */
+.ping-pong-display {
+  gap: 18px;
+  grid-template-rows: minmax(250px, 0.88fr) 96px minmax(112px, 0.3fr) minmax(190px, 0.46fr);
+  isolation: isolate;
+  position: relative;
+}
+
+.ping-pong-scoreboard,
+.ping-pong-metrics,
+.ping-pong-rounds {
+  position: relative;
+  z-index: 2;
+}
+
+.ping-pong-scoreboard .ml-player-score-panel {
+  position: relative;
+  transition:
+    border-color 320ms ease,
+    box-shadow 420ms ease,
+    filter 320ms ease,
+    opacity 320ms ease,
+    transform 420ms cubic-bezier(0.2, 0.85, 0.2, 1);
+}
+
+.ping-pong-scoreboard .ml-player-score-panel::before {
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(var(--ml-player-rgb), 0.02) 30%,
+    rgba(var(--ml-player-rgb), 0.3) 49%,
+    rgba(255, 255, 255, 0.16) 51%,
+    transparent 72%
+  );
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-135%);
+}
+
+.ping-pong-display.is-phase-running .ping-pong-scoreboard .ml-player-score-panel::before {
+  animation: pingPongPanelSweep calc(2.8s - var(--ping-pong-rally-pace) * 1s) linear infinite;
+}
+
+.ping-pong-scoreboard .ml-player-score-panel > strong {
+  transition:
+    color 220ms ease,
+    filter 280ms ease,
+    text-shadow 320ms ease,
+    transform 440ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ping-pong-scoreboard .ml-player-score-track i {
+  transition: width 560ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ping-pong-display.is-phase-starting .ml-versus-center {
+  animation: pingPongCenterCharge 800ms ease-in-out infinite alternate;
+}
+
+.ping-pong-display.is-phase-starting .ml-versus-center strong {
+  animation: pingPongCountdown 620ms cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
+}
+
+.ping-pong-display.is-scoring-red .ml-player-score-red,
+.ping-pong-display.is-scoring-blue .ml-player-score-blue {
+  filter: brightness(1.18) saturate(1.22);
+  transform: scale(1.012);
+}
+
+.ping-pong-display.is-scoring-red .ml-player-score-red > strong,
+.ping-pong-display.is-scoring-blue .ml-player-score-blue > strong {
+  animation: pingPongScorePop 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ping-pong-display.is-winner-red .ml-player-score-red,
+.ping-pong-display.is-winner-blue .ml-player-score-blue {
+  animation: pingPongWinnerPanel 900ms ease-in-out infinite alternate;
+  filter: brightness(1.16) saturate(1.16);
+  transform: scale(1.012);
+}
+
+.ping-pong-display.is-winner-red .ml-player-score-blue,
+.ping-pong-display.is-winner-blue .ml-player-score-red {
+  filter: saturate(0.62) brightness(0.72);
+  opacity: 0.68;
+  transform: scale(0.985);
+}
+
+.ping-pong-rally-lane {
+  align-items: center;
+  background:
+    radial-gradient(circle at 3% 50%, rgba(255, 28, 40, 0.42), transparent 24%),
+    radial-gradient(circle at 97% 50%, rgba(20, 92, 255, 0.48), transparent 24%),
+    linear-gradient(90deg, rgba(255, 28, 40, 0.1), rgba(7, 12, 22, 0.94) 32%, rgba(7, 12, 22, 0.94) 68%, rgba(20, 92, 255, 0.13)),
+    rgba(4, 8, 15, 0.96);
+  border: 1px solid rgba(111, 158, 204, 0.34);
+  box-shadow:
+    0 18px 48px -32px rgba(0, 0, 0, 0.92),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    inset 0 0 34px rgba(54, 217, 255, 0.035);
+  clip-path: polygon(1.2% 0, 98.8% 0, 100% 50%, 98.8% 100%, 1.2% 100%, 0 50%);
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  z-index: 3;
+}
+
+.ping-pong-rally-lane::before {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 47px, rgba(255, 255, 255, 0.045) 47px 48px),
+    repeating-linear-gradient(0deg, transparent 0 23px, rgba(255, 255, 255, 0.04) 23px 24px);
+  content: "";
+  inset: 0;
+  opacity: 0.72;
+  position: absolute;
+}
+
+.ping-pong-rally-lane::after {
+  background: linear-gradient(90deg, var(--ml-red), rgba(255, 255, 255, 0.72), var(--ml-blue));
+  bottom: 0;
+  box-shadow: 0 0 16px rgba(54, 217, 255, 0.45);
+  content: "";
+  height: 2px;
+  left: 2.2%;
+  position: absolute;
+  right: 2.2%;
+}
+
+.ping-pong-rally-team {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 16px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  position: absolute;
+  text-transform: uppercase;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+}
+
+.ping-pong-rally-team.is-red {
+  color: #ff8190;
+  left: 34px;
+  text-shadow: 0 0 18px rgba(255, 28, 40, 0.72);
+}
+
+.ping-pong-rally-team.is-blue {
+  color: #8db4ff;
+  right: 34px;
+  text-shadow: 0 0 18px rgba(20, 92, 255, 0.78);
+}
+
+.ping-pong-rally-net {
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.7) 0 5px, transparent 5px 10px);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.26);
+  height: 68%;
+  left: 50%;
+  opacity: 0.52;
+  position: absolute;
+  top: 16%;
+  width: 2px;
+  z-index: 2;
+}
+
+.ping-pong-rally-scan {
+  animation: pingPongLaneScan calc(2.1s - var(--ping-pong-rally-pace) * 0.75s) linear infinite;
+  background: linear-gradient(90deg, transparent, rgba(54, 217, 255, 0.08), rgba(255, 255, 255, 0.2), transparent);
+  filter: blur(1px);
+  inset: 0 auto 0 -30%;
+  position: absolute;
+  transform: skewX(-18deg);
+  width: 28%;
+  z-index: 1;
+}
+
+.ping-pong-ball,
+.ping-pong-ball-trail,
+.ping-pong-impact {
+  left: var(--ping-pong-ball-x);
+  pointer-events: none;
+  position: absolute;
+  top: var(--ping-pong-ball-y);
+}
+
+.ping-pong-ball {
+  background: #ffffff;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  box-shadow:
+    0 0 8px #ffffff,
+    0 0 22px rgba(54, 217, 255, 0.98),
+    0 0 46px rgba(54, 217, 255, 0.52);
+  height: 19px;
+  transform: translate(-50%, -50%);
+  transition:
+    left 105ms linear,
+    top 105ms linear,
+    opacity 180ms ease;
+  width: 19px;
+  z-index: 8;
+}
+
+.ping-pong-ball-trail {
+  background: rgba(225, 248, 255, 0.92);
+  border-radius: 50%;
+  box-shadow: 0 0 14px rgba(54, 217, 255, 0.78);
+  height: calc(12px - var(--ping-pong-trail-index) * 1.3px);
+  opacity: calc(0.38 - var(--ping-pong-trail-index) * 0.055);
+  transform: translate(-50%, -50%);
+  transition:
+    left 105ms linear,
+    top 105ms linear;
+  width: calc(12px - var(--ping-pong-trail-index) * 1.3px);
+  z-index: 6;
+}
+
+.ping-pong-impact {
+  border: 3px solid var(--ping-pong-impact-color);
+  border-radius: 50%;
+  box-shadow:
+    0 0 18px var(--ping-pong-impact-color),
+    inset 0 0 18px var(--ping-pong-impact-color);
+  height: 32px;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  z-index: 7;
+}
+
+.ping-pong-impact.is-red {
+  --ping-pong-impact-color: rgba(255, 54, 74, 0.86);
+  animation: pingPongImpactRed 480ms cubic-bezier(0.1, 0.72, 0.2, 1) both;
+}
+
+.ping-pong-impact.is-blue {
+  --ping-pong-impact-color: rgba(47, 115, 255, 0.92);
+  animation: pingPongImpactBlue 480ms cubic-bezier(0.1, 0.72, 0.2, 1) both;
+}
+
+.ping-pong-rally-caption {
+  animation: pingPongCaptionIn 440ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: rgba(3, 8, 15, 0.84);
+  border: 1px solid rgba(54, 217, 255, 0.34);
+  box-shadow:
+    0 0 24px rgba(54, 217, 255, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #f5fbff;
+  font-size: 17px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  max-width: 42%;
+  overflow-wrap: break-word;
+  padding: 9px 20px;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: normal;
+  z-index: 10;
+}
+
+.ping-pong-display.is-phase-waiting .ping-pong-ball,
+.ping-pong-display.is-phase-starting .ping-pong-ball {
+  left: 50%;
+  top: 50%;
+}
+
+.ping-pong-display.is-phase-waiting .ping-pong-ball {
+  animation: pingPongStandbyBall 1.4s ease-in-out infinite;
+}
+
+.ping-pong-display.is-phase-starting .ping-pong-ball {
+  animation: pingPongServeCharge 520ms ease-in-out infinite alternate;
+}
+
+.ping-pong-display.is-phase-waiting .ping-pong-ball-trail,
+.ping-pong-display.is-phase-starting .ping-pong-ball-trail,
+.ping-pong-display.is-phase-finished .ping-pong-ball-trail {
+  display: none;
+}
+
+.ping-pong-display.is-phase-finished .ping-pong-ball {
+  animation: pingPongVictoryBall 760ms cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
+  left: 50%;
+  top: 50%;
+}
+
+.ping-pong-display.is-scoring-red .ping-pong-ball {
+  animation: pingPongPointRed 720ms cubic-bezier(0.12, 0.8, 0.2, 1) both;
+}
+
+.ping-pong-display.is-scoring-blue .ping-pong-ball {
+  animation: pingPongPointBlue 720ms cubic-bezier(0.12, 0.8, 0.2, 1) both;
+}
+
+.ping-pong-display.is-scoring-red .ping-pong-rally-lane {
+  animation: pingPongLaneRed 720ms ease-out both;
+}
+
+.ping-pong-display.is-scoring-blue .ping-pong-rally-lane {
+  animation: pingPongLaneBlue 720ms ease-out both;
+}
+
+.ping-pong-metrics .ml-metric {
+  transition:
+    border-color 280ms ease,
+    box-shadow 320ms ease,
+    filter 280ms ease,
+    transform 320ms ease;
+}
+
+.ping-pong-display.is-phase-running .ping-pong-rally-metric .ml-metric-value {
+  animation: pingPongRallyValue calc(1.15s - var(--ping-pong-rally-pace) * 0.42s) ease-in-out infinite alternate;
+}
+
+.ping-pong-display.is-scoring-red .ping-pong-last-metric,
+.ping-pong-display.is-scoring-blue .ping-pong-last-metric {
+  animation: pingPongMetricReveal 580ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ping-pong-rounds .ml-round-progress i {
+  background-size: 220% 100%;
+  transition: width 540ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ping-pong-display.is-phase-running .ping-pong-rounds .ml-round-progress i {
+  animation: pingPongProgressFlow 1.8s linear infinite;
+}
+
+.ping-pong-display.is-phase-running .ping-pong-rounds .ml-round-card.is-current {
+  animation: pingPongCurrentRound 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes pingPongPanelSweep {
+  0%, 14% { transform: translateX(-135%); }
+  62%, 100% { transform: translateX(135%); }
+}
+
+@keyframes pingPongCenterCharge {
+  from { box-shadow: 0 0 22px -10px rgba(54, 217, 255, 0.28), inset 0 0 0 rgba(255, 255, 255, 0); }
+  to { box-shadow: 0 0 44px -10px rgba(54, 217, 255, 0.64), inset 0 0 30px rgba(255, 255, 255, 0.055); }
+}
+
+@keyframes pingPongCountdown {
+  from { filter: brightness(0.9); transform: scale(0.92); }
+  to { filter: brightness(1.18); transform: scale(1.04); }
+}
+
+@keyframes pingPongScorePop {
+  0% { filter: brightness(1); transform: scale(0.72); }
+  48% { filter: brightness(1.46); transform: scale(1.14); }
+  100% { filter: brightness(1.08); transform: scale(1); }
+}
+
+@keyframes pingPongWinnerPanel {
+  from { box-shadow: 0 22px 70px -28px rgba(var(--ml-player-rgb), 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+  to { box-shadow: 0 24px 84px -18px rgba(var(--ml-player-rgb), 0.92), inset 0 0 42px rgba(var(--ml-player-rgb), 0.12); }
+}
+
+@keyframes pingPongLaneScan {
+  from { left: -30%; }
+  to { left: 112%; }
+}
+
+@keyframes pingPongImpactRed {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.35); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(3.2); }
+}
+
+@keyframes pingPongImpactBlue {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.35); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(3.2); }
+}
+
+@keyframes pingPongCaptionIn {
+  from { opacity: 0; transform: translateY(9px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes pingPongStandbyBall {
+  0%, 100% { box-shadow: 0 0 8px #fff, 0 0 18px rgba(54, 217, 255, 0.68); opacity: 0.65; transform: translate(-50%, -50%) scale(0.78); }
+  50% { box-shadow: 0 0 10px #fff, 0 0 36px rgba(54, 217, 255, 1); opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+}
+
+@keyframes pingPongServeCharge {
+  from { box-shadow: 0 0 8px #fff, -22px 0 30px rgba(255, 28, 40, 0.6), 22px 0 30px rgba(20, 92, 255, 0.66); transform: translate(-50%, -50%) scale(0.82); }
+  to { box-shadow: 0 0 14px #fff, -36px 0 44px rgba(255, 28, 40, 0.88), 36px 0 44px rgba(20, 92, 255, 0.92); transform: translate(-50%, -50%) scale(1.22); }
+}
+
+@keyframes pingPongVictoryBall {
+  from { box-shadow: 0 0 10px #fff, 0 0 30px rgba(255, 207, 90, 0.68); transform: translate(-50%, -50%) rotate(-12deg) scale(1); }
+  to { box-shadow: 0 0 18px #fff, 0 0 58px rgba(255, 207, 90, 1); transform: translate(-50%, -50%) rotate(12deg) scale(1.48); }
+}
+
+@keyframes pingPongPointRed {
+  0% { left: var(--ping-pong-ball-x); opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  44% { left: 4%; opacity: 1; transform: translate(-50%, -50%) scale(1.42); }
+  100% { left: 4%; opacity: 0; transform: translate(-50%, -50%) scale(2.8); }
+}
+
+@keyframes pingPongPointBlue {
+  0% { left: var(--ping-pong-ball-x); opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  44% { left: 96%; opacity: 1; transform: translate(-50%, -50%) scale(1.42); }
+  100% { left: 96%; opacity: 0; transform: translate(-50%, -50%) scale(2.8); }
+}
+
+@keyframes pingPongLaneRed {
+  0% { border-color: rgba(111, 158, 204, 0.34); box-shadow: inset 0 0 0 rgba(255, 28, 40, 0); }
+  38% { border-color: rgba(255, 54, 74, 0.92); box-shadow: inset 120px 0 120px -60px rgba(255, 28, 40, 0.58); }
+  100% { border-color: rgba(111, 158, 204, 0.34); box-shadow: inset 0 0 0 rgba(255, 28, 40, 0); }
+}
+
+@keyframes pingPongLaneBlue {
+  0% { border-color: rgba(111, 158, 204, 0.34); box-shadow: inset 0 0 0 rgba(20, 92, 255, 0); }
+  38% { border-color: rgba(47, 115, 255, 0.96); box-shadow: inset -120px 0 120px -60px rgba(20, 92, 255, 0.66); }
+  100% { border-color: rgba(111, 158, 204, 0.34); box-shadow: inset 0 0 0 rgba(20, 92, 255, 0); }
+}
+
+@keyframes pingPongRallyValue {
+  from { filter: brightness(0.96); text-shadow: 0 0 10px rgba(54, 217, 255, 0.18); transform: translateY(1px); }
+  to { filter: brightness(1.18); text-shadow: 0 0 24px rgba(54, 217, 255, 0.52); transform: translateY(-2px); }
+}
+
+@keyframes pingPongMetricReveal {
+  from { filter: brightness(1.6); transform: translateY(8px) scale(0.97); }
+  to { filter: brightness(1); transform: translateY(0) scale(1); }
+}
+
+@keyframes pingPongProgressFlow {
+  from { background-position: 100% 0; }
+  to { background-position: -120% 0; }
+}
+
+@keyframes pingPongCurrentRound {
+  from { filter: brightness(0.94); transform: translateY(0); }
+  to { filter: brightness(1.12); transform: translateY(-2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ping-pong-display *,
+  .ping-pong-display *::before,
+  .ping-pong-display *::after {
+    animation-delay: 0s !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}
+
 .ml-solo-display {
   display: grid;
   gap: 24px;

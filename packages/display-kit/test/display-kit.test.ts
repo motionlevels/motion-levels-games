@@ -8,6 +8,14 @@ import { FloorPreview, GameDisplayShell, HeartMeter, MetricPanel, RoundStrip } f
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
+test("Ping Pong motion is namespaced and honors reduced motion", () => {
+  assert.match(styleSource, /\.ping-pong-rally-lane/);
+  assert.match(styleSource, /\.ping-pong-ball-trail/);
+  assert.match(styleSource, /@keyframes pingPongScorePop/);
+  assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styleSource, /\.ping-pong-display \*/);
+});
+
 test("MetricPanel renders label and value without app dependencies", () => {
   const html = renderToStaticMarkup(React.createElement(MetricPanel, { label: "Score", value: 42 }));
 
