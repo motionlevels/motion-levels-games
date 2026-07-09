@@ -153,3 +153,21 @@ test("settings actions stay in the header and scrolling is viewport-driven", () 
     "settings must not use an arbitrary fixed scroll cap"
   );
 });
+
+test("active run settings reserve space for descriptive labels", () => {
+  assert.match(
+    styleSource,
+    /\.status-config-list\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
+    "expanded active-run settings need three readable columns"
+  );
+  assert.match(
+    styleSource,
+    /\.status-config-list > div\s*\{[^}]*grid-template-rows:\s*minmax\(2\.3em, 1fr\) auto;/s,
+    "values must align below a stable descriptive-label area"
+  );
+  assert.match(
+    styleSource,
+    /@container status-dock \(max-height: 219px\)[\s\S]*?\.status-config-list\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/s,
+    "compact docks must retain their dense four-column fallback"
+  );
+});

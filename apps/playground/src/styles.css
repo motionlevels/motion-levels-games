@@ -1135,7 +1135,24 @@ select {
 }
 
 .status-config-list {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  row-gap: 10px;
+}
+
+.status-config-list > div {
+  align-self: stretch;
+  display: grid;
+  grid-template-rows: minmax(2.3em, 1fr) auto;
+}
+
+.status-config-list dt {
+  align-items: flex-end;
+  display: flex;
+  line-height: 1.15;
+  margin-bottom: 4px;
+  min-height: 2.3em;
+  overflow-wrap: anywhere;
 }
 
 .status-runtime-summary,
@@ -1276,6 +1293,23 @@ select {
     font-weight: 800;
     line-height: 1;
     margin: 0;
+  }
+}
+
+@container status-dock (max-height: 219px) {
+  .status-config-list {
+    gap: 6px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .status-config-list > div {
+    display: block;
+  }
+
+  .status-config-list dt {
+    display: block;
+    line-height: normal;
+    min-height: 0;
   }
 }
 
