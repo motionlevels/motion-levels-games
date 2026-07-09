@@ -1,5 +1,5 @@
 import React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { FloorPreview } from "@motion-levels-games/display-kit";
 import {
   PlayerDisplay as ExampleCatchDisplay,
@@ -14,6 +14,12 @@ import {
 import type { Frame, GameConfig, GameEvent, GameInstance, GameManifest, GameSnapshot } from "@motion-levels-games/game-sdk";
 
 const tickMillis = 100;
+const nativeDisplayWidth = 1920;
+const nativeDisplayHeight = 1080;
+const minDisplayPreviewWidth = 420;
+const maxDisplayPreviewWidth = 1280;
+const minFloorPreviewWidth = 300;
+const maxFloorPreviewWidth = 720;
 
 type PlaygroundGame = {
   manifest: GameManifest;
@@ -61,11 +67,39 @@ export function App() {
     []
   );
   const gameRef = useRef<GameInstance>(started.game);
-  const [clockMillis, setClockMillis] = useState(0);
+  const clockRef = useRef(0);
   const [snapshot, setSnapshot] = useState<GameSnapshot>(started.game.snapshot());
   const [frame, setFrame] = useState<Frame>(started.game.render());
   const [events, setEvents] = useState<GameEvent[]>(started.events);
+  const [displayPreviewWidth, setDisplayPreviewWidth] = useState(760);
+  const [floorPreviewWidth, setFloorPreviewWidth] = useState(540);
+  const displayPreviewRef = useRef<HTMLDivElement>(null);
+  const [displayPreviewScale, setDisplayPreviewScale] = useState(displayPreviewWidth / nativeDisplayWidth);
   const PlayerDisplay = selectedGame.PlayerDisplay;
+  const workbenchStyle = {
+    "--floor-preview-width": `${floorPreviewWidth}px`,
+    "--display-preview-width": `${displayPreviewWidth}px`,
+    "--display-preview-scale": displayPreviewScale
+  } as CSSProperties;
+
+  useEffect(() => {
+    const element = displayPreviewRef.current;
+    if (!element) {
+      return undefined;
+    }
+
+    const update = () => {
+      const width = element.clientWidth || displayPreviewWidth;
+      const height = element.clientHeight || Math.round(width * (nativeDisplayHeight / nativeDisplayWidth));
+      const nextScale = Math.max(0.01, Math.min(width / nativeDisplayWidth, height / nativeDisplayHeight));
+      setDisplayPreviewScale((current) => (Math.abs(current - nextScale) < 0.001 ? current : nextScale));
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [displayPreviewWidth]);
 
   const refresh = useCallback((nextEvents: GameEvent[] = []) => {
     setSnapshot(gameRef.current.snapshot());
@@ -80,7 +114,7 @@ export function App() {
     (nextSeed = seed, nextPlayerCount = playerCount, nextGame = selectedGame) => {
       const next = createStartedGame(nextGame, nextSeed, nextPlayerCount);
       gameRef.current = next.game;
-      setClockMillis(0);
+      clockRef.current = 0;
       setPaused(false);
       setEvents(next.events);
       setSnapshot(next.game.snapshot());
@@ -109,12 +143,10 @@ export function App() {
     }
 
     const id = window.setInterval(() => {
-      setClockMillis((previous) => {
-        const nextClock = previous + tickMillis;
-        const nextEvents = gameRef.current.tick({ atMillis: nextClock });
-        refresh(nextEvents);
-        return nextClock;
-      });
+      const nextClock = clockRef.current + tickMillis;
+      clockRef.current = nextClock;
+      const nextEvents = gameRef.current.tick({ atMillis: nextClock });
+      refresh(nextEvents);
     }, tickMillis);
 
     return () => window.clearInterval(id);
@@ -126,11 +158,11 @@ export function App() {
         x,
         y,
         pressed: true,
-        atMillis: clockMillis
+        atMillis: clockRef.current
       });
       refresh(nextEvents);
     },
-    [clockMillis, refresh]
+    [refresh]
   );
 
   const handleTileRelease = useCallback(
@@ -139,19 +171,59 @@ export function App() {
         x,
         y,
         pressed: false,
-        atMillis: clockMillis
+        atMillis: clockRef.current
       });
       refresh(nextEvents);
     },
-    [clockMillis, refresh]
+    [refresh]
+  );
+  const startDisplayResize = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = displayPreviewWidth;
+
+      function handleMove(moveEvent: PointerEvent) {
+        setDisplayPreviewWidth(clamp(startWidth + moveEvent.clientX - startX, minDisplayPreviewWidth, maxDisplayPreviewWidth));
+      }
+
+      function handleUp() {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+      }
+
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    },
+    [displayPreviewWidth]
+  );
+  const startFloorResize = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = floorPreviewWidth;
+
+      function handleMove(moveEvent: PointerEvent) {
+        setFloorPreviewWidth(clamp(startWidth + moveEvent.clientX - startX, minFloorPreviewWidth, maxFloorPreviewWidth));
+      }
+
+      function handleUp() {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+      }
+
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    },
+    [floorPreviewWidth]
   );
 
   return (
-    <main className="playground-shell">
+    <main className="playground-shell" style={workbenchStyle}>
       <header className="playground-header">
-        <div>
+        <div className="playground-title">
           <span className="eyebrow">Motion Levels Games</span>
-          <h1>TypeScript Playground</h1>
+          <h1>Playground</h1>
         </div>
         <div className="playground-controls">
           <label>
@@ -191,6 +263,28 @@ export function App() {
               ))}
             </select>
           </label>
+          <label>
+            Floor
+            <input
+              inputMode="numeric"
+              min={minFloorPreviewWidth}
+              max={maxFloorPreviewWidth}
+              onChange={(event) => setFloorPreviewWidth(clamp(Number(event.target.value) || floorPreviewWidth, minFloorPreviewWidth, maxFloorPreviewWidth))}
+              type="number"
+              value={floorPreviewWidth}
+            />
+          </label>
+          <label>
+            Display
+            <input
+              inputMode="numeric"
+              min={minDisplayPreviewWidth}
+              max={maxDisplayPreviewWidth}
+              onChange={(event) => setDisplayPreviewWidth(clamp(Number(event.target.value) || displayPreviewWidth, minDisplayPreviewWidth, maxDisplayPreviewWidth))}
+              type="number"
+              value={displayPreviewWidth}
+            />
+          </label>
           <button onClick={() => restart()} type="button">
             Restart
           </button>
@@ -217,18 +311,41 @@ export function App() {
             <strong>{snapshot.phase}</strong>
           </div>
           <FloorPreview
+            className="playground-floor-preview"
             frame={frame}
             interactive
             onTilePress={handleTilePress}
             onTileRelease={handleTileRelease}
           />
+          <button
+            aria-label="Resize floor preview"
+            className="playground-resize-handle floor-resize-handle"
+            onPointerDown={startFloorResize}
+            type="button"
+          />
         </article>
 
         <article className="display-panel">
-          <PlayerDisplay snapshot={snapshot} frame={frame} />
+          <div className="panel-heading display-panel-heading">
+            <span>Player display</span>
+            <strong>{nativeDisplayWidth}x{nativeDisplayHeight}</strong>
+          </div>
+          <div className="display-preview-box" ref={displayPreviewRef}>
+            <div className="display-preview-native">
+              <PlayerDisplay snapshot={snapshot} frame={frame} />
+            </div>
+            <button
+              aria-label="Resize player display preview"
+              className="playground-resize-handle display-resize-handle"
+              onPointerDown={startDisplayResize}
+              type="button"
+            />
+          </div>
         </article>
 
-        <article className="panel log-panel">
+        <details className="debug-panel">
+          <summary>Debug</summary>
+          <article className="panel log-panel">
           <div className="panel-heading">
             <span>Event log</span>
             <strong>{events.length}</strong>
@@ -242,16 +359,21 @@ export function App() {
               </li>
             ))}
           </ol>
-        </article>
+          </article>
 
-        <article className="panel snapshot-panel">
+          <article className="panel snapshot-panel">
           <div className="panel-heading">
             <span>Snapshot JSON</span>
             <strong>{snapshot.score} pts</strong>
           </div>
           <pre>{JSON.stringify(snapshot, null, 2)}</pre>
-        </article>
+          </article>
+        </details>
       </section>
     </main>
   );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
 }

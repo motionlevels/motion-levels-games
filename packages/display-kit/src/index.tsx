@@ -1,4 +1,5 @@
 import React from "react";
+import { useCallback, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { Frame } from "@motion-levels-games/game-sdk";
 
@@ -80,14 +81,110 @@ export function FloorPreview({
   onTileRelease?: (x: number, y: number) => void;
   className?: string;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const lastTileRef = useRef<{ x: number; y: number } | null>(null);
   const style = {
     "--ml-floor-cols": frame.width,
     "--ml-floor-rows": frame.height
   } as CSSProperties;
   const rootClassName = `ml-floor-preview ${interactive ? "ml-floor-interactive" : ""} ${className}`.trim();
+  const tileFromPoint = useCallback((clientX: number, clientY: number) => {
+    const element = document.elementFromPoint(clientX, clientY);
+    const tile = element?.closest<HTMLElement>("[data-tile-x][data-tile-y]");
+
+    if (!tile || !rootRef.current?.contains(tile)) {
+      return null;
+    }
+
+    return {
+      x: Number(tile.dataset.tileX),
+      y: Number(tile.dataset.tileY)
+    };
+  }, []);
+  const pressTile = useCallback(
+    (tile: { x: number; y: number }) => {
+      onTilePress?.(tile.x, tile.y);
+      lastTileRef.current = tile;
+    },
+    [onTilePress]
+  );
+  const releaseLastTile = useCallback(() => {
+    const lastTile = lastTileRef.current;
+    if (!lastTile) {
+      return;
+    }
+
+    onTileRelease?.(lastTile.x, lastTile.y);
+    lastTileRef.current = null;
+  }, [onTileRelease]);
+  const moveToTile = useCallback(
+    (tile: { x: number; y: number } | null) => {
+      const lastTile = lastTileRef.current;
+      if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
+        releaseLastTile();
+        return;
+      }
+      if (lastTile && lastTile.x === tile.x && lastTile.y === tile.y) {
+        return;
+      }
+
+      releaseLastTile();
+      pressTile(tile);
+    },
+    [pressTile, releaseLastTile]
+  );
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!interactive || event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      activePointerIdRef.current = event.pointerId;
+      rootRef.current?.setPointerCapture(event.pointerId);
+      moveToTile(tileFromPoint(event.clientX, event.clientY));
+    },
+    [interactive, moveToTile, tileFromPoint]
+  );
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!interactive || activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      event.preventDefault();
+      moveToTile(tileFromPoint(event.clientX, event.clientY));
+    },
+    [interactive, moveToTile, tileFromPoint]
+  );
+  const endPointer = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!interactive || activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      activePointerIdRef.current = null;
+      releaseLastTile();
+      if (rootRef.current?.hasPointerCapture(event.pointerId)) {
+        rootRef.current.releasePointerCapture(event.pointerId);
+      }
+    },
+    [interactive, releaseLastTile]
+  );
 
   return (
-    <div className={rootClassName} style={style} role="grid" aria-label="Floor preview">
+    <div
+      className={rootClassName}
+      onPointerCancel={endPointer}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endPointer}
+      ref={rootRef}
+      style={style}
+      role="grid"
+      aria-label="Floor preview"
+    >
       {frame.cells.map((cell) => {
         const tileStyle = { backgroundColor: cell.color } as CSSProperties;
         const key = `${cell.x}-${cell.y}`;
@@ -105,9 +202,6 @@ export function FloorPreview({
               {...sharedProps}
               aria-label={`Tile ${cell.x}, ${cell.y}`}
               key={key}
-              onPointerDown={() => onTilePress?.(cell.x, cell.y)}
-              onPointerLeave={() => onTileRelease?.(cell.x, cell.y)}
-              onPointerUp={() => onTileRelease?.(cell.x, cell.y)}
               type="button"
             />
           );
