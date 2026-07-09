@@ -1,7 +1,7 @@
 import React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Frame } from "@motion-levels-games/game-sdk";
+import type { Frame, FrameCell } from "@motion-levels-games/game-sdk";
 
 export type Tone = "cyan" | "pink" | "yellow" | "green" | "neutral";
 
@@ -75,7 +75,7 @@ export function FloorPreview({
   onTileRelease,
   className = ""
 }: {
-  frame: Frame;
+  frame: Frame | { width: number; height: number; cells: FrameCell[] };
   interactive?: boolean;
   onTilePress?: (x: number, y: number) => void;
   onTileRelease?: (x: number, y: number) => void;

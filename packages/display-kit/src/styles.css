@@ -121,7 +121,7 @@
 }
 
 .ml-floor-preview {
-  aspect-ratio: 16 / 32;
+  aspect-ratio: var(--ml-floor-cols) / var(--ml-floor-rows);
   background: #02060b;
   border: 1px solid rgba(91, 143, 189, 0.24);
   border-radius: 0;

@@ -16,10 +16,6 @@ import type { Frame, GameConfig, GameEvent, GameInstance, GameManifest, GameSnap
 const tickMillis = 100;
 const nativeDisplayWidth = 1920;
 const nativeDisplayHeight = 1080;
-const minDisplayPreviewWidth = 420;
-const maxDisplayPreviewWidth = 1920;
-const minFloorPreviewWidth = 300;
-const maxFloorPreviewWidth = 720;
 
 type PlaygroundGame = {
   manifest: GameManifest;
@@ -71,18 +67,15 @@ export function App() {
   const [snapshot, setSnapshot] = useState<GameSnapshot>(started.game.snapshot());
   const [frame, setFrame] = useState<Frame>(started.game.render());
   const [events, setEvents] = useState<GameEvent[]>(started.events);
-  const [displayPreviewWidth, setDisplayPreviewWidth] = useState(1280);
-  const [floorPreviewWidth, setFloorPreviewWidth] = useState(540);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
-  const [resizingSurface, setResizingSurface] = useState<"display" | "floor" | null>(null);
+  const [boardFocus, setBoardFocus] = useState(false);
   const shellRef = useRef<HTMLElement>(null);
   const displayPreviewRef = useRef<HTMLDivElement>(null);
-  const [displayPreviewScale, setDisplayPreviewScale] = useState(displayPreviewWidth / nativeDisplayWidth);
+  const [displayPreviewScale, setDisplayPreviewScale] = useState(1);
   const PlayerDisplay = selectedGame.PlayerDisplay;
+  const previewFrame = useMemo(() => boardFocus ? rotateFrameClockwise(frame) : frame, [boardFocus, frame]);
   const workbenchStyle = {
-    "--floor-preview-width": `${floorPreviewWidth}px`,
-    "--display-preview-width": `${displayPreviewWidth}px`,
     "--display-preview-scale": displayPreviewScale
   } as CSSProperties;
 
@@ -93,7 +86,7 @@ export function App() {
     }
 
     const update = () => {
-      const width = element.clientWidth || displayPreviewWidth;
+      const width = element.clientWidth || nativeDisplayWidth;
       const height = element.clientHeight || Math.round(width * (nativeDisplayHeight / nativeDisplayWidth));
       const nextScale = Math.max(0.01, Math.min(width / nativeDisplayWidth, height / nativeDisplayHeight));
       setDisplayPreviewScale((current) => (Math.abs(current - nextScale) < 0.001 ? current : nextScale));
@@ -103,7 +96,7 @@ export function App() {
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [displayPreviewWidth]);
+  }, [boardFocus]);
 
   useEffect(() => {
     const updateFullscreen = () => {
@@ -173,77 +166,30 @@ export function App() {
 
   const handleTilePress = useCallback(
     (x: number, y: number) => {
+      const tile = boardFocus ? unrotateFloorPoint(x, y, frame.height) : { x, y };
       const nextEvents = gameRef.current.press({
-        x,
-        y,
+        x: tile.x,
+        y: tile.y,
         pressed: true,
         atMillis: clockRef.current
       });
       refresh(nextEvents);
     },
-    [refresh]
+    [boardFocus, frame.height, refresh]
   );
 
   const handleTileRelease = useCallback(
     (x: number, y: number) => {
+      const tile = boardFocus ? unrotateFloorPoint(x, y, frame.height) : { x, y };
       const nextEvents = gameRef.current.release({
-        x,
-        y,
+        x: tile.x,
+        y: tile.y,
         pressed: false,
         atMillis: clockRef.current
       });
       refresh(nextEvents);
     },
-    [refresh]
-  );
-  const startResize = useCallback((
-    event: React.PointerEvent<HTMLButtonElement>,
-    surface: "display" | "floor",
-    startWidth: number,
-    minWidth: number,
-    maxWidth: number,
-    setWidth: React.Dispatch<React.SetStateAction<number>>
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const startX = event.clientX;
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
-    setResizingSurface(surface);
-    document.body.style.cursor = "ew-resize";
-    document.body.style.userSelect = "none";
-
-    function handleMove(moveEvent: PointerEvent) {
-      setWidth(clamp(startWidth + moveEvent.clientX - startX, minWidth, maxWidth));
-    }
-
-    function handleEnd() {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleEnd);
-      window.removeEventListener("pointercancel", handleEnd);
-      window.removeEventListener("blur", handleEnd);
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      setResizingSurface(null);
-    }
-
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleEnd);
-    window.addEventListener("pointercancel", handleEnd);
-    window.addEventListener("blur", handleEnd);
-  }, []);
-  const startDisplayResize = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      startResize(event, "display", displayPreviewWidth, minDisplayPreviewWidth, maxDisplayPreviewWidth, setDisplayPreviewWidth);
-    },
-    [displayPreviewWidth, startResize]
-  );
-  const startFloorResize = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      startResize(event, "floor", floorPreviewWidth, minFloorPreviewWidth, maxFloorPreviewWidth, setFloorPreviewWidth);
-    },
-    [floorPreviewWidth, startResize]
+    [boardFocus, frame.height, refresh]
   );
   const toggleFullscreen = useCallback(async () => {
     const element = shellRef.current;
@@ -278,7 +224,7 @@ export function App() {
   const shellClassName = [
     "playground-shell",
     fullscreenFallback ? "is-fullscreen-fallback" : "",
-    resizingSurface ? `is-resizing-${resizingSurface}` : ""
+    boardFocus ? "is-board-focus" : ""
   ].filter(Boolean).join(" ");
 
   return (
@@ -335,28 +281,6 @@ export function App() {
                 value={seed}
               />
             </label>
-            <label>
-              Floor
-              <input
-                inputMode="numeric"
-                min={minFloorPreviewWidth}
-                max={maxFloorPreviewWidth}
-                onChange={(event) => setFloorPreviewWidth(clamp(Number(event.target.value) || floorPreviewWidth, minFloorPreviewWidth, maxFloorPreviewWidth))}
-                type="number"
-                value={floorPreviewWidth}
-              />
-            </label>
-            <label>
-              Display
-              <input
-                inputMode="numeric"
-                min={minDisplayPreviewWidth}
-                max={maxDisplayPreviewWidth}
-                onChange={(event) => setDisplayPreviewWidth(clamp(Number(event.target.value) || displayPreviewWidth, minDisplayPreviewWidth, maxDisplayPreviewWidth))}
-                type="number"
-                value={displayPreviewWidth}
-              />
-            </label>
           </div>
           <div className="control-group control-actions">
             <button onClick={() => restart()} type="button">
@@ -383,34 +307,25 @@ export function App() {
       </header>
 
       <section className="playground-grid">
-        <article className="panel floor-panel">
-          <FloorPreview
-            className="playground-floor-preview"
-            frame={frame}
-            interactive
-            onTilePress={handleTilePress}
-            onTileRelease={handleTileRelease}
-          />
-          <button
-            aria-label="Resize floor preview"
-            className="playground-resize-handle floor-resize-handle"
-            onPointerDown={startFloorResize}
-            type="button"
-          />
-        </article>
-
         <article className="display-panel">
+          <button className="layout-toggle-button" onClick={() => setBoardFocus((value) => !value)} type="button">
+            {boardFocus ? "Restore layout" : "Rotate board"}
+          </button>
           <div className="display-preview-box" ref={displayPreviewRef}>
             <div className="display-preview-native">
               <PlayerDisplay snapshot={snapshot} frame={frame} />
             </div>
-            <button
-              aria-label="Resize player display preview"
-              className="playground-resize-handle display-resize-handle"
-              onPointerDown={startDisplayResize}
-              type="button"
-            />
           </div>
+        </article>
+
+        <article className="panel floor-panel">
+          <FloorPreview
+            className="playground-floor-preview"
+            frame={previewFrame}
+            interactive
+            onTilePress={handleTilePress}
+            onTileRelease={handleTileRelease}
+          />
         </article>
 
         <details className="debug-panel">
@@ -444,6 +359,21 @@ export function App() {
   );
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(value)));
+function rotateFrameClockwise(frame: Frame) {
+  return {
+    width: frame.height,
+    height: frame.width,
+    cells: frame.cells.map((cell) => ({
+      x: frame.height - 1 - cell.y,
+      y: cell.x,
+      color: cell.color
+    }))
+  };
+}
+
+function unrotateFloorPoint(x: number, y: number, originalHeight: number) {
+  return {
+    x: y,
+    y: originalHeight - 1 - x
+  };
 }
