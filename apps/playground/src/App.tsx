@@ -606,6 +606,82 @@ export function App() {
             <button className="layout-toggle-button" onClick={() => setBoardFocusState((value) => !value)} type="button">
               {boardFocus ? "Restore layout" : "Rotate board"}
             </button>
+            <section className={`debug-panel ${debugOpen ? "is-open" : ""}`} ref={debugRef}>
+              <button
+                aria-expanded={debugOpen}
+                className="debug-trigger"
+                onClick={() => setDebugOpen((value) => !value)}
+                type="button"
+              >
+                Debug
+              </button>
+
+              {debugOpen ? (
+                <div className="debug-popover" role="dialog" aria-label="Playground debug panel">
+                  <div className="debug-popover-head">
+                    <div>
+                      <span>Playground</span>
+                      <strong>{snapshot.phase}</strong>
+                    </div>
+                    <button onClick={() => setDebugOpen(false)} type="button" aria-label="Close debug panel">
+                      Close
+                    </button>
+                  </div>
+
+                  <dl className="debug-stat-grid">
+                    {debugStats.map(([label, value]) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div className="debug-api-strip">
+                    <code>window.ml</code>
+                    <code>capture(["display", "boardPreview", "combined"])</code>
+                    <code>media("ping-pong")</code>
+                  </div>
+
+                  <article className="debug-latest">
+                    <span>Latest Event</span>
+                    {latestEvent ? (
+                      <p>
+                        <code>{latestEvent.atMillis}ms</code>
+                        <b>{latestEvent.cue}</b>
+                        <strong>{latestEvent.message}</strong>
+                      </p>
+                    ) : (
+                      <p>No events</p>
+                    )}
+                  </article>
+
+                  <article className="debug-events">
+                    <div className="debug-section-heading">
+                      <span>Recent Events</span>
+                      <strong>{events.length}</strong>
+                    </div>
+                    <ol>
+                      {events.map((event, index) => (
+                        <li key={`${event.atMillis}-${event.cue}-${index}`}>
+                          <code>{event.atMillis}ms</code>
+                          <span>{event.cue}</span>
+                          <strong>{event.message}</strong>
+                        </li>
+                      ))}
+                    </ol>
+                  </article>
+
+                  <article className="debug-snapshot">
+                    <div className="debug-section-heading">
+                      <span>Snapshot</span>
+                      <strong>{snapshot.score} pts</strong>
+                    </div>
+                    <pre>{JSON.stringify(snapshot, null, 2)}</pre>
+                  </article>
+                </div>
+              ) : null}
+            </section>
             <div className="capture-actions" aria-label="Capture actions">
               <button onClick={() => handleCopySurface("display")} type="button">
                 Copy display
@@ -635,83 +711,6 @@ export function App() {
             onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}
           />
         </article>
-
-        <section className={`debug-panel ${debugOpen ? "is-open" : ""}`} ref={debugRef}>
-          <button
-            aria-expanded={debugOpen}
-            className="debug-trigger"
-            onClick={() => setDebugOpen((value) => !value)}
-            type="button"
-          >
-            Debug
-          </button>
-
-          {debugOpen ? (
-            <div className="debug-popover" role="dialog" aria-label="Playground debug panel">
-              <div className="debug-popover-head">
-                <div>
-                  <span>Playground</span>
-                  <strong>{snapshot.phase}</strong>
-                </div>
-                <button onClick={() => setDebugOpen(false)} type="button" aria-label="Close debug panel">
-                  Close
-                </button>
-              </div>
-
-              <dl className="debug-stat-grid">
-                {debugStats.map(([label, value]) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-
-              <div className="debug-api-strip">
-                <code>window.ml</code>
-                <code>capture(["display", "boardPreview", "combined"])</code>
-                <code>media("ping-pong")</code>
-              </div>
-
-              <article className="debug-latest">
-                <span>Latest Event</span>
-                {latestEvent ? (
-                  <p>
-                    <code>{latestEvent.atMillis}ms</code>
-                    <b>{latestEvent.cue}</b>
-                    <strong>{latestEvent.message}</strong>
-                  </p>
-                ) : (
-                  <p>No events</p>
-                )}
-              </article>
-
-              <article className="debug-events">
-                <div className="debug-section-heading">
-                  <span>Recent Events</span>
-                  <strong>{events.length}</strong>
-                </div>
-                <ol>
-                  {events.map((event, index) => (
-                    <li key={`${event.atMillis}-${event.cue}-${index}`}>
-                      <code>{event.atMillis}ms</code>
-                      <span>{event.cue}</span>
-                      <strong>{event.message}</strong>
-                    </li>
-                  ))}
-                </ol>
-              </article>
-
-              <article className="debug-snapshot">
-                <div className="debug-section-heading">
-                  <span>Snapshot</span>
-                  <strong>{snapshot.score} pts</strong>
-                </div>
-                <pre>{JSON.stringify(snapshot, null, 2)}</pre>
-              </article>
-            </div>
-          ) : null}
-        </section>
       </section>
     </main>
   );
