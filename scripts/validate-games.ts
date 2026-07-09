@@ -7,6 +7,12 @@ type ManifestModule = {
   manifest?: {
     id?: string;
     label?: string;
+    config?: {
+      difficulty?: {
+        options?: unknown;
+      };
+      vars?: unknown;
+    };
     display?: {
       entry?: string;
     };
@@ -73,6 +79,41 @@ for (const gameId of gameDirs) {
       if (manifest.display?.entry !== "./display") {
         problems.push(`${gameId}: manifest.display.entry must be ./display`);
       }
+      if (manifest.config?.difficulty?.options !== undefined && !isStringArray(manifest.config.difficulty.options)) {
+        problems.push(`${gameId}: manifest.config.difficulty.options must be a string array`);
+      }
+      if (manifest.config?.vars !== undefined) {
+        if (!Array.isArray(manifest.config.vars)) {
+          problems.push(`${gameId}: manifest.config.vars must be an array`);
+        } else {
+          const seenConfigKeys = new Set<string>();
+          for (const [index, configVar] of manifest.config.vars.entries()) {
+            if (!configVar || typeof configVar !== "object" || Array.isArray(configVar)) {
+              problems.push(`${gameId}: manifest.config.vars[${index}] must be an object`);
+              continue;
+            }
+
+            const record = configVar as Record<string, unknown>;
+            const key = String(record.key || "").trim();
+            if (!key) {
+              problems.push(`${gameId}: manifest.config.vars[${index}].key is required`);
+            } else if (seenConfigKeys.has(key)) {
+              problems.push(`${gameId}: manifest.config.vars contains duplicate key ${key}`);
+            }
+            seenConfigKeys.add(key);
+
+            if (!String(record.label || "").trim()) {
+              problems.push(`${gameId}: manifest.config.vars[${index}].label is required`);
+            }
+            if (!["int", "float", "bool", "enum"].includes(String(record.type))) {
+              problems.push(`${gameId}: manifest.config.vars[${index}].type must be int, float, bool, or enum`);
+            }
+            if (record.type === "enum" && !Array.isArray(record.options)) {
+              problems.push(`${gameId}: manifest.config.vars[${index}].options is required for enum vars`);
+            }
+          }
+        }
+      }
     }
   } catch (error) {
     problems.push(`${gameId}: could not import src/manifest.ts (${errorMessage(error)})`);
@@ -97,4 +138,8 @@ if (problems.length > 0) {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }

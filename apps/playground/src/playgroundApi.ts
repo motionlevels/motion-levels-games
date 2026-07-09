@@ -1,4 +1,4 @@
-import type { Frame, GameEvent, GameSnapshot } from "@motion-levels-games/game-sdk";
+import type { Frame, GameConfigOptions, GameDifficulty, GameEvent, GameSnapshot } from "@motion-levels-games/game-sdk";
 import type { RenderableFrame } from "./frameTransforms.ts";
 import type { PlaygroundMediaBundle, PlaygroundMediaOptions } from "./mediaAssets.ts";
 
@@ -21,9 +21,13 @@ export type PlaygroundState = {
   clockMillis: number;
   fps: number;
   frameMillis: number;
+  difficulty: GameDifficulty;
   gameId: string;
+  options: GameConfigOptions;
   status: string;
+  seed: number;
   paused: boolean;
+  playerCount: number;
   rotatedBoard: boolean;
   snapshot: GameSnapshot;
   frame: Frame;

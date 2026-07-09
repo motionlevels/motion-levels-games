@@ -5,8 +5,10 @@ import {
   createGameEngine,
   type Frame,
   type GameConfig,
+  type GameConfigOptions,
   type GameEngine,
-  type GameEngineState
+  type GameEngineState,
+  type GameDifficulty
 } from "@motion-levels-games/game-sdk";
 import type { PlaygroundGame } from "./gameRegistry.ts";
 import { rotateFrameClockwise, type RenderableFrame } from "./frameTransforms.ts";
@@ -25,6 +27,8 @@ export type PlaygroundMediaAsset = {
 export type PlaygroundMediaBundle = {
   gameId: string;
   label: string;
+  difficulty: GameDifficulty;
+  options: GameConfigOptions;
   seed: number;
   playerCount: number;
   generatedAt: string;
@@ -32,6 +36,8 @@ export type PlaygroundMediaBundle = {
 };
 
 export type PlaygroundMediaOptions = {
+  difficulty?: GameDifficulty;
+  options?: GameConfigOptions;
   seed?: number;
   playerCount?: number;
 };
@@ -69,7 +75,9 @@ export async function generateGameMediaBundle(
 ): Promise<PlaygroundMediaBundle> {
   const seed = normalizeSeed(options.seed, game.manifest.defaultSeed);
   const playerCount = normalizePlayerCount(options.playerCount, game.manifest.players.min, game.manifest.players.max);
-  const engine = createPreviewEngine(game, { seed, playerCount });
+  const difficulty = options.difficulty ?? game.manifest.config?.difficulty?.default ?? "medium";
+  const configOptions = options.options ?? {};
+  const engine = createPreviewEngine(game, { difficulty, options: configOptions, playerCount, seed });
   const frames = collectPreviewFrames(engine);
   const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
   const baseName = game.manifest.id;
@@ -83,6 +91,8 @@ export async function generateGameMediaBundle(
   return {
     gameId: game.manifest.id,
     label: game.manifest.label,
+    difficulty,
+    options: configOptions,
     seed,
     playerCount,
     generatedAt: new Date().toISOString(),
@@ -107,11 +117,16 @@ export async function generateGameMediaBundle(
   };
 }
 
-function createPreviewEngine(game: PlaygroundGame, config: Pick<GameConfig, "seed" | "playerCount">): GameEngine {
+function createPreviewEngine(
+  game: PlaygroundGame,
+  config: Pick<GameConfig, "difficulty" | "options" | "playerCount" | "seed">
+): GameEngine {
   const instance = game.createGame({
     seed: config.seed,
     playerCount: config.playerCount,
     durationMillis: game.manifest.defaultDurationMillis,
+    difficulty: config.difficulty,
+    options: config.options,
     nowMillis: 0
   });
   const events = instance.init(0);
@@ -353,5 +368,9 @@ function normalizeSeed(value: number | undefined, fallback: number): number {
 
 function normalizePlayerCount(value: number | undefined, min: number, max: number): number {
   const candidate = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : min;
+  if (candidate === 0) {
+    return 0;
+  }
+
   return Math.max(min, Math.min(max, candidate));
 }

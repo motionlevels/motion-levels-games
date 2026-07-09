@@ -84,12 +84,40 @@ export type GameManifest = {
     min: number;
     max: number;
   };
+  config?: GameManifestConfig;
   defaultDurationMillis: number;
   defaultSeed: number;
   display: {
     entry: string;
   };
   tags?: string[];
+};
+
+export type GameManifestConfig = {
+  players?: {
+    allowAny?: boolean;
+    configurable?: boolean;
+  };
+  difficulty?: {
+    configurable?: boolean;
+    default?: GameDifficulty;
+    options?: GameDifficulty[];
+  };
+  vars?: GameConfigVar[];
+};
+
+export type GameConfigVarType = "int" | "float" | "bool" | "enum";
+
+export type GameConfigVar = {
+  key: string;
+  label: string;
+  description?: string;
+  type: GameConfigVarType;
+  default?: number | boolean | string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label?: string }>;
 };
 
 export type GameConfig = {
@@ -197,12 +225,21 @@ export function inFloorBounds(x: number, y: number): boolean {
 export function normalizeGameConfig(config: GameConfig, manifest: GameManifest): NormalizedGameConfig {
   return {
     seed: Number.isFinite(config.seed) ? Math.trunc(config.seed) : manifest.defaultSeed,
-    playerCount: clamp(Math.round(config.playerCount), manifest.players.min, manifest.players.max),
+    playerCount: normalizePlayerCount(config.playerCount, manifest),
     durationMillis: config.durationMillis ?? manifest.defaultDurationMillis,
     nowMillis: config.nowMillis ?? 0,
     difficulty: config.difficulty ?? "medium",
     options: config.options ?? {}
   };
+}
+
+function normalizePlayerCount(value: number, manifest: GameManifest): number {
+  const rounded = Number.isFinite(value) ? Math.round(value) : manifest.players.min;
+  if (rounded === 0) {
+    return 0;
+  }
+
+  return clamp(rounded, manifest.players.min, manifest.players.max);
 }
 
 export function createFrame(fill: HexColor = "#05070a"): Frame {

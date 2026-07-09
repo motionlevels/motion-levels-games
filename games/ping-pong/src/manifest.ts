@@ -8,6 +8,26 @@ export const manifest: GameManifest = {
     min: 2,
     max: 2
   },
+  config: {
+    players: {
+      allowAny: true
+    },
+    difficulty: {
+      default: "medium",
+      options: ["easy", "medium", "hard", "expert"]
+    },
+    vars: [
+      {
+        key: "points_to_win",
+        label: "Points",
+        type: "int",
+        default: 5,
+        min: 1,
+        max: 21,
+        step: 1
+      }
+    ]
+  },
   defaultDurationMillis: 0,
   defaultSeed: 202,
   display: {

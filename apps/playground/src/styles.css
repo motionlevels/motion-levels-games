@@ -169,6 +169,14 @@ select {
   width: 82px;
 }
 
+.playground-controls input[type="checkbox"] {
+  accent-color: var(--pg-accent);
+  height: 18px;
+  justify-self: start;
+  padding: 0;
+  width: 18px;
+}
+
 .playground-controls select {
   max-width: 172px;
 }

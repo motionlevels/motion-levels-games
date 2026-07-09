@@ -8,6 +8,9 @@ import {
   DEFAULT_ENGINE_FRAME_MILLIS,
   DEFAULT_ENGINE_MAX_CATCH_UP_STEPS,
   type Frame,
+  type GameConfigOptions,
+  type GameConfigVar,
+  type GameDifficulty,
   type GameEngine,
   type GameEngineState,
   type GameEvent,
@@ -22,12 +25,27 @@ import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface
 
 const playerDisplayMediaWidth = 1280;
 const playerDisplayMediaHeight = 720;
+const defaultDifficultyOptions: GameDifficulty[] = ["easy", "medium", "hard", "expert"];
+const difficultyLabels: Record<string, string> = {
+  easy: "Easy",
+  medium: "Medium",
+  hard: "Hard",
+  expert: "Expert"
+};
 
-function createStartedGame(gameModule: PlaygroundGame, seed: number, playerCount: number) {
+function createStartedGame(
+  gameModule: PlaygroundGame,
+  seed: number,
+  playerCount: number,
+  difficulty: GameDifficulty,
+  options: GameConfigOptions
+) {
   const game = gameModule.createGame({
     seed,
     playerCount,
     durationMillis: gameModule.manifest.defaultDurationMillis,
+    difficulty,
+    options,
     nowMillis: 0
   });
   const events = game.init(0);
@@ -42,11 +60,19 @@ export function App() {
     [selectedGameId]
   );
   const [seed, setSeed] = useState(defaultGame.manifest.defaultSeed);
-  const [playerCount, setPlayerCount] = useState(defaultGame.manifest.players.min);
+  const [playerCount, setPlayerCount] = useState(defaultPlayerCountFor(defaultGame));
+  const [difficulty, setDifficulty] = useState<GameDifficulty>(() => defaultDifficultyFor(defaultGame));
+  const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => defaultConfigOptionsFor(defaultGame));
   const [paused, setPaused] = useState(false);
   const started = useMemo(
     () => {
-      const startedGame = createStartedGame(defaultGame, defaultGame.manifest.defaultSeed, defaultGame.manifest.players.min);
+      const startedGame = createStartedGame(
+        defaultGame,
+        defaultGame.manifest.defaultSeed,
+        defaultPlayerCountFor(defaultGame),
+        defaultDifficultyFor(defaultGame),
+        defaultConfigOptionsFor(defaultGame)
+      );
       const engine = createGameEngine(startedGame.game, {
         fps: DEFAULT_ENGINE_FPS,
         initialEvents: startedGame.events
@@ -73,12 +99,17 @@ export function App() {
   const selectedGameRef = useRef(selectedGame);
   const seedRef = useRef(seed);
   const playerCountRef = useRef(playerCount);
+  const difficultyRef = useRef(difficulty);
+  const gameOptionsRef = useRef(gameOptions);
   const pausedRef = useRef(paused);
   const snapshotRef = useRef(snapshot);
   const frameRef = useRef(frame);
   const eventsRef = useRef(events);
   const boardFocusRef = useRef(boardFocus);
   const PlayerDisplay = selectedGame.PlayerDisplay;
+  const gameConfigVars = selectedGame.manifest.config?.vars ?? [];
+  const difficultyChoices = difficultyOptionsFor(selectedGame);
+  const playerCountChoices = playerCountOptionsFor(selectedGame);
   const previewFrame = useMemo(() => boardFocus ? rotateFrameClockwise(frame) : frame, [boardFocus, frame]);
   const workbenchStyle = {
     "--display-preview-scale": displayPreviewScale
@@ -95,6 +126,14 @@ export function App() {
   useEffect(() => {
     playerCountRef.current = playerCount;
   }, [playerCount]);
+
+  useEffect(() => {
+    difficultyRef.current = difficulty;
+  }, [difficulty]);
+
+  useEffect(() => {
+    gameOptionsRef.current = gameOptions;
+  }, [gameOptions]);
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -165,6 +204,20 @@ export function App() {
     setPlayerCount(nextPlayerCount);
   }, []);
 
+  const setDifficultyState = useCallback((nextDifficulty: GameDifficulty) => {
+    difficultyRef.current = nextDifficulty;
+    setDifficulty(nextDifficulty);
+  }, []);
+
+  const setGameOptionState = useCallback((configVar: GameConfigVar, nextValue: unknown) => {
+    const nextOptions = {
+      ...gameOptionsRef.current,
+      [configVar.key]: coerceConfigVarValue(configVar, nextValue)
+    };
+    gameOptionsRef.current = nextOptions;
+    setGameOptions(nextOptions);
+  }, []);
+
   const setBoardFocusState = useCallback((nextBoardFocus: boolean | ((current: boolean) => boolean)) => {
     const resolved = typeof nextBoardFocus === "function" ? nextBoardFocus(boardFocusRef.current) : nextBoardFocus;
     boardFocusRef.current = resolved;
@@ -189,8 +242,16 @@ export function App() {
   }, []);
 
   const restart = useCallback(
-    (nextSeed = seedRef.current, nextPlayerCount = playerCountRef.current, nextGame = selectedGameRef.current, preservePaused = false) => {
-      const next = createStartedGame(nextGame, nextSeed, nextPlayerCount);
+    (
+      nextSeed = seedRef.current,
+      nextPlayerCount = playerCountRef.current,
+      nextGame = selectedGameRef.current,
+      preservePaused = false,
+      nextDifficulty = difficultyRef.current,
+      nextOptions = gameOptionsRef.current
+    ) => {
+      const normalizedOptions = normalizeGameOptions(nextGame, nextOptions);
+      const next = createStartedGame(nextGame, nextSeed, nextPlayerCount, nextDifficulty, normalizedOptions);
       const nextEngine = createGameEngine(next.game, {
         fps: DEFAULT_ENGINE_FPS,
         initialEvents: next.events
@@ -203,9 +264,13 @@ export function App() {
       eventsRef.current = next.events;
       snapshotRef.current = nextState.snapshot;
       frameRef.current = nextState.frame;
+      difficultyRef.current = nextDifficulty;
+      gameOptionsRef.current = normalizedOptions;
       setEvents(next.events);
       setSnapshot(nextState.snapshot);
       setFrame(nextState.frame);
+      setDifficulty(nextDifficulty);
+      setGameOptions(normalizedOptions);
     },
     []
   );
@@ -214,15 +279,21 @@ export function App() {
     (gameId: string) => {
       const nextGame = playgroundGames.find((game) => game.manifest.id === gameId) ?? selectedGame;
       const nextSeed = nextGame.manifest.defaultSeed;
-      const nextPlayerCount = nextGame.manifest.players.min;
+      const nextPlayerCount = defaultPlayerCountFor(nextGame);
+      const nextDifficulty = defaultDifficultyFor(nextGame);
+      const nextOptions = defaultConfigOptionsFor(nextGame);
 
       selectedGameRef.current = nextGame;
       seedRef.current = nextSeed;
       playerCountRef.current = nextPlayerCount;
+      difficultyRef.current = nextDifficulty;
+      gameOptionsRef.current = nextOptions;
       setSelectedGameId(nextGame.manifest.id);
       setSeed(nextSeed);
       setPlayerCount(nextPlayerCount);
-      restart(nextSeed, nextPlayerCount, nextGame);
+      setDifficulty(nextDifficulty);
+      setGameOptions(nextOptions);
+      restart(nextSeed, nextPlayerCount, nextGame, false, nextDifficulty, nextOptions);
     },
     [restart, selectedGame]
   );
@@ -379,7 +450,15 @@ export function App() {
         throw new Error(`Unknown game: ${gameId}`);
       }
 
-      return generateGameMediaBundle(game, capturePlayerDisplayAsset, options);
+      const currentGameSelected = game.manifest.id === selectedGameRef.current.manifest.id;
+      const fallbackOptions = currentGameSelected ? gameOptionsRef.current : defaultConfigOptionsFor(game);
+      return generateGameMediaBundle(game, capturePlayerDisplayAsset, {
+        difficulty: currentGameSelected ? difficultyRef.current : defaultDifficultyFor(game),
+        playerCount: currentGameSelected ? playerCountRef.current : defaultPlayerCountFor(game),
+        seed: currentGameSelected ? seedRef.current : game.manifest.defaultSeed,
+        ...options,
+        options: options.options ?? fallbackOptions
+      });
     },
     [capturePlayerDisplayAsset]
   );
@@ -419,11 +498,22 @@ export function App() {
         events: eventsRef.current,
         clockMillis: engineRef.current.clockMillis,
         fps: engineRef.current.fps,
-        frameMillis: engineRef.current.frameMillis
+        frameMillis: engineRef.current.frameMillis,
+        difficulty: difficultyRef.current,
+        options: gameOptionsRef.current,
+        playerCount: playerCountRef.current,
+        seed: seedRef.current
       }),
       pause: () => setPausedState(true),
       resume: () => setPausedState(false),
-      reset: () => restart(seedRef.current, playerCountRef.current, selectedGameRef.current, true),
+      reset: () => restart(
+        seedRef.current,
+        playerCountRef.current,
+        selectedGameRef.current,
+        true,
+        difficultyRef.current,
+        gameOptionsRef.current
+      ),
       step: stepGame,
       press: (x, y, options) => handleTilePress(x, y, options?.space ?? "physical"),
       release: (x, y, options) => handleTileRelease(x, y, options?.space ?? "physical"),
@@ -514,6 +604,7 @@ export function App() {
     ["FPS", engineRef.current.fps],
     ["Seed", seed],
     ["Players", playerCount],
+    ["Difficulty", difficulty],
     ["Score", snapshot.score],
     ["Targets", snapshot.activeTargets],
     ["Frame", `${frame.width}x${frame.height}`],
@@ -555,12 +646,22 @@ export function App() {
                 onChange={(event) => setPlayerCountState(Number(event.target.value))}
                 value={playerCount}
               >
-                {Array.from(
-                  { length: selectedGame.manifest.players.max - selectedGame.manifest.players.min + 1 },
-                  (_, index) => selectedGame.manifest.players.min + index
-                ).map((count) => (
+                {playerCountChoices.map((count) => (
                   <option key={count} value={count}>
-                    {count}
+                    {count === 0 ? "0 / Any" : count}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Difficulty
+              <select
+                onChange={(event) => setDifficultyState(event.target.value)}
+                value={difficulty}
+              >
+                {difficultyChoices.map((choice) => (
+                  <option key={choice} value={choice}>
+                    {difficultyLabels[choice] ?? choice}
                   </option>
                 ))}
               </select>
@@ -575,6 +676,14 @@ export function App() {
                 value={seed}
               />
             </label>
+            {gameConfigVars.map((configVar) => (
+              <GameConfigControl
+                configVar={configVar}
+                key={configVar.key}
+                onChange={(value) => setGameOptionState(configVar, value)}
+                value={gameOptions[configVar.key]}
+              />
+            ))}
           </div>
           <div className="control-group control-actions">
             <button onClick={() => restart()} type="button">
@@ -584,7 +693,7 @@ export function App() {
               onClick={() => {
                 const nextSeed = seed + 1;
                 setSeedState(nextSeed);
-                restart(nextSeed, playerCount);
+                restart(nextSeed, playerCount, selectedGameRef.current, false, difficulty, gameOptions);
               }}
               type="button"
             >
@@ -714,6 +823,126 @@ export function App() {
       </section>
     </main>
   );
+}
+
+function GameConfigControl({
+  configVar,
+  onChange,
+  value
+}: {
+  configVar: GameConfigVar;
+  onChange: (value: unknown) => void;
+  value: unknown;
+}) {
+  if (configVar.type === "bool") {
+    return (
+      <label className="checkbox-control">
+        {configVar.label}
+        <input
+          checked={value === true}
+          onChange={(event) => onChange(event.target.checked)}
+          type="checkbox"
+        />
+      </label>
+    );
+  }
+
+  if (configVar.type === "enum") {
+    return (
+      <label>
+        {configVar.label}
+        <select
+          onChange={(event) => onChange(event.target.value)}
+          value={String(value ?? configVar.default ?? configVar.options?.[0]?.value ?? "")}
+        >
+          {(configVar.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label ?? option.value}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  return (
+    <label>
+      {configVar.label}
+      <input
+        inputMode={configVar.type === "int" ? "numeric" : "decimal"}
+        max={configVar.max}
+        min={configVar.min}
+        onChange={(event) => onChange(event.target.value)}
+        step={configVar.step ?? (configVar.type === "int" ? 1 : "any")}
+        type="number"
+        value={String(value ?? configVar.default ?? configVar.min ?? 0)}
+      />
+    </label>
+  );
+}
+
+function defaultPlayerCountFor(game: PlaygroundGame): number {
+  return game.manifest.config?.players?.allowAny ? 0 : game.manifest.players.min;
+}
+
+function playerCountOptionsFor(game: PlaygroundGame): number[] {
+  const counts = Array.from(
+    { length: game.manifest.players.max - game.manifest.players.min + 1 },
+    (_, index) => game.manifest.players.min + index
+  );
+  return [0, ...counts.filter((count) => count !== 0)];
+}
+
+function difficultyOptionsFor(game: PlaygroundGame): GameDifficulty[] {
+  const configured = game.manifest.config?.difficulty?.options;
+  return configured?.length ? configured : defaultDifficultyOptions;
+}
+
+function defaultDifficultyFor(game: PlaygroundGame): GameDifficulty {
+  const options = difficultyOptionsFor(game);
+  const configured = game.manifest.config?.difficulty?.default;
+  if (configured && options.includes(configured)) {
+    return configured;
+  }
+  if (options.includes("medium")) {
+    return "medium";
+  }
+  return options[0] ?? "medium";
+}
+
+function defaultConfigOptionsFor(game: PlaygroundGame): GameConfigOptions {
+  return normalizeGameOptions(game, {});
+}
+
+function normalizeGameOptions(game: PlaygroundGame, options: GameConfigOptions): GameConfigOptions {
+  return Object.fromEntries(
+    (game.manifest.config?.vars ?? []).map((configVar) => [
+      configVar.key,
+      coerceConfigVarValue(configVar, options[configVar.key] ?? configVar.default)
+    ])
+  );
+}
+
+function coerceConfigVarValue(configVar: GameConfigVar, value: unknown): number | boolean | string {
+  if (configVar.type === "bool") {
+    return value === true || value === "true";
+  }
+
+  if (configVar.type === "enum") {
+    const fallback = configVar.options?.[0]?.value ?? "";
+    const candidate = String(value ?? configVar.default ?? fallback);
+    return configVar.options?.some((option) => option.value === candidate) ? candidate : fallback;
+  }
+
+  const fallback = typeof configVar.default === "number" ? configVar.default : configVar.min ?? 0;
+  const numeric = Number(value);
+  const finite = Number.isFinite(numeric) ? numeric : fallback;
+  const rounded = configVar.type === "int" ? Math.round(finite) : finite;
+  return clampNumber(rounded, configVar.min, configVar.max);
+}
+
+function clampNumber(value: number, min: number | undefined, max: number | undefined): number {
+  return Math.max(min ?? -Infinity, Math.min(max ?? Infinity, value));
 }
 
 function pointToPhysicalTile(

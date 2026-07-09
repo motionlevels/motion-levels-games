@@ -65,6 +65,8 @@ type PlaygroundMediaAsset = {
 type PlaygroundMediaBundle = {
   gameId: string;
   label: string;
+  difficulty: string;
+  options: Record<string, unknown>;
   seed: number;
   playerCount: number;
   generatedAt: string;
@@ -74,11 +76,15 @@ type PlaygroundMediaBundle = {
 type PlaygroundApi = {
   getState(): {
     clockMillis: number;
+    difficulty: string;
     fps: number;
     frameMillis: number;
     gameId: string;
+    options: Record<string, unknown>;
     status: string;
+    seed: number;
     paused: boolean;
+    playerCount: number;
     rotatedBoard: boolean;
     snapshot: unknown;
     frame: unknown;
@@ -97,7 +103,15 @@ type PlaygroundApi = {
 
   capture(surfaces?: PlaygroundCaptureSurface[]): Promise<Record<PlaygroundCaptureSurface, PlaygroundCapture>>;
   copy(surface: PlaygroundCaptureSurface): Promise<PlaygroundCapture>;
-  media(gameId?: string, options?: { seed?: number; playerCount?: number }): Promise<PlaygroundMediaBundle>;
+  media(
+    gameId?: string,
+    options?: {
+      difficulty?: string;
+      options?: Record<string, unknown>;
+      seed?: number;
+      playerCount?: number;
+    }
+  ): Promise<PlaygroundMediaBundle>;
 };
 ```
 
@@ -110,6 +124,16 @@ Input methods default to physical floor tile coordinates:
 
 Pass `{ space: "preview" }` to address the currently visible board orientation.
 That is useful when the board is rotated in the playground.
+
+## Game Settings
+
+The playground reads `manifest.config` from each game and renders matching local
+controls for player count, difficulty, and player-facing config variables. A
+player count of `0` means the game does not care about the real number of
+players for that run; the SDK preserves `playerCount: 0` instead of clamping it.
+
+`getState()` includes the active `seed`, `playerCount`, `difficulty`, and
+`options` values so agents can record the exact run configuration.
 
 ## Captures
 
@@ -132,6 +156,17 @@ discovered by the playground. Omit `gameId` to use the currently selected game.
 const media = await ml.media("ping-pong");
 console.log(media.assets.thumbnail.dataUrl);
 console.log(media.assets.playerDisplay.dataUrl);
+```
+
+To render media for a specific configuration:
+
+```js
+const media = await ml.media("ping-pong", {
+  difficulty: "hard",
+  playerCount: 0,
+  options: { points_to_win: 7 },
+  seed: 202
+});
 ```
 
 Assets:

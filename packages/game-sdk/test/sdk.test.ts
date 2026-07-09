@@ -94,6 +94,8 @@ test("manifest config normalization clamps players and reads options", () => {
   assert.equal(config.durationMillis, 5000);
   assert.equal(config.difficulty, "hard");
   assert.equal(readClampedIntegerOption(config.options, "points_to_win", 5, 1, 21), 3);
+
+  assert.equal(normalizeGameConfig({ seed: 1, playerCount: 0 }, manifest).playerCount, 0);
 });
 
 test("rgb helpers clamp and format colors", () => {

@@ -59,11 +59,19 @@ console.log(ml.getState(), feedback.combined.dataUrl);
 
 Prefer physical tile coordinates unless deliberately testing the rotated preview.
 Use `{ space: "preview" }` only when interacting with the visible board layout.
+`ml.getState()` includes the active `seed`, `playerCount`, `difficulty`, and
+game `options`; keep those values with any feedback so regressions are
+reproducible. Use `playerCount: 0` when a playtest should ignore the real number
+of players.
 
 Generate catalog-style media when reviewing a game card or TV display:
 
 ```js
-const media = await ml.media("ping-pong");
+const media = await ml.media("ping-pong", {
+  difficulty: "hard",
+  playerCount: 0,
+  options: { points_to_win: 7 }
+});
 console.log({
   thumbnail: media.assets.thumbnail.dataUrl,
   animation: media.assets.animation.dataUrl,
