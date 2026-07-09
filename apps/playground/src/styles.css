@@ -17,6 +17,12 @@
   --pg-blue: #2f73ff;
   --pg-green: #74e58d;
   --pg-yellow: #ffd45f;
+  --pg-phase-standby: var(--pg-accent);
+  --pg-phase-standby-glow: rgba(53, 215, 255, 0.7);
+  --pg-phase-live: var(--pg-green);
+  --pg-phase-live-glow: rgba(116, 229, 141, 0.72);
+  --pg-phase-paused: var(--pg-yellow);
+  --pg-phase-paused-glow: rgba(255, 212, 95, 0.68);
   --pg-stage-outline: rgba(119, 225, 255, 0.62);
   --pg-stage-outline-soft: rgba(119, 225, 255, 0.18);
   --pg-shadow: rgba(0, 0, 0, 0.42);
@@ -213,15 +219,12 @@ select {
 }
 
 .phase-chip {
-  align-items: center;
   background: transparent;
   border: 0;
   border-radius: 0;
   color: rgba(211, 220, 234, 0.7);
-  display: inline-flex;
   font-size: 10px;
   font-weight: 800;
-  gap: var(--pg-control-gap);
   height: auto;
   letter-spacing: 0.09em;
   line-height: 1;
@@ -229,40 +232,33 @@ select {
   text-transform: uppercase;
 }
 
-.phase-chip i {
-  background: var(--pg-accent);
+.phase-indicator {
+  --phase-indicator-color: var(--pg-phase-standby);
+  --phase-indicator-glow: var(--pg-phase-standby-glow);
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.phase-indicator[data-phase="running"] {
+  --phase-indicator-color: var(--pg-phase-live);
+  --phase-indicator-glow: var(--pg-phase-live-glow);
+}
+
+.phase-indicator[data-phase="paused"],
+.phase-indicator[data-phase="finished"] {
+  --phase-indicator-color: var(--pg-phase-paused);
+  --phase-indicator-glow: var(--pg-phase-paused-glow);
+}
+
+.phase-indicator i {
+  background: var(--phase-indicator-color);
   border-radius: 50%;
-  box-shadow: 0 0 9px rgba(53, 215, 255, 0.7);
+  box-shadow: 0 0 9px var(--phase-indicator-glow);
   display: block;
+  flex: 0 0 auto;
   height: 6px;
   width: 6px;
-}
-
-.phase-running {
-  color: var(--pg-green);
-}
-
-.phase-running i {
-  background: var(--pg-green);
-  box-shadow: 0 0 9px rgba(116, 229, 141, 0.72);
-}
-
-.phase-paused {
-  color: var(--pg-yellow);
-}
-
-.phase-paused i {
-  background: var(--pg-yellow);
-  box-shadow: 0 0 9px rgba(255, 212, 95, 0.68);
-}
-
-.phase-finished {
-  color: var(--pg-yellow);
-}
-
-.phase-finished i {
-  background: var(--pg-yellow);
-  box-shadow: 0 0 9px rgba(255, 212, 95, 0.68);
 }
 
 .playground-controls {
@@ -1034,26 +1030,6 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.runtime-state {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-}
-
-.runtime-state i {
-  background: var(--pg-green);
-  border-radius: 50%;
-  box-shadow: 0 0 10px rgba(116, 229, 141, 0.72);
-  display: block;
-  height: 6px;
-  width: 6px;
-}
-
-.runtime-state.is-paused i {
-  background: var(--pg-yellow);
-  box-shadow: 0 0 10px rgba(255, 212, 95, 0.68);
 }
 
 .status-metrics,

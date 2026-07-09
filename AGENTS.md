@@ -50,6 +50,9 @@ no database, venue hardware, Motion Go, or platform API coupling.
 - Adjacent compact icon actions must render as segmented groups with collapsed
   shared borders and no gaps. Use the playground control color tokens instead
   of introducing one-off button colors.
+- Render playground runtime phases through the shared `PhaseIndicator` and its
+  centralized phase tokens. Header, status cards, and future phase surfaces
+  must never define their own phase colors.
 
 ## Workflow
 

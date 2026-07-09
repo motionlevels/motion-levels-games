@@ -3,7 +3,36 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const phaseIndicatorSource = readFileSync(new URL("../src/PhaseIndicator.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+
+test("all runtime phase surfaces share one indicator and color map", () => {
+  assert.equal(
+    appSource.match(/<PhaseIndicator\b/g)?.length,
+    2,
+    "header and Runtime card must both use PhaseIndicator"
+  );
+  assert.match(
+    phaseIndicatorSource,
+    /className=\{`phase-indicator \$\{className\}`\.trim\(\)\} data-phase=\{phase\}/,
+    "the shared component must own the phase marker contract"
+  );
+  assert.match(
+    styleSource,
+    /--pg-phase-standby:\s*var\(--pg-accent\);/,
+    "Standby must use the shared blue accent token"
+  );
+  assert.match(
+    styleSource,
+    /\.phase-indicator\s*\{[^}]*--phase-indicator-color:\s*var\(--pg-phase-standby\);/s,
+    "the shared phase indicator must default to Standby blue"
+  );
+  assert.doesNotMatch(
+    styleSource,
+    /\.(?:phase-chip|runtime-state)(?:\.is-paused)? i\s*\{/,
+    "component-specific phase dot colors are forbidden"
+  );
+});
 
 test("every playground dialog uses the shared icon close control", () => {
   const dialogs = appSource.match(/role="dialog"/g) ?? [];

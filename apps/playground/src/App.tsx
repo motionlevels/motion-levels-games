@@ -40,6 +40,7 @@ import motionLevelsLogo from "./assets/motion-levels-icon.webp";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
 import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
+import { PhaseIndicator } from "./PhaseIndicator.tsx";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 
@@ -56,14 +57,6 @@ const difficultyLabels: Record<string, string> = {
   hard: "Hard",
   expert: "Expert"
 };
-const phaseLabels: Record<string, string> = {
-  waiting: "Standby",
-  ready: "Ready",
-  running: "Live",
-  paused: "Paused",
-  finished: "Finished"
-};
-
 function createStartedGame(
   gameModule: PlaygroundGame,
   seed: number,
@@ -779,10 +772,7 @@ export function App() {
                   className="playground-brand-mark"
                   src={motionLevelsLogo}
                 />
-                <span className={`phase-chip phase-${displayedPhase}`}>
-                  <i aria-hidden="true" />
-                  {phaseLabels[displayedPhase] ?? displayedPhase}
-                </span>
+                <PhaseIndicator className="phase-chip" phase={displayedPhase} />
               </div>
             </div>
             <div className="playground-controls">
@@ -1068,10 +1058,7 @@ export function App() {
             <article className="status-card status-card-runtime">
               <div className="status-card-head">
                 <span>Runtime</span>
-                <strong className={`runtime-state ${paused ? "is-paused" : ""}`}>
-                  <i aria-hidden="true" />
-                  {phaseLabels[displayedPhase] ?? displayedPhase}
-                </strong>
+                <PhaseIndicator as="strong" className="runtime-state" phase={displayedPhase} />
               </div>
               <div className="status-runtime-summary">
                 <span>Engine clock</span>
