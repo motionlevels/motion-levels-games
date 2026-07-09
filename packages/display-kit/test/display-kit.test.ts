@@ -28,6 +28,19 @@ test("FloorPreview renders the 16x32 frame with tile metadata", () => {
   assert.match(html, /data-color="#148cff"/);
 });
 
+test("FloorPreview positions tiles by coordinates instead of cell order", () => {
+  const frame = setFrameCell(createFrame("#05070a"), 3, 4, "#148cff");
+  const shuffledFrame = {
+    ...frame,
+    cells: [frame.cells[4 * frame.width + 3], ...frame.cells.filter((cell) => cell.x !== 3 || cell.y !== 4)]
+  };
+  const html = renderToStaticMarkup(React.createElement(FloorPreview, { frame: shuffledFrame }));
+
+  assert.match(html, /grid-column-start:4/);
+  assert.match(html, /grid-row-start:5/);
+  assert.match(html, /data-color="#148cff"/);
+});
+
 test("GameDisplayShell renders title and phase", () => {
   const html = renderToStaticMarkup(
     React.createElement(GameDisplayShell, { title: "Example Catch", phase: "running" }, "body")
@@ -36,4 +49,3 @@ test("GameDisplayShell renders title and phase", () => {
   assert.match(html, /Example Catch/);
   assert.match(html, /running/);
 });
-

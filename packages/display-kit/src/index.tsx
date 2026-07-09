@@ -245,7 +245,11 @@ export function FloorPreview({
       aria-label="Floor preview"
     >
       {frame.cells.map((cell) => {
-        const tileStyle = { backgroundColor: cell.color } as CSSProperties;
+        const tileStyle = {
+          backgroundColor: cell.color,
+          gridColumnStart: cell.x + 1,
+          gridRowStart: cell.y + 1
+        } as CSSProperties;
         const key = `${cell.x}-${cell.y}`;
         const active = activeTile?.x === cell.x && activeTile.y === cell.y;
         const sharedProps = {
