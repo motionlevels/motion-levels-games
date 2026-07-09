@@ -91,6 +91,22 @@ export function FloorPreview({
     "--ml-floor-rows": frame.height
   } as CSSProperties;
   const rootClassName = `ml-floor-preview ${interactive ? "ml-floor-interactive" : ""} ${className}`.trim();
+  const clearActiveTile = useCallback((delayMillis = 0) => {
+    if (activeTileTimeoutRef.current !== null) {
+      window.clearTimeout(activeTileTimeoutRef.current);
+      activeTileTimeoutRef.current = null;
+    }
+
+    if (delayMillis <= 0) {
+      setActiveTile(null);
+      return;
+    }
+
+    activeTileTimeoutRef.current = window.setTimeout(() => {
+      setActiveTile(null);
+      activeTileTimeoutRef.current = null;
+    }, delayMillis);
+  }, []);
   const tileFromPoint = useCallback((clientX: number, clientY: number) => {
     const element = document.elementFromPoint(clientX, clientY);
     const tile = element?.closest<HTMLElement>("[data-tile-x][data-tile-y]");
@@ -106,29 +122,22 @@ export function FloorPreview({
   }, []);
   const pressTile = useCallback(
     (tile: { x: number; y: number }) => {
-      if (activeTileTimeoutRef.current !== null) {
-        window.clearTimeout(activeTileTimeoutRef.current);
-        activeTileTimeoutRef.current = null;
-      }
+      clearActiveTile();
       onTilePress?.(tile.x, tile.y);
       lastTileRef.current = tile;
       setActiveTile(tile);
     },
-    [onTilePress]
+    [clearActiveTile, onTilePress]
   );
-  const releaseLastTile = useCallback(() => {
+  const releaseLastTile = useCallback((clearDelayMillis = 120) => {
     const lastTile = lastTileRef.current;
-    if (!lastTile) {
-      return;
+    if (lastTile) {
+      onTileRelease?.(lastTile.x, lastTile.y);
+      lastTileRef.current = null;
     }
 
-    onTileRelease?.(lastTile.x, lastTile.y);
-    lastTileRef.current = null;
-    activeTileTimeoutRef.current = window.setTimeout(() => {
-      setActiveTile(null);
-      activeTileTimeoutRef.current = null;
-    }, 1200);
-  }, [onTileRelease]);
+    clearActiveTile(clearDelayMillis);
+  }, [clearActiveTile, onTileRelease]);
   useEffect(
     () => () => {
       if (activeTileTimeoutRef.current !== null) {
@@ -141,18 +150,44 @@ export function FloorPreview({
     (tile: { x: number; y: number } | null) => {
       const lastTile = lastTileRef.current;
       if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
-        releaseLastTile();
+        releaseLastTile(0);
         return;
       }
       if (lastTile && lastTile.x === tile.x && lastTile.y === tile.y) {
         return;
       }
 
-      releaseLastTile();
+      releaseLastTile(0);
       pressTile(tile);
     },
     [pressTile, releaseLastTile]
   );
+  useEffect(() => {
+    if (!interactive) {
+      return undefined;
+    }
+
+    const endActivePointer = () => {
+      activePointerIdRef.current = null;
+      releaseLastTile(0);
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        endActivePointer();
+      }
+    };
+
+    window.addEventListener("blur", endActivePointer);
+    window.addEventListener("pointercancel", endActivePointer);
+    window.addEventListener("pointerup", endActivePointer);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", endActivePointer);
+      window.removeEventListener("pointercancel", endActivePointer);
+      window.removeEventListener("pointerup", endActivePointer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [interactive, releaseLastTile]);
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!interactive || event.button !== 0) {
@@ -191,10 +226,15 @@ export function FloorPreview({
     },
     [interactive, releaseLastTile]
   );
+  const handleLostPointerCapture = useCallback(() => {
+    activePointerIdRef.current = null;
+    releaseLastTile(0);
+  }, [releaseLastTile]);
 
   return (
     <div
       className={rootClassName}
+      onLostPointerCapture={handleLostPointerCapture}
       onPointerCancel={endPointer}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

@@ -75,6 +75,7 @@ export function App() {
   const [floorPreviewWidth, setFloorPreviewWidth] = useState(540);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
+  const [resizingSurface, setResizingSurface] = useState<"display" | "floor" | null>(null);
   const shellRef = useRef<HTMLElement>(null);
   const displayPreviewRef = useRef<HTMLDivElement>(null);
   const [displayPreviewScale, setDisplayPreviewScale] = useState(displayPreviewWidth / nativeDisplayWidth);
@@ -195,45 +196,54 @@ export function App() {
     },
     [refresh]
   );
+  const startResize = useCallback((
+    event: React.PointerEvent<HTMLButtonElement>,
+    surface: "display" | "floor",
+    startWidth: number,
+    minWidth: number,
+    maxWidth: number,
+    setWidth: React.Dispatch<React.SetStateAction<number>>
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    setResizingSurface(surface);
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+
+    function handleMove(moveEvent: PointerEvent) {
+      setWidth(clamp(startWidth + moveEvent.clientX - startX, minWidth, maxWidth));
+    }
+
+    function handleEnd() {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+      window.removeEventListener("blur", handleEnd);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      setResizingSurface(null);
+    }
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+    window.addEventListener("blur", handleEnd);
+  }, []);
   const startDisplayResize = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = displayPreviewWidth;
-
-      function handleMove(moveEvent: PointerEvent) {
-        setDisplayPreviewWidth(clamp(startWidth + moveEvent.clientX - startX, minDisplayPreviewWidth, maxDisplayPreviewWidth));
-      }
-
-      function handleUp() {
-        window.removeEventListener("pointermove", handleMove);
-        window.removeEventListener("pointerup", handleUp);
-      }
-
-      window.addEventListener("pointermove", handleMove);
-      window.addEventListener("pointerup", handleUp);
+      startResize(event, "display", displayPreviewWidth, minDisplayPreviewWidth, maxDisplayPreviewWidth, setDisplayPreviewWidth);
     },
-    [displayPreviewWidth]
+    [displayPreviewWidth, startResize]
   );
   const startFloorResize = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = floorPreviewWidth;
-
-      function handleMove(moveEvent: PointerEvent) {
-        setFloorPreviewWidth(clamp(startWidth + moveEvent.clientX - startX, minFloorPreviewWidth, maxFloorPreviewWidth));
-      }
-
-      function handleUp() {
-        window.removeEventListener("pointermove", handleMove);
-        window.removeEventListener("pointerup", handleUp);
-      }
-
-      window.addEventListener("pointermove", handleMove);
-      window.addEventListener("pointerup", handleUp);
+      startResize(event, "floor", floorPreviewWidth, minFloorPreviewWidth, maxFloorPreviewWidth, setFloorPreviewWidth);
     },
-    [floorPreviewWidth]
+    [floorPreviewWidth, startResize]
   );
   const toggleFullscreen = useCallback(async () => {
     const element = shellRef.current;
@@ -265,10 +275,15 @@ export function App() {
   }, [fullscreenFallback]);
 
   const isFullscreenMode = fullscreen || fullscreenFallback;
+  const shellClassName = [
+    "playground-shell",
+    fullscreenFallback ? "is-fullscreen-fallback" : "",
+    resizingSurface ? `is-resizing-${resizingSurface}` : ""
+  ].filter(Boolean).join(" ");
 
   return (
     <main
-      className={`playground-shell${fullscreenFallback ? " is-fullscreen-fallback" : ""}`}
+      className={shellClassName}
       ref={shellRef}
       style={workbenchStyle}
     >

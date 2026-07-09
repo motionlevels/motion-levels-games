@@ -409,25 +409,64 @@ select {
 }
 
 .playground-resize-handle {
-  background:
-    linear-gradient(135deg, transparent 0 44%, rgba(87, 96, 106, 0.62) 46% 52%, transparent 54%),
-    linear-gradient(135deg, transparent 0 64%, rgba(87, 96, 106, 0.34) 66% 72%, transparent 74%),
-    rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(208, 215, 222, 0.9);
-  border-radius: 6px;
-  bottom: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   cursor: ew-resize;
-  height: 24px;
+  height: 100%;
+  opacity: 0.18;
   padding: 0;
   position: absolute;
-  right: 8px;
-  width: 24px;
+  right: 0;
+  top: 0;
+  transition:
+    opacity 140ms ease,
+    background-color 140ms ease;
+  width: 16px;
   z-index: 3;
+}
+
+.floor-resize-handle {
+  right: -10px;
+}
+
+.playground-resize-handle::before {
+  background: rgba(255, 255, 255, 0.46);
+  content: "";
+  inset: 20px 7px;
+  position: absolute;
+  width: 2px;
+}
+
+.floor-resize-handle::before {
+  background: rgba(36, 41, 47, 0.32);
+}
+
+.floor-panel:hover .floor-resize-handle,
+.display-preview-box:hover .display-resize-handle,
+.playground-resize-handle:focus-visible,
+.playground-shell.is-resizing-floor .floor-resize-handle,
+.playground-shell.is-resizing-display .display-resize-handle {
+  opacity: 1;
+}
+
+.playground-resize-handle:hover,
+.playground-resize-handle:focus-visible,
+.playground-shell.is-resizing-floor .floor-resize-handle,
+.playground-shell.is-resizing-display .display-resize-handle {
+  background: rgba(9, 105, 218, 0.08);
+}
+
+.playground-resize-handle:hover::before,
+.playground-resize-handle:focus-visible::before,
+.playground-shell.is-resizing-floor .floor-resize-handle::before,
+.playground-shell.is-resizing-display .display-resize-handle::before {
+  background: #0969da;
 }
 
 .playground-resize-handle:focus-visible {
   outline: 2px solid #0969da;
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .example-display-grid {
