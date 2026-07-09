@@ -138,9 +138,10 @@ Assets:
 
 - `thumbnailSmall`: low-quality landscape WebP board thumbnail, 256x128.
 - `thumbnail`: high-quality landscape WebP board thumbnail, 1024x512.
-- `animation`: animated GIF board preview, 512x256.
-- `playerDisplay`: high-quality native player display PNG, 1920x1080.
+- `animation`: animated WebP board preview, 512x256.
+- `playerDisplay`: high-quality player display WebP, downscaled to 1280x720.
 
 The board assets are rendered from deterministic TypeScript engine frames, not
 DOM screenshots. The player-display asset is browser-rendered from the reusable
-display component so it matches the TV surface.
+display component, then downscaled for lighter catalog/debug use. Use
+`capture(["display"])` when you need the exact native 1920x1080 PNG.

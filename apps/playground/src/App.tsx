@@ -20,6 +20,9 @@ import { rotateFrameClockwise, unrotateFloorPoint, type RenderableFrame } from "
 import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
 
+const playerDisplayMediaWidth = 1280;
+const playerDisplayMediaHeight = 720;
+
 function createStartedGame(gameModule: PlaygroundGame, seed: number, playerCount: number) {
   const game = gameModule.createGame({
     seed,
@@ -352,13 +355,14 @@ export function App() {
         });
         await waitForPaint();
         const capture = await captureDisplayElement(host);
+        const webp = await downscaleCaptureToWebp(capture.dataUrl, playerDisplayMediaWidth, playerDisplayMediaHeight, 0.9);
         return {
           kind: "playerDisplay",
-          width: capture.width,
-          height: capture.height,
-          mimeType: "image/png",
+          width: playerDisplayMediaWidth,
+          height: playerDisplayMediaHeight,
+          mimeType: "image/webp",
           fileName,
-          dataUrl: capture.dataUrl
+          dataUrl: webp
         };
       } finally {
         root.unmount();
@@ -739,5 +743,35 @@ function formatMillis(value: number): string {
 function waitForPaint(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+async function downscaleCaptureToWebp(
+  dataUrl: string,
+  width: number,
+  height: number,
+  quality: number
+): Promise<string> {
+  const image = await loadDataUrlImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not create player display media canvas.");
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/webp", quality);
+}
+
+function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load player display capture."));
+    image.src = dataUrl;
   });
 }

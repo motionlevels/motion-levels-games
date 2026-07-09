@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type PluginOption, type ViteDevServer } from "vite";
@@ -7,9 +7,10 @@ import react from "@vitejs/plugin-react";
 const playgroundRoot = path.dirname(fileURLToPath(import.meta.url));
 const gamesRoot = path.resolve(playgroundRoot, "../../games");
 const gameRegistryPath = path.resolve(playgroundRoot, "src/gameRegistry.ts");
+const webpEncoderWasmPath = path.resolve(playgroundRoot, "../../node_modules/webp-encoder/lib/assets/a.out.wasm");
 
 export default defineConfig({
-  plugins: [motionLevelsGamesWatcher(), react()],
+  plugins: [motionLevelsGamesWatcher(), webpEncoderWasm(), react()],
   server: {
     fs: {
       allow: [
@@ -53,6 +54,31 @@ function motionLevelsGamesWatcher(): PluginOption {
       }, 1000);
 
       server.httpServer?.once("close", () => clearInterval(interval));
+    }
+  };
+}
+
+function webpEncoderWasm(): PluginOption {
+  return {
+    name: "motion-levels-webp-encoder-wasm",
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use("/a.out.wasm", (_request, response, next) => {
+        if (!existsSync(webpEncoderWasmPath)) {
+          next();
+          return;
+        }
+
+        response.setHeader("Content-Type", "application/wasm");
+        response.end(readFileSync(webpEncoderWasmPath));
+      });
+    },
+    writeBundle(options) {
+      if (!options.dir || !existsSync(webpEncoderWasmPath)) {
+        return;
+      }
+
+      mkdirSync(options.dir, { recursive: true });
+      copyFileSync(webpEncoderWasmPath, path.join(options.dir, "a.out.wasm"));
     }
   };
 }

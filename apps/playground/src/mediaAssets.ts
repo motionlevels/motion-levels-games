@@ -48,6 +48,14 @@ type PreviewFrame = {
   delayMs: number;
 };
 
+type WebPEncoderModule = {
+  HEAP8: Int8Array;
+  calledRun?: boolean;
+  cwrap: (name: string, returnType: string, argTypes: string[]) => (...args: number[]) => number;
+};
+
+let webpEncoderModulePromise: Promise<WebPEncoderModule> | null = null;
+
 const thumbnailSmallTilePixels = 8;
 const thumbnailTilePixels = 32;
 const animationTilePixels = 16;
@@ -66,7 +74,7 @@ export async function generateGameMediaBundle(
   const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
   const baseName = game.manifest.id;
   const playerDisplay = await renderPlayerDisplay({
-    fileName: `${baseName}-player-display.png`,
+    fileName: `${baseName}-player-display.webp`,
     frame: engine.state.frame,
     game,
     snapshot: engine.state.snapshot
@@ -93,7 +101,7 @@ export async function generateGameMediaBundle(
         quality: 0.92,
         tilePixels: thumbnailTilePixels
       }),
-      animation: framesToGifAsset(frames, `${baseName}-preview.gif`),
+      animation: await framesToAnimatedWebpAsset(frames, `${baseName}-preview.webp`),
       playerDisplay
     }
   };
@@ -175,7 +183,7 @@ function frameToImageAsset(
   };
 }
 
-function framesToGifAsset(frames: PreviewFrame[], fileName: string): PlaygroundMediaAsset {
+async function framesToAnimatedWebpAsset(frames: PreviewFrame[], fileName: string): Promise<PlaygroundMediaAsset> {
   const first = frames[0]?.frame;
   if (!first) {
     throw new Error("Cannot render an animation without frames.");
@@ -202,14 +210,104 @@ function framesToGifAsset(frames: PreviewFrame[], fileName: string): PlaygroundM
   }
 
   encoder.finish();
+  const gifBytes = encoder.bytesView();
+  const webpBytes = await encodeGifBytesToWebp(gifBytes);
+
   return {
     kind: "animation",
     width,
     height,
-    mimeType: "image/gif",
+    mimeType: "image/webp",
     fileName,
-    dataUrl: bytesToDataUrl(encoder.bytesView(), "image/gif")
+    dataUrl: bytesToDataUrl(webpBytes, "image/webp")
   };
+}
+
+async function encodeGifBytesToWebp(gifBytes: Uint8Array): Promise<Uint8Array> {
+  const encoder = await loadWebPEncoderModule();
+
+  return withSuppressedWebPEncoderLogs(() => {
+    const allocateMemory = encoder.cwrap("allocate_memory", "number", ["number"]);
+    const deallocateMemory = encoder.cwrap("deallocate_memory", "", ["number"]);
+    const encodeGif = encoder.cwrap("encode_gif", "", ["number", "number", "number"]);
+    const getResultMemoryPointer = encoder.cwrap("get_output_pointer", "number", []);
+    const getResultMemorySize = encoder.cwrap("get_output_size", "number", []);
+    const freeMemory = encoder.cwrap("free_result", "", ["number"]);
+    const sourcePointer = allocateMemory(gifBytes.length);
+
+    encoder.HEAP8.set(gifBytes, sourcePointer);
+    encodeGif(sourcePointer, gifBytes.length, 0);
+    deallocateMemory(sourcePointer);
+
+    const outputPointer = getResultMemoryPointer();
+    const outputSize = getResultMemorySize();
+    const outputBuffer = new Uint8Array(encoder.HEAP8.buffer, outputPointer, outputSize);
+    const result = new Uint8Array(outputBuffer);
+    freeMemory(outputPointer);
+
+    if (result.length === 0) {
+      throw new Error("WebP animation encoder returned an empty image.");
+    }
+
+    return result;
+  });
+}
+
+async function loadWebPEncoderModule(): Promise<WebPEncoderModule> {
+  webpEncoderModulePromise ??= withSuppressedWebPEncoderLogsAsync(async () => {
+    const { Module } = await import("webp-encoder/lib/adapter.js");
+
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (Module.calledRun && Module.HEAP8 && typeof Module.cwrap === "function") {
+        return Module as WebPEncoderModule;
+      }
+
+      await delay(25);
+    }
+
+    throw new Error("WebP animation encoder runtime was not ready.");
+  });
+  return webpEncoderModulePromise;
+}
+
+function withSuppressedWebPEncoderLogs<T>(callback: () => T): T {
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    const first = String(args[0] ?? "");
+    if (first === "WASM module runtime initialized" || first.startsWith("write: ")) {
+      return;
+    }
+
+    originalLog(...args);
+  };
+
+  try {
+    return callback();
+  } finally {
+    console.log = originalLog;
+  }
+}
+
+async function withSuppressedWebPEncoderLogsAsync<T>(callback: () => Promise<T>): Promise<T> {
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    const first = String(args[0] ?? "");
+    if (first === "WASM module runtime initialized" || first.startsWith("write: ")) {
+      return;
+    }
+
+    originalLog(...args);
+  };
+
+  try {
+    return await callback();
+  } finally {
+    console.log = originalLog;
+  }
+}
+
+function delay(millis: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, millis));
 }
 
 function frameToCanvas(frame: RenderableFrame, tilePixels: number): HTMLCanvasElement {
