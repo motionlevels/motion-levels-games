@@ -5,7 +5,7 @@ games before they are manually reviewed and merged into `main`.
 
 ## Branch Rules
 
-Always start by rebasing `dev` on top of latest `main`:
+When starting new work on `dev`, rebase it on top of latest `main`:
 
 ```sh
 git fetch origin
@@ -64,14 +64,15 @@ git push origin dev
 
 The `Dev Games CI` workflow runs on every push to `dev`. It fails if `dev` is
 not rebased on latest `origin/main`, or if validation, tests, build, scaffold
-test, or playtest fail.
+test, or playtest fail. `main` can move independently; update `dev` when Jose
+or an agent resumes work there, rather than after every `main` commit.
 
 ## Instructions For Jose's AI Agent
 
 1. Read `AGENTS.md`, `docs/contract.md`, `docs/ai-playtest-workflow.md`, and
    this file before editing.
 2. Work only on branch `dev`.
-3. Rebase `dev` on `origin/main` before starting and before pushing.
+3. Rebase `dev` on `origin/main` before starting new `dev` work and before pushing `dev` changes.
 4. Create new games with `npm run create:game -- <game-id> "Display Name"`.
 5. Keep all game code inside `games/<game-id>/`.
 6. Do not manually add game imports to `apps/playground/src/App.tsx`.

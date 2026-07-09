@@ -11,8 +11,8 @@ no database, venue hardware, Motion Go, or platform API coupling.
 ## Workflow
 
 - Pull before new work and before pushing.
-- Jose's game-authoring branch is `dev`. Keep `dev` rebased on latest `main`;
-  do not merge `main` into `dev`.
+- Jose's game-authoring branch is `dev`. Rebase `dev` on latest `main` before
+  starting or publishing `dev` work; do not merge `main` into `dev`.
 - Keep commits small and focused.
 - Run `npm test` and `npm run build` before publishing changes when practical.
 - Create new games with `npm run create:game -- <game-id> "Display Name"`
@@ -38,5 +38,6 @@ no database, venue hardware, Motion Go, or platform API coupling.
 
 - Use `docs/jose-game-authoring.md` for non-technical game-authoring workflow.
 - `Dev Games CI` runs on every push to `dev`.
-- `Dev Games CI` fails when `origin/main` is not an ancestor of `dev`, which
-  means `dev` must be rebased after `main` moves.
+- `Dev Games CI` fails when `origin/main` is not an ancestor of `dev`, so
+  rebase `dev` when work resumes there or before pushing `dev` changes. A
+  normal `main` push does not require immediately updating `dev`.
