@@ -79,6 +79,10 @@ no database, venue hardware, Motion Go, or platform API coupling.
 ## Package Boundaries
 
 - `packages/game-sdk` owns framework-agnostic contracts and helpers.
+- Treat each manifest config variable as the single source of truth for its
+  type, default, bounds, step, and choices. Normalize through
+  `normalizeGameConfig` and read the exported variable descriptor with
+  `readGameConfigOption`; do not repeat schema values in game logic.
 - `packages/display-kit` owns reusable React display primitives.
 - Each game owns its `manifest.ts`, `game.ts`, `display.tsx`, and `fixtures.ts`.
 - Every `games/<id>` package must include a `README.md`, and `manifest.id` must

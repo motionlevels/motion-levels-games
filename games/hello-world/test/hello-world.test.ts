@@ -23,7 +23,7 @@ test("manifest documents the example game", () => {
 
 test("initial frame shows the first target", () => {
   const firstTarget = helloWorldTargets()[0];
-  const game = createGame({ seed: manifest.defaultSeed, playerCount: 1 });
+  const game = createGame({ playerCount: 1 });
 
   game.init(0);
 
@@ -32,7 +32,7 @@ test("initial frame shows the first target", () => {
 });
 
 test("pressing targets completes the hello world path", () => {
-  const game = createGame({ seed: manifest.defaultSeed, playerCount: 1 });
+  const game = createGame({ playerCount: 1 });
 
   game.init(0);
 

@@ -2,7 +2,10 @@ import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import {
   DEFAULT_ENGINE_FPS,
   DEFAULT_ENGINE_FRAME_MILLIS,
+  DEFAULT_GAME_SEED,
   createGameEngine,
+  defaultGamePlayerCount,
+  normalizeGameConfig,
   type Frame,
   type GameConfig,
   type GameConfigOptions,
@@ -75,12 +78,14 @@ export async function generateGameMediaBundle(
   renderPlayerDisplay: PlayerDisplayAssetRenderer,
   options: PlaygroundMediaOptions = {}
 ): Promise<PlaygroundMediaBundle> {
-  const seed = normalizeSeed(options.seed, game.manifest.defaultSeed);
-  const playerCount = normalizePlayerCount(options.playerCount, game);
-  const difficulty = options.difficulty ?? game.manifest.config?.difficulty?.default ?? "medium";
-  const configOptions = options.options ?? {};
-  const players = options.players ?? [];
-  const engine = createPreviewEngine(game, { difficulty, options: configOptions, playerCount, players, seed });
+  const config = normalizeGameConfig({
+    seed: options.seed ?? DEFAULT_GAME_SEED,
+    playerCount: options.playerCount ?? defaultGamePlayerCount(game.manifest),
+    difficulty: options.difficulty,
+    options: options.options,
+    players: options.players
+  }, game.manifest);
+  const engine = createPreviewEngine(game, config);
   const frames = collectPreviewFrames(engine);
   const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
   const baseName = game.manifest.id;
@@ -94,10 +99,10 @@ export async function generateGameMediaBundle(
   return {
     gameId: game.manifest.id,
     label: game.manifest.label,
-    difficulty,
-    options: configOptions,
-    seed,
-    playerCount,
+    difficulty: config.difficulty,
+    options: config.options,
+    seed: config.seed,
+    playerCount: config.playerCount,
     generatedAt: new Date().toISOString(),
     assets: {
       thumbnailSmall: frameToImageAsset(stillFrame, {
@@ -364,17 +369,4 @@ function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
   }
 
   return `data:${mimeType};base64,${btoa(binary)}`;
-}
-
-function normalizeSeed(value: number | undefined, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : fallback;
-}
-
-function normalizePlayerCount(value: number | undefined, game: PlaygroundGame): number {
-  const candidate = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : game.manifest.players.min;
-  if (game.manifest.players.allowAny || game.manifest.config?.players?.allowAny) {
-    return Math.max(0, candidate);
-  }
-
-  return Math.max(game.manifest.players.min, Math.min(game.manifest.players.max, candidate));
 }

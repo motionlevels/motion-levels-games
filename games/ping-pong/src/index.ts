@@ -11,4 +11,4 @@ export {
   type PingPongSnapshot
 } from "./game.ts";
 export { finishedSnapshot, runningFrame, runningSnapshot, waitingSnapshot } from "./fixtures.ts";
-export { manifest } from "./manifest.ts";
+export { manifest, pingPongConfigVars } from "./manifest.ts";

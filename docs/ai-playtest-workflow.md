@@ -65,6 +65,11 @@ reproducible. Use `playerCount: 0` only for games with
 `manifest.players.allowAny: true`; strict player-count games should be tested
 inside their declared min/max range.
 
+Configuration returned by `ml.getState()` is manifest-normalized: defaults are
+filled, numeric bounds are enforced, undeclared options are removed, and an
+invalid difficulty falls back to the manifest default. Tests should assert
+those normalized values rather than duplicating manifest constraints.
+
 Generate catalog-style media when reviewing a game card or TV display:
 
 ```js

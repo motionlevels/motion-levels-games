@@ -23,9 +23,18 @@ import {
 import { FloorPreview } from "@motion-levels-games/display-kit";
 import {
   createGameEngine,
+  defaultGamePlayerCount,
+  DEFAULT_GAME_SEED,
   DEFAULT_ENGINE_FPS,
   DEFAULT_ENGINE_FRAME_MILLIS,
   DEFAULT_ENGINE_MAX_CATCH_UP_STEPS,
+  MAX_GAME_SEED,
+  MIN_GAME_SEED,
+  gameDifficultyOptions,
+  normalizeGameConfigOptions,
+  normalizeGameConfigValue,
+  normalizeGameDifficulty,
+  normalizeGameSeed,
   type Frame,
   type GameConfigOptions,
   type GameConfigVar,
@@ -46,11 +55,6 @@ import { formatElapsedClock } from "./timeFormat.ts";
 
 const playerDisplayMediaWidth = 1280;
 const playerDisplayMediaHeight = 720;
-// Seed range mirrors the platform editor: whole numbers 0–9999.
-const MIN_SEED = 0;
-const MAX_SEED = 9999;
-const DEFAULT_SEED = 137;
-const defaultDifficultyOptions: GameDifficulty[] = ["easy", "medium", "hard", "expert"];
 const difficultyLabels: Record<string, string> = {
   easy: "Easy",
   medium: "Medium",
@@ -83,8 +87,8 @@ export function App() {
     () => playgroundGames.find((game) => game.manifest.id === selectedGameId) ?? defaultGame,
     [selectedGameId]
   );
-  const [seed, setSeed] = useState(DEFAULT_SEED);
-  const [playerCount, setPlayerCount] = useState(defaultPlayerCountFor(defaultGame));
+  const [seed, setSeed] = useState(DEFAULT_GAME_SEED);
+  const [playerCount, setPlayerCount] = useState(defaultGamePlayerCount(defaultGame.manifest));
   const [difficulty, setDifficulty] = useState<GameDifficulty>(() => defaultDifficultyFor(defaultGame));
   const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => defaultConfigOptionsFor(defaultGame));
   const [paused, setPaused] = useState(false);
@@ -92,8 +96,8 @@ export function App() {
     () => {
       const startedGame = createStartedGame(
         defaultGame,
-        DEFAULT_SEED,
-        defaultPlayerCountFor(defaultGame),
+        DEFAULT_GAME_SEED,
+        defaultGamePlayerCount(defaultGame.manifest),
         defaultDifficultyFor(defaultGame),
         defaultConfigOptionsFor(defaultGame)
       );
@@ -282,7 +286,7 @@ export function App() {
   const setGameOptionState = useCallback((configVar: GameConfigVar, nextValue: unknown) => {
     const nextOptions = {
       ...gameOptionsRef.current,
-      [configVar.key]: coerceConfigVarValue(configVar, nextValue)
+      [configVar.key]: normalizeGameConfigValue(configVar, nextValue)
     };
     gameOptionsRef.current = nextOptions;
     setGameOptions(nextOptions);
@@ -312,7 +316,7 @@ export function App() {
       nextDifficulty = difficultyRef.current,
       nextOptions = gameOptionsRef.current
     ) => {
-      const normalizedOptions = normalizeGameOptions(nextGame, nextOptions);
+      const normalizedOptions = normalizeGameConfigOptions(nextOptions, nextGame.manifest);
       const next = createStartedGame(nextGame, nextSeed, nextPlayerCount, nextDifficulty, normalizedOptions);
       const nextEngine = createGameEngine(next.game, {
         fps: DEFAULT_ENGINE_FPS,
@@ -350,8 +354,8 @@ export function App() {
   const selectGame = useCallback(
     (gameId: string) => {
       const nextGame = playgroundGames.find((game) => game.manifest.id === gameId) ?? selectedGame;
-      const nextSeed = DEFAULT_SEED;
-      const nextPlayerCount = defaultPlayerCountFor(nextGame);
+      const nextSeed = DEFAULT_GAME_SEED;
+      const nextPlayerCount = defaultGamePlayerCount(nextGame.manifest);
       const nextDifficulty = defaultDifficultyFor(nextGame);
       const nextOptions = defaultConfigOptionsFor(nextGame);
 
@@ -526,8 +530,8 @@ export function App() {
       const fallbackOptions = currentGameSelected ? gameOptionsRef.current : defaultConfigOptionsFor(game);
       return generateGameMediaBundle(game, capturePlayerDisplayAsset, {
         difficulty: currentGameSelected ? difficultyRef.current : defaultDifficultyFor(game),
-        playerCount: currentGameSelected ? playerCountRef.current : defaultPlayerCountFor(game),
-        seed: currentGameSelected ? seedRef.current : game.manifest.defaultSeed,
+        playerCount: currentGameSelected ? playerCountRef.current : defaultGamePlayerCount(game.manifest),
+        seed: currentGameSelected ? seedRef.current : DEFAULT_GAME_SEED,
         ...options,
         options: options.options ?? fallbackOptions
       });
@@ -822,9 +826,9 @@ export function App() {
                   <span>Seed</span>
                   <input
                     inputMode="numeric"
-                    max={MAX_SEED}
-                    min={MIN_SEED}
-                    onChange={(event) => setSeedState(clampSeed(Number(event.target.value)))}
+                    max={MAX_GAME_SEED}
+                    min={MIN_GAME_SEED}
+                    onChange={(event) => setSeedState(normalizeGameSeed(Number(event.target.value)))}
                     value={seed}
                   />
                 </label>
@@ -1265,7 +1269,7 @@ function NumberConfigControl({
     editingRef.current = false;
     const parsed = Number(draftValue);
     const fallback = typeof configVar.default === "number" ? configVar.default : configVar.min ?? 0;
-    const nextValue = coerceConfigVarValue(configVar, Number.isFinite(parsed) ? parsed : fallback);
+    const nextValue = normalizeGameConfigValue(configVar, Number.isFinite(parsed) ? parsed : fallback);
     onChange(nextValue);
     setDraftValue(formatNumericInput(Number(nextValue)));
   };
@@ -1376,12 +1380,8 @@ function formatConfigValue(configVar: GameConfigVar, value: unknown): string {
   return String(value ?? configVar.default ?? "—");
 }
 
-function defaultPlayerCountFor(game: PlaygroundGame): number {
-  return game.manifest.players.allowAny || game.manifest.config?.players?.allowAny ? 0 : game.manifest.players.min;
-}
-
 function playerCountOptionsFor(game: PlaygroundGame): number[] {
-  if (game.manifest.players.allowAny || game.manifest.config?.players?.allowAny) {
+  if (game.manifest.players.allowAny) {
     const maxChoice = Math.max(8, game.manifest.players.max);
     return Array.from({ length: maxChoice + 1 }, (_, count) => count);
   }
@@ -1394,55 +1394,15 @@ function playerCountOptionsFor(game: PlaygroundGame): number[] {
 }
 
 function difficultyOptionsFor(game: PlaygroundGame): GameDifficulty[] {
-  const configured = game.manifest.config?.difficulty?.options;
-  return configured?.length ? configured : defaultDifficultyOptions;
+  return gameDifficultyOptions(game.manifest);
 }
 
 function defaultDifficultyFor(game: PlaygroundGame): GameDifficulty {
-  const options = difficultyOptionsFor(game);
-  const configured = game.manifest.config?.difficulty?.default;
-  if (configured && options.includes(configured)) {
-    return configured;
-  }
-  if (options.includes("medium")) {
-    return "medium";
-  }
-  return options[0] ?? "medium";
+  return normalizeGameDifficulty(undefined, game.manifest);
 }
 
 function defaultConfigOptionsFor(game: PlaygroundGame): GameConfigOptions {
-  return normalizeGameOptions(game, {});
-}
-
-function normalizeGameOptions(game: PlaygroundGame, options: GameConfigOptions): GameConfigOptions {
-  return Object.fromEntries(
-    (game.manifest.config?.vars ?? []).map((configVar) => [
-      configVar.key,
-      coerceConfigVarValue(configVar, options[configVar.key] ?? configVar.default)
-    ])
-  );
-}
-
-function coerceConfigVarValue(configVar: GameConfigVar, value: unknown): number | boolean | string {
-  if (configVar.type === "bool") {
-    return value === true || value === "true";
-  }
-
-  if (configVar.type === "enum") {
-    const fallback = configVar.options?.[0]?.value ?? "";
-    const candidate = String(value ?? configVar.default ?? fallback);
-    return configVar.options?.some((option) => option.value === candidate) ? candidate : fallback;
-  }
-
-  const fallback = typeof configVar.default === "number" ? configVar.default : configVar.min ?? 0;
-  const numeric = Number(value);
-  const finite = Number.isFinite(numeric) ? numeric : fallback;
-  const rounded = configVar.type === "int" ? Math.round(finite) : finite;
-  return clampNumber(rounded, configVar.min, configVar.max);
-}
-
-function clampNumber(value: number, min: number | undefined, max: number | undefined): number {
-  return Math.max(min ?? -Infinity, Math.min(max ?? Infinity, value));
+  return normalizeGameConfigOptions({}, game.manifest);
 }
 
 function pointToPhysicalTile(x: number, y: number, _space: PlaygroundPointSpace) {
@@ -1454,15 +1414,8 @@ function pointToPhysicalTile(x: number, y: number, _space: PlaygroundPointSpace)
   return point;
 }
 
-function clampSeed(value: number): number {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_SEED;
-  }
-  return Math.min(MAX_SEED, Math.max(MIN_SEED, Math.trunc(value)));
-}
-
 function randomSeed(): number {
-  return MIN_SEED + Math.floor(Math.random() * (MAX_SEED - MIN_SEED + 1));
+  return MIN_GAME_SEED + Math.floor(Math.random() * (MAX_GAME_SEED - MIN_GAME_SEED + 1));
 }
 
 function eventKey(event: GameEvent): string {

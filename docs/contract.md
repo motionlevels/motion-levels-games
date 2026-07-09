@@ -6,7 +6,7 @@ module.
 ## Concepts
 
 - **Manifest**: catalog metadata for the game, including id, label, player
-  bounds, default duration, default seed, and display entry.
+  bounds, default duration, configuration schema, and display entry.
 - **Frame**: a 16 x 32 tile RGB/hex frame. This maps to the current Motion
   Levels floor concept.
 - **Press/release events**: floor input events with tile coordinates and a
@@ -28,6 +28,49 @@ and `GameSnapshot` to the existing Motion Levels runtime surfaces.
 The shared TypeScript engine lives in `@motion-levels-games/game-sdk`. Its
 baseline is 30fps (`DEFAULT_ENGINE_FPS`), and playground/platform runners should
 advance games through that engine instead of owning separate timing semantics.
+The SDK-wide default seed is `137`; manifests do not define per-game seed
+defaults. Explicit seeds are normalized to the seeded RNG's unsigned 32-bit
+domain.
+
+## Manifest-driven configuration
+
+`manifest.config.vars` is the only schema for game options. Every variable has
+a required default, and numeric variables may declare their bounds and UI step.
+`normalizeGameConfig` fills defaults, coerces values, clamps numeric bounds,
+rejects undeclared options, and resolves difficulty against the manifest before
+the game receives its configuration. The playground and media generator use
+that same SDK path.
+
+Export reusable variable descriptors from `manifest.ts` when game logic needs a
+value. Pass the descriptor to `readGameConfigOption` so defaults and ranges are
+not repeated in `game.ts`:
+
+```ts
+export const gameConfigVars = {
+  pointsToWin: {
+    key: "points_to_win",
+    label: "Points to win",
+    type: "int",
+    default: 5,
+    min: 1,
+    max: 21,
+    step: 1
+  }
+} satisfies Record<string, GameConfigVar>;
+
+export const manifest: GameManifest = {
+  // ...
+  config: { vars: Object.values(gameConfigVars) }
+};
+
+const pointsToWin = readGameConfigOption(config.options, gameConfigVars.pointsToWin);
+```
+
+Player-count constraints and `allowAny` belong only in `manifest.players`.
+Difficulty choices and their default belong only in
+`manifest.config.difficulty`.
+`defaultGamePlayerCount` supplies `0` for `allowAny` games and `players.min`
+for strict games so playground, media, and runtime defaults remain identical.
 
 ## Expected Game Shape
 

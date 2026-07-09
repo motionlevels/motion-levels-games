@@ -166,7 +166,6 @@ export const manifest: GameManifest = {
     max: 1
   },
   defaultDurationMillis: 30_000,
-  defaultSeed: 1_001,
   display: {
     entry: "./display"
   },
@@ -179,6 +178,7 @@ function gameTemplate(_options: CreateGameOptions): string {
   return `import {
   createFrame,
   defaultPlayers,
+  gameEvent,
   normalizeGameConfig,
   paintFrameCell,
   type Frame,
@@ -220,11 +220,7 @@ class ScaffoldedGame implements GameInstance {
   private startedAtMillis = 0;
   private nowMillis = 0;
   private players: GamePlayer[];
-  private lastEvent: GameEvent = {
-    cue: "none",
-    message: "Listo",
-    atMillis: 0
-  };
+  private lastEvent: GameEvent = gameEvent("none", "Listo", 0);
 
   constructor(config: GameConfig) {
     this.config = normalizeGameConfig(config, manifest);
@@ -235,11 +231,7 @@ class ScaffoldedGame implements GameInstance {
     this.phase = "running";
     this.startedAtMillis = nowMillis;
     this.nowMillis = nowMillis;
-    this.lastEvent = {
-      cue: "start",
-      message: "Pisa la baldosa verde",
-      atMillis: nowMillis
-    };
+    this.lastEvent = gameEvent("start", "Pisa la baldosa verde", nowMillis);
     return [this.lastEvent];
   }
 
@@ -257,11 +249,11 @@ class ScaffoldedGame implements GameInstance {
 
     this.score += 1;
     this.players = this.scoredPlayers();
-    this.lastEvent = {
-      cue: this.score >= targetScore ? "win" : "hit",
-      message: this.score >= targetScore ? "Terminado" : "Acierto " + this.score,
-      atMillis: event.atMillis
-    };
+    this.lastEvent = gameEvent(
+      this.score >= targetScore ? "win" : "hit",
+      this.score >= targetScore ? "Terminado" : "Acierto " + this.score,
+      event.atMillis
+    );
 
     if (this.score >= targetScore) {
       this.phase = "finished";
@@ -283,11 +275,7 @@ class ScaffoldedGame implements GameInstance {
     }
 
     this.phase = "finished";
-    this.lastEvent = {
-      cue: this.score >= targetScore ? "win" : "fail",
-      message: "Tiempo",
-      atMillis: event.atMillis
-    };
+    this.lastEvent = gameEvent(this.score >= targetScore ? "win" : "fail", "Tiempo", event.atMillis);
     return [this.lastEvent];
   }
 
@@ -328,11 +316,7 @@ class ScaffoldedGame implements GameInstance {
     this.startedAtMillis = this.config.nowMillis;
     this.nowMillis = this.config.nowMillis;
     this.players = this.scoredPlayers();
-    this.lastEvent = {
-      cue: "none",
-      message: "Listo",
-      atMillis: this.config.nowMillis
-    };
+    this.lastEvent = gameEvent("none", "Listo", this.config.nowMillis);
   }
 
   private elapsedMillis(): number {
@@ -390,7 +374,6 @@ function fixturesTemplate(): string {
 import { manifest } from "./manifest.ts";
 
 const game = createGame({
-  seed: manifest.defaultSeed,
   playerCount: manifest.players.min,
   durationMillis: manifest.defaultDurationMillis
 });
@@ -439,7 +422,7 @@ test("manifest id matches the game directory", () => {
 });
 
 test("game renders and completes the scaffolded path", () => {
-  const game = createGame({ seed: manifest.defaultSeed, playerCount: manifest.players.min });
+  const game = createGame({ playerCount: manifest.players.min });
   game.init(0);
 
   const firstTarget = scaffoldTargets()[0];

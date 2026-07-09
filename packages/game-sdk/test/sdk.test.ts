@@ -6,19 +6,28 @@ import {
   createGameEngine,
   createFrame,
   createSeededRng,
+  defaultGamePlayerCount,
+  DEFAULT_GAME_SEED,
   DEFAULT_ENGINE_FPS,
   DEFAULT_ENGINE_FRAME_MILLIS,
   fillFrameRect,
   formatClock,
   frameCell,
   gameEvent,
+  gameDifficultyOptions,
   inFloorBounds,
   normalizeGameConfig,
+  normalizeGameConfigOptions,
+  normalizeGameConfigValue,
+  normalizeGameSeed,
+  readGameConfigOption,
   paintFrameCell,
-  readClampedIntegerOption,
   rgbToHex,
   scaleRgb,
   setFrameCell,
+  MAX_GAME_SEED,
+  type GameConfigVar,
+  type GameManifest,
   type GameInstance,
   type PressEvent,
   type TickEvent
@@ -70,30 +79,58 @@ test("seeded rng is deterministic", () => {
   );
 });
 
-test("manifest config normalization clamps players and reads options", () => {
+test("manifest config normalization owns defaults, constraints, and difficulty", () => {
+  const pointsToWin = {
+    key: "points_to_win",
+    label: "Points to win",
+    type: "int",
+    default: 5,
+    min: 1,
+    max: 21
+  } satisfies GameConfigVar;
   const manifest = {
     id: "test",
     label: "Test",
     players: { min: 1, max: 2 },
+    config: {
+      difficulty: { default: "hard", options: ["easy", "hard"] },
+      vars: [
+        pointsToWin,
+        { key: "pace", label: "Pace", type: "float", default: 1.25, min: 1, max: 2 },
+        { key: "sound", label: "Sound", type: "bool", default: true },
+        {
+          key: "color",
+          label: "Color",
+          type: "enum",
+          default: "blue",
+          options: [{ value: "blue" }, { value: "red" }]
+        }
+      ]
+    },
     defaultDurationMillis: 5000,
-    defaultSeed: 123,
     display: { entry: "./display" }
-  };
+  } satisfies GameManifest;
   const config = normalizeGameConfig(
     {
       seed: Number.NaN,
       playerCount: 7,
-      difficulty: "hard",
-      options: { points_to_win: "3" }
+      difficulty: "expert",
+      options: { points_to_win: "30", pace: "1.5", sound: "false", color: "purple", ignored: 8 }
     },
     manifest
   );
 
-  assert.equal(config.seed, 123);
+  assert.equal(config.seed, DEFAULT_GAME_SEED);
   assert.equal(config.playerCount, 2);
   assert.equal(config.durationMillis, 5000);
   assert.equal(config.difficulty, "hard");
-  assert.equal(readClampedIntegerOption(config.options, "points_to_win", 5, 1, 21), 3);
+  assert.deepEqual(config.options, {
+    points_to_win: 21,
+    pace: 1.5,
+    sound: false,
+    color: "blue"
+  });
+  assert.equal(readGameConfigOption(config.options, pointsToWin), 21);
   assert.equal(normalizeGameConfig({ seed: 1, playerCount: 0 }, manifest).playerCount, 1);
 
   const flexibleManifest = {
@@ -102,6 +139,56 @@ test("manifest config normalization clamps players and reads options", () => {
   };
   assert.equal(normalizeGameConfig({ seed: 1, playerCount: 0 }, flexibleManifest).playerCount, 0);
   assert.equal(normalizeGameConfig({ seed: 1, playerCount: 12 }, flexibleManifest).playerCount, 12);
+  assert.equal(defaultGamePlayerCount(manifest), 1);
+  assert.equal(defaultGamePlayerCount(flexibleManifest), 0);
+  assert.equal(normalizeGameConfig({}, flexibleManifest).playerCount, 0);
+});
+
+test("config value helpers use manifest definitions as the only schema", () => {
+  const integerVar = { key: "rounds", label: "Rounds", type: "int", default: 3, min: 1, max: 9 } satisfies GameConfigVar;
+  const booleanVar = { key: "sound", label: "Sound", type: "bool", default: true } satisfies GameConfigVar;
+  const enumVar = {
+    key: "team",
+    label: "Team",
+    type: "enum",
+    default: "blue",
+    options: [{ value: "blue" }, { value: "red" }]
+  } satisfies GameConfigVar;
+
+  assert.equal(normalizeGameConfigValue(integerVar, 99), 9);
+  assert.equal(normalizeGameConfigValue(booleanVar, "false"), false);
+  assert.equal(normalizeGameConfigValue(enumVar, "unknown"), "blue");
+  assert.deepEqual(
+    normalizeGameConfigOptions({}, {
+      id: "options",
+      label: "Options",
+      players: { min: 1, max: 1 },
+      config: { vars: [integerVar, booleanVar, enumVar] },
+      defaultDurationMillis: 1000,
+      display: { entry: "./display" }
+    }),
+    { rounds: 3, sound: true, team: "blue" }
+  );
+});
+
+test("difficulty options use shared defaults when a manifest does not override them", () => {
+  const manifest = {
+    id: "difficulty",
+    label: "Difficulty",
+    players: { min: 1, max: 1 },
+    defaultDurationMillis: 1000,
+    display: { entry: "./display" }
+  } satisfies GameManifest;
+
+  assert.deepEqual(gameDifficultyOptions(manifest), ["easy", "medium", "hard", "expert"]);
+  assert.equal(normalizeGameConfig({ seed: 1, playerCount: 1, difficulty: "invalid" }, manifest).difficulty, "medium");
+});
+
+test("seed normalization uses one shared default and the SDK rng domain", () => {
+  assert.equal(normalizeGameSeed(undefined), DEFAULT_GAME_SEED);
+  assert.equal(normalizeGameSeed(Number.NaN), DEFAULT_GAME_SEED);
+  assert.equal(normalizeGameSeed(-4), 0);
+  assert.equal(normalizeGameSeed(MAX_GAME_SEED + 10), MAX_GAME_SEED);
 });
 
 test("rgb helpers clamp and format colors", () => {

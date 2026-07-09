@@ -17,7 +17,6 @@ function countColor(frame: Frame, color: string): number {
 
 function playtestHelloWorld() {
   const game = createHelloWorldGame({
-    seed: helloWorldManifest.defaultSeed,
     playerCount: 1,
     durationMillis: helloWorldManifest.defaultDurationMillis
   });

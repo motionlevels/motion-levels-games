@@ -9,8 +9,7 @@ import {
   gameEvent,
   normalizeGameConfig,
   paintFrameCell,
-  readClampedIntegerOption,
-  readNumberOption,
+  readGameConfigOption,
   rgbToHex,
   scaleRgb,
   type Frame,
@@ -27,7 +26,7 @@ import {
   type SeededRng,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
-import { manifest } from "./manifest.ts";
+import { manifest, pingPongConfigVars } from "./manifest.ts";
 
 export const redColor: HexColor = "#ff1c28";
 export const blueColor: HexColor = "#145cff";
@@ -38,7 +37,6 @@ const redRgb: RgbColor = { r: 255, g: 28, b: 40 };
 const blueRgb: RgbColor = { r: 20, g: 92, b: 255 };
 const whiteRgb: RgbColor = { r: 255, g: 255, b: 255 };
 
-const defaultWinningScore = 5;
 const readyAnimationMillis = 2000;
 const startGraceMillis = 1000;
 const postPointPauseMillis = 900;
@@ -48,9 +46,6 @@ const paddleYBlue = 29;
 const paddleWidth = 5;
 const serveX = Math.floor(FLOOR_COLS / 2);
 const serveY = Math.floor(FLOOR_ROWS / 2);
-const defaultInitialBallSpeed = 5.75;
-const defaultReturnSpeedMultiplier = 1.035;
-const defaultDifficultyMultiplier = 1.2;
 const maximumSpeedRatio = 2.5;
 
 type PingPongPhase = "waiting" | "starting" | "running" | "finished";
@@ -113,7 +108,7 @@ class PingPongGame implements PingPongGameInstance {
   private config: NormalizedGameConfig;
   private rng: SeededRng;
   private players: GamePlayer[];
-  private winningScore = defaultWinningScore;
+  private winningScore: number;
   private speed: SpeedSettings;
   private startedAtMillis = 0;
   private nowMillis = 0;
@@ -147,8 +142,8 @@ class PingPongGame implements PingPongGameInstance {
   constructor(config: GameConfig) {
     this.config = normalizeGameConfig(config, manifest);
     this.rng = createSeededRng(this.config.seed);
-    this.players = this.createPlayers();
     this.winningScore = this.readWinningScore();
+    this.players = this.createPlayers();
     this.speed = speedForConfig(this.config);
     this.resetGame(this.config.nowMillis);
   }
@@ -311,8 +306,8 @@ class PingPongGame implements PingPongGameInstance {
   reset(config: Partial<GameConfig> = {}): void {
     this.config = normalizeGameConfig({ ...this.config, ...config }, manifest);
     this.rng = createSeededRng(this.config.seed);
-    this.players = this.createPlayers();
     this.winningScore = this.readWinningScore();
+    this.players = this.createPlayers();
     this.speed = speedForConfig(this.config);
     this.resetGame(this.config.nowMillis);
     this.lastEvent = gameEvent("none", "Listo", this.config.nowMillis);
@@ -320,13 +315,13 @@ class PingPongGame implements PingPongGameInstance {
 
   private createPlayers(): GamePlayer[] {
     return [
-      { index: 0, label: "Rojo", color: redColor, score: 0, lives: this.winningScore ?? defaultWinningScore },
-      { index: 1, label: "Azul", color: blueColor, score: 0, lives: this.winningScore ?? defaultWinningScore }
+      { index: 0, label: "Rojo", color: redColor, score: 0, lives: this.winningScore },
+      { index: 1, label: "Azul", color: blueColor, score: 0, lives: this.winningScore }
     ];
   }
 
   private readWinningScore(): number {
-    return readClampedIntegerOption(this.config.options, "points_to_win", defaultWinningScore, 1, 21);
+    return readGameConfigOption(this.config.options, pingPongConfigVars.pointsToWin);
   }
 
   private resetGame(nowMillis: number): void {
@@ -796,21 +791,9 @@ function halfForY(y: number): TeamIndex {
 }
 
 function speedForConfig(config: NormalizedGameConfig): SpeedSettings {
-  const baseInitialSpeed = clamp(
-    readNumberOption(config.options, "initial_ball_speed", defaultInitialBallSpeed),
-    3,
-    10
-  );
-  const baseHitMultiplier = clamp(
-    readNumberOption(config.options, "return_speed_multiplier", defaultReturnSpeedMultiplier),
-    1,
-    1.1
-  );
-  const difficultyStep = clamp(
-    readNumberOption(config.options, "difficulty_multiplier", defaultDifficultyMultiplier),
-    1,
-    1.35
-  );
+  const baseInitialSpeed = readGameConfigOption(config.options, pingPongConfigVars.initialBallSpeed);
+  const baseHitMultiplier = readGameConfigOption(config.options, pingPongConfigVars.returnSpeedMultiplier);
+  const difficultyStep = readGameConfigOption(config.options, pingPongConfigVars.difficultyMultiplier);
   const difficultyFactor = difficultyStep ** difficultyIndex(config.difficulty);
   const initialTilesPerSecond = baseInitialSpeed * difficultyFactor;
   // Scale only the acceleration above 1x. Multiplying the full return factor

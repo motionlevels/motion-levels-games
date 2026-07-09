@@ -9,6 +9,7 @@ import {
   createGame,
   finishedSnapshot,
   manifest,
+  pingPongConfigVars,
   runningFrame,
   runningSnapshot,
   waitingSnapshot
@@ -54,6 +55,33 @@ test("manifest exposes renamed Ping Pong game", () => {
     ]
   );
   assert.ok(manifest.config?.vars?.every((variable) => Boolean(variable.description)));
+  assert.deepEqual(manifest.config?.vars, Object.values(pingPongConfigVars));
+});
+
+test("manifest bounds normalize game options without duplicated game constants", () => {
+  const game = createGame({
+    playerCount: 2,
+    difficulty: "medium",
+    options: {
+      points_to_win: 99,
+      initial_ball_speed: 99,
+      return_speed_multiplier: 0,
+      difficulty_multiplier: 99
+    }
+  });
+  game.init(0);
+  const snapshot = game.snapshot();
+
+  assert.equal(snapshot.matchTarget, pingPongConfigVars.pointsToWin.max);
+  assertClose(
+    snapshot.difficultySpeedFactor,
+    pingPongConfigVars.difficultyMultiplier.max
+  );
+  assertClose(
+    snapshot.initialBallSpeed,
+    pingPongConfigVars.initialBallSpeed.max * pingPongConfigVars.difficultyMultiplier.max
+  );
+  assertClose(snapshot.returnSpeedMultiplier, pingPongConfigVars.returnSpeedMultiplier.min);
 });
 
 test("difficulty applies one configurable multiplicative speed curve", () => {

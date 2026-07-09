@@ -1,5 +1,8 @@
 export const FLOOR_COLS = 16;
 export const FLOOR_ROWS = 32;
+export const DEFAULT_GAME_SEED = 137;
+export const MIN_GAME_SEED = 0;
+export const MAX_GAME_SEED = 0xffff_ffff;
 export const FRAME_SIZE = FLOOR_COLS * FLOOR_ROWS;
 
 export type HexColor = `#${string}`;
@@ -95,7 +98,6 @@ export type GameManifest = {
   };
   config?: GameManifestConfig;
   defaultDurationMillis: number;
-  defaultSeed: number;
   display: {
     entry: string;
   };
@@ -103,12 +105,7 @@ export type GameManifest = {
 };
 
 export type GameManifestConfig = {
-  players?: {
-    allowAny?: boolean;
-    configurable?: boolean;
-  };
   difficulty?: {
-    configurable?: boolean;
     default?: GameDifficulty;
     options?: GameDifficulty[];
   };
@@ -117,21 +114,48 @@ export type GameManifestConfig = {
 
 export type GameConfigVarType = "int" | "float" | "bool" | "enum";
 
-export type GameConfigVar = {
+type GameConfigVarBase = {
   key: string;
   label: string;
   description?: string;
-  type: GameConfigVarType;
-  default?: number | boolean | string;
-  min?: number;
-  max?: number;
-  step?: number;
-  options?: Array<{ value: string; label?: string }>;
 };
 
+export type GameConfigVar =
+  | (GameConfigVarBase & {
+      type: "int" | "float";
+      default: number;
+      min?: number;
+      max?: number;
+      step?: number;
+      options?: never;
+    })
+  | (GameConfigVarBase & {
+      type: "bool";
+      default: boolean;
+      min?: never;
+      max?: never;
+      step?: never;
+      options?: never;
+    })
+  | (GameConfigVarBase & {
+      type: "enum";
+      default: string;
+      options: Array<{ value: string; label?: string }>;
+      min?: never;
+      max?: never;
+      step?: never;
+    });
+
+export type GameConfigValue<T extends GameConfigVar = GameConfigVar> =
+  T extends { type: "int" | "float" }
+    ? number
+    : T extends { type: "bool" }
+      ? boolean
+      : string;
+
 export type GameConfig = {
-  seed: number;
-  playerCount: number;
+  seed?: number;
+  playerCount?: number;
   players?: GameConfigPlayer[];
   durationMillis?: number;
   nowMillis?: number;
@@ -141,6 +165,8 @@ export type GameConfig = {
 
 export type GameConfigOptions = Record<string, unknown>;
 export type GameDifficulty = "easy" | "medium" | "hard" | "expert" | string;
+
+export const DEFAULT_GAME_DIFFICULTIES: readonly GameDifficulty[] = ["easy", "medium", "hard", "expert"];
 
 export type NormalizedGameConfig = {
   seed: number;
@@ -235,24 +261,107 @@ export function inFloorBounds(x: number, y: number): boolean {
 
 export function normalizeGameConfig(config: GameConfig, manifest: GameManifest): NormalizedGameConfig {
   return {
-    seed: Number.isFinite(config.seed) ? Math.trunc(config.seed) : manifest.defaultSeed,
+    seed: normalizeGameSeed(config.seed),
     playerCount: normalizePlayerCount(config.playerCount, manifest),
     players: Array.isArray(config.players) ? config.players : [],
-    durationMillis: config.durationMillis ?? manifest.defaultDurationMillis,
-    nowMillis: config.nowMillis ?? 0,
-    difficulty: config.difficulty ?? "medium",
-    options: config.options ?? {}
+    durationMillis: normalizeNonNegativeNumber(config.durationMillis, manifest.defaultDurationMillis),
+    nowMillis: normalizeNonNegativeNumber(config.nowMillis, 0),
+    difficulty: normalizeGameDifficulty(config.difficulty, manifest),
+    options: normalizeGameConfigOptions(config.options, manifest)
   };
 }
 
-function normalizePlayerCount(value: number, manifest: GameManifest): number {
-  const rounded = Number.isFinite(value) ? Math.round(value) : manifest.players.min;
-  const allowAny = manifest.players.allowAny === true || manifest.config?.players?.allowAny === true;
-  if (allowAny) {
+export function normalizeGameSeed(value: number | undefined): number {
+  const candidate = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : DEFAULT_GAME_SEED;
+  return clamp(candidate, MIN_GAME_SEED, MAX_GAME_SEED);
+}
+
+function normalizePlayerCount(value: number | undefined, manifest: GameManifest): number {
+  const rounded = typeof value === "number" && Number.isFinite(value)
+    ? Math.round(value)
+    : defaultGamePlayerCount(manifest);
+  if (manifest.players.allowAny === true) {
     return Math.max(0, rounded);
   }
 
   return clamp(rounded, manifest.players.min, manifest.players.max);
+}
+
+export function defaultGamePlayerCount(manifest: GameManifest): number {
+  return manifest.players.allowAny ? 0 : manifest.players.min;
+}
+
+function normalizeNonNegativeNumber(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : fallback;
+}
+
+export function gameDifficultyOptions(manifest: GameManifest): GameDifficulty[] {
+  const configured = manifest.config?.difficulty?.options;
+  return configured?.length ? [...configured] : [...DEFAULT_GAME_DIFFICULTIES];
+}
+
+export function normalizeGameDifficulty(value: GameDifficulty | undefined, manifest: GameManifest): GameDifficulty {
+  const options = gameDifficultyOptions(manifest);
+  const configuredDefault = manifest.config?.difficulty?.default;
+  const fallback = configuredDefault && options.includes(configuredDefault)
+    ? configuredDefault
+    : options.includes("medium")
+      ? "medium"
+      : options[0] ?? "medium";
+
+  return value && options.includes(value) ? value : fallback;
+}
+
+export function normalizeGameConfigOptions(
+  options: GameConfigOptions | undefined,
+  manifest: GameManifest
+): GameConfigOptions {
+  const source = options ?? {};
+  return Object.fromEntries(
+    (manifest.config?.vars ?? []).map((configVar) => [
+      configVar.key,
+      normalizeGameConfigValue(configVar, source[configVar.key])
+    ])
+  );
+}
+
+export function normalizeGameConfigValue<T extends GameConfigVar>(
+  configVar: T,
+  value: unknown
+): GameConfigValue<T> {
+  if (configVar.type === "bool") {
+    const normalized = value === true || value === "true"
+      ? true
+      : value === false || value === "false"
+        ? false
+        : configVar.default;
+    return normalized as GameConfigValue<T>;
+  }
+
+  if (configVar.type === "enum") {
+    const candidate = String(value ?? configVar.default);
+    const normalized = configVar.options.some((option) => option.value === candidate)
+      ? candidate
+      : configVar.default;
+    return normalized as GameConfigValue<T>;
+  }
+
+  const numeric = typeof value === "number" && Number.isFinite(value)
+    ? value
+    : typeof value === "string" && value.trim() !== ""
+      ? Number(value)
+      : Number.NaN;
+  const finite = Number.isFinite(numeric) ? numeric : configVar.default;
+  const rounded = configVar.type === "int" ? Math.round(finite) : finite;
+  const normalized = clamp(rounded, configVar.min ?? -Infinity, configVar.max ?? Infinity);
+  return normalized as GameConfigValue<T>;
+}
+
+export function readGameConfigOption<T extends GameConfigVar>(
+  options: GameConfigOptions,
+  configVar: T
+): GameConfigValue<T> {
+  return normalizeGameConfigValue(configVar, options[configVar.key]);
 }
 
 export function createFrame(fill: HexColor = "#05070a"): Frame {
@@ -311,33 +420,6 @@ export function setFrameCell(frame: Frame, x: number, y: number, color: HexColor
 
 export function gameEvent(cue: GameEventCue, message: string, atMillis: number): GameEvent {
   return { cue, message: message.trimEnd().replace(/\.+$/u, ""), atMillis };
-}
-
-export function readNumberOption(options: GameConfigOptions, key: string, fallback: number): number {
-  const value = options[key];
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return fallback;
-}
-
-export function readClampedIntegerOption(
-  options: GameConfigOptions,
-  key: string,
-  fallback: number,
-  min: number,
-  max: number
-): number {
-  return clamp(Math.round(readNumberOption(options, key, fallback)), min, max);
 }
 
 export function createSeededRng(seed: number): SeededRng {

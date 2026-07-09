@@ -138,6 +138,13 @@ the requested count even if it is above the manifest's visual/team count.
 `getState()` includes the active `seed`, `playerCount`, `difficulty`, and
 `options` values so agents can record the exact run configuration.
 
+All option values exposed by the API have passed through the SDK's
+manifest-driven normalization. Undeclared options are removed, missing values
+receive their manifest defaults, numeric values are clamped to their declared
+bounds, and invalid difficulty values fall back to the manifest default.
+The SDK-wide default seed is `137`; manifests do not declare their own seed
+defaults.
+
 ## Captures
 
 - `display`: native 1920x1080 player display PNG.

@@ -9,10 +9,8 @@ export const manifest: GameManifest = {
     max: 4
   },
   defaultDurationMillis: 60_000,
-  defaultSeed: 12_345,
   display: {
     entry: "./display"
   },
   tags: ["example", "typescript", "local"]
 };
-

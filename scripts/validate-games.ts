@@ -9,9 +9,12 @@ type ManifestModule = {
     label?: string;
     players?: {
       allowAny?: unknown;
+      min?: unknown;
+      max?: unknown;
     };
     config?: {
       difficulty?: {
+        default?: unknown;
         options?: unknown;
       };
       vars?: unknown;
@@ -19,6 +22,7 @@ type ManifestModule = {
     display?: {
       entry?: string;
     };
+    defaultDurationMillis?: unknown;
   };
 };
 
@@ -79,14 +83,36 @@ for (const gameId of gameDirs) {
       if (!manifest.label) {
         problems.push(`${gameId}: manifest.label is required`);
       }
+      if (!isFiniteNumber(manifest.defaultDurationMillis) || manifest.defaultDurationMillis < 0) {
+        problems.push(`${gameId}: manifest.defaultDurationMillis must be a non-negative finite number`);
+      }
       if (manifest.players?.allowAny !== undefined && typeof manifest.players.allowAny !== "boolean") {
         problems.push(`${gameId}: manifest.players.allowAny must be a boolean when present`);
+      }
+      if (!isInteger(manifest.players?.min) || Number(manifest.players?.min) < 1) {
+        problems.push(`${gameId}: manifest.players.min must be an integer of at least 1`);
+      }
+      if (!isInteger(manifest.players?.max) || Number(manifest.players?.max) < Number(manifest.players?.min)) {
+        problems.push(`${gameId}: manifest.players.max must be an integer greater than or equal to min`);
       }
       if (manifest.display?.entry !== "./display") {
         problems.push(`${gameId}: manifest.display.entry must be ./display`);
       }
       if (manifest.config?.difficulty?.options !== undefined && !isStringArray(manifest.config.difficulty.options)) {
         problems.push(`${gameId}: manifest.config.difficulty.options must be a string array`);
+      }
+      if (isStringArray(manifest.config?.difficulty?.options)) {
+        const difficultyOptions = manifest.config.difficulty.options;
+        if (difficultyOptions.length === 0 || difficultyOptions.some((option) => option.trim() === "")) {
+          problems.push(`${gameId}: manifest.config.difficulty.options must contain non-empty values`);
+        }
+        if (new Set(difficultyOptions).size !== difficultyOptions.length) {
+          problems.push(`${gameId}: manifest.config.difficulty.options must not contain duplicates`);
+        }
+        const defaultDifficulty = manifest.config.difficulty.default;
+        if (defaultDifficulty !== undefined && !difficultyOptions.includes(String(defaultDifficulty))) {
+          problems.push(`${gameId}: manifest.config.difficulty.default must be included in difficulty.options`);
+        }
       }
       if (manifest.config?.vars !== undefined) {
         if (!Array.isArray(manifest.config.vars)) {
@@ -114,8 +140,20 @@ for (const gameId of gameDirs) {
             if (!["int", "float", "bool", "enum"].includes(String(record.type))) {
               problems.push(`${gameId}: manifest.config.vars[${index}].type must be int, float, bool, or enum`);
             }
-            if (record.type === "enum" && !Array.isArray(record.options)) {
-              problems.push(`${gameId}: manifest.config.vars[${index}].options is required for enum vars`);
+            if (!("default" in record)) {
+              problems.push(`${gameId}: manifest.config.vars[${index}].default is required`);
+            }
+
+            if (record.type === "int" || record.type === "float") {
+              validateNumericConfigVar(gameId, index, record, problems);
+            } else if (record.type === "bool") {
+              if (typeof record.default !== "boolean") {
+                problems.push(`${gameId}: manifest.config.vars[${index}].default must be a boolean`);
+              }
+              validateAbsentFields(gameId, index, record, ["min", "max", "step", "options"], problems);
+            } else if (record.type === "enum") {
+              validateEnumConfigVar(gameId, index, record, problems);
+              validateAbsentFields(gameId, index, record, ["min", "max", "step"], problems);
             }
           }
         }
@@ -144,6 +182,95 @@ if (problems.length > 0) {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function validateNumericConfigVar(
+  gameId: string,
+  index: number,
+  configVar: Record<string, unknown>,
+  problems: string[]
+): void {
+  const prefix = `${gameId}: manifest.config.vars[${index}]`;
+  if (!isFiniteNumber(configVar.default)) {
+    problems.push(`${prefix}.default must be a finite number`);
+    return;
+  }
+  validateAbsentFields(gameId, index, configVar, ["options"], problems);
+
+  for (const field of ["min", "max", "step"] as const) {
+    if (configVar[field] !== undefined && !isFiniteNumber(configVar[field])) {
+      problems.push(`${prefix}.${field} must be a finite number when present`);
+    }
+  }
+  if (isFiniteNumber(configVar.min) && isFiniteNumber(configVar.max) && configVar.min > configVar.max) {
+    problems.push(`${prefix}.min must not exceed max`);
+  }
+  if (isFiniteNumber(configVar.min) && configVar.default < configVar.min) {
+    problems.push(`${prefix}.default must not be below min`);
+  }
+  if (isFiniteNumber(configVar.max) && configVar.default > configVar.max) {
+    problems.push(`${prefix}.default must not exceed max`);
+  }
+  if (isFiniteNumber(configVar.step) && configVar.step <= 0) {
+    problems.push(`${prefix}.step must be greater than zero`);
+  }
+  if (configVar.type === "int") {
+    for (const field of ["default", "min", "max", "step"] as const) {
+      if (isFiniteNumber(configVar[field]) && !Number.isInteger(configVar[field])) {
+        problems.push(`${prefix}.${field} must be an integer for int vars`);
+      }
+    }
+  }
+}
+
+function validateEnumConfigVar(
+  gameId: string,
+  index: number,
+  configVar: Record<string, unknown>,
+  problems: string[]
+): void {
+  const prefix = `${gameId}: manifest.config.vars[${index}]`;
+  if (!Array.isArray(configVar.options) || configVar.options.length === 0) {
+    problems.push(`${prefix}.options must be a non-empty array for enum vars`);
+    return;
+  }
+
+  const values = configVar.options.map((option) =>
+    option && typeof option === "object" && !Array.isArray(option)
+      ? String((option as Record<string, unknown>).value ?? "").trim()
+      : ""
+  );
+  if (values.some((value) => value === "")) {
+    problems.push(`${prefix}.options must contain non-empty values`);
+  }
+  if (new Set(values).size !== values.length) {
+    problems.push(`${prefix}.options must not contain duplicate values`);
+  }
+  if (typeof configVar.default !== "string" || !values.includes(configVar.default)) {
+    problems.push(`${prefix}.default must match an enum option value`);
+  }
+}
+
+function validateAbsentFields(
+  gameId: string,
+  index: number,
+  configVar: Record<string, unknown>,
+  fields: string[],
+  problems: string[]
+): void {
+  for (const field of fields) {
+    if (configVar[field] !== undefined) {
+      problems.push(`${gameId}: manifest.config.vars[${index}].${field} is not valid for ${String(configVar.type)} vars`);
+    }
+  }
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isInteger(value: unknown): value is number {
+  return isFiniteNumber(value) && Number.isInteger(value);
 }
 
 function isStringArray(value: unknown): value is string[] {
