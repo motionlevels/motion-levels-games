@@ -72,6 +72,24 @@ no database, venue hardware, Motion Go, or platform API coupling.
   `countdownMillis` in the snapshot. Use the shared `PlayerReadyOverlay` for
   standard solo/cooperative displays instead of creating a one-off overlay.
 
+## Round And Game Win Animations
+
+- Every new game must include a distinct game-winning animation by default.
+  Games with rounds must also include a shorter, visually distinct round-win
+  animation before advancing to the next round. Single-run games need only the
+  game-win animation.
+- Render each celebration on both the floor and player display. Clearly show
+  who won (player, team, or solo player), preserve the completed score/result,
+  and use animation and color that cannot be confused with normal gameplay,
+  waiting, or the next round's start countdown.
+- Treat win animations as explicit timed transitions. Stop accepting scoring
+  input while they run, do not advance the next round or reset the game until
+  the celebration finishes, and keep their timing deterministic from engine
+  time so tests and captures are reproducible.
+- Fixtures and tests must cover the round-win transition when rounds exist and
+  the final game-win transition for every game. Browser playtests must capture
+  and visually inspect both floor and native player-display animation states.
+
 ## Developer UI Consistency
 
 - Persist the last selected playground game and restore it only when its id is
@@ -109,6 +127,8 @@ no database, venue hardware, Motion Go, or platform API coupling.
   instead of copying an existing game by hand.
 - A newly scaffolded game is not complete until its player display passes the
   mandatory rendered visual inspection described above.
+- A newly scaffolded game is not complete until its game-win animation, and
+  round-win animation when applicable, are implemented and verified.
 - The playground discovers games from `games/*/src/index.ts`; do not add
   manual game imports to `apps/playground/src/App.tsx`.
 - Prefer deterministic game logic. Any randomness should flow through the SDK

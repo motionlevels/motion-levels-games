@@ -56,5 +56,7 @@ const readme = await readFile(path.join(gameRoot, "README.md"), "utf8");
 assert.match(readme, /ci-smoke-game/);
 assert.match(readme, /Required player display review/);
 assert.match(readme, /native 1920x1080 player display/);
+assert.match(readme, /Required winning animations/);
+assert.match(readme, /distinct game-win animation/);
 
 console.log(`Scaffold smoke test created ${gameRoot}`);

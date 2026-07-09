@@ -105,6 +105,10 @@ For every playthrough, judge both surfaces:
 - **Start lifecycle:** Does selection remain in `waiting`? Do the floor and TV
   show where players must stand, does `starting` visibly count down, and does
   leaving a required zone cancel the countdown?
+- **Win transitions:** Does a round win pause scoring and celebrate clearly on
+  both surfaces before the next round? Does the final game win have a distinct,
+  satisfying animation before reset, with the winner and completed result
+  still readable?
 - **Board:** Can a person on the floor infer what to do from lights alone? Are
   important objects visible and distinguishable?
 - **Player display:** Does the TV explain state, score, round progress, target,
@@ -158,10 +162,18 @@ or text that technically fits but still looks out of place. Do not hand off the
 game until all text fits cleanly without ellipses or clipping and remains
 balanced within its container.
 
+For every new game, capture representative floor and native player-display
+frames during the final game-win animation. If the game has rounds, capture the
+round-win animation separately and verify that it finishes before the next
+round begins. Tests must prove that scoring input is ignored during both
+transitions and that reset/round advancement happens only after their
+deterministic durations.
+
 Report:
 
 - commands run and their result
 - screenshots or capture dimensions used for evidence
 - phases and worst-case text values visually inspected
+- round-win and game-win animation states inspected
 - what changed in gameplay and/or player display
 - any remaining risk or untested scenario

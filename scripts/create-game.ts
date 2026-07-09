@@ -554,6 +554,16 @@ Keep the player-presence gate and pre-start animation when replacing the
 scaffolded gameplay. Use \`start: { mode: "immediate" }\` only when a product
 requirement explicitly calls for selection-time autoplay.
 
+## Required winning animations
+
+Implement a distinct game-win animation on both the floor and player display
+before this game resets. If the game has rounds, also add a shorter, visually
+distinct round-win animation before the next round begins. Each transition must
+show the winner and completed result, ignore scoring input while active, and
+use deterministic engine timing. Add fixtures and tests for representative
+animation frames, then capture and visually inspect both surfaces in the
+playground.
+
 ## Required player display review
 
 Before this game is considered complete, open it in the playground and capture

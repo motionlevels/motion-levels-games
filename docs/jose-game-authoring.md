@@ -66,6 +66,16 @@ uses ellipses, breaks mid-word, wraps awkwardly, or looks too large or small for
 its container. Passing tests or checking the image dimensions is not a
 substitute for looking at the rendered image.
 
+## Add Winning Animations
+
+Every new game needs a game-win celebration on both the floor and player
+display before it resets. If the game has rounds, add a separate, shorter
+round-win celebration before the next round begins. Both transitions must show
+the winner and completed result, ignore scoring input while active, and use
+deterministic timing. Capture and inspect both animation states in the
+playground; they must not look like normal gameplay, readiness, or the next
+start countdown.
+
 ## Before Pushing To Dev
 
 ```sh
@@ -92,8 +102,10 @@ or an agent resumes work there, rather than after every `main` commit.
 7. Keep `manifest.id`, package name, README, tests, and fixtures in sync.
 8. Visually inspect native player-display captures for every main phase and
    representative worst-case text before calling a new game complete.
-9. Run `npm run check` before pushing.
-10. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
+9. Implement and inspect a game-win animation, plus a separate round-win
+   animation when the game has rounds.
+10. Run `npm run check` before pushing.
+11. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
    green.
-11. Commit every completed task before handing it off. Never force-push,
+12. Commit every completed task before handing it off. Never force-push,
     rebase, amend, or otherwise rewrite history.

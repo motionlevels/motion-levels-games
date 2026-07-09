@@ -142,6 +142,22 @@ Use it only when the game specification explicitly requires autoplay on
 selection. The validator rejects missing or malformed start policies, and the
 scaffold generates the player-ready lifecycle by default.
 
+## Round And Game Win Transitions
+
+Every game must end with a deliberate game-win animation on both the floor and
+player display. A round-based game must also pause between rounds for a shorter,
+distinct round-win animation. The transition should identify the winning
+player or team, keep the completed score visible, and be unmistakable from
+normal play, readiness, or the next start countdown.
+
+Model celebrations as deterministic timed game states. Ignore scoring input
+during the transition, retain the completed result in the snapshot, and only
+advance the round or reset after the animation duration has elapsed. Tests and
+fixtures must exercise representative frames from the round-win transition
+when applicable and the final game-win transition for every game. Browser
+verification must inspect captures of both the floor and native 1920x1080
+player display while each celebration is active.
+
 ## Creating Games
 
 Use the scaffold command instead of copying another game by hand:
@@ -157,7 +173,8 @@ while the Vite dev server is running. Run `npm install` before committing so the
 workspace lockfile knows about the new package, then run `npm run check`.
 Preserve the scaffolded waiting and starting states when replacing its example
 gameplay; define intentional player-detection zones before adding running-state
-logic.
+logic. Implement a game-win animation before considering the scaffolded game
+complete, and add a separate round-win animation if the game introduces rounds.
 
 Before a new game is considered complete, run it in the browser and visually
 inspect native 1920x1080 player-display captures. Review every supported main
