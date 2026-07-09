@@ -103,7 +103,9 @@ For every playthrough, judge both surfaces:
 - **Board:** Can a person on the floor infer what to do from lights alone? Are
   important objects visible and distinguishable?
 - **Player display:** Does the TV explain state, score, round progress, target,
-  and latest feedback without selectable/browser-looking elements?
+  and latest feedback without selectable/browser-looking elements? Inspect the
+  rendered image for overflow, collisions, clipping, ellipses, mid-word
+  breaks, awkward wrapping, and text that is out of scale with its container.
 - **Agent feedback:** Do `ml.getState()` and captures provide enough evidence to
   diagnose the next change?
 
@@ -141,9 +143,20 @@ await ml.capture(["display", "boardPhysical", "combined"]);
 await ml.media();
 ```
 
+For a new game or a material player-display change, the browser pass must
+include a native `display` capture at 1920x1080 for every main phase the game
+supports. Populate representative worst-case content: longest expected labels
+and player names, maximum scores and timer widths, dense event/status text, and
+finished-state messaging. Open and visually inspect each rendered capture;
+tests, DOM snapshots, and dimensions alone cannot detect bad visual hierarchy
+or text that technically fits but still looks out of place. Do not hand off the
+game until all text fits cleanly without ellipses or clipping and remains
+balanced within its container.
+
 Report:
 
 - commands run and their result
 - screenshots or capture dimensions used for evidence
+- phases and worst-case text values visually inspected
 - what changed in gameplay and/or player display
 - any remaining risk or untested scenario

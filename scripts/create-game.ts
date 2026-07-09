@@ -553,6 +553,16 @@ Keep \`manifest.id\` exactly equal to the directory name: \`${options.gameId}\`.
 Keep the player-presence gate and pre-start animation when replacing the
 scaffolded gameplay. Use \`start: { mode: "immediate" }\` only when a product
 requirement explicitly calls for selection-time autoplay.
+
+## Required player display review
+
+Before this game is considered complete, open it in the playground and capture
+the native 1920x1080 player display for every supported main phase. Actually
+inspect the rendered images with representative worst-case content: long
+labels and player names, wide scores and timers, dense status text, and the
+finished state. Fix overflow, clipping, collisions, ellipses, mid-word breaks,
+awkward wrapping, and text that is visually too large or small for its
+container. Tests and capture dimensions do not replace this visual review.
 `;
 }
 

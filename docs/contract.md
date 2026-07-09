@@ -158,3 +158,13 @@ workspace lockfile knows about the new package, then run `npm run check`.
 Preserve the scaffolded waiting and starting states when replacing its example
 gameplay; define intentional player-detection zones before adding running-state
 logic.
+
+Before a new game is considered complete, run it in the browser and visually
+inspect native 1920x1080 player-display captures. Review every supported main
+phase with representative worst-case content, including long labels and player
+names, maximum-width scores and timers, dense status/event text, and the final
+result. Text must remain inside its container, wrap on whole words when needed,
+and preserve a clear visual hierarchy. Ellipses, clipping, collisions,
+mid-word breaks, and text that is disproportionately large or small must be
+fixed before handoff. Automated tests and capture-size checks do not replace
+viewing the rendered images.

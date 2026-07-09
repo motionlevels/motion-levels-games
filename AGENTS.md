@@ -27,6 +27,17 @@ no database, venue hardware, Motion Go, or platform API coupling.
 
 ## Player Display Layout
 
+- **A rendered visual inspection is mandatory for every new game and every
+  material player-display change.** Open the game in the playground, capture
+  the native 1920x1080 `display` surface, and actually inspect the image before
+  finishing the task. DOM assertions, successful builds, and checking capture
+  dimensions are useful but do not replace looking at the rendered display.
+- Inspect representative content for every main phase (`waiting`, `starting`,
+  `running`, and `finished` when supported), including the longest expected
+  labels, player names, scores, timers, and event text. Look specifically for
+  text escaping or colliding with its container, clipped text, ellipses,
+  mid-word breaks, awkward wrapping, and text that is visually too large or
+  too small for the surrounding hierarchy. Fix every issue before handoff.
 - **Never truncate player-facing text mid-word.** Do not use
   `text-overflow: ellipsis` with `white-space: nowrap` on any string a player
   reads on the TV display — it produces half-words like `Pendien…`. Size the
@@ -89,6 +100,8 @@ no database, venue hardware, Motion Go, or platform API coupling.
 - Run `npm test` and `npm run build` before publishing changes when practical.
 - Create new games with `npm run create:game -- <game-id> "Display Name"`
   instead of copying an existing game by hand.
+- A newly scaffolded game is not complete until its player display passes the
+  mandatory rendered visual inspection described above.
 - The playground discovers games from `games/*/src/index.ts`; do not add
   manual game imports to `apps/playground/src/App.tsx`.
 - Prefer deterministic game logic. Any randomness should flow through the SDK

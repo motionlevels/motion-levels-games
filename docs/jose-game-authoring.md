@@ -55,6 +55,17 @@ npm run dev --workspace apps/playground
 The playground automatically discovers games from `games/*/src/index.ts`. New
 games and code changes should appear in the selector while Vite is running.
 
+## Inspect The Player Display
+
+Every new game must be visually reviewed in the playground before it is ready
+to push. Capture and open the native 1920x1080 player display for each main
+phase (`waiting`, `starting`, `running`, and `finished` when available). Use
+representative worst-case content such as long labels and names, wide scores
+and timers, and dense status text. Fix text that overflows, clips, collides,
+uses ellipses, breaks mid-word, wraps awkwardly, or looks too large or small for
+its container. Passing tests or checking the image dimensions is not a
+substitute for looking at the rendered image.
+
 ## Before Pushing To Dev
 
 ```sh
@@ -79,8 +90,10 @@ or an agent resumes work there, rather than after every `main` commit.
 5. Keep all game code inside `games/<game-id>/`.
 6. Do not manually add game imports to `apps/playground/src/App.tsx`.
 7. Keep `manifest.id`, package name, README, tests, and fixtures in sync.
-8. Run `npm run check` before pushing.
-9. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
+8. Visually inspect native player-display captures for every main phase and
+   representative worst-case text before calling a new game complete.
+9. Run `npm run check` before pushing.
+10. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
    green.
-10. Commit every completed task before handing it off. Never force-push,
+11. Commit every completed task before handing it off. Never force-push,
     rebase, amend, or otherwise rewrite history.
