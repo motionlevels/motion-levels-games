@@ -20,6 +20,13 @@ export function PlayerDisplay({
     ? snapshot.lastRoundHits
     : snapshot.roundHits;
   const lastValue = snapshot.lastRoundWinner || "-";
+  const readyVisible = snapshot.phase === "waiting" || snapshot.phase === "starting";
+  const currentRound = Math.min(
+    totalRounds,
+    snapshot.rounds.length + (snapshot.phase === "running" || snapshot.phase === "starting" ? 1 : 0)
+  );
+  const progressLabel = readyVisible ? "Ready" : "Round";
+  const progressValue = readyVisible ? `${snapshot.activeTargets}/2` : `${currentRound}/${totalRounds}`;
 
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase} variant="versus">
@@ -35,7 +42,7 @@ export function PlayerDisplay({
 
         <MetricRow columns={4}>
           <MetricPanel label={rallyLabel} tone="cyan" value={rallyValue} />
-          <MetricPanel label="Ready" tone="green" value={`${snapshot.activeTargets}/2`} />
+          <MetricPanel label={progressLabel} tone={readyVisible ? "green" : "yellow"} value={progressValue} />
           <MetricPanel label="Last" tone="magenta" value={lastValue} />
           <MetricPanel label="Time" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
         </MetricRow>

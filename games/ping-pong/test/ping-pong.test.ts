@@ -3,7 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FLOOR_COLS, FLOOR_ROWS, frameCell, type Frame } from "@motion-levels-games/game-sdk";
-import { PlayerDisplay, ballColor, createGame, manifest, runningFrame, runningSnapshot } from "../src/index.ts";
+import { PlayerDisplay, ballColor, createGame, manifest, runningFrame, runningSnapshot, waitingSnapshot } from "../src/index.ts";
 
 function countColor(frame: Frame, color: string): number {
   return frame.cells.filter((cell) => cell.color === color).length;
@@ -112,6 +112,15 @@ test("fixtures and display render score state", () => {
   assert.equal(runningSnapshot.currentGame, manifest.id);
   assert.equal(frameCell(runningFrame, 8, 16)?.color, ballColor);
 
+  const waitingHtml = renderToStaticMarkup(
+    React.createElement(PlayerDisplay, {
+      snapshot: waitingSnapshot,
+      frame: runningFrame
+    })
+  );
+  assert.match(waitingHtml, /Ready/);
+  assert.match(waitingHtml, /0\/2/);
+
   const html = renderToStaticMarkup(
     React.createElement(PlayerDisplay, {
       snapshot: runningSnapshot,
@@ -121,5 +130,8 @@ test("fixtures and display render score state", () => {
 
   assert.match(html, /Ping Pong/);
   assert.match(html, /Rally/);
-  assert.match(html, /2\/2/);
+  assert.match(html, /Round/);
+  assert.match(html, /1\/9/);
+  assert.doesNotMatch(html, /Ready/);
+  assert.doesNotMatch(html, /2\/2/);
 });
