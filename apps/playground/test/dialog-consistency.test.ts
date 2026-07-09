@@ -73,6 +73,30 @@ test("dialogs and selectors use composable pause locks", () => {
   assert.match(appSource, /disabled=\{pauseLocks\.size > 0\}/, "temporary pause must not expose a misleading resume action");
 });
 
+test("effective pause blocks every player input path", () => {
+  assert.match(
+    appSource,
+    /const handleTilePress[\s\S]*?if \(pausedRef\.current\) \{\s*return;\s*\}[\s\S]*?engineRef\.current\.press/,
+    "floor and API presses must stop before reaching the engine"
+  );
+  assert.match(
+    appSource,
+    /const handleTileRelease[\s\S]*?if \(pausedRef\.current\) \{\s*return;\s*\}[\s\S]*?engineRef\.current\.release/,
+    "floor and API releases must stop before reaching the engine"
+  );
+  assert.match(
+    appSource,
+    /tap: \(x, y, options\) => \{\s*if \(pausedRef\.current\) \{\s*return;\s*\}/,
+    "tap must not smuggle a press or deterministic step through pause"
+  );
+  assert.match(appSource, /interactive=\{!paused\}/, "paused floor tiles must not remain interactive controls");
+  assert.match(
+    appSource,
+    /if \(!pausedRef\.current && nextEffectivePaused\) \{\s*releaseActivePlayerInputs\(\);\s*\}/,
+    "entering pause must release inputs that were already held"
+  );
+});
+
 test("every playground configuration change restarts the active game", () => {
   assert.match(appSource, /const changeSeed[\s\S]*?restart\(nextSeed\)/);
   assert.match(appSource, /const changePlayerCount[\s\S]*?restart\(seedRef\.current, nextPlayerCount\)/);

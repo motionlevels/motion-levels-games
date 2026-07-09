@@ -132,6 +132,12 @@ no database, venue hardware, Motion Go, or platform API coupling.
   pause lock. Release only that lock when the UI closes or blurs; never clear a
   manual pause or another open UI's lock. Keep manual pause state separate from
   temporary interaction pause state.
+- Effective pause is a hard player-input boundary. While manually paused or
+  covered by any temporary pause lock, floor UI and playground API
+  `press`/`release`/`tap` calls must not reach the game engine. Release any
+  already-held inputs when pause begins so they cannot remain stuck on resume.
+  Explicit developer `step()` may advance an existing paused state, but it must
+  never make blocked input take effect.
 - Prefer icons for compact, repeated developer actions. Every icon-only button
   must still have an accessible label and a tooltip.
 - Every playground dialog or popover must use the shared

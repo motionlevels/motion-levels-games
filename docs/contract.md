@@ -32,6 +32,13 @@ The SDK-wide default seed is `137`; manifests do not define per-game seed
 defaults. Explicit seeds are normalized to the seeded RNG's unsigned 32-bit
 domain.
 
+Runners treat pause as a hard player-input boundary. They must not forward
+press, release, or tap events while paused, and must release any already-held
+inputs when entering pause so readiness zones and controls cannot stick after
+resume. A development runner may expose explicit deterministic stepping while
+paused, but stepping must only evolve the state established before pause and
+must not apply blocked player input.
+
 ## Manifest-driven configuration
 
 `manifest.config.vars` is the only schema for game options. Every variable has

@@ -148,6 +148,7 @@ export function App() {
   const manuallyPausedRef = useRef(manuallyPaused);
   const pauseLocksRef = useRef<PauseLockSet>(pauseLocks);
   const pausedRef = useRef(paused);
+  const activePlayerInputsRef = useRef(new Map<string, { x: number; y: number }>());
   const snapshotRef = useRef(snapshot);
   const frameRef = useRef(frame);
   const eventsRef = useRef(events);
@@ -280,11 +281,44 @@ export function App() {
     return () => document.removeEventListener("fullscreenchange", updateFullscreen);
   }, []);
 
-  const setManuallyPausedState = useCallback((nextPaused: boolean) => {
-    manuallyPausedRef.current = nextPaused;
-    pausedRef.current = isPlaygroundPaused(nextPaused, pauseLocksRef.current);
-    setManuallyPaused(nextPaused);
+  const syncEngineState = useCallback((state: GameEngineState) => {
+    snapshotRef.current = state.snapshot;
+    frameRef.current = state.frame;
+    setSnapshot(state.snapshot);
+    setFrame(state.frame);
+
+    if (state.events.length > 0) {
+      const mergedEvents = [...state.events, ...eventsRef.current].slice(0, 50);
+      eventsRef.current = mergedEvents;
+      setEvents(mergedEvents);
+    }
   }, []);
+
+  const releaseActivePlayerInputs = useCallback(() => {
+    let nextState: GameEngineState | undefined;
+    const emittedEvents: GameEvent[] = [];
+
+    for (const tile of activePlayerInputsRef.current.values()) {
+      nextState = engineRef.current.release(tile.x, tile.y);
+      emittedEvents.push(...nextState.events);
+    }
+    activePlayerInputsRef.current.clear();
+
+    if (nextState) {
+      syncEngineState({ ...nextState, events: emittedEvents });
+    }
+  }, [syncEngineState]);
+
+  const setManuallyPausedState = useCallback((nextPaused: boolean) => {
+    const nextEffectivePaused = isPlaygroundPaused(nextPaused, pauseLocksRef.current);
+    if (!pausedRef.current && nextEffectivePaused) {
+      releaseActivePlayerInputs();
+    }
+
+    manuallyPausedRef.current = nextPaused;
+    pausedRef.current = nextEffectivePaused;
+    setManuallyPaused(nextPaused);
+  }, [releaseActivePlayerInputs]);
 
   const setInteractionPauseState = useCallback((lockId: string, active: boolean) => {
     const nextLocks = updatePauseLocks(pauseLocksRef.current, lockId, active);
@@ -292,10 +326,15 @@ export function App() {
       return;
     }
 
+    const nextEffectivePaused = isPlaygroundPaused(manuallyPausedRef.current, nextLocks);
+    if (!pausedRef.current && nextEffectivePaused) {
+      releaseActivePlayerInputs();
+    }
+
     pauseLocksRef.current = nextLocks;
-    pausedRef.current = isPlaygroundPaused(manuallyPausedRef.current, nextLocks);
+    pausedRef.current = nextEffectivePaused;
     setPauseLocks(nextLocks);
-  }, []);
+  }, [releaseActivePlayerInputs]);
 
   const setDebugOpenState = useCallback((open: boolean) => {
     setInteractionPauseState("debug-dialog", open);
@@ -324,19 +363,6 @@ export function App() {
 
   const previewFrameFor = useCallback((sourceFrame: Frame = frameRef.current): Frame => sourceFrame, []);
 
-  const syncEngineState = useCallback((state: GameEngineState) => {
-    snapshotRef.current = state.snapshot;
-    frameRef.current = state.frame;
-    setSnapshot(state.snapshot);
-    setFrame(state.frame);
-
-    if (state.events.length > 0) {
-      const mergedEvents = [...state.events, ...eventsRef.current].slice(0, 50);
-      eventsRef.current = mergedEvents;
-      setEvents(mergedEvents);
-    }
-  }, []);
-
   const restart = useCallback(
     (
       nextSeed = seedRef.current,
@@ -353,6 +379,7 @@ export function App() {
       });
       const nextState = nextEngine.state;
       engineRef.current = nextEngine;
+      activePlayerInputsRef.current.clear();
       eventAutoFollowRef.current = true;
       previousLatestEventRef.current = "";
       setEventAutoFollow(true);
@@ -500,7 +527,12 @@ export function App() {
 
   const handleTilePress = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
+      if (pausedRef.current) {
+        return;
+      }
+
       const tile = pointToPhysicalTile(x, y, space);
+      activePlayerInputsRef.current.set(`${tile.x}:${tile.y}`, tile);
       syncEngineState(engineRef.current.press(tile.x, tile.y));
     },
     [syncEngineState]
@@ -508,7 +540,12 @@ export function App() {
 
   const handleTileRelease = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
+      if (pausedRef.current) {
+        return;
+      }
+
       const tile = pointToPhysicalTile(x, y, space);
+      activePlayerInputsRef.current.delete(`${tile.x}:${tile.y}`);
       syncEngineState(engineRef.current.release(tile.x, tile.y));
     },
     [syncEngineState]
@@ -668,6 +705,10 @@ export function App() {
       press: (x, y, options) => handleTilePress(x, y, options?.space ?? "physical"),
       release: (x, y, options) => handleTileRelease(x, y, options?.space ?? "physical"),
       tap: (x, y, options) => {
+        if (pausedRef.current) {
+          return;
+        }
+
         handleTilePress(x, y, options?.space ?? "physical");
         stepGame(options?.durationMs ?? DEFAULT_ENGINE_FRAME_MILLIS);
         handleTileRelease(x, y, options?.space ?? "physical");
@@ -1274,7 +1315,7 @@ export function App() {
           <FloorPreview
             className="playground-floor-preview"
             frame={frame}
-            interactive
+            interactive={!paused}
             onTilePress={(x, y) => handleTilePress(x, y, "preview")}
             onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}
           />

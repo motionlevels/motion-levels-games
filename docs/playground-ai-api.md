@@ -18,11 +18,14 @@ baseline. `ml.step()` with no argument advances exactly one engine frame.
 ## Deterministic Playthrough
 
 ```js
-await ml.pause();
 ml.reset();
+ml.resume();
 ml.press(4, 20);
+ml.pause();
 ml.step(2000);
+ml.resume();
 ml.release(4, 20);
+ml.pause();
 ml.step(1000);
 
 const feedback = await ml.capture(["display", "boardPhysical", "combined"]);
@@ -155,6 +158,14 @@ engine. Pause locks compose, so closing one control does not resume while
 another is still open. Manual pause is independent: a game that was manually
 paused before opening a control remains paused after every control closes.
 `getState().paused` reports the effective combined pause state.
+
+Pause is a hard player-input boundary. `press`, `release`, and `tap` are ignored
+while `getState().paused` is true, whether pause is manual or comes from an open
+dialog/selector. Entering pause releases any tiles that were already held so
+they cannot remain stuck after resume. Explicit `step()` still advances the
+existing engine state for deterministic inspection; it does not apply blocked
+input. For deterministic input, briefly `resume()`, send the input
+synchronously, then `pause()` before stepping time.
 
 ## Start Lifecycle
 

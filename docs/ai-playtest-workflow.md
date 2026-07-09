@@ -46,12 +46,15 @@ document.documentElement.dataset.motionLevelsPlaygroundApi === "ready"
 Run short, repeatable playthroughs:
 
 ```js
-await ml.pause();
 ml.reset();
+ml.resume();
 ml.press(8, 16);
+ml.pause();
 ml.step(2000);
+ml.resume();
 ml.release(8, 16);
 ml.tap(4, 4);
+ml.pause();
 ml.step(1000);
 
 const feedback = await ml.capture(["display", "boardPhysical", "boardPreview", "combined"]);
@@ -71,6 +74,11 @@ independent of booking size. Use a strict count only with a documented gameplay
 dependency, and verify that Any mode still waits for the physical players the
 current board requires.
 
+Paused games reject player input. For deterministic playtests, call `resume()`,
+send `press`, `release`, or `tap` synchronously, and call `pause()` again before
+advancing with `step()`. Never expect an input sent while paused to be queued or
+applied later.
+
 Configuration returned by `ml.getState()` is manifest-normalized: defaults are
 filled, numeric bounds are enforced, undeclared options are removed, and an
 invalid difficulty falls back to the manifest default. Tests should assert
@@ -80,6 +88,8 @@ When reviewing playground behavior, verify that a selected game survives a
 reload, every configuration change restarts the engine, and dialogs/selectors
 pause only while they are active. Include a manually paused case so closing a
 control cannot accidentally resume the game.
+Also attempt floor and API input while paused and verify that snapshot, paddle,
+targets, and held-player readiness do not change.
 
 Generate catalog-style media when reviewing a game card or TV display:
 
