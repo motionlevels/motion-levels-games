@@ -15,7 +15,6 @@
     "@motion-levels-games/game-sdk": "0.1.0",
     "@motion-levels-games/hello-world": "0.1.0",
     "@motion-levels-games/ping-pong": "0.1.0",
-    "@motion-levels/assets": "git+https://github.com/motionlevels/motion-levels-assets.git#main",
     "@vitejs/plugin-react": "^6.0.2",
     "html-to-image": "^1.11.13",
     "react": "^19.2.7",

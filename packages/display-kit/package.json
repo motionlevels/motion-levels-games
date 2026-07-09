@@ -13,8 +13,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@motion-levels-games/game-sdk": "0.1.0",
-    "@motion-levels/assets": "git+https://github.com/motionlevels/motion-levels-assets.git#main"
+    "@motion-levels-games/game-sdk": "0.1.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",

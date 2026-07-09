@@ -1,4 +1,4 @@
-import faviconUrl from "@motion-levels/assets/brand/motion-levels-favicon.png";
+import faviconUrl from "./assets/motion-levels-favicon.png";
 
 export function installFavicon(): void {
   const existing = document.querySelector<HTMLLinkElement>("link[rel='icon']");

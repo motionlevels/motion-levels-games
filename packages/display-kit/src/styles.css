@@ -58,7 +58,7 @@
 }
 
 .ml-tv-brand-mark {
-  background: url("@motion-levels/assets/brand/motion-levels-icon.png") center / contain no-repeat;
+  background: url("./assets/motion-levels-icon.png") center / contain no-repeat;
   box-shadow:
     0 0 34px rgba(54, 217, 255, 0.26),
     0 0 54px rgba(255, 82, 104, 0.18);
