@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FLOOR_COLS, FLOOR_ROWS, frameCell, type Frame } from "@motion-levels-games/game-sdk";
+import {
+  FLOOR_COLS,
+  FLOOR_ROWS,
+  frameCell,
+  gameDifficultyOptions,
+  gamePlayerCountOptions,
+  type Frame
+} from "@motion-levels-games/game-sdk";
 import {
   PlayerDisplay,
   ballColor,
@@ -41,6 +48,8 @@ test("manifest exposes renamed Ping Pong game", () => {
   assert.equal(manifest.id, "ping-pong");
   assert.equal(manifest.label, "Ping Pong");
   assert.deepEqual(manifest.players, { allowAny: true, min: 2, max: 2 });
+  assert.deepEqual(gamePlayerCountOptions(manifest), [0, 2]);
+  assert.deepEqual(gameDifficultyOptions(manifest), ["easy", "medium", "hard", "expert"]);
   assert.deepEqual(
     manifest.config?.vars?.map((variable) => variable.key),
     ["points_to_win", "initial_ball_speed", "return_speed_multiplier", "difficulty_multiplier"]
@@ -132,7 +141,7 @@ test("custom speed and difficulty variables tune the same shared model", () => {
   assertClose(snapshot.ballSpeed, 10);
 });
 
-test("supports arbitrary configured player counts while rendering two teams", () => {
+test("allowAny accepts Any or the declared player range only", () => {
   const game = createGame({
     seed: 7,
     playerCount: 5,
@@ -148,7 +157,7 @@ test("supports arbitrary configured player counts while rendering two teams", ()
   game.init(0);
   const snapshot = game.snapshot();
 
-  assert.equal(snapshot.playerCount, 5);
+  assert.equal(snapshot.playerCount, 2);
   assert.equal(snapshot.players.length, 2);
   assert.equal(snapshot.players[0]?.label, "Rojo");
   assert.equal(snapshot.players[1]?.label, "Azul");

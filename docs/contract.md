@@ -71,6 +71,8 @@ Difficulty choices and their default belong only in
 `manifest.config.difficulty`.
 `defaultGamePlayerCount` supplies `0` for `allowAny` games and `players.min`
 for strict games so playground, media, and runtime defaults remain identical.
+`gamePlayerCountOptions` and `gameDifficultyOptions` produce the exact selector
+choices from those manifest declarations.
 
 ## Expected Game Shape
 
@@ -95,7 +97,9 @@ By default, `manifest.players.min` and `manifest.players.max` describe the
 valid player-count range and the SDK clamps incoming counts into that range.
 Use `manifest.players.allowAny: true` only for games whose board and gameplay
 do not depend on the exact number of real players. In that mode `playerCount: 0`
-means "unspecified/any", and positive counts are preserved instead of clamped.
+means "unspecified/any". Positive counts are still clamped into the declared
+`min`–`max` range, so `allowAny` adds one choice rather than disabling the
+manifest constraint.
 
 For two-team games such as Ping Pong, `allowAny` is acceptable because the
 floor always renders red and blue halves; the player display can keep showing

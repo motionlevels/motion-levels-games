@@ -24,6 +24,7 @@ import { FloorPreview } from "@motion-levels-games/display-kit";
 import {
   createGameEngine,
   defaultGamePlayerCount,
+  gamePlayerCountOptions,
   DEFAULT_GAME_SEED,
   DEFAULT_ENGINE_FPS,
   DEFAULT_ENGINE_FRAME_MILLIS,
@@ -142,8 +143,8 @@ export function App() {
   const eventsRef = useRef(events);
   const PlayerDisplay = selectedGame.PlayerDisplay;
   const gameConfigVars = selectedGame.manifest.config?.vars ?? [];
-  const difficultyChoices = difficultyOptionsFor(selectedGame);
-  const playerCountChoices = playerCountOptionsFor(selectedGame);
+  const difficultyChoices = gameDifficultyOptions(selectedGame.manifest);
+  const playerCountChoices = gamePlayerCountOptions(selectedGame.manifest);
   const workbenchStyle = {
     "--display-preview-scale": displayPreviewScale
   } as CSSProperties;
@@ -1378,23 +1379,6 @@ function formatConfigValue(configVar: GameConfigVar, value: unknown): string {
   }
 
   return String(value ?? configVar.default ?? "—");
-}
-
-function playerCountOptionsFor(game: PlaygroundGame): number[] {
-  if (game.manifest.players.allowAny) {
-    const maxChoice = Math.max(8, game.manifest.players.max);
-    return Array.from({ length: maxChoice + 1 }, (_, count) => count);
-  }
-
-  const counts = Array.from(
-    { length: game.manifest.players.max - game.manifest.players.min + 1 },
-    (_, index) => game.manifest.players.min + index
-  );
-  return counts;
-}
-
-function difficultyOptionsFor(game: PlaygroundGame): GameDifficulty[] {
-  return gameDifficultyOptions(game.manifest);
 }
 
 function defaultDifficultyFor(game: PlaygroundGame): GameDifficulty {

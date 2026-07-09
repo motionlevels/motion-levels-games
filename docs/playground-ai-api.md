@@ -132,8 +132,9 @@ The playground reads `manifest.config` from each game and renders matching local
 controls for player count, difficulty, and player-facing config variables. A
 player count of `0` means "any/unspecified" only for games with
 `manifest.players.allowAny: true`; strict games clamp player count into their
-declared min/max range. For positive counts on `allowAny` games, the SDK keeps
-the requested count even if it is above the manifest's visual/team count.
+declared min/max range. `allowAny` adds `0 / Any` to that declared range; it
+does not make every positive count valid. Player and difficulty selectors show
+only the options declared by the manifest.
 
 `getState()` includes the active `seed`, `playerCount`, `difficulty`, and
 `options` values so agents can record the exact run configuration.

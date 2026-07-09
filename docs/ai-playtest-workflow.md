@@ -63,7 +63,8 @@ Use `{ space: "preview" }` only when interacting with the visible board layout.
 game `options`; keep those values with any feedback so regressions are
 reproducible. Use `playerCount: 0` only for games with
 `manifest.players.allowAny: true`; strict player-count games should be tested
-inside their declared min/max range.
+inside their declared min/max range. For `allowAny` games, valid values are `0`
+plus the manifest's declared min/max range; other positive values are clamped.
 
 Configuration returned by `ml.getState()` is manifest-normalized: defaults are
 filled, numeric bounds are enforced, undeclared options are removed, and an

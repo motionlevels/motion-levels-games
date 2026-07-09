@@ -280,8 +280,8 @@ function normalizePlayerCount(value: number | undefined, manifest: GameManifest)
   const rounded = typeof value === "number" && Number.isFinite(value)
     ? Math.round(value)
     : defaultGamePlayerCount(manifest);
-  if (manifest.players.allowAny === true) {
-    return Math.max(0, rounded);
+  if (manifest.players.allowAny === true && rounded === 0) {
+    return 0;
   }
 
   return clamp(rounded, manifest.players.min, manifest.players.max);
@@ -289,6 +289,14 @@ function normalizePlayerCount(value: number | undefined, manifest: GameManifest)
 
 export function defaultGamePlayerCount(manifest: GameManifest): number {
   return manifest.players.allowAny ? 0 : manifest.players.min;
+}
+
+export function gamePlayerCountOptions(manifest: GameManifest): number[] {
+  const declaredCounts = Array.from(
+    { length: manifest.players.max - manifest.players.min + 1 },
+    (_, index) => manifest.players.min + index
+  );
+  return manifest.players.allowAny ? [0, ...declaredCounts] : declaredCounts;
 }
 
 function normalizeNonNegativeNumber(value: number | undefined, fallback: number): number {

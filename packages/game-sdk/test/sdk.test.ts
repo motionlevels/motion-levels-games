@@ -15,6 +15,7 @@ import {
   frameCell,
   gameEvent,
   gameDifficultyOptions,
+  gamePlayerCountOptions,
   inFloorBounds,
   normalizeGameConfig,
   normalizeGameConfigOptions,
@@ -138,7 +139,9 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
     players: { ...manifest.players, allowAny: true }
   };
   assert.equal(normalizeGameConfig({ seed: 1, playerCount: 0 }, flexibleManifest).playerCount, 0);
-  assert.equal(normalizeGameConfig({ seed: 1, playerCount: 12 }, flexibleManifest).playerCount, 12);
+  assert.equal(normalizeGameConfig({ seed: 1, playerCount: 12 }, flexibleManifest).playerCount, 2);
+  assert.deepEqual(gamePlayerCountOptions(manifest), [1, 2]);
+  assert.deepEqual(gamePlayerCountOptions(flexibleManifest), [0, 1, 2]);
   assert.equal(defaultGamePlayerCount(manifest), 1);
   assert.equal(defaultGamePlayerCount(flexibleManifest), 0);
   assert.equal(normalizeGameConfig({}, flexibleManifest).playerCount, 0);
@@ -171,7 +174,7 @@ test("config value helpers use manifest definitions as the only schema", () => {
   );
 });
 
-test("difficulty options use shared defaults when a manifest does not override them", () => {
+test("difficulty options expose only manifest choices or shared defaults", () => {
   const manifest = {
     id: "difficulty",
     label: "Difficulty",
@@ -182,6 +185,13 @@ test("difficulty options use shared defaults when a manifest does not override t
 
   assert.deepEqual(gameDifficultyOptions(manifest), ["easy", "medium", "hard", "expert"]);
   assert.equal(normalizeGameConfig({ seed: 1, playerCount: 1, difficulty: "invalid" }, manifest).difficulty, "medium");
+
+  const restrictedManifest = {
+    ...manifest,
+    config: { difficulty: { default: "hard", options: ["easy", "hard"] } }
+  } satisfies GameManifest;
+  assert.deepEqual(gameDifficultyOptions(restrictedManifest), ["easy", "hard"]);
+  assert.equal(normalizeGameConfig({ difficulty: "expert" }, restrictedManifest).difficulty, "hard");
 });
 
 test("seed normalization uses one shared default and the SDK rng domain", () => {
