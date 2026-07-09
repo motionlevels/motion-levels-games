@@ -3,7 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createFrame, setFrameCell } from "@motion-levels-games/game-sdk";
-import { FloorPreview, GameDisplayShell, HeartMeter, MetricPanel } from "../src/index.tsx";
+import { FloorPreview, GameDisplayShell, HeartMeter, MetricPanel, RoundStrip } from "../src/index.tsx";
 
 test("MetricPanel renders label and value without app dependencies", () => {
   const html = renderToStaticMarkup(React.createElement(MetricPanel, { label: "Score", value: 42 }));
@@ -48,4 +48,17 @@ test("GameDisplayShell renders title and phase", () => {
 
   assert.match(html, /Example Catch/);
   assert.match(html, /running/);
+});
+
+test("RoundStrip can render a full match path with pending rounds", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(RoundStrip, {
+      rounds: [{ index: 1, winnerIndex: 0, winnerLabel: "Red", hits: 3 }],
+      totalRounds: 3
+    })
+  );
+
+  assert.match(html, /1\/3/);
+  assert.match(html, /#3/);
+  assert.match(html, /Pending/);
 });

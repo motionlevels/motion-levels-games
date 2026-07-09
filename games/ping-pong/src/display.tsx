@@ -11,8 +11,15 @@ export function PlayerDisplay({
 }) {
   const [red, blue] = snapshot.players;
   const target = Math.max(snapshot.matchTarget, 1);
-  const centerLabel = snapshot.phase === "starting" ? "Starts in" : "Rally";
-  const centerValue = snapshot.phase === "starting" ? formatClock(snapshot.countdownMillis) : snapshot.roundHits;
+  const totalRounds = target * 2 - 1;
+  const centerLabel = snapshot.phase === "starting" ? "Starts in" : "Target";
+  const centerValue = snapshot.phase === "starting" ? formatClock(snapshot.countdownMillis) : target;
+  const centerCaption = snapshot.phase === "starting" ? "get ready" : "points to win";
+  const rallyLabel = snapshot.phase === "finished" ? "Last rally" : "Rally";
+  const rallyValue = snapshot.phase === "finished" && snapshot.lastRoundHits > 0
+    ? snapshot.lastRoundHits
+    : snapshot.roundHits;
+  const lastValue = snapshot.lastRoundWinner || "-";
 
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase} variant="versus">
@@ -23,16 +30,17 @@ export function PlayerDisplay({
           target={target}
           centerLabel={centerLabel}
           centerValue={centerValue}
-          centerCaption={`${target} points to win`}
+          centerCaption={centerCaption}
         />
 
-        <MetricRow columns={3}>
-          <MetricPanel label="Target" tone="amber" value={target} />
+        <MetricRow columns={4}>
+          <MetricPanel label={rallyLabel} tone="cyan" value={rallyValue} />
           <MetricPanel label="Ready" tone="green" value={`${snapshot.activeTargets}/2`} />
-          <MetricPanel label="Last" tone="magenta" value={snapshot.lastRoundWinner || "-"} />
+          <MetricPanel label="Last" tone="magenta" value={lastValue} />
+          <MetricPanel label="Time" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
         </MetricRow>
 
-        <RoundStrip rounds={snapshot.rounds} />
+        <RoundStrip rounds={snapshot.rounds} totalRounds={totalRounds} />
       </div>
     </GameDisplayShell>
   );

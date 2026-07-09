@@ -168,23 +168,31 @@ export function PlayerScorePanel({
 
 export function RoundStrip({
   rounds,
+  totalRounds,
   fallbackLabel = "Pending",
   className = ""
 }: {
   rounds: RoundSummary[];
+  totalRounds?: number;
   fallbackLabel?: string;
   className?: string;
 }) {
-  const visibleRounds = rounds.length > 0 ? rounds : [{ index: 1, winnerLabel: fallbackLabel, hits: 0 }];
+  const roundCount = Math.max(rounds.length, totalRounds ?? 0, 1);
+  const roundByIndex = new Map(rounds.map((round) => [round.index, round]));
+  const visibleRounds = Array.from({ length: roundCount }, (_, index) => {
+    const roundIndex = index + 1;
+    return roundByIndex.get(roundIndex) ?? { index: roundIndex, winnerLabel: fallbackLabel, hits: 0 };
+  }).slice(-12);
+  const progressLabel = totalRounds ? `${rounds.length}/${totalRounds}` : rounds.length;
 
   return (
     <section className={`ml-round-strip ${className}`.trim()} aria-label="Rounds">
       <div className="ml-round-strip-head">
         <span>Rounds</span>
-        <strong>{rounds.length}</strong>
+        <strong>{progressLabel}</strong>
       </div>
       <div className="ml-round-list">
-        {visibleRounds.slice(-7).map((round) => (
+        {visibleRounds.map((round) => (
           <article
             className={`ml-round-card ${round.winnerIndex === 0 ? "is-red" : round.winnerIndex === 1 ? "is-blue" : "is-pending"}`}
             key={round.index}
