@@ -122,6 +122,10 @@ For every playthrough, judge both surfaces:
   and latest feedback without selectable/browser-looking elements? Inspect the
   rendered image for overflow, collisions, clipping, ellipses, mid-word
   breaks, awkward wrapping, and text that is out of scale with its container.
+- **Distance readability:** Are score, round/progress, lives, and time the
+  largest readable elements their available cards allow? Flag large empty
+  metric panels containing desktop-sized values, and test the widest realistic
+  values before increasing type.
 - **Lives:** When present, are remaining lives solid red hearts and lost lives
   the same solid heart shape in muted gray? Does the shared `LivesMeter` keep
   every slot visible at full, partial, and zero lives without wrapping?
@@ -171,6 +175,11 @@ tests, DOM snapshots, and dimensions alone cannot detect bad visual hierarchy
 or text that technically fits but still looks out of place. Do not hand off the
 game until all text fits cleanly without ellipses or clipping and remains
 balanced within its container.
+
+Judge the same captures at reduced on-screen scale to approximate venue
+distance. Primary metrics must remain immediately legible and visually
+dominant; if their cards have unused space, increase them until the widest
+expected value approaches a safe fit.
 
 For every new game, capture representative floor and native player-display
 frames during the final game-win animation. If the game has rounds, capture the

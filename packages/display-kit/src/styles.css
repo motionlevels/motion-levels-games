@@ -1278,11 +1278,26 @@
 
 .ml-solo-number-row .ml-metric {
   align-content: center;
-  padding: 28px 30px;
+  gap: 18px;
+  padding: 30px 34px;
+}
+
+.ml-solo-number-row .ml-metric-label {
+  font-size: clamp(24px, 1.55vw, 30px);
 }
 
 .ml-solo-number-row .ml-metric-value {
-  font-size: clamp(82px, 5.6vw, 112px);
+  font-size: clamp(136px, 8.2vw, 164px);
+  line-height: 0.88;
+}
+
+.ml-solo-number-row .ml-lives-meter {
+  gap: 14px;
+  min-height: 124px;
+}
+
+.ml-solo-number-row .ml-life-heart {
+  font-size: clamp(116px, 6.8vw, 136px);
 }
 
 .ml-solo-message {

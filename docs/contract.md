@@ -106,6 +106,20 @@ remaining and lost lives at a glance. Fixtures and tests must cover full,
 partially depleted, and zero-life states, and browser verification must inspect
 the native player display for clipping or wrapping in each state.
 
+## Distance Readability
+
+The TV is read from across the venue, not at desktop distance. Primary values
+such as score, round/progress, lives, and time should use the largest type that
+fits their containers for the widest expected value. Do not leave a small
+number floating inside a large metric card; use that space to increase the
+critical information's scale.
+
+Labels, instructions, decorative previews, and secondary details remain
+subordinate to live metrics. Prefer the shared primary metric layouts in
+`@motion-levels-games/display-kit`, then visually inspect native 1920x1080 and
+scaled-playground captures with both typical and maximum-width values. Reduce
+type only when the realistic worst case would clip, collide, or wrap badly.
+
 ## Player Counts
 
 Every manifest explicitly declares `players.allowAny`. The authoring default is

@@ -38,6 +38,15 @@ no database, venue hardware, Motion Go, or platform API coupling.
   text escaping or colliding with its container, clipped text, ellipses,
   mid-word breaks, awkward wrapping, and text that is visually too large or
   too small for the surrounding hierarchy. Fix every issue before handoff.
+- Design the player display for people reading it from across the venue. Make
+  primary score, round/progress, lives, and time values as large as their cards
+  safely allow. Large unused space around a small primary value is a defect,
+  not breathing room. Use the widest expected value to determine the maximum
+  safe type size, then verify it at native 1920x1080 and in the scaled preview.
+- Keep a distance-first hierarchy: critical live metrics must dominate labels,
+  secondary explanations, decorative previews, and debug-like detail. Prefer
+  the shared primary metric layouts in `packages/display-kit` so improvements
+  apply consistently across games.
 - **Never truncate player-facing text mid-word.** Do not use
   `text-overflow: ellipsis` with `white-space: nowrap` on any string a player
   reads on the TV display — it produces half-words like `Pendien…`. Size the

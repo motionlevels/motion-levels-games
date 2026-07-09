@@ -66,5 +66,7 @@ assert.match(readme, /Lives, when applicable/);
 assert.match(readme, /render `LivesMeter`/);
 assert.match(readme, /Player count policy/);
 assert.match(readme, /players\.allowAny: true/);
+assert.match(readme, /Design for venue viewing distance/);
+assert.match(readme, /large empty metric cards/);
 
 console.log(`Scaffold smoke test created ${gameRoot}`);

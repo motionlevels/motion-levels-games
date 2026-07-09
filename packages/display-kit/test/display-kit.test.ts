@@ -34,6 +34,17 @@ test("LivesMeter renders red remaining hearts and gray lost hearts", () => {
   assert.match(styleSource, /\.ml-life-heart\.is-lost\s*\{[^}]*color:\s*#566171;/s);
 });
 
+test("primary solo metrics use distance-readable typography", () => {
+  assert.match(
+    styleSource,
+    /\.ml-solo-number-row \.ml-metric-value\s*\{[^}]*font-size:\s*clamp\(136px, 8\.2vw, 164px\);/s
+  );
+  assert.match(
+    styleSource,
+    /\.ml-solo-number-row \.ml-life-heart\s*\{[^}]*font-size:\s*clamp\(116px, 6\.8vw, 136px\);/s
+  );
+});
+
 test("FloorPreview renders the 16x32 frame with tile metadata", () => {
   const frame = setFrameCell(createFrame("#05070a"), 3, 4, "#148cff");
   const html = renderToStaticMarkup(React.createElement(FloorPreview, { frame }));

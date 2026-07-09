@@ -71,6 +71,11 @@ uses ellipses, breaks mid-word, wraps awkwardly, or looks too large or small for
 its container. Passing tests or checking the image dimensions is not a
 substitute for looking at the rendered image.
 
+The display is viewed from far away. Make score, round/progress, lives, and time
+as large as their cards safely allow, using the widest expected value as the
+fit check. A large metric card with a small value is not finished. Confirm that
+primary metrics remain dominant in both native and scaled playground views.
+
 ## Add Winning Animations
 
 Every new game needs a game-win celebration on both the floor and player
@@ -116,14 +121,16 @@ or an agent resumes work there, rather than after every `main` commit.
 7. Keep `manifest.id`, package name, README, tests, and fixtures in sync.
 8. Visually inspect native player-display captures for every main phase and
    representative worst-case text before calling a new game complete.
-9. Implement and inspect a game-win animation, plus a separate round-win
+9. Maximize primary score, round/progress, lives, and time values for venue
+   viewing distance while keeping worst-case values inside their cards.
+10. Implement and inspect a game-win animation, plus a separate round-win
    animation when the game has rounds.
-10. If the game uses lives, use `LivesMeter` and inspect full, partial, and zero
+11. If the game uses lives, use `LivesMeter` and inspect full, partial, and zero
     life states.
-11. Keep `players.allowAny: true` unless player count materially changes the
+12. Keep `players.allowAny: true` unless player count materially changes the
     game; document and test the reason when setting it to `false`.
-12. Run `npm run check` before pushing.
-13. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
+13. Run `npm run check` before pushing.
+14. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
    green.
-14. Commit every completed task before handing it off. Never force-push,
+15. Commit every completed task before handing it off. Never force-push,
     rebase, amend, or otherwise rewrite history.

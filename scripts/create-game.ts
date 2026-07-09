@@ -591,6 +591,11 @@ labels and player names, wide scores and timers, dense status text, and the
 finished state. Fix overflow, clipping, collisions, ellipses, mid-word breaks,
 awkward wrapping, and text that is visually too large or small for its
 container. Tests and capture dimensions do not replace this visual review.
+
+Design for venue viewing distance. Make primary score, round/progress, lives,
+and time values as large as their cards safely allow. Use the widest expected
+value as the fit test and inspect both native and scaled views. Do not leave
+large empty metric cards around small desktop-sized values.
 `;
 }
 
