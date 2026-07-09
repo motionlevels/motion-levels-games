@@ -1,10 +1,10 @@
 import {
   FLOOR_COLS,
   FLOOR_ROWS,
-  clamp,
   createFrame,
   createSeededRng,
   defaultPlayers,
+  normalizeGameConfig,
   setFrameCell,
   type Frame,
   type GameConfig,
@@ -14,6 +14,7 @@ import {
   type GamePlayer,
   type GameSnapshot,
   type HexColor,
+  type NormalizedGameConfig,
   type PressEvent,
   type SeededRng,
   type TickEvent
@@ -33,7 +34,7 @@ export function createGame(config: GameConfig): GameInstance {
 }
 
 class ExampleCatchGame implements GameInstance {
-  private config: Required<GameConfig>;
+  private config: NormalizedGameConfig;
   private rng: SeededRng;
   private target: Target = { x: 0, y: 0 };
   private phase: GamePhase = "ready";
@@ -200,12 +201,6 @@ class ExampleCatchGame implements GameInstance {
   }
 }
 
-function normalizeConfig(config: GameConfig): Required<GameConfig> {
-  return {
-    seed: Number.isFinite(config.seed) ? config.seed : manifest.defaultSeed,
-    playerCount: clamp(Math.round(config.playerCount), manifest.players.min, manifest.players.max),
-    durationMillis: config.durationMillis ?? manifest.defaultDurationMillis,
-    nowMillis: config.nowMillis ?? 0
-  };
+function normalizeConfig(config: GameConfig): NormalizedGameConfig {
+  return normalizeGameConfig(config, manifest);
 }
-

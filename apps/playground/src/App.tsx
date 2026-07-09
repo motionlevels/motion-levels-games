@@ -1,16 +1,45 @@
 import React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FloorPreview } from "@motion-levels-games/display-kit";
-import { createGame, manifest, PlayerDisplay } from "@motion-levels-games/example-catch";
-import type { Frame, GameEvent, GameInstance, GameSnapshot } from "@motion-levels-games/game-sdk";
+import {
+  PlayerDisplay as ExampleCatchDisplay,
+  createGame as createExampleCatchGame,
+  manifest as exampleCatchManifest
+} from "@motion-levels-games/example-catch";
+import {
+  PlayerDisplay as PingPongDisplay,
+  createGame as createPingPongGame,
+  manifest as pingPongManifest
+} from "@motion-levels-games/ping-pong";
+import type { Frame, GameConfig, GameEvent, GameInstance, GameManifest, GameSnapshot } from "@motion-levels-games/game-sdk";
 
 const tickMillis = 100;
 
-function createStartedGame(seed: number, playerCount: number) {
-  const game = createGame({
+type PlaygroundGame = {
+  manifest: GameManifest;
+  createGame: (config: GameConfig) => GameInstance;
+  PlayerDisplay: React.ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>;
+};
+
+const playgroundGames: PlaygroundGame[] = [
+  {
+    manifest: pingPongManifest,
+    createGame: createPingPongGame,
+    PlayerDisplay: PingPongDisplay as React.ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>
+  },
+  {
+    manifest: exampleCatchManifest,
+    createGame: createExampleCatchGame,
+    PlayerDisplay: ExampleCatchDisplay
+  }
+];
+const defaultGame = playgroundGames[0];
+
+function createStartedGame(gameModule: PlaygroundGame, seed: number, playerCount: number) {
+  const game = gameModule.createGame({
     seed,
     playerCount,
-    durationMillis: manifest.defaultDurationMillis,
+    durationMillis: gameModule.manifest.defaultDurationMillis,
     nowMillis: 0
   });
   const events = game.init(0);
@@ -19,15 +48,24 @@ function createStartedGame(seed: number, playerCount: number) {
 }
 
 export function App() {
-  const [seed, setSeed] = useState(manifest.defaultSeed);
-  const [playerCount, setPlayerCount] = useState(1);
+  const [selectedGameId, setSelectedGameId] = useState(defaultGame.manifest.id);
+  const selectedGame = useMemo(
+    () => playgroundGames.find((game) => game.manifest.id === selectedGameId) ?? defaultGame,
+    [selectedGameId]
+  );
+  const [seed, setSeed] = useState(defaultGame.manifest.defaultSeed);
+  const [playerCount, setPlayerCount] = useState(defaultGame.manifest.players.min);
   const [paused, setPaused] = useState(false);
-  const started = useMemo(() => createStartedGame(seed, playerCount), []);
+  const started = useMemo(
+    () => createStartedGame(defaultGame, defaultGame.manifest.defaultSeed, defaultGame.manifest.players.min),
+    []
+  );
   const gameRef = useRef<GameInstance>(started.game);
   const [clockMillis, setClockMillis] = useState(0);
   const [snapshot, setSnapshot] = useState<GameSnapshot>(started.game.snapshot());
   const [frame, setFrame] = useState<Frame>(started.game.render());
   const [events, setEvents] = useState<GameEvent[]>(started.events);
+  const PlayerDisplay = selectedGame.PlayerDisplay;
 
   const refresh = useCallback((nextEvents: GameEvent[] = []) => {
     setSnapshot(gameRef.current.snapshot());
@@ -39,8 +77,8 @@ export function App() {
   }, []);
 
   const restart = useCallback(
-    (nextSeed = seed, nextPlayerCount = playerCount) => {
-      const next = createStartedGame(nextSeed, nextPlayerCount);
+    (nextSeed = seed, nextPlayerCount = playerCount, nextGame = selectedGame) => {
+      const next = createStartedGame(nextGame, nextSeed, nextPlayerCount);
       gameRef.current = next.game;
       setClockMillis(0);
       setPaused(false);
@@ -48,11 +86,25 @@ export function App() {
       setSnapshot(next.game.snapshot());
       setFrame(next.game.render());
     },
-    [playerCount, seed]
+    [playerCount, seed, selectedGame]
+  );
+
+  const selectGame = useCallback(
+    (gameId: string) => {
+      const nextGame = playgroundGames.find((game) => game.manifest.id === gameId) ?? selectedGame;
+      const nextSeed = nextGame.manifest.defaultSeed;
+      const nextPlayerCount = nextGame.manifest.players.min;
+
+      setSelectedGameId(nextGame.manifest.id);
+      setSeed(nextSeed);
+      setPlayerCount(nextPlayerCount);
+      restart(nextSeed, nextPlayerCount, nextGame);
+    },
+    [restart, selectedGame]
   );
 
   useEffect(() => {
-    if (paused || snapshot.phase === "finished") {
+    if (paused) {
       return undefined;
     }
 
@@ -66,7 +118,7 @@ export function App() {
     }, tickMillis);
 
     return () => window.clearInterval(id);
-  }, [paused, refresh, snapshot.phase]);
+  }, [paused, refresh]);
 
   const handleTilePress = useCallback(
     (x: number, y: number) => {
@@ -74,6 +126,19 @@ export function App() {
         x,
         y,
         pressed: true,
+        atMillis: clockMillis
+      });
+      refresh(nextEvents);
+    },
+    [clockMillis, refresh]
+  );
+
+  const handleTileRelease = useCallback(
+    (x: number, y: number) => {
+      const nextEvents = gameRef.current.release({
+        x,
+        y,
+        pressed: false,
         atMillis: clockMillis
       });
       refresh(nextEvents);
@@ -90,6 +155,19 @@ export function App() {
         </div>
         <div className="playground-controls">
           <label>
+            Game
+            <select
+              onChange={(event) => selectGame(event.target.value)}
+              value={selectedGame.manifest.id}
+            >
+              {playgroundGames.map((game) => (
+                <option key={game.manifest.id} value={game.manifest.id}>
+                  {game.manifest.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Seed
             <input
               inputMode="numeric"
@@ -103,7 +181,10 @@ export function App() {
               onChange={(event) => setPlayerCount(Number(event.target.value))}
               value={playerCount}
             >
-              {Array.from({ length: manifest.players.max }, (_, index) => index + 1).map((count) => (
+              {Array.from(
+                { length: selectedGame.manifest.players.max - selectedGame.manifest.players.min + 1 },
+                (_, index) => selectedGame.manifest.players.min + index
+              ).map((count) => (
                 <option key={count} value={count}>
                   {count}
                 </option>
@@ -135,7 +216,12 @@ export function App() {
             <span>Interactive floor</span>
             <strong>{snapshot.phase}</strong>
           </div>
-          <FloorPreview frame={frame} interactive onTilePress={handleTilePress} />
+          <FloorPreview
+            frame={frame}
+            interactive
+            onTilePress={handleTilePress}
+            onTileRelease={handleTileRelease}
+          />
         </article>
 
         <article className="display-panel">

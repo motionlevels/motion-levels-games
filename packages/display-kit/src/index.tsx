@@ -71,11 +71,13 @@ export function FloorPreview({
   frame,
   interactive = false,
   onTilePress,
+  onTileRelease,
   className = ""
 }: {
   frame: Frame;
   interactive?: boolean;
   onTilePress?: (x: number, y: number) => void;
+  onTileRelease?: (x: number, y: number) => void;
   className?: string;
 }) {
   const style = {
@@ -104,6 +106,8 @@ export function FloorPreview({
               aria-label={`Tile ${cell.x}, ${cell.y}`}
               key={key}
               onPointerDown={() => onTilePress?.(cell.x, cell.y)}
+              onPointerLeave={() => onTileRelease?.(cell.x, cell.y)}
+              onPointerUp={() => onTileRelease?.(cell.x, cell.y)}
               type="button"
             />
           );

@@ -177,6 +177,133 @@ select {
   width: 140px;
 }
 
+.ping-pong-display {
+  display: grid;
+  gap: 16px;
+}
+
+.ping-pong-scoreboard {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.55fr) minmax(0, 1fr);
+}
+
+.ping-pong-player,
+.ping-pong-center,
+.ping-pong-round-list li {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(196, 214, 238, 0.14);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.ping-pong-player {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.ping-pong-player span,
+.ping-pong-center span,
+.ping-pong-round-list span {
+  color: #9daac0;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.ping-pong-player strong {
+  font-size: 64px;
+  line-height: 0.9;
+}
+
+.ping-pong-player.red strong {
+  color: #ff4d5b;
+  text-shadow: 0 0 24px rgba(255, 28, 40, 0.34);
+}
+
+.ping-pong-player.blue strong {
+  color: #5e94ff;
+  text-shadow: 0 0 24px rgba(20, 92, 255, 0.42);
+}
+
+.ping-pong-score-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.ping-pong-score-track i {
+  background: currentColor;
+  display: block;
+  height: 100%;
+}
+
+.ping-pong-player.red .ping-pong-score-track {
+  color: #ff1c28;
+}
+
+.ping-pong-player.blue .ping-pong-score-track {
+  color: #145cff;
+}
+
+.ping-pong-center {
+  align-content: center;
+  display: grid;
+  justify-items: center;
+  padding: 16px;
+  text-align: center;
+}
+
+.ping-pong-center strong {
+  color: #ffffff;
+  font-size: 44px;
+  line-height: 1;
+}
+
+.ping-pong-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ping-pong-round-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ping-pong-round-list li {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 44px minmax(0, 1fr) 42px;
+  padding: 10px 12px;
+}
+
+.ping-pong-round-list strong,
+.ping-pong-round-list b {
+  min-width: 0;
+}
+
+.ping-pong-round-list .red strong {
+  color: #ff4d5b;
+}
+
+.ping-pong-round-list .blue strong {
+  color: #5e94ff;
+}
+
+.ping-pong-round-list .pending strong {
+  color: #f5f8ff;
+}
+
 .log-panel ol {
   display: grid;
   gap: 8px;
@@ -232,6 +359,11 @@ select {
   }
 
   .playground-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ping-pong-scoreboard,
+  .ping-pong-metrics {
     grid-template-columns: 1fr;
   }
 

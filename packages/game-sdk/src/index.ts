@@ -32,6 +32,13 @@ export type GamePlayer = {
   lives: number;
 };
 
+export type GameRoundSnapshot = {
+  index: number;
+  winnerIndex: number;
+  winnerLabel: string;
+  hits: number;
+};
+
 export type GameEventCue =
   | "none"
   | "start"
@@ -61,6 +68,12 @@ export type GameSnapshot = {
   success: boolean;
   lastEventCue: GameEventCue;
   lastEventMessage: string;
+  countdownMillis?: number;
+  matchTarget?: number;
+  roundHits?: number;
+  lastRoundHits?: number;
+  lastRoundWinner?: string;
+  rounds?: GameRoundSnapshot[];
 };
 
 export type GameManifest = {
@@ -84,6 +97,20 @@ export type GameConfig = {
   playerCount: number;
   durationMillis?: number;
   nowMillis?: number;
+  difficulty?: GameDifficulty;
+  options?: GameConfigOptions;
+};
+
+export type GameConfigOptions = Record<string, unknown>;
+export type GameDifficulty = "easy" | "medium" | "hard" | "expert" | string;
+
+export type NormalizedGameConfig = {
+  seed: number;
+  playerCount: number;
+  durationMillis: number;
+  nowMillis: number;
+  difficulty: GameDifficulty;
+  options: GameConfigOptions;
 };
 
 export type PressEvent = {
@@ -135,6 +162,17 @@ export function inFloorBounds(x: number, y: number): boolean {
   );
 }
 
+export function normalizeGameConfig(config: GameConfig, manifest: GameManifest): NormalizedGameConfig {
+  return {
+    seed: Number.isFinite(config.seed) ? Math.trunc(config.seed) : manifest.defaultSeed,
+    playerCount: clamp(Math.round(config.playerCount), manifest.players.min, manifest.players.max),
+    durationMillis: config.durationMillis ?? manifest.defaultDurationMillis,
+    nowMillis: config.nowMillis ?? 0,
+    difficulty: config.difficulty ?? "medium",
+    options: config.options ?? {}
+  };
+}
+
 export function createFrame(fill: HexColor = "#05070a"): Frame {
   const cells: FrameCell[] = [];
 
@@ -151,12 +189,28 @@ export function createFrame(fill: HexColor = "#05070a"): Frame {
   };
 }
 
+export function paintFrameCell(frame: Frame, x: number, y: number, color: HexColor): void {
+  if (!inFloorBounds(x, y)) {
+    return;
+  }
+
+  frame.cells[y * frame.width + x] = { x, y, color };
+}
+
 export function frameCell(frame: Frame, x: number, y: number): FrameCell | undefined {
   if (!inFloorBounds(x, y)) {
     return undefined;
   }
 
   return frame.cells[y * frame.width + x];
+}
+
+export function fillFrameRect(frame: Frame, x: number, y: number, width: number, height: number, color: HexColor): void {
+  for (let yy = y; yy < y + height; yy += 1) {
+    for (let xx = x; xx < x + width; xx += 1) {
+      paintFrameCell(frame, xx, yy, color);
+    }
+  }
 }
 
 export function setFrameCell(frame: Frame, x: number, y: number, color: HexColor): Frame {
@@ -171,6 +225,37 @@ export function setFrameCell(frame: Frame, x: number, y: number, color: HexColor
     ...frame,
     cells
   };
+}
+
+export function gameEvent(cue: GameEventCue, message: string, atMillis: number): GameEvent {
+  return { cue, message, atMillis };
+}
+
+export function readNumberOption(options: GameConfigOptions, key: string, fallback: number): number {
+  const value = options[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+export function readClampedIntegerOption(
+  options: GameConfigOptions,
+  key: string,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  return clamp(Math.round(readNumberOption(options, key, fallback)), min, max);
 }
 
 export function createSeededRng(seed: number): SeededRng {
@@ -218,6 +303,30 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function rgbToHex(color: RgbColor): HexColor {
+  return `#${hexByte(color.r)}${hexByte(color.g)}${hexByte(color.b)}`;
+}
+
+export function scaleRgb(color: RgbColor, percent: number): RgbColor {
+  return {
+    r: clamp(Math.round((color.r * percent) / 100), 0, 255),
+    g: clamp(Math.round((color.g * percent) / 100), 0, 255),
+    b: clamp(Math.round((color.b * percent) / 100), 0, 255)
+  };
+}
+
+export function addRgb(left: RgbColor, right: RgbColor): RgbColor {
+  return {
+    r: clamp(left.r + right.r, 0, 255),
+    g: clamp(left.g + right.g, 0, 255),
+    b: clamp(left.b + right.b, 0, 255)
+  };
+}
+
+function hexByte(value: number): string {
+  return clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0");
+}
+
 export function formatClock(ms: number): string {
   const safeMs = Math.max(0, Math.ceil(ms));
   const totalSeconds = Math.ceil(safeMs / 1000);
@@ -226,4 +335,3 @@ export function formatClock(ms: number): string {
 
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
-
