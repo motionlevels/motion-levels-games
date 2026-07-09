@@ -882,15 +882,20 @@ function GameConfigControl({
 }
 
 function defaultPlayerCountFor(game: PlaygroundGame): number {
-  return game.manifest.config?.players?.allowAny ? 0 : game.manifest.players.min;
+  return game.manifest.players.allowAny || game.manifest.config?.players?.allowAny ? 0 : game.manifest.players.min;
 }
 
 function playerCountOptionsFor(game: PlaygroundGame): number[] {
+  if (game.manifest.players.allowAny || game.manifest.config?.players?.allowAny) {
+    const maxChoice = Math.max(8, game.manifest.players.max);
+    return Array.from({ length: maxChoice + 1 }, (_, count) => count);
+  }
+
   const counts = Array.from(
     { length: game.manifest.players.max - game.manifest.players.min + 1 },
     (_, index) => game.manifest.players.min + index
   );
-  return [0, ...counts.filter((count) => count !== 0)];
+  return counts;
 }
 
 function difficultyOptionsFor(game: PlaygroundGame): GameDifficulty[] {

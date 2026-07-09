@@ -52,7 +52,7 @@ class ExampleCatchGame implements GameInstance {
   constructor(config: GameConfig) {
     this.config = normalizeConfig(config);
     this.rng = createSeededRng(this.config.seed);
-    this.players = defaultPlayers(this.config.playerCount);
+    this.players = defaultPlayers(this.config.playerCount, this.config.players);
     this.target = this.nextTarget();
   }
 
@@ -172,7 +172,7 @@ class ExampleCatchGame implements GameInstance {
       message: "Ready",
       atMillis: this.config.nowMillis
     };
-    this.players = defaultPlayers(this.config.playerCount);
+    this.players = defaultPlayers(this.config.playerCount, this.config.players);
     this.target = this.nextTarget();
   }
 

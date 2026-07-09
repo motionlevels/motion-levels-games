@@ -6,6 +6,7 @@ import {
   type Frame,
   type GameConfig,
   type GameConfigOptions,
+  type GameConfigPlayer,
   type GameEngine,
   type GameEngineState,
   type GameDifficulty
@@ -38,6 +39,7 @@ export type PlaygroundMediaBundle = {
 export type PlaygroundMediaOptions = {
   difficulty?: GameDifficulty;
   options?: GameConfigOptions;
+  players?: GameConfigPlayer[];
   seed?: number;
   playerCount?: number;
 };
@@ -74,10 +76,11 @@ export async function generateGameMediaBundle(
   options: PlaygroundMediaOptions = {}
 ): Promise<PlaygroundMediaBundle> {
   const seed = normalizeSeed(options.seed, game.manifest.defaultSeed);
-  const playerCount = normalizePlayerCount(options.playerCount, game.manifest.players.min, game.manifest.players.max);
+  const playerCount = normalizePlayerCount(options.playerCount, game);
   const difficulty = options.difficulty ?? game.manifest.config?.difficulty?.default ?? "medium";
   const configOptions = options.options ?? {};
-  const engine = createPreviewEngine(game, { difficulty, options: configOptions, playerCount, seed });
+  const players = options.players ?? [];
+  const engine = createPreviewEngine(game, { difficulty, options: configOptions, playerCount, players, seed });
   const frames = collectPreviewFrames(engine);
   const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
   const baseName = game.manifest.id;
@@ -119,11 +122,12 @@ export async function generateGameMediaBundle(
 
 function createPreviewEngine(
   game: PlaygroundGame,
-  config: Pick<GameConfig, "difficulty" | "options" | "playerCount" | "seed">
+  config: Pick<GameConfig, "difficulty" | "options" | "playerCount" | "players" | "seed">
 ): GameEngine {
   const instance = game.createGame({
     seed: config.seed,
     playerCount: config.playerCount,
+    players: config.players,
     durationMillis: game.manifest.defaultDurationMillis,
     difficulty: config.difficulty,
     options: config.options,
@@ -366,11 +370,11 @@ function normalizeSeed(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : fallback;
 }
 
-function normalizePlayerCount(value: number | undefined, min: number, max: number): number {
-  const candidate = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : min;
-  if (candidate === 0) {
-    return 0;
+function normalizePlayerCount(value: number | undefined, game: PlaygroundGame): number {
+  const candidate = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : game.manifest.players.min;
+  if (game.manifest.players.allowAny || game.manifest.config?.players?.allowAny) {
+    return Math.max(0, candidate);
   }
 
-  return Math.max(min, Math.min(max, candidate));
+  return Math.max(game.manifest.players.min, Math.min(game.manifest.players.max, candidate));
 }

@@ -108,6 +108,7 @@ type PlaygroundApi = {
     options?: {
       difficulty?: string;
       options?: Record<string, unknown>;
+      players?: Array<{ label?: string; name?: string; color?: string }>;
       seed?: number;
       playerCount?: number;
     }
@@ -129,8 +130,10 @@ That is useful when the board is rotated in the playground.
 
 The playground reads `manifest.config` from each game and renders matching local
 controls for player count, difficulty, and player-facing config variables. A
-player count of `0` means the game does not care about the real number of
-players for that run; the SDK preserves `playerCount: 0` instead of clamping it.
+player count of `0` means "any/unspecified" only for games with
+`manifest.players.allowAny: true`; strict games clamp player count into their
+declared min/max range. For positive counts on `allowAny` games, the SDK keeps
+the requested count even if it is above the manifest's visual/team count.
 
 `getState()` includes the active `seed`, `playerCount`, `difficulty`, and
 `options` values so agents can record the exact run configuration.
@@ -164,6 +167,7 @@ To render media for a specific configuration:
 const media = await ml.media("ping-pong", {
   difficulty: "hard",
   playerCount: 0,
+  players: [{ name: "Chris" }, { name: "Jose" }],
   options: { points_to_win: 7 },
   seed: 202
 });

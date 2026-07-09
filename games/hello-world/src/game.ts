@@ -190,7 +190,7 @@ class HelloWorldGame implements GameInstance {
   }
 
   private scoredPlayers(): GamePlayer[] {
-    return defaultPlayers(this.config.playerCount).map((player) => ({
+    return defaultPlayers(this.config.playerCount, this.config.players).map((player) => ({
       ...player,
       score: this.score
     }));

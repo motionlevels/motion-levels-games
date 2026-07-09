@@ -61,8 +61,9 @@ Prefer physical tile coordinates unless deliberately testing the rotated preview
 Use `{ space: "preview" }` only when interacting with the visible board layout.
 `ml.getState()` includes the active `seed`, `playerCount`, `difficulty`, and
 game `options`; keep those values with any feedback so regressions are
-reproducible. Use `playerCount: 0` when a playtest should ignore the real number
-of players.
+reproducible. Use `playerCount: 0` only for games with
+`manifest.players.allowAny: true`; strict player-count games should be tested
+inside their declared min/max range.
 
 Generate catalog-style media when reviewing a game card or TV display:
 

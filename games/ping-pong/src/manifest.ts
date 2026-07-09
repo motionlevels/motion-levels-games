@@ -5,13 +5,11 @@ export const manifest: GameManifest = {
   label: "Ping Pong",
   description: "Two-player arcade ping pong for red and blue halves of the Motion Levels floor.",
   players: {
+    allowAny: true,
     min: 2,
     max: 2
   },
   config: {
-    players: {
-      allowAny: true
-    },
     difficulty: {
       default: "medium",
       options: ["easy", "medium", "hard", "expert"]

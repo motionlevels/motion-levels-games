@@ -32,6 +32,14 @@ export type GamePlayer = {
   lives: number;
 };
 
+export type GameConfigPlayer = {
+  index?: number;
+  id?: string;
+  label?: string;
+  name?: string;
+  color?: HexColor;
+};
+
 export type GameRoundSnapshot = {
   index: number;
   winnerIndex: number;
@@ -81,6 +89,7 @@ export type GameManifest = {
   label: string;
   description?: string;
   players: {
+    allowAny?: boolean;
     min: number;
     max: number;
   };
@@ -123,6 +132,7 @@ export type GameConfigVar = {
 export type GameConfig = {
   seed: number;
   playerCount: number;
+  players?: GameConfigPlayer[];
   durationMillis?: number;
   nowMillis?: number;
   difficulty?: GameDifficulty;
@@ -135,6 +145,7 @@ export type GameDifficulty = "easy" | "medium" | "hard" | "expert" | string;
 export type NormalizedGameConfig = {
   seed: number;
   playerCount: number;
+  players: GameConfigPlayer[];
   durationMillis: number;
   nowMillis: number;
   difficulty: GameDifficulty;
@@ -226,6 +237,7 @@ export function normalizeGameConfig(config: GameConfig, manifest: GameManifest):
   return {
     seed: Number.isFinite(config.seed) ? Math.trunc(config.seed) : manifest.defaultSeed,
     playerCount: normalizePlayerCount(config.playerCount, manifest),
+    players: Array.isArray(config.players) ? config.players : [],
     durationMillis: config.durationMillis ?? manifest.defaultDurationMillis,
     nowMillis: config.nowMillis ?? 0,
     difficulty: config.difficulty ?? "medium",
@@ -235,8 +247,9 @@ export function normalizeGameConfig(config: GameConfig, manifest: GameManifest):
 
 function normalizePlayerCount(value: number, manifest: GameManifest): number {
   const rounded = Number.isFinite(value) ? Math.round(value) : manifest.players.min;
-  if (rounded === 0) {
-    return 0;
+  const allowAny = manifest.players.allowAny === true || manifest.config?.players?.allowAny === true;
+  if (allowAny) {
+    return Math.max(0, rounded);
   }
 
   return clamp(rounded, manifest.players.min, manifest.players.max);
@@ -356,13 +369,13 @@ export function createSeededRng(seed: number): SeededRng {
   };
 }
 
-export function defaultPlayers(count: number): GamePlayer[] {
+export function defaultPlayers(count: number, players: GameConfigPlayer[] = []): GamePlayer[] {
   const colors: HexColor[] = ["#35d7ff", "#ff3bd7", "#ffe176", "#5fff9e"];
 
   return Array.from({ length: count }, (_, index) => ({
     index,
-    label: `Player ${index + 1}`,
-    color: colors[index % colors.length],
+    label: players[index]?.label || players[index]?.name || `Player ${index + 1}`,
+    color: players[index]?.color || colors[index % colors.length],
     score: 0,
     lives: -1
   }));

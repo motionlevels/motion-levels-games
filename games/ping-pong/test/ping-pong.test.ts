@@ -23,7 +23,29 @@ function startGame() {
 test("manifest exposes renamed Ping Pong game", () => {
   assert.equal(manifest.id, "ping-pong");
   assert.equal(manifest.label, "Ping Pong");
-  assert.deepEqual(manifest.players, { min: 2, max: 2 });
+  assert.deepEqual(manifest.players, { allowAny: true, min: 2, max: 2 });
+});
+
+test("supports arbitrary configured player counts while rendering two teams", () => {
+  const game = createGame({
+    seed: 7,
+    playerCount: 5,
+    players: [
+      { name: "Chris" },
+      { name: "Jose" },
+      { name: "Ana" },
+      { name: "Luis" },
+      { name: "Marta" }
+    ]
+  });
+
+  game.init(0);
+  const snapshot = game.snapshot();
+
+  assert.equal(snapshot.playerCount, 5);
+  assert.equal(snapshot.players.length, 2);
+  assert.equal(snapshot.players[0]?.label, "Rojo");
+  assert.equal(snapshot.players[1]?.label, "Azul");
 });
 
 test("readiness waits for both floor halves with release grace", () => {

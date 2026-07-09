@@ -46,6 +46,22 @@ The directory name is part of the contract. For a game in `games/<id>`,
 The game logic should be deterministic. Use `createSeededRng(seed)` from the SDK
 for randomness so tests, fixtures, and local playback can be reproduced.
 
+## Player Counts
+
+By default, `manifest.players.min` and `manifest.players.max` describe the
+valid player-count range and the SDK clamps incoming counts into that range.
+Use `manifest.players.allowAny: true` only for games whose board and gameplay
+do not depend on the exact number of real players. In that mode `playerCount: 0`
+means "unspecified/any", and positive counts are preserved instead of clamped.
+
+For two-team games such as Ping Pong, `allowAny` is acceptable because the
+floor always renders red and blue halves; the player display can keep showing
+Rojo and Azul even if the booking has a different number of people. For games
+where each person changes targets, scoring, or layout, keep `allowAny` off and
+use the actual configured players. The `defaultPlayers(count, players)` helper
+uses supplied player names when available and falls back to `Player 1`,
+`Player 2`, and so on.
+
 ## Creating Games
 
 Use the scaffold command instead of copying another game by hand:

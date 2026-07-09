@@ -7,6 +7,9 @@ type ManifestModule = {
   manifest?: {
     id?: string;
     label?: string;
+    players?: {
+      allowAny?: unknown;
+    };
     config?: {
       difficulty?: {
         options?: unknown;
@@ -75,6 +78,9 @@ for (const gameId of gameDirs) {
       }
       if (!manifest.label) {
         problems.push(`${gameId}: manifest.label is required`);
+      }
+      if (manifest.players?.allowAny !== undefined && typeof manifest.players.allowAny !== "boolean") {
+        problems.push(`${gameId}: manifest.players.allowAny must be a boolean when present`);
       }
       if (manifest.display?.entry !== "./display") {
         problems.push(`${gameId}: manifest.display.entry must be ./display`);
