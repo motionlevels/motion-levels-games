@@ -54,30 +54,21 @@
 .ml-tv-brand {
   align-items: center;
   display: flex;
-  gap: 18px;
   min-width: 0;
 }
 
 .ml-tv-brand-mark {
-  background:
-    linear-gradient(135deg, #36d9ff 0 48%, transparent 48%),
-    linear-gradient(315deg, #ff5268 0 48%, transparent 48%),
-    #ffffff;
+  background: url("@motion-levels/assets/brand/motion-levels-icon.png") center / contain no-repeat;
   box-shadow:
     0 0 34px rgba(54, 217, 255, 0.26),
     0 0 54px rgba(255, 82, 104, 0.18);
   display: block;
-  height: 86px;
-  width: 86px;
+  height: 112px;
+  width: 112px;
 }
 
 .ml-tv-brand-name {
-  color: #ffffff;
-  display: grid;
-  font-size: 28px;
-  font-weight: 950;
-  line-height: 0.88;
-  text-transform: uppercase;
+  display: none;
 }
 
 .ml-tv-title {
