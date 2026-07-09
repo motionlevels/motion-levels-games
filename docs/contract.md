@@ -33,10 +33,27 @@ advance games through that engine instead of owning separate timing semantics.
 
 Every game should keep a single source of truth:
 
+- `README.md`
 - `manifest.ts`
 - `game.ts`
 - `display.tsx`
 - `fixtures.ts`
 
+The directory name is part of the contract. For a game in `games/<id>`,
+`manifest.id` must exactly equal `<id>`, and the package name must be
+`@motion-levels-games/<id>`. CI enforces this through `npm run validate:games`.
+
 The game logic should be deterministic. Use `createSeededRng(seed)` from the SDK
 for randomness so tests, fixtures, and local playback can be reproduced.
+
+## Creating Games
+
+Use the scaffold command instead of copying another game by hand:
+
+```sh
+npm run create:game -- color-chase "Color Chase"
+```
+
+The scaffold creates the package, manifest, game logic, player display,
+fixtures, tests, and README. After generation, run `npm install`, add the game
+to the playground when it is ready for local play, then run `npm run check`.

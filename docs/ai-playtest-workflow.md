@@ -13,21 +13,27 @@ make small code changes, and verify improvements with captures and tests.
 ## Start Here
 
 1. Read `AGENTS.md`, `docs/contract.md`, and `docs/playground-ai-api.md`.
-2. Inspect the target game under `games/<game-id>/`, especially `game.ts`,
+2. When creating a new game, start with:
+
+```sh
+npm run create:game -- <game-id> "Display Name"
+```
+
+3. Inspect the target game under `games/<game-id>/`, especially `README.md`, `game.ts`,
    `display.tsx`, `manifest.ts`, fixtures, and tests.
-3. Start the playground:
+4. Start the playground:
 
 ```sh
 npm run dev --workspace apps/playground
 ```
 
-4. Open the Vite URL and wait for:
+5. Open the Vite URL and wait for:
 
 ```js
 document.documentElement.dataset.motionLevelsPlaygroundApi === "ready"
 ```
 
-5. Use `window.ml` or `window.motionLevelsPlayground` for deterministic control.
+6. Use `window.ml` or `window.motionLevelsPlayground` for deterministic control.
    The playground uses the shared TypeScript SDK engine at 30fps, so `ml.step()`
    advances one frame unless you pass an explicit millisecond delta.
 
@@ -67,6 +73,7 @@ For every playthrough, judge both surfaces:
 
 - Keep game logic deterministic; randomness must flow through SDK seeded RNG
   helpers.
+- Keep `manifest.id` exactly equal to the `games/<game-id>` directory name.
 - Prefer focused edits in the target game and shared display/game helpers.
 - Keep `apps/playground` changes about tooling only; do not put game-specific
   gameplay rules there.
@@ -80,6 +87,7 @@ Before handing off:
 
 ```sh
 npm test --workspaces --if-present
+npm run validate:games
 npm run build
 ```
 

@@ -13,8 +13,11 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "validate:games": "tsx scripts/validate-games.ts",
+    "create:game": "tsx scripts/create-game.ts",
+    "test:scaffold": "tsx scripts/test-create-game.ts",
     "playtest": "tsx scripts/playtest-games.ts",
-    "check": "npm run typecheck && npm test && npm run build && npm run playtest"
+    "check": "npm run validate:games && npm run typecheck && npm test && npm run test:scaffold && npm run build && npm run playtest"
   },
   "devDependencies": {
     "@types/node": "^25.0.2",

@@ -24,11 +24,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate games
+        run: npm run validate:games
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Test
         run: npm test
+
+      - name: Test game scaffold
+        run: npm run test:scaffold
 
       - name: Build
         run: npm run build
