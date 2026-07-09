@@ -6,6 +6,7 @@ import {
   Check,
   Copy,
   Dices,
+  Info,
   LayoutGrid,
   LoaderCircle,
   Maximize,
@@ -964,17 +965,25 @@ export function App() {
             {settingsOpen ? (
               <div className="settings-popover" id="settings-popover" ref={settingsRef} role="dialog" aria-label="Game settings">
                 <div className="settings-popover-head">
-                  <div>
+                  <div className="settings-popover-title">
                     <span>Settings</span>
                     <strong>{selectedGame.manifest.label}</strong>
                   </div>
-                  <PopoverCloseButton
-                    label="Close settings"
-                    onClick={() => {
-                      setSettingsOpen(false);
-                      window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
-                    }}
-                  />
+                  <div className="settings-popover-actions">
+                    {gameConfigVars.length > 0 ? (
+                      <button className="settings-reset" onClick={resetGameOptions} type="button">
+                        <RotateCcw size={14} aria-hidden="true" />
+                        Reset to defaults
+                      </button>
+                    ) : null}
+                    <PopoverCloseButton
+                      label="Close settings"
+                      onClick={() => {
+                        setSettingsOpen(false);
+                        window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div className="settings-list">
@@ -991,15 +1000,6 @@ export function App() {
                     <p className="settings-empty">This game has no custom settings.</p>
                   )}
                 </div>
-
-                {gameConfigVars.length > 0 ? (
-                  <div className="settings-footer">
-                    <button className="settings-reset" onClick={resetGameOptions} type="button">
-                      <RotateCcw size={14} aria-hidden="true" />
-                      Reset to defaults
-                    </button>
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </header>
@@ -1137,18 +1137,26 @@ function GameConfigControl({
 }) {
   if (configVar.type === "bool") {
     return (
-      <label className="setting-control setting-control-bool">
-        <span>{configVar.label}</span>
-        <input checked={value === true} onChange={(event) => onChange(event.target.checked)} type="checkbox" />
+      <label className="setting-control setting-control-bool" data-setting-key={configVar.key}>
+        <ConfigVarLabel configVar={configVar} />
+        <input
+          aria-describedby={configDescriptionId(configVar)}
+          aria-label={configVar.label}
+          checked={value === true}
+          onChange={(event) => onChange(event.target.checked)}
+          type="checkbox"
+        />
       </label>
     );
   }
 
   if (configVar.type === "enum") {
     return (
-      <label className="setting-control">
-        <span>{configVar.label}</span>
+      <label className="setting-control" data-setting-key={configVar.key}>
+        <ConfigVarLabel configVar={configVar} />
         <select
+          aria-describedby={configDescriptionId(configVar)}
+          aria-label={configVar.label}
           onChange={(event) => onChange(event.target.value)}
           value={String(value ?? configVar.default ?? configVar.options?.[0]?.value ?? "")}
         >
@@ -1162,35 +1170,127 @@ function GameConfigControl({
     );
   }
 
+  return <NumberConfigControl configVar={configVar} onChange={onChange} value={value} />;
+}
+
+function NumberConfigControl({
+  configVar,
+  onChange,
+  value
+}: {
+  configVar: GameConfigVar;
+  onChange: (value: unknown) => void;
+  value: unknown;
+}) {
   const numericValue = Number(value ?? configVar.default ?? configVar.min ?? 0);
   const hasRange = typeof configVar.min === "number" && typeof configVar.max === "number";
+  const [draftValue, setDraftValue] = useState(() => formatNumericInput(numericValue));
+  const editingRef = useRef(false);
+
+  useEffect(() => {
+    if (!editingRef.current) {
+      setDraftValue(formatNumericInput(numericValue));
+    }
+  }, [numericValue]);
+
+  const updateDraft = (nextDraft: string) => {
+    const normalized = nextDraft.replaceAll(",", ".");
+    if (!/^-?\d*(?:\.\d*)?$/.test(normalized)) {
+      return;
+    }
+
+    setDraftValue(normalized);
+    if (normalized !== "" && normalized !== "-" && normalized !== "." && normalized !== "-.") {
+      onChange(normalized);
+    }
+  };
+
+  const finishEditing = () => {
+    editingRef.current = false;
+    const parsed = Number(draftValue);
+    const fallback = typeof configVar.default === "number" ? configVar.default : configVar.min ?? 0;
+    const nextValue = coerceConfigVarValue(configVar, Number.isFinite(parsed) ? parsed : fallback);
+    onChange(nextValue);
+    setDraftValue(formatNumericInput(Number(nextValue)));
+  };
 
   return (
-    <label className="setting-control setting-control-number">
-      <span>{configVar.label}</span>
+    <label className="setting-control setting-control-number" data-setting-key={configVar.key}>
+      <ConfigVarLabel configVar={configVar} />
       <div className="setting-number-row">
         {hasRange ? (
           <input
+            aria-describedby={configDescriptionId(configVar)}
+            aria-label={configVar.label}
             max={configVar.max}
             min={configVar.min}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => {
+              onChange(event.target.value);
+              setDraftValue(formatNumericInput(Number(event.target.value)));
+            }}
             step={configVar.step ?? (configVar.type === "int" ? 1 : "any")}
             type="range"
             value={String(numericValue)}
           />
         ) : null}
         <input
+          aria-describedby={configDescriptionId(configVar)}
+          aria-label={configVar.label}
+          className="setting-number-input"
           inputMode={configVar.type === "int" ? "numeric" : "decimal"}
-          max={configVar.max}
-          min={configVar.min}
-          onChange={(event) => onChange(event.target.value)}
-          step={configVar.step ?? (configVar.type === "int" ? 1 : "any")}
-          type="number"
-          value={String(numericValue)}
+          onBlur={finishEditing}
+          onChange={(event) => updateDraft(event.target.value)}
+          onFocus={() => {
+            editingRef.current = true;
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
+          pattern={configVar.type === "int" ? "-?[0-9]*" : "-?[0-9]*[.]?[0-9]*"}
+          spellCheck={false}
+          type="text"
+          value={draftValue}
         />
       </div>
     </label>
   );
+}
+
+function ConfigVarLabel({ configVar }: { configVar: GameConfigVar }) {
+  return (
+    <span className="setting-label">
+      <span>{configVar.label}</span>
+      {configVar.description ? (
+        <span
+          aria-describedby={configDescriptionId(configVar)}
+          aria-label={`About ${configVar.label}`}
+          className="setting-info"
+          onClick={(event) => {
+            event.preventDefault();
+            event.currentTarget.focus();
+          }}
+          role="img"
+          tabIndex={0}
+          title={configVar.description}
+        >
+          <Info aria-hidden="true" size={13} strokeWidth={2.4} />
+          <span className="setting-tooltip" id={configDescriptionId(configVar)} role="tooltip">
+            {configVar.description}
+          </span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function configDescriptionId(configVar: GameConfigVar): string | undefined {
+  return configVar.description ? `setting-${configVar.key}-description` : undefined;
+}
+
+function formatNumericInput(value: number): string {
+  return Number.isFinite(value) ? String(value) : "0";
 }
 
 function PopoverCloseButton({ label, onClick }: { label: string; onClick: () => void }) {

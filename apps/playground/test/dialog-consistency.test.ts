@@ -112,3 +112,44 @@ test("tall status docks expose useful adaptive diagnostics", () => {
     "expanded diagnostics must activate only when useful space exists"
   );
 });
+
+test("latest event content always follows its header", () => {
+  assert.match(
+    styleSource,
+    /\.status-event-copy\s*\{[^}]*margin:\s*12px 0 0;/s,
+    "latest event content must be top-anchored below its header"
+  );
+  assert.doesNotMatch(
+    styleSource,
+    /\.status-event-copy\s*\{[^}]*margin:\s*auto 0;/s,
+    "latest event content must never vertically center itself"
+  );
+});
+
+test("numeric settings use app-format decimals and documented help", () => {
+  assert.match(appSource, /className="setting-number-input"[\s\S]*?type="text"/);
+  assert.doesNotMatch(appSource, /type="number"/, "native localized number inputs are not allowed");
+  assert.match(appSource, /replaceAll\(",", "\."\)/, "typed decimal commas must normalize to periods");
+  assert.match(appSource, /function ConfigVarLabel/);
+  assert.match(appSource, /className="setting-tooltip"[^>]*role="tooltip"/);
+  assert.match(styleSource, /\.setting-info:hover \.setting-tooltip,[\s\S]*?\.setting-info:focus-visible \.setting-tooltip/);
+});
+
+test("settings actions stay in the header and scrolling is viewport-driven", () => {
+  assert.match(
+    appSource,
+    /className="settings-popover-actions"[\s\S]*?className="settings-reset"[\s\S]*?<PopoverCloseButton/,
+    "reset must appear immediately before the shared close action"
+  );
+  assert.doesNotMatch(appSource, /settings-footer/, "settings must not reserve a footer for reset");
+  assert.match(
+    styleSource,
+    /\.settings-popover\s*\{[^}]*max-height:\s*calc\(100dvh - 100% - \(3 \* var\(--stage-pad\)\)\);[^}]*overflow-y:\s*auto;/s,
+    "settings may scroll only when constrained by the viewport"
+  );
+  assert.doesNotMatch(
+    styleSource,
+    /\.settings-popover\s*\{[^}]*max-height:\s*min\(460px,/s,
+    "settings must not use an arbitrary fixed scroll cap"
+  );
+});

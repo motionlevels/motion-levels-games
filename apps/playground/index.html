@@ -4,10 +4,135 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Motion Levels Games Playground</title>
+    <style id="playground-boot-styles">
+      html,
+      body,
+      #root {
+        height: 100%;
+        width: 100%;
+      }
+
+      body {
+        background: #050b12;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      html:not(.playground-ready) #root {
+        visibility: hidden;
+      }
+
+      #app-loading-screen {
+        align-items: center;
+        background:
+          radial-gradient(circle at 22% 18%, rgba(54, 217, 255, 0.13), transparent 34%),
+          radial-gradient(circle at 78% 82%, rgba(20, 92, 255, 0.14), transparent 36%),
+          linear-gradient(145deg, #07111a, #03070d 62%, #07101a);
+        color: #f2f8ff;
+        display: flex;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        inset: 0;
+        justify-content: center;
+        opacity: 1;
+        position: fixed;
+        transition: opacity 180ms ease, visibility 180ms linear;
+        visibility: visible;
+        z-index: 2147483647;
+      }
+
+      .app-loading-content {
+        align-items: center;
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+        text-align: center;
+        transform: translateY(-2vh);
+      }
+
+      .app-loading-spinner {
+        background: conic-gradient(
+          from 0deg,
+          rgba(54, 217, 255, 0.08),
+          #36d9ff 34%,
+          #ffffff 49%,
+          #2f73ff 66%,
+          rgba(47, 115, 255, 0.08) 100%
+        );
+        border-radius: 50%;
+        box-shadow: 0 0 42px rgba(54, 217, 255, 0.26);
+        height: 76px;
+        margin-bottom: 5px;
+        padding: 3px;
+        width: 76px;
+        animation: playgroundBootSpin 900ms linear infinite;
+      }
+
+      .app-loading-spinner::before {
+        background:
+          radial-gradient(circle, rgba(54, 217, 255, 0.17), transparent 56%),
+          #071019;
+        border-radius: inherit;
+        box-shadow: inset 0 0 20px rgba(54, 217, 255, 0.12);
+        content: "";
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+
+      .app-loading-content strong {
+        font-size: 21px;
+        font-weight: 900;
+        letter-spacing: 0.13em;
+        line-height: 1;
+        text-shadow: 0 0 22px rgba(54, 217, 255, 0.28);
+        text-transform: uppercase;
+      }
+
+      .app-loading-content span {
+        color: #91a3b7;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      html.playground-ready #root {
+        visibility: visible;
+      }
+
+      html.playground-ready #app-loading-screen {
+        opacity: 0;
+        pointer-events: none;
+        visibility: hidden;
+      }
+
+      @keyframes playgroundBootSpin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #app-loading-screen {
+          transition: none;
+        }
+
+        .app-loading-spinner {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root" aria-busy="true"></div>
+    <div id="app-loading-screen" role="status" aria-label="Loading playground" aria-live="polite">
+      <div class="app-loading-content">
+        <div class="app-loading-spinner" aria-hidden="true"></div>
+        <strong>Motion Levels</strong>
+        <span>Preparing playground</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
