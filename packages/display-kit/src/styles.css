@@ -1,25 +1,20 @@
 :root {
   color-scheme: dark;
-  --ml-bg: #07101c;
-  --ml-panel: rgba(12, 25, 39, 0.94);
-  --ml-panel-strong: rgba(16, 35, 54, 0.96);
-  --ml-border: rgba(91, 143, 189, 0.32);
-  --ml-text: #f5f8ff;
-  --ml-muted: #9daac0;
-  --ml-cyan: #35d7ff;
-  --ml-blue: #1673ff;
-  --ml-pink: #f033ff;
+  --ml-bg: #0d1117;
+  --ml-panel: rgba(255, 255, 255, 0.055);
+  --ml-panel-strong: rgba(255, 255, 255, 0.075);
+  --ml-border: rgba(139, 148, 158, 0.24);
+  --ml-text: #f0f3f6;
+  --ml-muted: #8b949e;
+  --ml-cyan: #58a6ff;
+  --ml-blue: #388bfd;
+  --ml-pink: #d2a8ff;
   --ml-yellow: #ffe176;
-  --ml-green: #4cf08c;
+  --ml-green: #7ee787;
 }
 
 .ml-display-shell {
-  background:
-    radial-gradient(circle at 22% 18%, rgba(22, 115, 255, 0.22), transparent 34%),
-    linear-gradient(145deg, rgba(11, 25, 43, 0.98), rgba(5, 14, 24, 0.98));
-  border: 1px solid var(--ml-border);
-  border-radius: 8px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+  background: var(--ml-bg);
   color: var(--ml-text);
   min-width: 0;
   overflow: hidden;
@@ -27,83 +22,74 @@
 
 .ml-display-header {
   align-items: center;
-  border-bottom: 1px solid rgba(91, 143, 189, 0.22);
   display: grid;
-  gap: 6px 14px;
+  gap: 6px 16px;
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 18px;
+  padding: 22px 24px 8px;
 }
 
 .ml-display-label {
-  color: var(--ml-cyan);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  color: var(--ml-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .ml-display-header h1 {
-  font-size: 42px;
+  font-size: 38px;
+  font-weight: 750;
   line-height: 1;
   margin: 0;
 }
 
 .ml-status-pill {
   align-self: start;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(196, 214, 238, 0.18);
-  border-radius: 6px;
+  background: rgba(139, 148, 158, 0.16);
+  border-radius: 999px;
   color: var(--ml-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 14px;
-  padding: 8px 10px;
+  font-size: 12px;
+  padding: 6px 9px;
 }
 
 .ml-display-content {
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 18px;
+  padding: 16px 24px 24px;
 }
 
 .ml-metric {
-  background: linear-gradient(180deg, var(--ml-panel-strong), rgba(7, 16, 28, 0.94));
-  border: 1px solid var(--ml-border);
-  border-radius: 8px;
   min-width: 0;
-  padding: 18px;
+  padding: 8px 18px;
 }
 
 .ml-metric-label {
-  color: var(--ml-cyan);
+  color: var(--ml-muted);
   display: block;
   font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  margin-bottom: 12px;
-  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 8px;
 }
 
 .ml-metric-value {
   color: var(--ml-text);
   display: block;
-  font-size: 48px;
+  font-size: 42px;
   line-height: 0.95;
-  text-shadow: 0 0 18px rgba(53, 215, 255, 0.3);
+  text-shadow: none;
 }
 
 .ml-metric-pink .ml-metric-value {
   color: var(--ml-pink);
-  text-shadow: 0 0 18px rgba(240, 51, 255, 0.36);
 }
 
 .ml-metric-yellow .ml-metric-value {
   color: var(--ml-yellow);
-  text-shadow: 0 0 18px rgba(255, 225, 118, 0.32);
 }
 
 .ml-metric-green .ml-metric-value {
   color: var(--ml-green);
-  text-shadow: 0 0 18px rgba(76, 240, 140, 0.32);
 }
 
 .ml-metric-neutral .ml-metric-value {
@@ -138,7 +124,7 @@
   aspect-ratio: 16 / 32;
   background: #02060b;
   border: 1px solid rgba(91, 143, 189, 0.24);
-  border-radius: 8px;
+  border-radius: 0;
   display: grid;
   gap: 2px;
   grid-template-columns: repeat(var(--ml-floor-cols), minmax(0, 1fr));
@@ -150,7 +136,7 @@
 .ml-floor-tile {
   aspect-ratio: 1;
   border: 0;
-  border-radius: 2px;
+  border-radius: 0;
   display: block;
   min-height: 0;
   min-width: 0;

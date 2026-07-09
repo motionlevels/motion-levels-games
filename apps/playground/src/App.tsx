@@ -274,7 +274,6 @@ export function App() {
     >
       <header className="playground-header">
         <div className="playground-title">
-          <span className="eyebrow">Motion Levels Games</span>
           <div className="playground-title-row">
             <h1>Playground</h1>
             <span className={`phase-chip phase-${snapshot.phase}`}>{snapshot.phase}</span>

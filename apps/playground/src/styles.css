@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+:root {
+  color-scheme: light;
+}
+
 html,
 body,
 #root {
@@ -10,13 +14,11 @@ body,
 
 body {
   background:
-    linear-gradient(135deg, rgba(20, 92, 255, 0.14), transparent 36%),
-    linear-gradient(315deg, rgba(255, 28, 40, 0.1), transparent 34%),
-    #05080d;
-  color: #f5f8ff;
+    linear-gradient(180deg, #ffffff 0, #f6f8fa 42%, #eef1f5 100%);
+  color: #1f2328;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter,
+    ui-sans-serif, system-ui, sans-serif;
   margin: 0;
   overflow: hidden;
 }
@@ -28,26 +30,24 @@ select {
 }
 
 .playground-shell {
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px),
-    transparent;
-  background-size: 32px 32px;
+  background: transparent;
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100dvh;
   min-height: 0;
-  padding: 10px;
+  padding: 12px;
   width: 100%;
 }
 
 .playground-shell:fullscreen {
-  background-color: #05080d;
+  background:
+    linear-gradient(180deg, #ffffff 0, #f6f8fa 42%, #eef1f5 100%);
 }
 
 .playground-shell.is-fullscreen-fallback {
-  background-color: #05080d;
+  background:
+    linear-gradient(180deg, #ffffff 0, #f6f8fa 42%, #eef1f5 100%);
   inset: 0;
   position: fixed;
   z-index: 1000;
@@ -55,30 +55,22 @@ select {
 
 .playground-header {
   align-items: center;
-  background:
-    linear-gradient(180deg, rgba(12, 24, 37, 0.92), rgba(6, 13, 22, 0.86));
-  border: 1px solid rgba(118, 160, 210, 0.22);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(208, 215, 222, 0.78);
   border-radius: 8px;
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.24);
+  box-shadow:
+    0 14px 34px rgba(31, 35, 40, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: minmax(160px, 0.22fr) minmax(0, 1fr);
   min-height: 0;
-  padding: 8px 10px;
+  padding: 8px 10px 8px 12px;
+  backdrop-filter: blur(18px);
 }
 
 .playground-title {
   min-width: 0;
-}
-
-.eyebrow {
-  color: #35d7ff;
-  display: block;
-  font-size: 9px;
-  font-weight: 850;
-  letter-spacing: 0.16em;
-  margin-bottom: 4px;
-  text-transform: uppercase;
 }
 
 .playground-title-row {
@@ -89,83 +81,70 @@ select {
 }
 
 .playground-header h1 {
-  font-size: 22px;
+  color: #24292f;
+  font-size: 20px;
+  font-weight: 700;
   line-height: 1;
   margin: 0;
 }
 
 .phase-chip {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(196, 214, 238, 0.16);
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
   border-radius: 999px;
-  color: #9ee8ff;
+  color: #57606a;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
-  padding: 6px 8px;
+  padding: 5px 8px;
 }
 
 .phase-running {
-  border-color: rgba(92, 255, 158, 0.34);
-  color: #79ffb0;
+  background: #dafbe1;
+  border-color: #aceebb;
+  color: #1a7f37;
 }
 
 .phase-finished {
-  border-color: rgba(255, 225, 118, 0.34);
-  color: #ffe176;
+  background: #fff8c5;
+  border-color: #eac54f;
+  color: #7d4e00;
 }
 
 .playground-controls {
   align-items: end;
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 8px;
   justify-content: flex-end;
   min-width: 0;
 }
 
 .control-group {
-  align-items: end;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(196, 214, 238, 0.1);
-  border-radius: 8px;
-  display: flex;
-  gap: 7px;
-  min-width: 0;
-  padding: 5px;
-}
-
-.control-group-primary {
-  background: rgba(53, 215, 255, 0.055);
-}
-
-.control-actions {
-  background: transparent;
-  border-color: transparent;
-  padding: 0;
+  display: contents;
 }
 
 .playground-controls label {
-  color: #9daac0;
+  color: #57606a;
   display: grid;
-  font-size: 9px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 600;
   gap: 4px;
-  letter-spacing: 0.13em;
+  letter-spacing: 0;
   min-width: 64px;
-  text-transform: uppercase;
 }
 
 .playground-controls input,
 .playground-controls select,
 .playground-controls button {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(196, 214, 238, 0.18);
-  border-radius: 7px;
-  color: #f5f8ff;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  color: #24292f;
   height: 32px;
   min-width: 0;
   padding: 0 9px;
+  box-shadow: inset 0 1px 0 rgba(208, 215, 222, 0.22);
 }
 
 .playground-controls input {
@@ -178,26 +157,27 @@ select {
 
 .playground-controls button {
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 600;
   min-width: 82px;
   white-space: nowrap;
 }
 
 .playground-controls .fullscreen-button {
-  border-color: rgba(53, 215, 255, 0.36);
-  color: #dff8ff;
+  border-color: #0969da;
+  color: #0969da;
   min-width: 104px;
 }
 
 .playground-controls button:hover,
 .playground-controls button:focus-visible {
-  border-color: rgba(53, 215, 255, 0.8);
+  background: #f6f8fa;
+  border-color: #0969da;
   outline: none;
 }
 
 .playground-grid {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns:
     max-content
     minmax(0, 1fr);
@@ -213,17 +193,14 @@ select {
 
 .panel,
 .display-panel {
-  background:
-    linear-gradient(180deg, rgba(14, 27, 42, 0.92), rgba(7, 14, 24, 0.92));
-  border: 1px solid rgba(118, 160, 210, 0.26);
-  border-radius: 8px;
-  box-shadow:
-    0 18px 52px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .panel {
-  padding: 10px;
+  padding: 0;
 }
 
 .panel-heading {
@@ -235,18 +212,17 @@ select {
 }
 
 .panel-heading span {
-  color: #9daac0;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  color: #57606a;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .panel-heading strong {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(196, 214, 238, 0.16);
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
   border-radius: 6px;
-  color: #35d7ff;
+  color: #0969da;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 13px;
   padding: 5px 7px;
@@ -262,16 +238,19 @@ select {
   display: grid;
   place-items: center;
   position: relative;
-  width: calc(min(var(--floor-preview-width), calc((100dvh - 98px) / 2)) + 20px);
+  width: min(var(--floor-preview-width), calc((100dvh - 100px) / 2));
 }
 
 .floor-panel .ml-floor-preview {
   height: auto;
-  max-height: calc(100dvh - 98px);
+  max-height: calc(100dvh - 100px);
   max-width: 100%;
   touch-action: none;
   user-select: none;
-  width: min(100%, var(--floor-preview-width), calc((100dvh - 98px) / 2));
+  width: min(100%, var(--floor-preview-width), calc((100dvh - 100px) / 2));
+  box-shadow:
+    0 18px 42px rgba(31, 35, 40, 0.14),
+    0 0 0 1px rgba(31, 35, 40, 0.05);
 }
 
 .floor-panel .ml-floor-tile {
@@ -293,19 +272,20 @@ select {
 .display-panel {
   display: grid;
   overflow: hidden;
-  padding: 10px;
+  padding: 0;
   place-items: start;
   position: relative;
 }
 
 .display-preview-box {
   aspect-ratio: 16 / 9;
-  background:
-    linear-gradient(180deg, rgba(7, 13, 22, 0.9), rgba(1, 4, 10, 0.96));
-  border: 1px solid rgba(196, 214, 238, 0.2);
-  border-radius: 8px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.026);
-  max-height: calc(100dvh - 84px);
+  background: #080b10;
+  border: 1px solid rgba(31, 35, 40, 0.12);
+  border-radius: 0;
+  box-shadow:
+    0 18px 42px rgba(31, 35, 40, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.6);
+  max-height: calc(100dvh - 88px);
   max-width: 100%;
   overflow: hidden;
   position: relative;
@@ -331,37 +311,39 @@ select {
 }
 
 .debug-panel {
-  bottom: 10px;
+  bottom: 12px;
   max-height: calc(100% - 24px);
   min-height: 0;
   overflow: visible;
   position: absolute;
-  right: 10px;
+  right: 12px;
   width: min(420px, calc(100% - 24px));
   z-index: 5;
 }
 
 .debug-panel summary {
-  background: rgba(7, 14, 24, 0.94);
-  border: 1px solid rgba(91, 143, 189, 0.34);
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(208, 215, 222, 0.88);
   border-radius: 8px;
-  color: #35d7ff;
+  color: #0969da;
   cursor: pointer;
   display: block;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.16em;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
   margin-left: auto;
-  padding: 10px 12px;
+  padding: 9px 12px;
   text-align: center;
-  text-transform: uppercase;
-  width: 92px;
+  width: 82px;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 10px 28px rgba(31, 35, 40, 0.12);
 }
 
 .debug-panel[open] {
-  background: rgba(5, 10, 17, 0.8);
-  border: 1px solid rgba(91, 143, 189, 0.28);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(208, 215, 222, 0.9);
   border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(31, 35, 40, 0.18);
   display: grid;
   gap: 10px;
   grid-template-rows: auto minmax(120px, 0.42fr) minmax(0, 1fr);
@@ -387,8 +369,8 @@ select {
 
 .log-panel li {
   align-items: center;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(196, 214, 238, 0.12);
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
   border-radius: 6px;
   display: grid;
   gap: 8px;
@@ -397,13 +379,13 @@ select {
 }
 
 .log-panel code {
-  color: #9daac0;
+  color: #57606a;
   font-size: 12px;
 }
 
 .log-panel span {
-  color: #35d7ff;
-  font-weight: 800;
+  color: #0969da;
+  font-weight: 700;
 }
 
 .log-panel strong {
@@ -414,10 +396,10 @@ select {
 }
 
 .snapshot-panel pre {
-  background: #03070d;
-  border: 1px solid rgba(196, 214, 238, 0.1);
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
   border-radius: 8px;
-  color: #c9d6e8;
+  color: #24292f;
   font-size: 11px;
   height: calc(100% - 38px);
   line-height: 1.5;
@@ -428,23 +410,23 @@ select {
 
 .playground-resize-handle {
   background:
-    linear-gradient(135deg, transparent 0 44%, rgba(255, 255, 255, 0.62) 46% 52%, transparent 54%),
-    linear-gradient(135deg, transparent 0 64%, rgba(255, 255, 255, 0.34) 66% 72%, transparent 74%),
-    rgba(13, 26, 40, 0.92);
-  border: 1px solid rgba(196, 214, 238, 0.28);
+    linear-gradient(135deg, transparent 0 44%, rgba(87, 96, 106, 0.62) 46% 52%, transparent 54%),
+    linear-gradient(135deg, transparent 0 64%, rgba(87, 96, 106, 0.34) 66% 72%, transparent 74%),
+    rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(208, 215, 222, 0.9);
   border-radius: 6px;
-  bottom: 7px;
+  bottom: 8px;
   cursor: ew-resize;
   height: 24px;
   padding: 0;
   position: absolute;
-  right: 7px;
+  right: 8px;
   width: 24px;
   z-index: 3;
 }
 
 .playground-resize-handle:focus-visible {
-  outline: 2px solid rgba(53, 215, 255, 0.9);
+  outline: 2px solid #0969da;
   outline-offset: 2px;
 }
 
@@ -460,11 +442,10 @@ select {
 }
 
 .example-display-caption {
-  color: #9daac0;
+  color: #8b949e;
   font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .example-display-floor .ml-floor-preview {
@@ -474,61 +455,58 @@ select {
 
 .ping-pong-display {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 .ping-pong-scoreboard {
   align-items: stretch;
   display: grid;
-  gap: 12px;
+  gap: 18px;
   grid-template-columns: minmax(0, 1fr) minmax(120px, 0.55fr) minmax(0, 1fr);
 }
 
 .ping-pong-player,
 .ping-pong-center,
 .ping-pong-round-list li {
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(196, 214, 238, 0.14);
-  border-radius: 8px;
   min-width: 0;
 }
 
 .ping-pong-player {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 4px 0 0;
 }
 
 .ping-pong-player span,
 .ping-pong-center span,
 .ping-pong-round-list span {
-  color: #9daac0;
+  color: #8b949e;
   font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: 0;
   min-width: 0;
-  text-transform: uppercase;
 }
 
 .ping-pong-player strong {
-  font-size: 64px;
-  line-height: 0.9;
+  font-size: 72px;
+  letter-spacing: 0;
+  line-height: 0.88;
 }
 
 .ping-pong-player.red strong {
-  color: #ff4d5b;
-  text-shadow: 0 0 24px rgba(255, 28, 40, 0.34);
+  color: #ff5964;
+  text-shadow: none;
 }
 
 .ping-pong-player.blue strong {
-  color: #5e94ff;
-  text-shadow: 0 0 24px rgba(20, 92, 255, 0.42);
+  color: #4f8cff;
+  text-shadow: none;
 }
 
 .ping-pong-score-track {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  height: 10px;
+  height: 8px;
   overflow: hidden;
 }
 
@@ -550,25 +528,28 @@ select {
   align-content: center;
   display: grid;
   justify-items: center;
-  padding: 16px;
+  padding: 4px 0 0;
   text-align: center;
 }
 
 .ping-pong-center strong {
   color: #ffffff;
-  font-size: 44px;
+  font-size: 42px;
   line-height: 1;
 }
 
 .ping-pong-metrics {
   display: grid;
-  gap: 12px;
+  gap: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-block: 8px;
+  border-bottom: 1px solid rgba(139, 148, 158, 0.22);
+  border-top: 1px solid rgba(139, 148, 158, 0.22);
 }
 
 .ping-pong-round-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -576,10 +557,11 @@ select {
 
 .ping-pong-round-list li {
   align-items: center;
+  border-top: 1px solid rgba(139, 148, 158, 0.18);
   display: grid;
   gap: 10px;
   grid-template-columns: 44px minmax(0, 1fr) 42px;
-  padding: 10px 12px;
+  padding: 10px 0;
 }
 
 .ping-pong-round-list strong,
@@ -596,7 +578,7 @@ select {
 }
 
 .ping-pong-round-list .pending strong {
-  color: #f5f8ff;
+  color: #f0f3f6;
 }
 
 @media (max-width: 1120px) {
