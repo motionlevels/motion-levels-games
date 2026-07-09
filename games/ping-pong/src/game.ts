@@ -157,7 +157,7 @@ class PingPongGame implements PingPongGameInstance {
     this.startedAtMillis = nowMillis;
     this.nowMillis = nowMillis;
     this.resetGame(nowMillis);
-    this.lastEvent = gameEvent("ready", "Ping Pong espera rojo y azul.", nowMillis);
+    this.lastEvent = gameEvent("ready", "Ping Pong espera rojo y azul", nowMillis);
     return [this.lastEvent];
   }
 
@@ -351,14 +351,14 @@ class PingPongGame implements PingPongGameInstance {
     this.readyAtMillis = 0;
     this.finishAtMillis = 0;
     this.resetBall();
-    this.lastEvent = gameEvent("none", "Esperando a rojo arriba y azul abajo.", nowMillis);
+    this.lastEvent = gameEvent("none", "Esperando a rojo arriba y azul abajo", nowMillis);
   }
 
   private updatePhase(nowMillis: number): GameEvent[] {
     if (this.phase === "finished") {
       if (nowMillis - this.finishAtMillis >= winAnimationMillis) {
         this.resetGame(nowMillis);
-        return [gameEvent("ready", "Nueva partida.", nowMillis)];
+        return [gameEvent("ready", "Nueva partida", nowMillis)];
       }
       return [];
     }
@@ -367,7 +367,7 @@ class PingPongGame implements PingPongGameInstance {
       this.phase = "starting";
       this.readyAtMillis = nowMillis + readyAnimationMillis;
       this.motionEventId += 1;
-      return [gameEvent("start", "Rojo y azul listos.", nowMillis)];
+      return [gameEvent("start", "Rojo y azul listos", nowMillis)];
     }
 
     if (this.phase === "starting" && nowMillis >= this.readyAtMillis) {
@@ -376,7 +376,7 @@ class PingPongGame implements PingPongGameInstance {
       this.lastStepMillis = nowMillis;
       this.serve();
       this.motionEventId += 1;
-      return [gameEvent("start", "La pelota esta en juego.", nowMillis)];
+      return [gameEvent("start", "La pelota esta en juego", nowMillis)];
     }
 
     return [];
@@ -434,7 +434,7 @@ class PingPongGame implements PingPongGameInstance {
       this.commitBall({ ...this.ball, x: nextX, y: paddleYRed + 1, dy: 1 });
       this.recordImpact(0, nextX, paddleYRed);
       this.accelerate();
-      return gameEvent("coin", "Rojo devuelve.", nowMillis);
+      return gameEvent("coin", "Rojo devuelve", nowMillis);
     }
 
     if (this.ball.dy > 0 && nextY === paddleYBlue && nextX >= this.bluePaddleX && nextX < this.bluePaddleX + paddleWidth) {
@@ -442,16 +442,16 @@ class PingPongGame implements PingPongGameInstance {
       this.commitBall({ ...this.ball, x: nextX, y: paddleYBlue - 1, dy: -1 });
       this.recordImpact(1, nextX, paddleYBlue);
       this.accelerate();
-      return gameEvent("coin", "Azul devuelve.", nowMillis);
+      return gameEvent("coin", "Azul devuelve", nowMillis);
     }
 
     if (nextY < 0) {
       this.scorePoint(1, nowMillis);
-      return gameEvent("score", "Punto para azul.", nowMillis);
+      return gameEvent("score", "Punto para azul", nowMillis);
     }
     if (nextY >= FLOOR_ROWS) {
       this.scorePoint(0, nowMillis);
-      return gameEvent("score", "Punto para rojo.", nowMillis);
+      return gameEvent("score", "Punto para rojo", nowMillis);
     }
 
     this.commitBall({ ...this.ball, x: nextX, y: nextY });

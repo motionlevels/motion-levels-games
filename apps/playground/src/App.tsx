@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
+  ArrowUpToLine,
   Bug,
   Check,
   Copy,
@@ -40,6 +41,7 @@ import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
 import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
+import { formatElapsedClock } from "./timeFormat.ts";
 
 const playerDisplayMediaWidth = 1280;
 const playerDisplayMediaHeight = 720;
@@ -120,11 +122,15 @@ export function App() {
   const [captureMessage, setCaptureMessage] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [eventAutoFollow, setEventAutoFollow] = useState(true);
   const shellRef = useRef<HTMLElement>(null);
   const debugRef = useRef<HTMLElement>(null);
   const debugTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const eventStreamRef = useRef<HTMLOListElement>(null);
+  const eventAutoFollowRef = useRef(true);
+  const previousLatestEventRef = useRef("");
   const displayPreviewRef = useRef<HTMLDivElement>(null);
   const displayNativeRef = useRef<HTMLDivElement>(null);
   const [displayPreviewScale, setDisplayPreviewScale] = useState(1);
@@ -180,6 +186,51 @@ export function App() {
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  useLayoutEffect(() => {
+    const stream = eventStreamRef.current;
+    if (!stream) {
+      return undefined;
+    }
+
+    const previousLatestEvent = previousLatestEventRef.current;
+    const currentEventKeys = events.map(eventKey);
+    const insertedEventCount = previousLatestEvent ? currentEventKeys.indexOf(previousLatestEvent) : 0;
+
+    if (eventAutoFollowRef.current) {
+      stream.scrollTop = 0;
+    } else if (insertedEventCount > 0) {
+      const rows = Array.from(stream.querySelectorAll<HTMLElement>("li:not(.status-event-empty)"));
+      const gap = Number.parseFloat(window.getComputedStyle(stream).rowGap) || 0;
+      const insertedHeight = rows
+        .slice(0, insertedEventCount)
+        .reduce((height, row) => height + row.offsetHeight + gap, 0);
+      stream.scrollTop += insertedHeight;
+    }
+
+    previousLatestEventRef.current = currentEventKeys[0] ?? "";
+    return undefined;
+  }, [events]);
+
+  const setEventAutoFollowState = useCallback((nextAutoFollow: boolean) => {
+    eventAutoFollowRef.current = nextAutoFollow;
+    setEventAutoFollow(nextAutoFollow);
+    if (nextAutoFollow && eventStreamRef.current) {
+      eventStreamRef.current.scrollTop = 0;
+    }
+  }, []);
+
+  const handleEventStreamScroll = useCallback(() => {
+    const stream = eventStreamRef.current;
+    if (!stream) {
+      return;
+    }
+
+    const isAtLatest = stream.scrollTop <= 1;
+    if (isAtLatest !== eventAutoFollowRef.current) {
+      setEventAutoFollowState(isAtLatest);
+    }
+  }, [setEventAutoFollowState]);
 
   useEffect(() => {
     const element = displayPreviewRef.current;
@@ -253,7 +304,7 @@ export function App() {
     setFrame(state.frame);
 
     if (state.events.length > 0) {
-      const mergedEvents = [...state.events, ...eventsRef.current].slice(0, 12);
+      const mergedEvents = [...state.events, ...eventsRef.current].slice(0, 50);
       eventsRef.current = mergedEvents;
       setEvents(mergedEvents);
     }
@@ -279,6 +330,9 @@ export function App() {
       const nextPaused = preservePaused ? pausedRef.current : false;
       pausedRef.current = nextPaused;
       setPaused(nextPaused);
+      eventAutoFollowRef.current = true;
+      previousLatestEventRef.current = "";
+      setEventAutoFollow(true);
       eventsRef.current = next.events;
       snapshotRef.current = nextState.snapshot;
       frameRef.current = nextState.frame;
@@ -676,14 +730,14 @@ export function App() {
     fullscreenFallback ? "is-fullscreen-fallback" : ""
   ].filter(Boolean).join(" ");
   const latestEvent = events[0];
-  const recentEvents = events.slice(1, 6);
+  const eventStream = events;
   const displayedPhase = paused ? "paused" : snapshot.phase;
   const frameMillis = engineRef.current.frameMillis;
   const frameNumber = frameMillis > 0 ? Math.round(engineRef.current.clockMillis / frameMillis) : 0;
   const debugStats: [string, ReactNode][] = [
     ["Game", selectedGame.manifest.label],
     ["Phase", snapshot.phase],
-    ["Clock", formatClockHMS(engineRef.current.clockMillis)],
+    ["Clock", formatElapsedClock(engineRef.current.clockMillis)],
     ["FPS", engineRef.current.fps],
     ["Seed", seed],
     ["Players", playerCount],
@@ -896,7 +950,7 @@ export function App() {
                       <span>Latest Event</span>
                       {latestEvent ? (
                         <p>
-                          <code>{formatMillis(latestEvent.atMillis)}ms</code>
+                          <code>{formatElapsedClock(latestEvent.atMillis)}</code>
                           <b>{latestEvent.cue}</b>
                           <strong>{latestEvent.message}</strong>
                         </p>
@@ -911,9 +965,9 @@ export function App() {
                         <strong>{events.length}</strong>
                       </div>
                       <ol>
-                        {events.map((event, index) => (
-                          <li key={`${event.atMillis}-${event.cue}-${index}`}>
-                            <code>{formatMillis(event.atMillis)}ms</code>
+                        {events.map((event) => (
+                          <li key={eventKey(event)}>
+                            <code>{formatElapsedClock(event.atMillis)}</code>
                             <span>{event.cue}</span>
                             <strong>{event.message}</strong>
                           </li>
@@ -1021,13 +1075,13 @@ export function App() {
               </div>
               <div className="status-runtime-summary">
                 <span>Engine clock</span>
-                <strong>{formatClockHMS(engineRef.current.clockMillis)}</strong>
+                <strong>{formatElapsedClock(engineRef.current.clockMillis)}</strong>
                 <small>{frameNumber.toLocaleString()} frames processed</small>
               </div>
               <dl className="status-metrics">
                 <div>
                   <dt>Clock</dt>
-                  <dd>{formatClockHMS(engineRef.current.clockMillis)}</dd>
+                  <dd>{formatElapsedClock(engineRef.current.clockMillis)}</dd>
                 </div>
                 <div>
                   <dt>FPS</dt>
@@ -1042,28 +1096,43 @@ export function App() {
 
             <article className="status-card status-card-event">
               <div className="status-card-head">
-                <span>Latest event</span>
-                <code>{latestEvent ? `${formatMillis(latestEvent.atMillis)}ms` : "—"}</code>
-              </div>
-              {latestEvent ? (
-                <div className="status-event-copy">
-                  <strong>{latestEvent.cue}</strong>
-                  <p>{latestEvent.message}</p>
+                <span>Event stream</span>
+                <div className="status-stream-controls">
+                  <code aria-label={`${events.length} retained events`}>{events.length}</code>
+                  <button
+                    aria-label={eventAutoFollow ? "Disable event auto-follow" : "Enable event auto-follow"}
+                    aria-pressed={eventAutoFollow}
+                    className={`status-stream-follow ${eventAutoFollow ? "is-active" : ""}`}
+                    onClick={() => setEventAutoFollowState(!eventAutoFollowRef.current)}
+                    title={eventAutoFollow ? "Auto-following newest events" : "Event auto-follow paused"}
+                    type="button"
+                  >
+                    {eventAutoFollow ? <ArrowUpToLine aria-hidden="true" /> : <Pause aria-hidden="true" />}
+                  </button>
                 </div>
-              ) : (
-                <p className="status-empty">No events yet</p>
-              )}
-              {recentEvents.length > 0 ? (
-                <ol className="status-event-history" aria-label="Recent events">
-                  {recentEvents.map((event, index) => (
-                    <li key={`${event.atMillis}-${event.cue}-${index}`}>
-                      <code>{formatMillis(event.atMillis)}ms</code>
+              </div>
+              <ol
+                className="status-event-history"
+                aria-label="Live event stream"
+                aria-live="polite"
+                aria-relevant="additions"
+                onScroll={handleEventStreamScroll}
+                ref={eventStreamRef}
+              >
+                {eventStream.length > 0 ? (
+                  eventStream.map((event) => (
+                    <li key={eventKey(event)}>
+                      <time dateTime={`PT${Math.max(0, event.atMillis) / 1000}S`}>
+                        {formatElapsedClock(event.atMillis)}
+                      </time>
                       <strong>{event.cue}</strong>
                       <span>{event.message}</span>
                     </li>
-                  ))}
-                </ol>
-              ) : null}
+                  ))
+                ) : (
+                  <li className="status-event-empty">No events yet</li>
+                )}
+              </ol>
             </article>
 
             <article className="status-card status-card-config">
@@ -1409,21 +1478,8 @@ function randomSeed(): number {
   return MIN_SEED + Math.floor(Math.random() * (MAX_SEED - MIN_SEED + 1));
 }
 
-function formatMillis(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-// Human-friendly HH:MM:SS.CS clock (centisecond precision), e.g. 00:01:43.20.
-function formatClockHMS(ms: number): string {
-  const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
-  const totalCentis = Math.floor(safeMs / 10);
-  const centis = totalCentis % 100;
-  const totalSeconds = Math.floor(totalCentis / 100);
-  const seconds = totalSeconds % 60;
-  const minutes = Math.floor(totalSeconds / 60) % 60;
-  const hours = Math.floor(totalSeconds / 3600);
-  const pad = (value: number) => value.toString().padStart(2, "0");
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(centis)}`;
+function eventKey(event: GameEvent): string {
+  return `${event.atMillis}:${event.cue}:${event.message}`;
 }
 
 // Re-keys on each value change so the CSS highlight animation replays, giving

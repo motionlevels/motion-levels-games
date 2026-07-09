@@ -26,7 +26,7 @@ export const waitingSnapshot: PingPongSnapshot = {
   activeTargets: 0,
   success: false,
   lastEventCue: "ready",
-  lastEventMessage: "Ping Pong espera rojo y azul.",
+  lastEventMessage: "Ping Pong espera rojo y azul",
   countdownMillis: 0,
   matchTarget: 5,
   roundHits: 0,
@@ -53,7 +53,7 @@ export const runningSnapshot: PingPongSnapshot = {
   elapsedMillis: 8200,
   activeTargets: 2,
   lastEventCue: "coin",
-  lastEventMessage: "Azul devuelve.",
+  lastEventMessage: "Azul devuelve",
   roundHits: 3,
   ball: { x: 11, y: 21, dx: 1, dy: 1 },
   ballTrail: [
@@ -74,7 +74,7 @@ export const finishedSnapshot: PingPongSnapshot = {
   remainingMillis: 2400,
   success: true,
   lastEventCue: "score",
-  lastEventMessage: "Punto para azul.",
+  lastEventMessage: "Punto para azul",
   players: [
     { index: 0, label: "Rojo", color: redColor, score: 2, lives: 3 },
     { index: 1, label: "Azul", color: blueColor, score: 3, lives: 2 }

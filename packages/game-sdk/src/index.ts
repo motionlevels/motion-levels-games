@@ -310,7 +310,7 @@ export function setFrameCell(frame: Frame, x: number, y: number, color: HexColor
 }
 
 export function gameEvent(cue: GameEventCue, message: string, atMillis: number): GameEvent {
-  return { cue, message, atMillis };
+  return { cue, message: message.trimEnd().replace(/\.+$/u, ""), atMillis };
 }
 
 export function readNumberOption(options: GameConfigOptions, key: string, fallback: number): number {

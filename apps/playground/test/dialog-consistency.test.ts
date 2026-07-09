@@ -113,16 +113,36 @@ test("tall status docks expose useful adaptive diagnostics", () => {
   );
 });
 
-test("latest event content always follows its header", () => {
+test("event stream stays visible, timestamped, and follows the latest event", () => {
   assert.match(
-    styleSource,
-    /\.status-event-copy\s*\{[^}]*margin:\s*12px 0 0;/s,
-    "latest event content must be top-anchored below its header"
+    appSource,
+    /className="status-event-history"[\s\S]*?aria-live="polite"[\s\S]*?ref=\{eventStreamRef\}/,
+    "the event stream must announce and follow live additions"
+  );
+  assert.match(
+    appSource,
+    /eventStream\.map[\s\S]*?<time[\s\S]*?formatElapsedClock\(event\.atMillis\)/,
+    "every event row needs the shared elapsed-time clock"
+  );
+  assert.match(
+    appSource,
+    /aria-pressed=\{eventAutoFollow\}[\s\S]*?setEventAutoFollowState\(!eventAutoFollowRef\.current\)/,
+    "auto-follow needs an accessible icon toggle"
+  );
+  assert.match(
+    appSource,
+    /const isAtLatest = stream\.scrollTop <= 1;[\s\S]*?setEventAutoFollowState\(isAtLatest\)/,
+    "scrolling away must pause follow and returning to the top must resume it"
   );
   assert.doesNotMatch(
+    appSource,
+    /const eventStream = \[\.\.\.events\]\.reverse\(\)/,
+    "the newest event must stay at the top"
+  );
+  assert.match(
     styleSource,
-    /\.status-event-copy\s*\{[^}]*margin:\s*auto 0;/s,
-    "latest event content must never vertically center itself"
+    /\.status-event-history\s*\{[^}]*display:\s*grid;[^}]*overflow-y:\s*auto;/s,
+    "event history must remain visible and scroll within its card"
   );
 });
 

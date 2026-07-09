@@ -22,6 +22,8 @@ no database, venue hardware, Motion Go, or platform API coupling.
   values, comments, docs, and commit messages.
 - Keep game terminology consistent with the platform's Spanish (e.g. `baldosa`
   for tile, `punto`/`peloteo` for point/rally, `objetivo` for target).
+- Keep `GameEvent.message` concise and never end it with a period. Event lists
+  supply their own visual separation, so terminal periods add noise.
 
 ## Player Display Layout
 

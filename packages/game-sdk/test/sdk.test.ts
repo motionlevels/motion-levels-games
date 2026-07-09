@@ -116,6 +116,14 @@ test("formatClock renders countdown text", () => {
   assert.equal(formatClock(0), "0:00");
 });
 
+test("gameEvent removes terminal periods from event messages", () => {
+  assert.deepEqual(gameEvent("ready", "Ready...", 120), {
+    cue: "ready",
+    message: "Ready",
+    atMillis: 120
+  });
+});
+
 test("game engine uses 30fps fixed step defaults", () => {
   const game = createFakeGame();
   const engine = createGameEngine(game, {
