@@ -52,6 +52,35 @@ test("every playground dialog uses the shared icon close control", () => {
   );
 });
 
+test("dialogs and selectors use composable pause locks", () => {
+  assert.match(appSource, /const paused = isPlaygroundPaused\(manuallyPaused, pauseLocks\)/);
+  assert.match(appSource, /setInteractionPauseState\("debug-dialog", open\)/);
+  assert.match(appSource, /setInteractionPauseState\("settings-dialog", open\)/);
+
+  for (const selector of ["game-select", "players-select", "difficulty-select"]) {
+    assert.match(
+      appSource,
+      new RegExp(`onBlur=\\{\\(\\) => setInteractionPauseState\\("${selector}", false\\)\\}[\\s\\S]*?onFocus=\\{\\(\\) => setInteractionPauseState\\("${selector}", true\\)\\}`),
+      `${selector} must pause while focused and release only its own lock`
+    );
+    assert.match(
+      appSource,
+      new RegExp(`onPointerDown=\\{\\(\\) => setInteractionPauseState\\("${selector}", true\\)\\}`),
+      `${selector} must reacquire its lock when an already-focused selector opens again`
+    );
+  }
+
+  assert.match(appSource, /disabled=\{pauseLocks\.size > 0\}/, "temporary pause must not expose a misleading resume action");
+});
+
+test("every playground configuration change restarts the active game", () => {
+  assert.match(appSource, /const changeSeed[\s\S]*?restart\(nextSeed\)/);
+  assert.match(appSource, /const changePlayerCount[\s\S]*?restart\(seedRef\.current, nextPlayerCount\)/);
+  assert.match(appSource, /const changeDifficulty[\s\S]*?restart\([\s\S]*?nextDifficulty\)/);
+  assert.match(appSource, /const setGameOptionState[\s\S]*?restart\([\s\S]*?nextOptions/);
+  assert.match(appSource, /storeSelectedGameId\(nextGame\.manifest\.id\)/);
+});
+
 test("compact action groups use zero-gap shared control styling", () => {
   assert.match(styleSource, /--pg-control-bg:/, "shared control background token is required");
   assert.match(styleSource, /--pg-control-border:/, "shared control border token is required");

@@ -139,6 +139,18 @@ only the options declared by the manifest.
 `getState()` includes the active `seed`, `playerCount`, `difficulty`, and
 `options` values so agents can record the exact run configuration.
 
+The browser remembers the last selected game and restores it on reload when the
+game is still available. Changing the player count, difficulty, seed, or any
+manifest-defined option restarts the engine with the new normalized
+configuration. The new run begins at clock zero and follows the game's normal
+start lifecycle.
+
+Opening a playground dialog or focusing a selector temporarily pauses the live
+engine. Pause locks compose, so closing one control does not resume while
+another is still open. Manual pause is independent: a game that was manually
+paused before opening a control remains paused after every control closes.
+`getState().paused` reports the effective combined pause state.
+
 ## Start Lifecycle
 
 Games normally initialize in `waiting`, not `running`. Their snapshot reports

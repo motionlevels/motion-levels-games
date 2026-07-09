@@ -74,6 +74,13 @@ no database, venue hardware, Motion Go, or platform API coupling.
 
 ## Developer UI Consistency
 
+- Persist the last selected playground game and restore it only when its id is
+  still present in the discovered game catalog. Every player count,
+  difficulty, seed, or manifest setting change must restart the active game.
+- Opening any playground dialog or focusing a selector must acquire a temporary
+  pause lock. Release only that lock when the UI closes or blurs; never clear a
+  manual pause or another open UI's lock. Keep manual pause state separate from
+  temporary interaction pause state.
 - Prefer icons for compact, repeated developer actions. Every icon-only button
   must still have an accessible label and a tooltip.
 - Every playground dialog or popover must use the shared

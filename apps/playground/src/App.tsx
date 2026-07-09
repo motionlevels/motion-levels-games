@@ -51,7 +51,9 @@ import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
 import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
 import { PhaseIndicator } from "./PhaseIndicator.tsx";
+import { isPlaygroundPaused, updatePauseLocks, type PauseLockSet } from "./pausePolicy.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
+import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 
 const playerDisplayMediaWidth = 1280;
@@ -83,24 +85,30 @@ function createStartedGame(
 }
 
 export function App() {
-  const [selectedGameId, setSelectedGameId] = useState(defaultGame.manifest.id);
+  const initialGame = useMemo(() => {
+    const storedGameId = readStoredSelectedGameId(playgroundGames.map((game) => game.manifest.id));
+    return playgroundGames.find((game) => game.manifest.id === storedGameId) ?? defaultGame;
+  }, []);
+  const [selectedGameId, setSelectedGameId] = useState(initialGame.manifest.id);
   const selectedGame = useMemo(
     () => playgroundGames.find((game) => game.manifest.id === selectedGameId) ?? defaultGame,
     [selectedGameId]
   );
   const [seed, setSeed] = useState(DEFAULT_GAME_SEED);
-  const [playerCount, setPlayerCount] = useState(defaultGamePlayerCount(defaultGame.manifest));
-  const [difficulty, setDifficulty] = useState<GameDifficulty>(() => defaultDifficultyFor(defaultGame));
-  const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => defaultConfigOptionsFor(defaultGame));
-  const [paused, setPaused] = useState(false);
+  const [playerCount, setPlayerCount] = useState(defaultGamePlayerCount(initialGame.manifest));
+  const [difficulty, setDifficulty] = useState<GameDifficulty>(() => defaultDifficultyFor(initialGame));
+  const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => defaultConfigOptionsFor(initialGame));
+  const [manuallyPaused, setManuallyPaused] = useState(false);
+  const [pauseLocks, setPauseLocks] = useState<PauseLockSet>(() => new Set());
+  const paused = isPlaygroundPaused(manuallyPaused, pauseLocks);
   const started = useMemo(
     () => {
       const startedGame = createStartedGame(
-        defaultGame,
+        initialGame,
         DEFAULT_GAME_SEED,
-        defaultGamePlayerCount(defaultGame.manifest),
-        defaultDifficultyFor(defaultGame),
-        defaultConfigOptionsFor(defaultGame)
+        defaultGamePlayerCount(initialGame.manifest),
+        defaultDifficultyFor(initialGame),
+        defaultConfigOptionsFor(initialGame)
       );
       const engine = createGameEngine(startedGame.game, {
         fps: DEFAULT_ENGINE_FPS,
@@ -109,7 +117,7 @@ export function App() {
 
       return { ...startedGame, engine };
     },
-    []
+    [initialGame]
   );
   const engineRef = useRef<GameEngine>(started.engine);
   const [snapshot, setSnapshot] = useState<GameSnapshot>(started.engine.state.snapshot);
@@ -137,6 +145,8 @@ export function App() {
   const playerCountRef = useRef(playerCount);
   const difficultyRef = useRef(difficulty);
   const gameOptionsRef = useRef(gameOptions);
+  const manuallyPausedRef = useRef(manuallyPaused);
+  const pauseLocksRef = useRef<PauseLockSet>(pauseLocks);
   const pausedRef = useRef(paused);
   const snapshotRef = useRef(snapshot);
   const frameRef = useRef(frame);
@@ -170,8 +180,14 @@ export function App() {
   }, [gameOptions]);
 
   useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
+    manuallyPausedRef.current = manuallyPaused;
+    pausedRef.current = isPlaygroundPaused(manuallyPaused, pauseLocksRef.current);
+  }, [manuallyPaused]);
+
+  useEffect(() => {
+    pauseLocksRef.current = pauseLocks;
+    pausedRef.current = isPlaygroundPaused(manuallyPausedRef.current, pauseLocks);
+  }, [pauseLocks]);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -264,10 +280,32 @@ export function App() {
     return () => document.removeEventListener("fullscreenchange", updateFullscreen);
   }, []);
 
-  const setPausedState = useCallback((nextPaused: boolean) => {
-    pausedRef.current = nextPaused;
-    setPaused(nextPaused);
+  const setManuallyPausedState = useCallback((nextPaused: boolean) => {
+    manuallyPausedRef.current = nextPaused;
+    pausedRef.current = isPlaygroundPaused(nextPaused, pauseLocksRef.current);
+    setManuallyPaused(nextPaused);
   }, []);
+
+  const setInteractionPauseState = useCallback((lockId: string, active: boolean) => {
+    const nextLocks = updatePauseLocks(pauseLocksRef.current, lockId, active);
+    if (nextLocks === pauseLocksRef.current) {
+      return;
+    }
+
+    pauseLocksRef.current = nextLocks;
+    pausedRef.current = isPlaygroundPaused(manuallyPausedRef.current, nextLocks);
+    setPauseLocks(nextLocks);
+  }, []);
+
+  const setDebugOpenState = useCallback((open: boolean) => {
+    setInteractionPauseState("debug-dialog", open);
+    setDebugOpen(open);
+  }, [setInteractionPauseState]);
+
+  const setSettingsOpenState = useCallback((open: boolean) => {
+    setInteractionPauseState("settings-dialog", open);
+    setSettingsOpen(open);
+  }, [setInteractionPauseState]);
 
   const setSeedState = useCallback((nextSeed: number) => {
     seedRef.current = nextSeed;
@@ -282,15 +320,6 @@ export function App() {
   const setDifficultyState = useCallback((nextDifficulty: GameDifficulty) => {
     difficultyRef.current = nextDifficulty;
     setDifficulty(nextDifficulty);
-  }, []);
-
-  const setGameOptionState = useCallback((configVar: GameConfigVar, nextValue: unknown) => {
-    const nextOptions = {
-      ...gameOptionsRef.current,
-      [configVar.key]: normalizeGameConfigValue(configVar, nextValue)
-    };
-    gameOptionsRef.current = nextOptions;
-    setGameOptions(nextOptions);
   }, []);
 
   const previewFrameFor = useCallback((sourceFrame: Frame = frameRef.current): Frame => sourceFrame, []);
@@ -313,7 +342,6 @@ export function App() {
       nextSeed = seedRef.current,
       nextPlayerCount = playerCountRef.current,
       nextGame = selectedGameRef.current,
-      preservePaused = false,
       nextDifficulty = difficultyRef.current,
       nextOptions = gameOptionsRef.current
     ) => {
@@ -325,9 +353,6 @@ export function App() {
       });
       const nextState = nextEngine.state;
       engineRef.current = nextEngine;
-      const nextPaused = preservePaused ? pausedRef.current : false;
-      pausedRef.current = nextPaused;
-      setPaused(nextPaused);
       eventAutoFollowRef.current = true;
       previousLatestEventRef.current = "";
       setEventAutoFollow(true);
@@ -345,16 +370,64 @@ export function App() {
     []
   );
 
+  const changeSeed = useCallback((nextSeed: number) => {
+    if (nextSeed === seedRef.current) {
+      return;
+    }
+
+    setSeedState(nextSeed);
+    restart(nextSeed);
+  }, [restart, setSeedState]);
+
+  const changePlayerCount = useCallback((nextPlayerCount: number) => {
+    if (nextPlayerCount === playerCountRef.current) {
+      return;
+    }
+
+    setPlayerCountState(nextPlayerCount);
+    restart(seedRef.current, nextPlayerCount);
+  }, [restart, setPlayerCountState]);
+
+  const changeDifficulty = useCallback((nextDifficulty: GameDifficulty) => {
+    if (nextDifficulty === difficultyRef.current) {
+      return;
+    }
+
+    setDifficultyState(nextDifficulty);
+    restart(seedRef.current, playerCountRef.current, selectedGameRef.current, nextDifficulty);
+  }, [restart, setDifficultyState]);
+
+  const setGameOptionState = useCallback((configVar: GameConfigVar, nextValue: unknown) => {
+    const normalizedValue = normalizeGameConfigValue(configVar, nextValue);
+    if (Object.is(normalizedValue, gameOptionsRef.current[configVar.key])) {
+      return;
+    }
+
+    const nextOptions = {
+      ...gameOptionsRef.current,
+      [configVar.key]: normalizedValue
+    };
+    gameOptionsRef.current = nextOptions;
+    setGameOptions(nextOptions);
+    restart(
+      seedRef.current,
+      playerCountRef.current,
+      selectedGameRef.current,
+      difficultyRef.current,
+      nextOptions
+    );
+  }, [restart]);
+
   const resetGameOptions = useCallback(() => {
     const defaults = defaultConfigOptionsFor(selectedGameRef.current);
     gameOptionsRef.current = defaults;
     setGameOptions(defaults);
-    restart(seedRef.current, playerCountRef.current, selectedGameRef.current, true, difficultyRef.current, defaults);
+    restart(seedRef.current, playerCountRef.current, selectedGameRef.current, difficultyRef.current, defaults);
   }, [restart]);
 
   const selectGame = useCallback(
     (gameId: string) => {
-      const nextGame = playgroundGames.find((game) => game.manifest.id === gameId) ?? selectedGame;
+      const nextGame = playgroundGames.find((game) => game.manifest.id === gameId) ?? defaultGame;
       const nextSeed = DEFAULT_GAME_SEED;
       const nextPlayerCount = defaultGamePlayerCount(nextGame.manifest);
       const nextDifficulty = defaultDifficultyFor(nextGame);
@@ -366,13 +439,14 @@ export function App() {
       difficultyRef.current = nextDifficulty;
       gameOptionsRef.current = nextOptions;
       setSelectedGameId(nextGame.manifest.id);
+      storeSelectedGameId(nextGame.manifest.id);
       setSeed(nextSeed);
       setPlayerCount(nextPlayerCount);
       setDifficulty(nextDifficulty);
       setGameOptions(nextOptions);
-      restart(nextSeed, nextPlayerCount, nextGame, false, nextDifficulty, nextOptions);
+      restart(nextSeed, nextPlayerCount, nextGame, nextDifficulty, nextOptions);
     },
-    [restart, selectedGame]
+    [restart]
   );
 
   useEffect(() => {
@@ -581,13 +655,12 @@ export function App() {
         playerCount: playerCountRef.current,
         seed: seedRef.current
       }),
-      pause: () => setPausedState(true),
-      resume: () => setPausedState(false),
+      pause: () => setManuallyPausedState(true),
+      resume: () => setManuallyPausedState(false),
       reset: () => restart(
         seedRef.current,
         playerCountRef.current,
         selectedGameRef.current,
-        true,
         difficultyRef.current,
         gameOptionsRef.current
       ),
@@ -606,7 +679,7 @@ export function App() {
       },
       media: generateMedia
     }),
-    [captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, previewFrameFor, restart, setPausedState, stepGame]
+    [captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, previewFrameFor, restart, setManuallyPausedState, stepGame]
   );
 
   useEffect(() => installPlaygroundApi(api), [api]);
@@ -635,12 +708,12 @@ export function App() {
         return;
       }
 
-      setDebugOpen(false);
+      setDebugOpenState(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setDebugOpen(false);
+        setDebugOpenState(false);
         window.requestAnimationFrame(() => debugTriggerRef.current?.focus());
       }
     };
@@ -652,7 +725,7 @@ export function App() {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [debugOpen]);
+  }, [debugOpen, setDebugOpenState]);
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -674,12 +747,12 @@ export function App() {
         return;
       }
 
-      setSettingsOpen(false);
+      setSettingsOpenState(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setSettingsOpen(false);
+        setSettingsOpenState(false);
         window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
       }
     };
@@ -691,7 +764,7 @@ export function App() {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [settingsOpen]);
+  }, [settingsOpen, setSettingsOpenState]);
 
   const toggleFullscreen = useCallback(async () => {
     const element = shellRef.current;
@@ -785,7 +858,20 @@ export function App() {
                 <label className="control-field control-game">
                   <span>Game</span>
                   <select
-                    onChange={(event) => selectGame(event.target.value)}
+                    onBlur={() => setInteractionPauseState("game-select", false)}
+                    onChange={(event) => {
+                      selectGame(event.target.value);
+                      setInteractionPauseState("game-select", false);
+                    }}
+                    onFocus={() => setInteractionPauseState("game-select", true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setInteractionPauseState("game-select", false);
+                      } else if ([" ", "Enter", "ArrowDown", "ArrowUp"].includes(event.key)) {
+                        setInteractionPauseState("game-select", true);
+                      }
+                    }}
+                    onPointerDown={() => setInteractionPauseState("game-select", true)}
                     value={selectedGame.manifest.id}
                   >
                     {playgroundGames.map((game) => (
@@ -798,7 +884,20 @@ export function App() {
                 <label className="control-field control-players">
                   <span>Players</span>
                   <select
-                    onChange={(event) => setPlayerCountState(Number(event.target.value))}
+                    onBlur={() => setInteractionPauseState("players-select", false)}
+                    onChange={(event) => {
+                      changePlayerCount(Number(event.target.value));
+                      setInteractionPauseState("players-select", false);
+                    }}
+                    onFocus={() => setInteractionPauseState("players-select", true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setInteractionPauseState("players-select", false);
+                      } else if ([" ", "Enter", "ArrowDown", "ArrowUp"].includes(event.key)) {
+                        setInteractionPauseState("players-select", true);
+                      }
+                    }}
+                    onPointerDown={() => setInteractionPauseState("players-select", true)}
                     value={playerCount}
                   >
                     {playerCountChoices.map((count) => (
@@ -811,7 +910,20 @@ export function App() {
                 <label className="control-field control-difficulty">
                   <span>Difficulty</span>
                   <select
-                    onChange={(event) => setDifficultyState(event.target.value)}
+                    onBlur={() => setInteractionPauseState("difficulty-select", false)}
+                    onChange={(event) => {
+                      changeDifficulty(event.target.value);
+                      setInteractionPauseState("difficulty-select", false);
+                    }}
+                    onFocus={() => setInteractionPauseState("difficulty-select", true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setInteractionPauseState("difficulty-select", false);
+                      } else if ([" ", "Enter", "ArrowDown", "ArrowUp"].includes(event.key)) {
+                        setInteractionPauseState("difficulty-select", true);
+                      }
+                    }}
+                    onPointerDown={() => setInteractionPauseState("difficulty-select", true)}
                     value={difficulty}
                   >
                     {difficultyChoices.map((choice) => (
@@ -829,7 +941,7 @@ export function App() {
                     inputMode="numeric"
                     max={MAX_GAME_SEED}
                     min={MIN_GAME_SEED}
-                    onChange={(event) => setSeedState(normalizeGameSeed(Number(event.target.value)))}
+                    onChange={(event) => changeSeed(normalizeGameSeed(Number(event.target.value)))}
                     value={seed}
                   />
                 </label>
@@ -842,7 +954,7 @@ export function App() {
                   aria-label="Settings"
                   className="icon-button"
                   data-settings-trigger
-                  onClick={() => setSettingsOpen((value) => !value)}
+                  onClick={() => setSettingsOpenState(!settingsOpen)}
                   ref={settingsTriggerRef}
                   title="Settings"
                   type="button"
@@ -863,8 +975,7 @@ export function App() {
                   className="icon-button"
                   onClick={() => {
                     const nextSeed = randomSeed();
-                    setSeedState(nextSeed);
-                    restart(nextSeed, playerCount, selectedGameRef.current, false, difficulty, gameOptions);
+                    changeSeed(nextSeed);
                   }}
                   title="New seed"
                   type="button"
@@ -872,11 +983,12 @@ export function App() {
                   <Dices size={16} aria-hidden="true" />
                 </button>
                 <button
-                  aria-label={paused ? "Resume" : "Pause"}
-                  aria-pressed={paused}
+                  aria-label={pauseLocks.size > 0 ? "Paused while controls are open" : manuallyPaused ? "Resume" : "Pause"}
+                  aria-pressed={manuallyPaused}
                   className="icon-button"
-                  onClick={() => setPausedState(!pausedRef.current)}
-                  title={paused ? "Resume" : "Pause"}
+                  disabled={pauseLocks.size > 0}
+                  onClick={() => setManuallyPausedState(!manuallyPausedRef.current)}
+                  title={pauseLocks.size > 0 ? "Paused while controls are open" : manuallyPaused ? "Resume" : "Pause"}
                   type="button"
                 >
                   {paused ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
@@ -902,7 +1014,7 @@ export function App() {
                   aria-haspopup="dialog"
                   aria-label="Debug"
                   className="debug-trigger icon-button"
-                  onClick={() => setDebugOpen((value) => !value)}
+                  onClick={() => setDebugOpenState(!debugOpen)}
                   ref={debugTriggerRef}
                   title="Debug"
                   type="button"
@@ -920,7 +1032,7 @@ export function App() {
                       <PopoverCloseButton
                         label="Close debug panel"
                         onClick={() => {
-                          setDebugOpen(false);
+                          setDebugOpenState(false);
                           window.requestAnimationFrame(() => debugTriggerRef.current?.focus());
                         }}
                       />
@@ -1028,7 +1140,7 @@ export function App() {
                     <PopoverCloseButton
                       label="Close settings"
                       onClick={() => {
-                        setSettingsOpen(false);
+                        setSettingsOpenState(false);
                         window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
                       }}
                     />

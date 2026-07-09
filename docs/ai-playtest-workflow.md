@@ -72,6 +72,11 @@ filled, numeric bounds are enforced, undeclared options are removed, and an
 invalid difficulty falls back to the manifest default. Tests should assert
 those normalized values rather than duplicating manifest constraints.
 
+When reviewing playground behavior, verify that a selected game survives a
+reload, every configuration change restarts the engine, and dialogs/selectors
+pause only while they are active. Include a manually paused case so closing a
+control cannot accidentally resume the game.
+
 Generate catalog-style media when reviewing a game card or TV display:
 
 ```js
