@@ -3,18 +3,25 @@ import test from "node:test";
 import {
   FLOOR_COLS,
   FLOOR_ROWS,
+  createGameEngine,
   createFrame,
   createSeededRng,
+  DEFAULT_ENGINE_FPS,
+  DEFAULT_ENGINE_FRAME_MILLIS,
   fillFrameRect,
   formatClock,
   frameCell,
+  gameEvent,
   inFloorBounds,
   normalizeGameConfig,
   paintFrameCell,
   readClampedIntegerOption,
   rgbToHex,
   scaleRgb,
-  setFrameCell
+  setFrameCell,
+  type GameInstance,
+  type PressEvent,
+  type TickEvent
 } from "../src/index.ts";
 
 test("frame helpers create a fixed 16x32 floor", () => {
@@ -100,3 +107,104 @@ test("formatClock renders countdown text", () => {
   assert.equal(formatClock(59_000), "0:59");
   assert.equal(formatClock(0), "0:00");
 });
+
+test("game engine uses 30fps fixed step defaults", () => {
+  const game = createFakeGame();
+  const engine = createGameEngine(game, {
+    initialEvents: [gameEvent("ready", "Ready", 0)]
+  });
+
+  assert.equal(engine.fps, DEFAULT_ENGINE_FPS);
+  assert.equal(engine.frameMillis, DEFAULT_ENGINE_FRAME_MILLIS);
+  assert.equal(engine.state.events[0]?.cue, "ready");
+
+  const state = engine.step();
+
+  assert.equal(state.clockMillis, DEFAULT_ENGINE_FRAME_MILLIS);
+  assert.equal(game.ticks[0]?.atMillis, DEFAULT_ENGINE_FRAME_MILLIS);
+  assert.equal(state.snapshot.elapsedMillis, DEFAULT_ENGINE_FRAME_MILLIS);
+});
+
+test("game engine timestamps input and can replace games", () => {
+  const first = createFakeGame();
+  const second = createFakeGame();
+  const engine = createGameEngine(first, { fps: 60 });
+
+  engine.step(250);
+  engine.press(2, 3);
+  engine.release(2, 3, 500);
+
+  assert.equal(first.presses[0]?.atMillis, 250);
+  assert.equal(first.presses[0]?.pressed, true);
+  assert.equal(first.releases[0]?.atMillis, 500);
+  assert.equal(engine.clockMillis, 500);
+
+  const state = engine.replaceGame(second, {
+    initialEvents: [gameEvent("ready", "Next", 0)]
+  });
+
+  assert.equal(state.clockMillis, 0);
+  assert.equal(state.fps, 60);
+  assert.equal(state.events[0]?.message, "Next");
+});
+
+function createFakeGame() {
+  const game = {
+    ticks: [] as TickEvent[],
+    presses: [] as PressEvent[],
+    releases: [] as PressEvent[],
+    nowMillis: 0,
+    init(nowMillis: number) {
+      this.nowMillis = nowMillis;
+      return [gameEvent("ready", "Ready", nowMillis)];
+    },
+    press(event: PressEvent) {
+      this.nowMillis = event.atMillis;
+      this.presses.push(event);
+      return [gameEvent("press", `${event.x},${event.y}`, event.atMillis)];
+    },
+    release(event: PressEvent) {
+      this.nowMillis = event.atMillis;
+      this.releases.push(event);
+      return [gameEvent("release", `${event.x},${event.y}`, event.atMillis)];
+    },
+    tick(event: TickEvent) {
+      this.nowMillis = event.atMillis;
+      this.ticks.push(event);
+      return [gameEvent("tick", "Tick", event.atMillis)];
+    },
+    render() {
+      return createFrame("#000000");
+    },
+    snapshot() {
+      return {
+        activeTargets: 0,
+        currentGame: "fake",
+        elapsedMillis: this.nowMillis,
+        label: "Fake",
+        lastEventCue: "none",
+        lastEventMessage: "",
+        lives: 0,
+        phase: "running",
+        playerCount: 1,
+        players: [],
+        remainingMillis: 0,
+        score: 0,
+        success: false
+      };
+    },
+    reset() {
+      this.nowMillis = 0;
+      this.ticks = [];
+      this.presses = [];
+      this.releases = [];
+    }
+  } satisfies GameInstance & {
+    nowMillis: number;
+    presses: PressEvent[];
+    releases: PressEvent[];
+    ticks: TickEvent[];
+  };
+
+  return game;
+}

@@ -25,6 +25,10 @@ The SDK is framework-agnostic and has no platform, database, hardware, Go, or
 WASM dependency. A production integration can later adapt `Frame`, input events,
 and `GameSnapshot` to the existing Motion Levels runtime surfaces.
 
+The shared TypeScript engine lives in `@motion-levels-games/game-sdk`. Its
+baseline is 30fps (`DEFAULT_ENGINE_FPS`), and playground/platform runners should
+advance games through that engine instead of owning separate timing semantics.
+
 ## Expected Game Shape
 
 Every game should keep a single source of truth:
@@ -36,4 +40,3 @@ Every game should keep a single source of truth:
 
 The game logic should be deterministic. Use `createSeededRng(seed)` from the SDK
 for randomness so tests, fixtures, and local playback can be reproduced.
-

@@ -134,6 +134,38 @@ export type GameInstance = {
   reset(config?: Partial<GameConfig>): void;
 };
 
+export const DEFAULT_ENGINE_FPS = 30;
+export const DEFAULT_ENGINE_FRAME_MILLIS = 1000 / DEFAULT_ENGINE_FPS;
+export const DEFAULT_ENGINE_MAX_CATCH_UP_STEPS = 5;
+
+export type GameEngineOptions = {
+  fps?: number;
+  initialEvents?: GameEvent[];
+  nowMillis?: number;
+};
+
+export type GameEngineState = {
+  clockMillis: number;
+  events: GameEvent[];
+  fps: number;
+  frame: Frame;
+  frameMillis: number;
+  snapshot: GameSnapshot;
+};
+
+export type GameEngine = {
+  readonly clockMillis: number;
+  readonly fps: number;
+  readonly frameMillis: number;
+  readonly state: GameEngineState;
+  press(x: number, y: number, atMillis?: number): GameEngineState;
+  refresh(events?: GameEvent[]): GameEngineState;
+  release(x: number, y: number, atMillis?: number): GameEngineState;
+  replaceGame(game: GameInstance, options?: GameEngineOptions): GameEngineState;
+  step(deltaMillis?: number): GameEngineState;
+  tickTo(atMillis: number): GameEngineState;
+};
+
 export type GameModule<TSnapshot extends GameSnapshot = GameSnapshot> = {
   manifest: GameManifest;
   createGame(config: GameConfig): GameInstance;
@@ -301,6 +333,110 @@ export function defaultPlayers(count: number): GamePlayer[] {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+export function createGameEngine(game: GameInstance, options: GameEngineOptions = {}): GameEngine {
+  return new DefaultGameEngine(game, options);
+}
+
+function normalizeEngineFps(fps: number | undefined): number {
+  if (fps === undefined || !Number.isFinite(fps) || fps <= 0) {
+    return DEFAULT_ENGINE_FPS;
+  }
+
+  return fps;
+}
+
+function normalizeMillis(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+class DefaultGameEngine implements GameEngine {
+  private currentClockMillis: number;
+  private currentFps: number;
+  private currentFrameMillis: number;
+  private currentGame: GameInstance;
+  private currentState: GameEngineState;
+
+  constructor(game: GameInstance, options: GameEngineOptions) {
+    this.currentGame = game;
+    this.currentClockMillis = options.nowMillis ?? 0;
+    this.currentFps = normalizeEngineFps(options.fps);
+    this.currentFrameMillis = 1000 / this.currentFps;
+    this.currentState = this.composeState(options.initialEvents ?? []);
+  }
+
+  get clockMillis(): number {
+    return this.currentClockMillis;
+  }
+
+  get fps(): number {
+    return this.currentFps;
+  }
+
+  get frameMillis(): number {
+    return this.currentFrameMillis;
+  }
+
+  get state(): GameEngineState {
+    return this.currentState;
+  }
+
+  press(x: number, y: number, atMillis = this.currentClockMillis): GameEngineState {
+    this.currentClockMillis = Math.max(this.currentClockMillis, normalizeMillis(atMillis));
+    return this.refresh(this.currentGame.press({
+      x,
+      y,
+      pressed: true,
+      atMillis: this.currentClockMillis
+    }));
+  }
+
+  refresh(events: GameEvent[] = []): GameEngineState {
+    this.currentState = this.composeState(events);
+    return this.currentState;
+  }
+
+  release(x: number, y: number, atMillis = this.currentClockMillis): GameEngineState {
+    this.currentClockMillis = Math.max(this.currentClockMillis, normalizeMillis(atMillis));
+    return this.refresh(this.currentGame.release({
+      x,
+      y,
+      pressed: false,
+      atMillis: this.currentClockMillis
+    }));
+  }
+
+  replaceGame(game: GameInstance, options: GameEngineOptions = {}): GameEngineState {
+    this.currentGame = game;
+    this.currentClockMillis = options.nowMillis ?? 0;
+    this.currentFps = normalizeEngineFps(options.fps ?? this.currentFps);
+    this.currentFrameMillis = 1000 / this.currentFps;
+    return this.refresh(options.initialEvents ?? []);
+  }
+
+  step(deltaMillis = this.currentFrameMillis): GameEngineState {
+    const safeDelta = Number.isFinite(deltaMillis) ? Math.max(0, deltaMillis) : this.currentFrameMillis;
+    return this.tickTo(this.currentClockMillis + safeDelta);
+  }
+
+  tickTo(atMillis: number): GameEngineState {
+    this.currentClockMillis = Math.max(this.currentClockMillis, normalizeMillis(atMillis));
+    return this.refresh(this.currentGame.tick({ atMillis: this.currentClockMillis }));
+  }
+
+  private composeState(events: GameEvent[]): GameEngineState {
+    const snapshot = this.currentGame.snapshot();
+
+    return {
+      clockMillis: this.currentClockMillis,
+      events,
+      fps: this.currentFps,
+      frame: this.currentGame.render(),
+      frameMillis: this.currentFrameMillis,
+      snapshot
+    };
+  }
 }
 
 export function rgbToHex(color: RgbColor): HexColor {
