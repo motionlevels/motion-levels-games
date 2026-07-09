@@ -1,0 +1,259 @@
+import { GIFEncoder, applyPalette, quantize } from "gifenc";
+import {
+  DEFAULT_ENGINE_FPS,
+  DEFAULT_ENGINE_FRAME_MILLIS,
+  createGameEngine,
+  type Frame,
+  type GameConfig,
+  type GameEngine,
+  type GameEngineState
+} from "@motion-levels-games/game-sdk";
+import type { PlaygroundGame } from "./gameRegistry.ts";
+import { rotateFrameClockwise, type RenderableFrame } from "./frameTransforms.ts";
+
+export type PlaygroundMediaAssetKind = "thumbnailSmall" | "thumbnail" | "animation" | "playerDisplay";
+
+export type PlaygroundMediaAsset = {
+  kind: PlaygroundMediaAssetKind;
+  width: number;
+  height: number;
+  mimeType: string;
+  fileName: string;
+  dataUrl: string;
+};
+
+export type PlaygroundMediaBundle = {
+  gameId: string;
+  label: string;
+  seed: number;
+  playerCount: number;
+  generatedAt: string;
+  assets: Record<PlaygroundMediaAssetKind, PlaygroundMediaAsset>;
+};
+
+export type PlaygroundMediaOptions = {
+  seed?: number;
+  playerCount?: number;
+};
+
+export type PlayerDisplayAssetRenderer = (input: {
+  fileName: string;
+  frame: Frame;
+  game: PlaygroundGame;
+  snapshot: GameEngineState["snapshot"];
+}) => Promise<PlaygroundMediaAsset>;
+
+type PreviewFrame = {
+  frame: RenderableFrame;
+  delayMs: number;
+};
+
+const thumbnailSmallTilePixels = 8;
+const thumbnailTilePixels = 32;
+const animationTilePixels = 16;
+const animationFrameCount = 18;
+const animationFrameDelayMs = 120;
+
+export async function generateGameMediaBundle(
+  game: PlaygroundGame,
+  renderPlayerDisplay: PlayerDisplayAssetRenderer,
+  options: PlaygroundMediaOptions = {}
+): Promise<PlaygroundMediaBundle> {
+  const seed = normalizeSeed(options.seed, game.manifest.defaultSeed);
+  const playerCount = normalizePlayerCount(options.playerCount, game.manifest.players.min, game.manifest.players.max);
+  const engine = createPreviewEngine(game, { seed, playerCount });
+  const frames = collectPreviewFrames(engine);
+  const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
+  const baseName = game.manifest.id;
+  const playerDisplay = await renderPlayerDisplay({
+    fileName: `${baseName}-player-display.png`,
+    frame: engine.state.frame,
+    game,
+    snapshot: engine.state.snapshot
+  });
+
+  return {
+    gameId: game.manifest.id,
+    label: game.manifest.label,
+    seed,
+    playerCount,
+    generatedAt: new Date().toISOString(),
+    assets: {
+      thumbnailSmall: frameToImageAsset(stillFrame, {
+        fileName: `${baseName}-thumbnail-small.webp`,
+        kind: "thumbnailSmall",
+        mimeType: "image/webp",
+        quality: 0.45,
+        tilePixels: thumbnailSmallTilePixels
+      }),
+      thumbnail: frameToImageAsset(stillFrame, {
+        fileName: `${baseName}-thumbnail.webp`,
+        kind: "thumbnail",
+        mimeType: "image/webp",
+        quality: 0.92,
+        tilePixels: thumbnailTilePixels
+      }),
+      animation: framesToGifAsset(frames, `${baseName}-preview.gif`),
+      playerDisplay
+    }
+  };
+}
+
+function createPreviewEngine(game: PlaygroundGame, config: Pick<GameConfig, "seed" | "playerCount">): GameEngine {
+  const instance = game.createGame({
+    seed: config.seed,
+    playerCount: config.playerCount,
+    durationMillis: game.manifest.defaultDurationMillis,
+    nowMillis: 0
+  });
+  const events = instance.init(0);
+  return createGameEngine(instance, {
+    fps: DEFAULT_ENGINE_FPS,
+    initialEvents: events
+  });
+}
+
+function collectPreviewFrames(engine: GameEngine): PreviewFrame[] {
+  const frames: PreviewFrame[] = [];
+
+  primePreviewInputs(engine);
+  for (let index = 0; index < animationFrameCount; index += 1) {
+    if (index > 0 && index % 5 === 0) {
+      tapPreviewPoint(engine, index);
+    }
+
+    const state = engine.step(animationFrameDelayMs);
+    frames.push({
+      frame: rotateFrameClockwise(state.frame),
+      delayMs: animationFrameDelayMs
+    });
+  }
+
+  return frames;
+}
+
+function primePreviewInputs(engine: GameEngine): void {
+  engine.press(4, 4);
+  engine.press(11, 27);
+  engine.step(DEFAULT_ENGINE_FRAME_MILLIS);
+}
+
+function tapPreviewPoint(engine: GameEngine, index: number): void {
+  const points = [
+    { x: 3, y: 5 },
+    { x: 12, y: 8 },
+    { x: 5, y: 17 },
+    { x: 10, y: 25 },
+    { x: 8, y: 16 }
+  ];
+  const point = points[index % points.length] ?? points[0];
+  engine.press(point.x, point.y);
+  engine.release(point.x, point.y);
+}
+
+function frameToImageAsset(
+  frame: RenderableFrame,
+  options: {
+    fileName: string;
+    kind: PlaygroundMediaAssetKind;
+    mimeType: "image/png" | "image/webp";
+    quality?: number;
+    tilePixels: number;
+  }
+): PlaygroundMediaAsset {
+  const canvas = frameToCanvas(frame, options.tilePixels);
+  const dataUrl = canvas.toDataURL(options.mimeType, options.quality);
+  const mimeType = dataUrl.slice(5, dataUrl.indexOf(";"));
+
+  return {
+    kind: options.kind,
+    width: canvas.width,
+    height: canvas.height,
+    mimeType,
+    fileName: options.fileName,
+    dataUrl
+  };
+}
+
+function framesToGifAsset(frames: PreviewFrame[], fileName: string): PlaygroundMediaAsset {
+  const first = frames[0]?.frame;
+  if (!first) {
+    throw new Error("Cannot render an animation without frames.");
+  }
+
+  const width = first.width * animationTilePixels;
+  const height = first.height * animationTilePixels;
+  const encoder = GIFEncoder();
+
+  for (const frame of frames) {
+    const canvas = frameToCanvas(frame.frame, animationTilePixels);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Could not render animation frame.");
+    }
+
+    const rgba = context.getImageData(0, 0, width, height).data;
+    const palette = quantize(rgba, 256);
+    const indexed = applyPalette(rgba, palette);
+    encoder.writeFrame(indexed, width, height, {
+      delay: frame.delayMs,
+      palette
+    });
+  }
+
+  encoder.finish();
+  return {
+    kind: "animation",
+    width,
+    height,
+    mimeType: "image/gif",
+    fileName,
+    dataUrl: bytesToDataUrl(encoder.bytesView(), "image/gif")
+  };
+}
+
+function frameToCanvas(frame: RenderableFrame, tilePixels: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = frame.width * tilePixels;
+  canvas.height = frame.height * tilePixels;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not create media canvas.");
+  }
+
+  context.fillStyle = "#05070a";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  for (const cell of frame.cells) {
+    context.fillStyle = cell.color;
+    context.fillRect(cell.x * tilePixels, cell.y * tilePixels, tilePixels, tilePixels);
+  }
+
+  if (tilePixels >= 16) {
+    context.strokeStyle = "rgba(0, 0, 0, 0.18)";
+    context.lineWidth = 1;
+    for (const cell of frame.cells) {
+      context.strokeRect(cell.x * tilePixels + 0.5, cell.y * tilePixels + 0.5, tilePixels - 1, tilePixels - 1);
+    }
+  }
+
+  return canvas;
+}
+
+function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
+function normalizeSeed(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : fallback;
+}
+
+function normalizePlayerCount(value: number | undefined, min: number, max: number): number {
+  const candidate = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : min;
+  return Math.max(min, Math.min(max, candidate));
+}

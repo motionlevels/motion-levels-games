@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { FloorPreview } from "@motion-levels-games/display-kit";
 import {
   createGameEngine,
@@ -11,10 +13,11 @@ import {
   type GameEvent,
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
-import { capturePlaygroundSurfaces, copyCaptureToClipboard } from "./captureImages.ts";
+import { captureDisplayElement, capturePlaygroundSurfaces, copyCaptureToClipboard } from "./captureImages.ts";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
 import { rotateFrameClockwise, unrotateFloorPoint, type RenderableFrame } from "./frameTransforms.ts";
+import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
 
 function createStartedGame(gameModule: PlaygroundGame, seed: number, playerCount: number) {
@@ -316,6 +319,67 @@ export function App() {
     [captureSurfaces]
   );
 
+  const capturePlayerDisplayAsset = useCallback(
+    async ({
+      fileName,
+      frame: displayFrame,
+      game,
+      snapshot: displaySnapshot
+    }: {
+      fileName: string;
+      frame: Frame;
+      game: PlaygroundGame;
+      snapshot: GameSnapshot;
+    }): Promise<PlaygroundMediaAsset> => {
+      const host = document.createElement("div");
+      host.className = "display-preview-native";
+      Object.assign(host.style, {
+        height: `${nativeDisplayHeight}px`,
+        left: "0",
+        pointerEvents: "none",
+        position: "fixed",
+        top: "0",
+        width: `${nativeDisplayWidth}px`,
+        zIndex: "2147483647"
+      });
+      document.body.append(host);
+      const root = createRoot(host);
+      const MediaPlayerDisplay = game.PlayerDisplay;
+
+      try {
+        flushSync(() => {
+          root.render(<MediaPlayerDisplay snapshot={displaySnapshot} frame={displayFrame} />);
+        });
+        await waitForPaint();
+        const capture = await captureDisplayElement(host);
+        return {
+          kind: "playerDisplay",
+          width: capture.width,
+          height: capture.height,
+          mimeType: "image/png",
+          fileName,
+          dataUrl: capture.dataUrl
+        };
+      } finally {
+        root.unmount();
+        host.remove();
+      }
+    },
+    []
+  );
+
+  const generateMedia = useCallback(
+    async (gameId = selectedGameRef.current.manifest.id, options: PlaygroundMediaOptions = {}) => {
+      const game = playgroundGames.find((candidate) => candidate.manifest.id === gameId);
+      if (!game) {
+        throw new Error(`Unknown game: ${gameId}`);
+      }
+
+      return generateGameMediaBundle(game, capturePlayerDisplayAsset, options);
+    },
+    [capturePlayerDisplayAsset]
+  );
+
   const handleCopySurface = useCallback(
     async (surface: PlaygroundCaptureSurface) => {
       setCaptureMessage(`Capturing ${surface}...`);
@@ -368,9 +432,10 @@ export function App() {
       copy: async (surface) => {
         const { capture } = await copySurface(surface);
         return capture;
-      }
+      },
+      media: generateMedia
     }),
-    [captureSurfaces, copySurface, handleTilePress, handleTileRelease, previewFrameFor, restart, setPausedState, stepGame]
+    [captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, previewFrameFor, restart, setPausedState, stepGame]
   );
 
   useEffect(() => installPlaygroundApi(api), [api]);
@@ -601,6 +666,7 @@ export function App() {
               <div className="debug-api-strip">
                 <code>window.ml</code>
                 <code>capture(["display", "boardPreview", "combined"])</code>
+                <code>media("ping-pong")</code>
               </div>
 
               <article className="debug-latest">
@@ -668,4 +734,10 @@ function pointToPhysicalTile(
 
 function formatMillis(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function waitForPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }

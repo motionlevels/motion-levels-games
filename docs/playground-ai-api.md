@@ -47,6 +47,30 @@ type PlaygroundCapture = {
   dataUrl: string;
 };
 
+type PlaygroundMediaAssetKind =
+  | "thumbnailSmall"
+  | "thumbnail"
+  | "animation"
+  | "playerDisplay";
+
+type PlaygroundMediaAsset = {
+  kind: PlaygroundMediaAssetKind;
+  width: number;
+  height: number;
+  mimeType: string;
+  fileName: string;
+  dataUrl: string;
+};
+
+type PlaygroundMediaBundle = {
+  gameId: string;
+  label: string;
+  seed: number;
+  playerCount: number;
+  generatedAt: string;
+  assets: Record<PlaygroundMediaAssetKind, PlaygroundMediaAsset>;
+};
+
 type PlaygroundApi = {
   getState(): {
     clockMillis: number;
@@ -73,6 +97,7 @@ type PlaygroundApi = {
 
   capture(surfaces?: PlaygroundCaptureSurface[]): Promise<Record<PlaygroundCaptureSurface, PlaygroundCapture>>;
   copy(surface: PlaygroundCaptureSurface): Promise<PlaygroundCapture>;
+  media(gameId?: string, options?: { seed?: number; playerCount?: number }): Promise<PlaygroundMediaBundle>;
 };
 ```
 
@@ -97,3 +122,25 @@ That is useful when the board is rotated in the playground.
 `copy(surface)` tries to write a PNG to the browser clipboard and always returns
 the captured data URL when capture succeeds. If clipboard permission is denied,
 use the returned `dataUrl` directly.
+
+## Media Assets
+
+`media(gameId?, options?)` returns generated catalog-style assets for any game
+discovered by the playground. Omit `gameId` to use the currently selected game.
+
+```js
+const media = await ml.media("ping-pong");
+console.log(media.assets.thumbnail.dataUrl);
+console.log(media.assets.playerDisplay.dataUrl);
+```
+
+Assets:
+
+- `thumbnailSmall`: low-quality landscape WebP board thumbnail, 256x128.
+- `thumbnail`: high-quality landscape WebP board thumbnail, 1024x512.
+- `animation`: animated GIF board preview, 512x256.
+- `playerDisplay`: high-quality native player display PNG, 1920x1080.
+
+The board assets are rendered from deterministic TypeScript engine frames, not
+DOM screenshots. The player-display asset is browser-rendered from the reusable
+display component so it matches the TV surface.

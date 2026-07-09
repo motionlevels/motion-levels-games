@@ -1,5 +1,6 @@
 import type { Frame, GameEvent, GameSnapshot } from "@motion-levels-games/game-sdk";
 import type { RenderableFrame } from "./frameTransforms.ts";
+import type { PlaygroundMediaBundle, PlaygroundMediaOptions } from "./mediaAssets.ts";
 
 export type PlaygroundCaptureSurface =
   | "display"
@@ -41,6 +42,7 @@ export type PlaygroundApi = {
   tap(x: number, y: number, options?: { space?: PlaygroundPointSpace; durationMs?: number }): void;
   capture(surfaces?: PlaygroundCaptureSurface[]): Promise<Record<PlaygroundCaptureSurface, PlaygroundCapture>>;
   copy(surface: PlaygroundCaptureSurface): Promise<PlaygroundCapture>;
+  media(gameId?: string, options?: PlaygroundMediaOptions): Promise<PlaygroundMediaBundle>;
 };
 
 declare global {

@@ -60,6 +60,21 @@ console.log(ml.getState(), feedback.combined.dataUrl);
 Prefer physical tile coordinates unless deliberately testing the rotated preview.
 Use `{ space: "preview" }` only when interacting with the visible board layout.
 
+Generate catalog-style media when reviewing a game card or TV display:
+
+```js
+const media = await ml.media("ping-pong");
+console.log({
+  thumbnail: media.assets.thumbnail.dataUrl,
+  animation: media.assets.animation.dataUrl,
+  playerDisplay: media.assets.playerDisplay.dataUrl
+});
+```
+
+Use the generated `thumbnailSmall`, `thumbnail`, `animation`, and
+`playerDisplay` assets instead of hand-rolled screenshots when checking how a
+game should appear outside the live playground.
+
 ## Evaluate
 
 For every playthrough, judge both surfaces:
@@ -104,6 +119,7 @@ await ml.pause();
 ml.reset();
 ml.step(250);
 await ml.capture(["display", "boardPhysical", "combined"]);
+await ml.media();
 ```
 
 Report:

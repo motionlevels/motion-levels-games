@@ -59,7 +59,7 @@ export async function copyCaptureToClipboard(capture: PlaygroundCapture): Promis
   return true;
 }
 
-async function captureDisplay(displayElement: HTMLElement | null): Promise<PlaygroundCapture> {
+export async function captureDisplayElement(displayElement: HTMLElement | null): Promise<PlaygroundCapture> {
   if (!displayElement) {
     throw new Error("Player display is not mounted.");
   }
@@ -83,6 +83,10 @@ async function captureDisplay(displayElement: HTMLElement | null): Promise<Playg
     height: nativeDisplayHeight,
     dataUrl
   };
+}
+
+async function captureDisplay(displayElement: HTMLElement | null): Promise<PlaygroundCapture> {
+  return captureDisplayElement(displayElement);
 }
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
