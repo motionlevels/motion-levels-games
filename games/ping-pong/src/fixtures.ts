@@ -16,8 +16,8 @@ export const waitingSnapshot: PingPongSnapshot = {
   phase: "waiting",
   playerCount: 2,
   players: [
-    { index: 0, label: "Rojo", color: redColor, score: 0, lives: 5 },
-    { index: 1, label: "Azul", color: blueColor, score: 0, lives: 5 }
+    { index: 0, label: "Rojo", color: redColor, score: 0, lives: -1 },
+    { index: 1, label: "Azul", color: blueColor, score: 0, lives: -1 }
   ],
   score: 0,
   lives: -1,
@@ -79,8 +79,8 @@ export const finishedSnapshot: PingPongSnapshot = {
   lastEventCue: "score",
   lastEventMessage: "Punto para azul",
   players: [
-    { index: 0, label: "Rojo", color: redColor, score: 2, lives: 3 },
-    { index: 1, label: "Azul", color: blueColor, score: 3, lives: 2 }
+    { index: 0, label: "Rojo", color: redColor, score: 2, lives: -1 },
+    { index: 1, label: "Azul", color: blueColor, score: 3, lives: -1 }
   ],
   lastRoundHits: 2,
   lastRoundWinner: "Azul",

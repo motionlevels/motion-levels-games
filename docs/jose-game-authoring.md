@@ -76,6 +76,15 @@ deterministic timing. Capture and inspect both animation states in the
 playground; they must not look like normal gameplay, readiness, or the next
 start countdown.
 
+## Display Lives Consistently
+
+If a game uses lives, add `maxLives` to its snapshot and render the shared
+`LivesMeter` from `@motion-levels-games/display-kit`. Remaining lives must be
+solid red hearts and lost lives must remain as solid muted-gray hearts. Never
+create a per-game heart string or palette. Capture the display with full,
+partially depleted, and zero lives to verify that the slots do not wrap or
+clip.
+
 ## Before Pushing To Dev
 
 ```sh
@@ -104,8 +113,10 @@ or an agent resumes work there, rather than after every `main` commit.
    representative worst-case text before calling a new game complete.
 9. Implement and inspect a game-win animation, plus a separate round-win
    animation when the game has rounds.
-10. Run `npm run check` before pushing.
-11. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
+10. If the game uses lives, use `LivesMeter` and inspect full, partial, and zero
+    life states.
+11. Run `npm run check` before pushing.
+12. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
    green.
-12. Commit every completed task before handing it off. Never force-push,
+13. Commit every completed task before handing it off. Never force-push,
     rebase, amend, or otherwise rewrite history.

@@ -86,6 +86,7 @@ test("tracked paddle play destroys bricks without losing a life", () => {
   assert.ok(snapshot.score > 0);
   assert.ok(snapshot.bricksRemaining < snapshot.totalBricks);
   assert.equal(snapshot.lives, 3);
+  assert.equal(snapshot.maxLives, 3);
 });
 
 test("moving away from the ball eventually costs a life", () => {
@@ -125,10 +126,20 @@ test("fixtures and Spanish player display render the game state", () => {
       frame: runningFrame
     })
   );
+  const lostLifeHtml = renderToStaticMarkup(
+    React.createElement(PlayerDisplay, {
+      snapshot: { ...runningSnapshot, lives: 2 },
+      frame: runningFrame
+    })
+  );
 
   assert.match(html, /Arkanoid/);
   assert.match(html, /Bloques/);
   assert.match(html, /Vidas/);
+  assert.match(html, /ml-lives-meter/);
+  assert.equal((html.match(/data-life-state="remaining"/g) ?? []).length, 3);
+  assert.equal((lostLifeHtml.match(/data-life-state="remaining"/g) ?? []).length, 2);
+  assert.equal((lostLifeHtml.match(/data-life-state="lost"/g) ?? []).length, 1);
   assert.match(html, /Juego en el suelo/);
   assert.doesNotMatch(html, /Score|Lives|Message/);
 });

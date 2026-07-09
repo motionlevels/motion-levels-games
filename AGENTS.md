@@ -50,6 +50,17 @@ no database, venue hardware, Motion Go, or platform API coupling.
   surface from one constrained axis and derive the other with `aspect-ratio`;
   never independently force both width and height. Empty surrounding space is
   preferable to stretching either surface.
+- Games with lives must render them with the shared `LivesMeter` from
+  `@motion-levels-games/display-kit`. Remaining lives are solid red hearts;
+  lost lives stay visible as the same solid heart shape in muted gray. Never
+  substitute green hearts, outline hearts, ad hoc text glyph strings, or
+  game-specific life colors. Include `maxLives` in the snapshot so the display
+  does not duplicate the game's starting-life constant. Games without a lives
+  mechanic use `lives: -1`; never repurpose `lives` for score, rounds, or
+  progress.
+- Test and visually inspect the lives display at full, partially depleted, and
+  zero lives. Every state must preserve the same number of heart slots and fit
+  its container without clipping or wrapping.
 
 ## Game Start Lifecycle
 
@@ -144,7 +155,8 @@ no database, venue hardware, Motion Go, or platform API coupling.
   type, default, bounds, step, and choices. Normalize through
   `normalizeGameConfig` and read the exported variable descriptor with
   `readGameConfigOption`; do not repeat schema values in game logic.
-- `packages/display-kit` owns reusable React display primitives.
+- `packages/display-kit` owns reusable React display primitives, including the
+  canonical `LivesMeter`; games must not recreate shared player-display UI.
 - Each game owns its `manifest.ts`, `game.ts`, `display.tsx`, and `fixtures.ts`.
 - Every `games/<id>` package must include a `README.md`, and `manifest.id` must
   exactly match `<id>`.

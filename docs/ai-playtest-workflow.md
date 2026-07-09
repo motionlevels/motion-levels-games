@@ -115,6 +115,9 @@ For every playthrough, judge both surfaces:
   and latest feedback without selectable/browser-looking elements? Inspect the
   rendered image for overflow, collisions, clipping, ellipses, mid-word
   breaks, awkward wrapping, and text that is out of scale with its container.
+- **Lives:** When present, are remaining lives solid red hearts and lost lives
+  the same solid heart shape in muted gray? Does the shared `LivesMeter` keep
+  every slot visible at full, partial, and zero lives without wrapping?
 - **Agent feedback:** Do `ml.getState()` and captures provide enough evidence to
   diagnose the next change?
 
@@ -168,6 +171,10 @@ round-win animation separately and verify that it finishes before the next
 round begins. Tests must prove that scoring input is ignored during both
 transitions and that reset/round advancement happens only after their
 deterministic durations.
+
+For games with lives, capture the native player display at full, partially
+depleted, and zero lives. Confirm that every state uses the shared red/gray
+heart treatment and keeps the maximum number of slots visible.
 
 Report:
 

@@ -119,6 +119,7 @@ export type GameSnapshot = {
   success: boolean;
   lastEventCue: GameEventCue;
   lastEventMessage: string;
+  maxLives?: number;
   countdownMillis?: number;
   readyPlayers?: number;
   requiredPlayers?: number;

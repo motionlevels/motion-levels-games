@@ -564,6 +564,15 @@ use deterministic engine timing. Add fixtures and tests for representative
 animation frames, then capture and visually inspect both surfaces in the
 playground.
 
+## Lives, when applicable
+
+If this game uses lives, include both \`lives\` and \`maxLives\` in its snapshot
+and render \`LivesMeter\` from \`@motion-levels-games/display-kit\`. Remaining
+lives must be solid red hearts; lost lives must remain visible as the same
+solid heart shape in muted gray. Do not create game-specific heart strings or
+colors. Add fixtures and tests for full, partially depleted, and zero lives,
+then visually inspect each state for wrapping and clipping.
+
 ## Required player display review
 
 Before this game is considered complete, open it in the playground and capture

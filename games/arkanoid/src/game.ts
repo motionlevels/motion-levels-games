@@ -63,6 +63,7 @@ export type ArkanoidSnapshot = GameSnapshot & {
   ballSpeed: number;
   bricksRemaining: number;
   launched: boolean;
+  maxLives: number;
   paddleWidth: number;
   paddleX: number;
   totalBricks: number;
@@ -232,6 +233,7 @@ class ArkanoidGame implements ArkanoidGameInstance {
       players: this.players,
       score: this.score,
       lives: this.lives,
+      maxLives: startingLives,
       elapsedMillis: Math.max(0, this.nowMillis - this.startedAtMillis),
       remainingMillis: 0,
       activeTargets: remaining,

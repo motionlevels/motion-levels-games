@@ -91,6 +91,21 @@ The directory name is part of the contract. For a game in `games/<id>`,
 The game logic should be deterministic. Use `createSeededRng(seed)` from the SDK
 for randomness so tests, fixtures, and local playback can be reproduced.
 
+## Lives
+
+A game that uses lives reports both the current `lives` and its `maxLives` in
+the snapshot. Player displays render them with the shared `LivesMeter` from
+`@motion-levels-games/display-kit`: every available life is a solid red heart,
+and every lost life remains visible as the same solid heart shape in muted
+gray. Do not use outline hearts, green hearts, text-built heart strings, or
+game-specific life palettes. Games without a lives mechanic keep `lives: -1`;
+the field must never carry remaining points, rounds, or other progress.
+
+Keep the total slot count stable while lives are lost so players can read both
+remaining and lost lives at a glance. Fixtures and tests must cover full,
+partially depleted, and zero-life states, and browser verification must inspect
+the native player display for clipping or wrapping in each state.
+
 ## Player Counts
 
 By default, `manifest.players.min` and `manifest.players.max` describe the
@@ -175,6 +190,8 @@ Preserve the scaffolded waiting and starting states when replacing its example
 gameplay; define intentional player-detection zones before adding running-state
 logic. Implement a game-win animation before considering the scaffolded game
 complete, and add a separate round-win animation if the game introduces rounds.
+If the game uses lives, expose `maxLives` and use the shared `LivesMeter`
+instead of implementing heart markup or colors inside the game.
 
 Before a new game is considered complete, run it in the browser and visually
 inspect native 1920x1080 player-display captures. Review every supported main

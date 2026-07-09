@@ -298,27 +298,28 @@
   text-shadow: none;
 }
 
-.ml-heart-meter {
+.ml-lives-meter {
   align-items: center;
   display: flex;
   gap: 16px;
   min-height: 78px;
 }
 
-.ml-heart {
+.ml-life-heart {
   display: inline-flex;
-  filter: drop-shadow(0 0 14px rgba(255, 31, 52, 0.42));
   font-size: 72px;
   line-height: 1;
 }
 
-.ml-heart-filled {
+.ml-life-heart.is-remaining {
   color: #ff2036;
+  filter: drop-shadow(0 0 14px rgba(255, 31, 52, 0.42));
 }
 
-.ml-heart-empty {
-  color: rgba(255, 255, 255, 0.16);
+.ml-life-heart.is-lost {
+  color: #566171;
   filter: none;
+  opacity: 0.62;
 }
 
 .ml-versus-scoreboard {
@@ -1401,7 +1402,7 @@
     font-size: 38px;
   }
 
-  .ml-heart {
+  .ml-life-heart {
     font-size: 56px;
   }
 }

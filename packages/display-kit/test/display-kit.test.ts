@@ -4,7 +4,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-games/game-sdk";
-import { FloorPreview, GameDisplayShell, HeartMeter, MetricPanel, PlayerReadyOverlay, RoundStrip } from "../src/index.tsx";
+import { FloorPreview, GameDisplayShell, LivesMeter, MetricPanel, PlayerReadyOverlay, RoundStrip } from "../src/index.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
@@ -23,11 +23,15 @@ test("MetricPanel renders label and value without app dependencies", () => {
   assert.match(html, /42/);
 });
 
-test("HeartMeter renders filled and empty life slots", () => {
-  const html = renderToStaticMarkup(React.createElement(HeartMeter, { lives: 2, slots: 3 }));
+test("LivesMeter renders red remaining hearts and gray lost hearts", () => {
+  const html = renderToStaticMarkup(React.createElement(LivesMeter, { lives: 2, maxLives: 3 }));
 
-  assert.match(html, /ml-heart-filled/);
-  assert.match(html, /ml-heart-empty/);
+  assert.match(html, /aria-label="2 de 3 vidas restantes"/);
+  assert.equal((html.match(/data-life-state="remaining"/g) ?? []).length, 2);
+  assert.equal((html.match(/data-life-state="lost"/g) ?? []).length, 1);
+  assert.equal((html.match(/♥/g) ?? []).length, 3, "lost lives must remain filled heart shapes");
+  assert.match(styleSource, /\.ml-life-heart\.is-remaining\s*\{[^}]*color:\s*#ff2036;/s);
+  assert.match(styleSource, /\.ml-life-heart\.is-lost\s*\{[^}]*color:\s*#566171;/s);
 });
 
 test("FloorPreview renders the 16x32 frame with tile metadata", () => {

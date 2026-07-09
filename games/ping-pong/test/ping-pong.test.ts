@@ -161,6 +161,7 @@ test("allowAny accepts Any or the declared player range only", () => {
   assert.equal(snapshot.players.length, 2);
   assert.equal(snapshot.players[0]?.label, "Rojo");
   assert.equal(snapshot.players[1]?.label, "Azul");
+  assert.deepEqual(snapshot.players.map((player) => player.lives), [-1, -1]);
 });
 
 test("readiness waits for both floor halves with release grace", () => {

@@ -58,5 +58,7 @@ assert.match(readme, /Required player display review/);
 assert.match(readme, /native 1920x1080 player display/);
 assert.match(readme, /Required winning animations/);
 assert.match(readme, /distinct game-win animation/);
+assert.match(readme, /Lives, when applicable/);
+assert.match(readme, /render `LivesMeter`/);
 
 console.log(`Scaffold smoke test created ${gameRoot}`);

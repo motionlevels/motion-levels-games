@@ -251,14 +251,14 @@ class PingPongGame implements PingPongGameInstance {
           label: this.labelForTeam(0),
           color: redColor,
           score: this.teamScore[0],
-          lives: this.winningScore - this.teamScore[0]
+          lives: -1
         },
         {
           index: 1,
           label: this.labelForTeam(1),
           color: blueColor,
           score: this.teamScore[1],
-          lives: this.winningScore - this.teamScore[1]
+          lives: -1
         }
       ],
       score: this.teamScore[0] + this.teamScore[1],
@@ -316,8 +316,8 @@ class PingPongGame implements PingPongGameInstance {
 
   private createPlayers(): GamePlayer[] {
     return [
-      { index: 0, label: "Rojo", color: redColor, score: 0, lives: this.winningScore },
-      { index: 1, label: "Azul", color: blueColor, score: 0, lives: this.winningScore }
+      { index: 0, label: "Rojo", color: redColor, score: 0, lives: -1 },
+      { index: 1, label: "Azul", color: blueColor, score: 0, lives: -1 }
     ];
   }
 

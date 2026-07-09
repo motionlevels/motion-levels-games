@@ -105,24 +105,34 @@ export function MetricPanel({
   );
 }
 
-export function HeartMeter({
+export function LivesMeter({
+  className = "",
   lives,
-  slots = Math.max(lives, 0)
+  maxLives
 }: {
+  className?: string;
   lives: number;
-  slots?: number;
+  maxLives: number;
 }) {
+  const totalLives = Math.max(0, Math.trunc(maxLives));
+  const remainingLives = Math.min(totalLives, Math.max(0, Math.trunc(lives)));
+
   return (
-    <div className="ml-heart-meter" aria-label={`${lives} lives`}>
-      {Array.from({ length: slots }, (_, index) => {
-        const filled = index < lives;
+    <div
+      aria-label={`${remainingLives} de ${totalLives} vidas restantes`}
+      className={`ml-lives-meter ${className}`.trim()}
+      role="img"
+    >
+      {Array.from({ length: totalLives }, (_, index) => {
+        const remaining = index < remainingLives;
         return (
           <span
             aria-hidden="true"
-            className={`ml-heart ${filled ? "ml-heart-filled" : "ml-heart-empty"}`}
+            className={`ml-life-heart ${remaining ? "is-remaining" : "is-lost"}`}
+            data-life-state={remaining ? "remaining" : "lost"}
             key={index}
           >
-            {filled ? "♥" : "♡"}
+            ♥
           </span>
         );
       })}

@@ -1,5 +1,5 @@
 import React from "react";
-import { FramePreviewPanel, GameDisplayShell, MetricPanel, MetricRow, PlayerReadyOverlay } from "@motion-levels-games/display-kit";
+import { FramePreviewPanel, GameDisplayShell, LivesMeter, MetricPanel, MetricRow, PlayerReadyOverlay } from "@motion-levels-games/display-kit";
 import { formatClock, type Frame } from "@motion-levels-games/game-sdk";
 import type { ArkanoidSnapshot } from "./game.ts";
 
@@ -20,8 +20,6 @@ export function PlayerDisplay({
       : snapshot.phase === "ready"
         ? "yellow"
         : "cyan";
-  const hearts = `${"♥".repeat(snapshot.lives)}${"♡".repeat(Math.max(0, 3 - snapshot.lives))}`;
-
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
       <div className="ml-solo-display arkanoid-display">
@@ -29,7 +27,11 @@ export function PlayerDisplay({
         <div className="ml-solo-summary">
           <MetricRow columns={3} className="ml-solo-number-row">
             <MetricPanel label="Bloques" tone="pink" value={`${snapshot.score}/${snapshot.totalBricks}`} />
-            <MetricPanel label="Vidas" tone={snapshot.lives > 1 ? "green" : "red"} value={hearts} />
+            <MetricPanel
+              label="Vidas"
+              tone="neutral"
+              value={<LivesMeter lives={snapshot.lives} maxLives={snapshot.maxLives} />}
+            />
             <MetricPanel label="Tiempo" tone="yellow" value={formatClock(snapshot.elapsedMillis)} />
           </MetricRow>
           <MetricPanel className="ml-solo-message" label="Estado" tone={messageTone} value={message} />
