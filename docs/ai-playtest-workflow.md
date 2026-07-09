@@ -13,6 +13,8 @@ make small code changes, and verify improvements with captures and tests.
 ## Start Here
 
 1. Read `AGENTS.md`, `docs/contract.md`, and `docs/playground-ai-api.md`.
+   If working with Jose on the `dev` branch, also read
+   `docs/jose-game-authoring.md`.
 2. When creating a new game, start with:
 
 ```sh

@@ -1,0 +1,72 @@
+name: Dev Games CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  check-dev-rebased-after-main:
+    name: Check dev is rebased after main changes
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check remote dev contains main
+        run: |
+          git fetch origin main dev || true
+          if ! git show-ref --verify --quiet refs/remotes/origin/dev; then
+            echo "origin/dev does not exist yet; skipping rebase check."
+            exit 0
+          fi
+          git merge-base --is-ancestor origin/main origin/dev
+
+  dev-games:
+    name: Validate dev games
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure dev is rebased on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate games
+        run: npm run validate:games
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Test game scaffold
+        run: npm run test:scaffold
+
+      - name: Build
+        run: npm run build
+
+      - name: Playtest example game
+        run: npm run playtest
