@@ -81,7 +81,9 @@ test("snapshot fixtures match the manifest and display renders them", () => {
   );
 
   assert.match(html, /Example Catch/);
-  assert.match(html, /Score/);
+  assert.match(html, /ml-solo-display/);
+  assert.match(html, /ml-solo-floor/);
+  assert.match(html, /Objetivo 4/);
+  assert.match(html, /Puntos/);
   assert.match(html, /48/);
 });
-

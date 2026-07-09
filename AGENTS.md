@@ -8,6 +8,47 @@ This repo is the TypeScript-first home for Motion Levels games and local game
 development tooling. Keep it independent from the production platform in v1:
 no database, venue hardware, Motion Go, or platform API coupling.
 
+## Language
+
+- **The player display is Spanish only.** Every string a player can see or hear
+  on the TV display — metric labels, captions, status text, phase labels, and
+  event/cue messages returned from `game.ts` — must be written in Spanish. This
+  is the venue-facing surface; there is no English fallback and no i18n layer.
+- This applies to `display.tsx`, the player-facing strings in `game.ts`
+  (`GameEvent.message`), `fixtures.ts` snapshots (they drive media previews),
+  and the shared primitives in `packages/display-kit`.
+- Developer-only surfaces stay in English: the `apps/playground` chrome
+  (buttons, control labels, the debug panel), code identifiers, `phase` enum
+  values, comments, docs, and commit messages.
+- Keep game terminology consistent with the platform's Spanish (e.g. `baldosa`
+  for tile, `punto`/`peloteo` for point/rally, `objetivo` for target).
+
+## Player Display Layout
+
+- **Never truncate player-facing text mid-word.** Do not use
+  `text-overflow: ellipsis` with `white-space: nowrap` on any string a player
+  reads on the TV display — it produces half-words like `Pendien…`. Size the
+  text so the expected content fits, and let it wrap on whole words
+  (`white-space: normal`) instead of clipping. This rule covers `display.tsx`
+  and every primitive in `packages/display-kit`.
+- The debug/dev chrome in `apps/playground` is exempt (ellipsis there is fine).
+- Treat the playground surface aspect ratios as hardware contracts: the player
+  display is always **16:9** and the floor is always **16:32**. Size either
+  surface from one constrained axis and derive the other with `aspect-ratio`;
+  never independently force both width and height. Empty surrounding space is
+  preferable to stretching either surface.
+
+## Developer UI Consistency
+
+- Prefer icons for compact, repeated developer actions. Every icon-only button
+  must still have an accessible label and a tooltip.
+- Every playground dialog or popover must use the shared
+  `PopoverCloseButton`; do not add text-based or separately styled close
+  controls.
+- Adjacent compact icon actions must render as segmented groups with collapsed
+  shared borders and no gaps. Use the playground control color tokens instead
+  of introducing one-off button colors.
+
 ## Workflow
 
 - Pull before new work and before pushing.

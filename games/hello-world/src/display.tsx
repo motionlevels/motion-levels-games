@@ -13,14 +13,23 @@ export function PlayerDisplay({
 
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
-      <MetricRow columns={4}>
-        <MetricPanel label="Goal" tone="green" value={`${snapshot.score}/${target}`} />
-        <MetricPanel label="Time" tone="yellow" value={formatClock(snapshot.remainingMillis)} />
-        <MetricPanel label="Cue" tone={snapshot.success ? "green" : "cyan"} value={snapshot.lastEventMessage || "Ready"} />
-        <MetricPanel label="Targets" tone="blue" value={snapshot.activeTargets} />
-      </MetricRow>
+      <div className="ml-solo-display hello-world-display">
+        <div className="ml-solo-summary">
+          <MetricRow columns={3} className="ml-solo-number-row">
+            <MetricPanel label="Meta" tone="green" value={`${snapshot.score}/${target}`} />
+            <MetricPanel label="Tiempo" tone="yellow" value={formatClock(snapshot.remainingMillis)} />
+            <MetricPanel label="Objetivos" tone="blue" value={snapshot.activeTargets} />
+          </MetricRow>
+          <MetricPanel
+            className="ml-solo-message"
+            label="Mensaje"
+            tone={snapshot.success ? "green" : "cyan"}
+            value={snapshot.lastEventMessage || "Pisa la baldosa verde"}
+          />
+        </div>
 
-      {frame ? <FramePreviewPanel frame={frame} label="Example floor" /> : null}
+        {frame ? <FramePreviewPanel className="ml-solo-floor" frame={frame} label="Recorrido en el suelo" /> : null}
+      </div>
     </GameDisplayShell>
   );
 }

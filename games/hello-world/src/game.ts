@@ -51,7 +51,7 @@ class HelloWorldGame implements GameInstance {
   private players: GamePlayer[];
   private lastEvent: GameEvent = {
     cue: "none",
-    message: "Ready",
+    message: "Listo",
     atMillis: 0
   };
 
@@ -66,7 +66,7 @@ class HelloWorldGame implements GameInstance {
     this.nowMillis = nowMillis;
     this.lastEvent = {
       cue: "start",
-      message: "Step on the green tile",
+      message: "Pisa la baldosa verde",
       atMillis: nowMillis
     };
 
@@ -89,7 +89,7 @@ class HelloWorldGame implements GameInstance {
     this.players = this.scoredPlayers();
     this.lastEvent = {
       cue: this.score >= helloWorldTargetScore ? "win" : "hit",
-      message: this.score >= helloWorldTargetScore ? "Hello World" : `Hello ${this.score}`,
+      message: this.score >= helloWorldTargetScore ? "Hola Mundo" : `Hola ${this.score}`,
       atMillis: event.atMillis
     };
 
@@ -115,7 +115,7 @@ class HelloWorldGame implements GameInstance {
     this.phase = "finished";
     this.lastEvent = {
       cue: this.score >= helloWorldTargetScore ? "win" : "fail",
-      message: this.score >= helloWorldTargetScore ? "Hello World" : "Time",
+      message: this.score >= helloWorldTargetScore ? "Hola Mundo" : "Tiempo",
       atMillis: event.atMillis
     };
 
@@ -172,7 +172,7 @@ class HelloWorldGame implements GameInstance {
     this.players = this.scoredPlayers();
     this.lastEvent = {
       cue: "none",
-      message: "Ready",
+      message: "Listo",
       atMillis: this.config.nowMillis
     };
   }

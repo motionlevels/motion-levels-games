@@ -1,6 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import {
+  Bug,
+  Check,
+  Copy,
+  Dices,
+  LayoutGrid,
+  LoaderCircle,
+  Maximize,
+  Minimize,
+  Monitor,
+  Pause,
+  Play,
+  RotateCcw,
+  Settings2,
+  TriangleAlert,
+  X
+} from "lucide-react";
 import { FloorPreview } from "@motion-levels-games/display-kit";
 import {
   createGameEngine,
@@ -17,20 +34,31 @@ import {
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
 import { captureDisplayElement, capturePlaygroundSurfaces, copyCaptureToClipboard } from "./captureImages.ts";
+import motionLevelsLogo from "./assets/motion-levels-icon.webp";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
-import { rotateFrameClockwise, unrotateFloorPoint, type RenderableFrame } from "./frameTransforms.ts";
 import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
 
 const playerDisplayMediaWidth = 1280;
 const playerDisplayMediaHeight = 720;
+// Seed range mirrors the platform editor: whole numbers 0–9999.
+const MIN_SEED = 0;
+const MAX_SEED = 9999;
+const DEFAULT_SEED = 137;
 const defaultDifficultyOptions: GameDifficulty[] = ["easy", "medium", "hard", "expert"];
 const difficultyLabels: Record<string, string> = {
   easy: "Easy",
   medium: "Medium",
   hard: "Hard",
   expert: "Expert"
+};
+const phaseLabels: Record<string, string> = {
+  waiting: "Standby",
+  ready: "Ready",
+  running: "Live",
+  paused: "Paused",
+  finished: "Finished"
 };
 
 function createStartedGame(
@@ -59,7 +87,7 @@ export function App() {
     () => playgroundGames.find((game) => game.manifest.id === selectedGameId) ?? defaultGame,
     [selectedGameId]
   );
-  const [seed, setSeed] = useState(defaultGame.manifest.defaultSeed);
+  const [seed, setSeed] = useState(DEFAULT_SEED);
   const [playerCount, setPlayerCount] = useState(defaultPlayerCountFor(defaultGame));
   const [difficulty, setDifficulty] = useState<GameDifficulty>(() => defaultDifficultyFor(defaultGame));
   const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => defaultConfigOptionsFor(defaultGame));
@@ -68,7 +96,7 @@ export function App() {
     () => {
       const startedGame = createStartedGame(
         defaultGame,
-        defaultGame.manifest.defaultSeed,
+        DEFAULT_SEED,
         defaultPlayerCountFor(defaultGame),
         defaultDifficultyFor(defaultGame),
         defaultConfigOptionsFor(defaultGame)
@@ -88,11 +116,14 @@ export function App() {
   const [events, setEvents] = useState<GameEvent[]>(started.events);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
-  const [boardFocus, setBoardFocus] = useState(false);
   const [captureMessage, setCaptureMessage] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const shellRef = useRef<HTMLElement>(null);
   const debugRef = useRef<HTMLElement>(null);
+  const debugTriggerRef = useRef<HTMLButtonElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const displayPreviewRef = useRef<HTMLDivElement>(null);
   const displayNativeRef = useRef<HTMLDivElement>(null);
   const [displayPreviewScale, setDisplayPreviewScale] = useState(1);
@@ -105,12 +136,10 @@ export function App() {
   const snapshotRef = useRef(snapshot);
   const frameRef = useRef(frame);
   const eventsRef = useRef(events);
-  const boardFocusRef = useRef(boardFocus);
   const PlayerDisplay = selectedGame.PlayerDisplay;
   const gameConfigVars = selectedGame.manifest.config?.vars ?? [];
   const difficultyChoices = difficultyOptionsFor(selectedGame);
   const playerCountChoices = playerCountOptionsFor(selectedGame);
-  const previewFrame = useMemo(() => boardFocus ? rotateFrameClockwise(frame) : frame, [boardFocus, frame]);
   const workbenchStyle = {
     "--display-preview-scale": displayPreviewScale
   } as CSSProperties;
@@ -152,10 +181,6 @@ export function App() {
   }, [events]);
 
   useEffect(() => {
-    boardFocusRef.current = boardFocus;
-  }, [boardFocus]);
-
-  useEffect(() => {
     const element = displayPreviewRef.current;
     if (!element) {
       return undefined;
@@ -172,7 +197,7 @@ export function App() {
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [boardFocus]);
+  }, []);
 
   useEffect(() => {
     const updateFullscreen = () => {
@@ -218,15 +243,7 @@ export function App() {
     setGameOptions(nextOptions);
   }, []);
 
-  const setBoardFocusState = useCallback((nextBoardFocus: boolean | ((current: boolean) => boolean)) => {
-    const resolved = typeof nextBoardFocus === "function" ? nextBoardFocus(boardFocusRef.current) : nextBoardFocus;
-    boardFocusRef.current = resolved;
-    setBoardFocus(resolved);
-  }, []);
-
-  const previewFrameFor = useCallback((sourceFrame: Frame = frameRef.current): RenderableFrame => {
-    return boardFocusRef.current ? rotateFrameClockwise(sourceFrame) : sourceFrame;
-  }, []);
+  const previewFrameFor = useCallback((sourceFrame: Frame = frameRef.current): Frame => sourceFrame, []);
 
   const syncEngineState = useCallback((state: GameEngineState) => {
     snapshotRef.current = state.snapshot;
@@ -275,10 +292,17 @@ export function App() {
     []
   );
 
+  const resetGameOptions = useCallback(() => {
+    const defaults = defaultConfigOptionsFor(selectedGameRef.current);
+    gameOptionsRef.current = defaults;
+    setGameOptions(defaults);
+    restart(seedRef.current, playerCountRef.current, selectedGameRef.current, true, difficultyRef.current, defaults);
+  }, [restart]);
+
   const selectGame = useCallback(
     (gameId: string) => {
       const nextGame = playgroundGames.find((game) => game.manifest.id === gameId) ?? selectedGame;
-      const nextSeed = nextGame.manifest.defaultSeed;
+      const nextSeed = DEFAULT_SEED;
       const nextPlayerCount = defaultPlayerCountFor(nextGame);
       const nextDifficulty = defaultDifficultyFor(nextGame);
       const nextOptions = defaultConfigOptionsFor(nextGame);
@@ -349,7 +373,7 @@ export function App() {
 
   const handleTilePress = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
-      const tile = pointToPhysicalTile(x, y, space, boardFocusRef.current, frameRef.current.height);
+      const tile = pointToPhysicalTile(x, y, space);
       syncEngineState(engineRef.current.press(tile.x, tile.y));
     },
     [syncEngineState]
@@ -357,7 +381,7 @@ export function App() {
 
   const handleTileRelease = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
-      const tile = pointToPhysicalTile(x, y, space, boardFocusRef.current, frameRef.current.height);
+      const tile = pointToPhysicalTile(x, y, space);
       syncEngineState(engineRef.current.release(tile.x, tile.y));
     },
     [syncEngineState]
@@ -491,7 +515,7 @@ export function App() {
         gameId: selectedGameRef.current.manifest.id,
         status: snapshotRef.current.phase,
         paused: pausedRef.current,
-        rotatedBoard: boardFocusRef.current,
+        rotatedBoard: false,
         snapshot: snapshotRef.current,
         frame: frameRef.current,
         previewFrame: previewFrameFor(),
@@ -548,6 +572,10 @@ export function App() {
       return undefined;
     }
 
+    const focusId = window.requestAnimationFrame(() => {
+      debugRef.current?.querySelector<HTMLButtonElement>(".popover-close-button")?.focus();
+    });
+
     const handlePointerDown = (event: PointerEvent) => {
       const element = debugRef.current;
       if (!element || element.contains(event.target as Node)) {
@@ -557,9 +585,60 @@ export function App() {
       setDebugOpen(false);
     };
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDebugOpen(false);
+        window.requestAnimationFrame(() => debugTriggerRef.current?.focus());
+      }
+    };
+
     document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusId);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [debugOpen]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      return undefined;
+    }
+
+    const focusId = window.requestAnimationFrame(() => {
+      settingsRef.current?.querySelector<HTMLButtonElement>(".popover-close-button")?.focus();
+    });
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-settings-trigger]")) {
+        return;
+      }
+
+      const element = settingsRef.current;
+      if (!element || !(target instanceof Node) || element.contains(target)) {
+        return;
+      }
+
+      setSettingsOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSettingsOpen(false);
+        window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusId);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [settingsOpen]);
 
   const toggleFullscreen = useCallback(async () => {
     const element = shellRef.current;
@@ -593,24 +672,41 @@ export function App() {
   const isFullscreenMode = fullscreen || fullscreenFallback;
   const shellClassName = [
     "playground-shell",
-    fullscreenFallback ? "is-fullscreen-fallback" : "",
-    boardFocus ? "is-board-focus" : ""
+    fullscreenFallback ? "is-fullscreen-fallback" : ""
   ].filter(Boolean).join(" ");
   const latestEvent = events[0];
-  const debugStats = [
+  const recentEvents = events.slice(1, 6);
+  const displayedPhase = paused ? "paused" : snapshot.phase;
+  const frameMillis = engineRef.current.frameMillis;
+  const frameNumber = frameMillis > 0 ? Math.round(engineRef.current.clockMillis / frameMillis) : 0;
+  const debugStats: [string, ReactNode][] = [
     ["Game", selectedGame.manifest.label],
     ["Phase", snapshot.phase],
-    ["Clock", `${formatMillis(engineRef.current.clockMillis)}ms`],
+    ["Clock", formatClockHMS(engineRef.current.clockMillis)],
     ["FPS", engineRef.current.fps],
     ["Seed", seed],
     ["Players", playerCount],
     ["Difficulty", difficulty],
     ["Score", snapshot.score],
     ["Targets", snapshot.activeTargets],
-    ["Frame", `${frame.width}x${frame.height}`],
-    ["Board", boardFocus ? "rotated" : "physical"],
+    ["Grid", `${frame.width}x${frame.height}`],
+    ["Frame", frameNumber],
     ["API", "ready"]
   ];
+  const activeRunSettings = [
+    ["Difficulty", difficultyLabels[difficulty] ?? difficulty],
+    ["Players", playerCount === 0 ? "Any" : String(playerCount)],
+    ["Seed", String(seed)],
+    ...gameConfigVars.map((configVar) => [
+      configVar.label,
+      formatConfigValue(configVar, gameOptions[configVar.key])
+    ])
+  ];
+  const captureToastTone = captureMessage.startsWith("Copied")
+    ? "success"
+    : captureMessage.startsWith("Capturing")
+      ? "pending"
+      : "warning";
 
   return (
     <main
@@ -618,209 +714,414 @@ export function App() {
       ref={shellRef}
       style={workbenchStyle}
     >
-      <header className="playground-header">
-        <div className="playground-title">
-          <div className="playground-title-row">
-            <h1>Playground</h1>
-            <span className={`phase-chip phase-${snapshot.phase}`}>{snapshot.phase}</span>
-          </div>
-        </div>
-        <div className="playground-controls">
-          <div className="control-group control-group-primary">
-            <label>
-              Game
-              <select
-                onChange={(event) => selectGame(event.target.value)}
-                value={selectedGame.manifest.id}
-              >
-                {playgroundGames.map((game) => (
-                  <option key={game.manifest.id} value={game.manifest.id}>
-                    {game.manifest.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Players
-              <select
-                onChange={(event) => setPlayerCountState(Number(event.target.value))}
-                value={playerCount}
-              >
-                {playerCountChoices.map((count) => (
-                  <option key={count} value={count}>
-                    {count === 0 ? "0 / Any" : count}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Difficulty
-              <select
-                onChange={(event) => setDifficultyState(event.target.value)}
-                value={difficulty}
-              >
-                {difficultyChoices.map((choice) => (
-                  <option key={choice} value={choice}>
-                    {difficultyLabels[choice] ?? choice}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="control-group">
-            <label>
-              Seed
-              <input
-                inputMode="numeric"
-                onChange={(event) => setSeedState(Number(event.target.value) || 1)}
-                value={seed}
-              />
-            </label>
-            {gameConfigVars.map((configVar) => (
-              <GameConfigControl
-                configVar={configVar}
-                key={configVar.key}
-                onChange={(value) => setGameOptionState(configVar, value)}
-                value={gameOptions[configVar.key]}
-              />
-            ))}
-          </div>
-          <div className="control-group control-actions">
-            <button onClick={() => restart()} type="button">
-              Restart
-            </button>
-            <button
-              onClick={() => {
-                const nextSeed = seed + 1;
-                setSeedState(nextSeed);
-                restart(nextSeed, playerCount, selectedGameRef.current, false, difficulty, gameOptions);
-              }}
-              type="button"
-            >
-              New seed
-            </button>
-            <button onClick={() => setPausedState(!pausedRef.current)} type="button">
-              {paused ? "Resume" : "Pause"}
-            </button>
-            <button className="fullscreen-button" onClick={toggleFullscreen} type="button">
-              {isFullscreenMode ? "Exit full" : "Fullscreen"}
-            </button>
-          </div>
-        </div>
-      </header>
-
       <section className="playground-grid">
         <article className="display-panel">
-          <div className="surface-toolbar">
-            <button className="layout-toggle-button" onClick={() => setBoardFocusState((value) => !value)} type="button">
-              {boardFocus ? "Restore layout" : "Rotate board"}
-            </button>
-            <section className={`debug-panel ${debugOpen ? "is-open" : ""}`} ref={debugRef}>
-              <button
-                aria-expanded={debugOpen}
-                className="debug-trigger"
-                onClick={() => setDebugOpen((value) => !value)}
-                type="button"
-              >
-                Debug
-              </button>
+          <header className="playground-header">
+            <div className="playground-title">
+              <div className="playground-title-row">
+                <img
+                  alt="Motion Levels"
+                  className="playground-brand-mark"
+                  src={motionLevelsLogo}
+                />
+                <span className={`phase-chip phase-${displayedPhase}`}>
+                  <i aria-hidden="true" />
+                  {phaseLabels[displayedPhase] ?? displayedPhase}
+                </span>
+              </div>
+            </div>
+            <div className="playground-controls">
+              <div className="control-group control-group-primary">
+                <label className="control-field control-game">
+                  <span>Game</span>
+                  <select
+                    onChange={(event) => selectGame(event.target.value)}
+                    value={selectedGame.manifest.id}
+                  >
+                    {playgroundGames.map((game) => (
+                      <option key={game.manifest.id} value={game.manifest.id}>
+                        {game.manifest.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="control-field control-players">
+                  <span>Players</span>
+                  <select
+                    onChange={(event) => setPlayerCountState(Number(event.target.value))}
+                    value={playerCount}
+                  >
+                    {playerCountChoices.map((count) => (
+                      <option key={count} value={count}>
+                        {count === 0 ? "0 / Any" : count}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="control-field control-difficulty">
+                  <span>Difficulty</span>
+                  <select
+                    onChange={(event) => setDifficultyState(event.target.value)}
+                    value={difficulty}
+                  >
+                    {difficultyChoices.map((choice) => (
+                      <option key={choice} value={choice}>
+                        {difficultyLabels[choice] ?? choice}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="control-group">
+                <label className="control-field control-seed">
+                  <span>Seed</span>
+                  <input
+                    inputMode="numeric"
+                    max={MAX_SEED}
+                    min={MIN_SEED}
+                    onChange={(event) => setSeedState(clampSeed(Number(event.target.value)))}
+                    value={seed}
+                  />
+                </label>
+              </div>
+              <div className="control-group control-actions" role="group" aria-label="Game actions">
+                <button
+                  aria-controls="settings-popover"
+                  aria-expanded={settingsOpen}
+                  aria-haspopup="dialog"
+                  aria-label="Settings"
+                  className="icon-button"
+                  data-settings-trigger
+                  onClick={() => setSettingsOpen((value) => !value)}
+                  ref={settingsTriggerRef}
+                  title="Settings"
+                  type="button"
+                >
+                  <Settings2 size={16} aria-hidden="true" />
+                </button>
+                <button
+                  aria-label="Restart"
+                  className="icon-button"
+                  onClick={() => restart()}
+                  title="Restart"
+                  type="button"
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                </button>
+                <button
+                  aria-label="New seed"
+                  className="icon-button"
+                  onClick={() => {
+                    const nextSeed = randomSeed();
+                    setSeedState(nextSeed);
+                    restart(nextSeed, playerCount, selectedGameRef.current, false, difficulty, gameOptions);
+                  }}
+                  title="New seed"
+                  type="button"
+                >
+                  <Dices size={16} aria-hidden="true" />
+                </button>
+                <button
+                  aria-label={paused ? "Resume" : "Pause"}
+                  aria-pressed={paused}
+                  className="icon-button"
+                  onClick={() => setPausedState(!pausedRef.current)}
+                  title={paused ? "Resume" : "Pause"}
+                  type="button"
+                >
+                  {paused ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
+                </button>
+                <button
+                  aria-label={isFullscreenMode ? "Exit fullscreen" : "Fullscreen"}
+                  aria-pressed={isFullscreenMode}
+                  className="icon-button fullscreen-button"
+                  onClick={toggleFullscreen}
+                  title={isFullscreenMode ? "Exit fullscreen" : "Fullscreen"}
+                  type="button"
+                >
+                  {isFullscreenMode ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}
+                </button>
+              </div>
+            </div>
 
-              {debugOpen ? (
-                <div className="debug-popover" role="dialog" aria-label="Playground debug panel">
-                  <div className="debug-popover-head">
-                    <div>
-                      <span>Playground</span>
-                      <strong>{snapshot.phase}</strong>
+            <div className="surface-toolbar" role="group" aria-label="Debug and capture actions">
+              <section className={`debug-panel ${debugOpen ? "is-open" : ""}`} ref={debugRef}>
+                <button
+                  aria-controls="debug-popover"
+                  aria-expanded={debugOpen}
+                  aria-haspopup="dialog"
+                  aria-label="Debug"
+                  className="debug-trigger icon-button"
+                  onClick={() => setDebugOpen((value) => !value)}
+                  ref={debugTriggerRef}
+                  title="Debug"
+                  type="button"
+                >
+                  <Bug size={15} aria-hidden="true" />
+                </button>
+
+                {debugOpen ? (
+                  <div className="debug-popover" id="debug-popover" role="dialog" aria-label="Playground debug panel">
+                    <div className="debug-popover-head">
+                      <div>
+                        <span>Playground</span>
+                        <strong>{snapshot.phase}</strong>
+                      </div>
+                      <PopoverCloseButton
+                        label="Close debug panel"
+                        onClick={() => {
+                          setDebugOpen(false);
+                          window.requestAnimationFrame(() => debugTriggerRef.current?.focus());
+                        }}
+                      />
                     </div>
-                    <button onClick={() => setDebugOpen(false)} type="button" aria-label="Close debug panel">
-                      Close
+
+                    <dl className="debug-stat-grid">
+                      {debugStats.map(([label, value]) => (
+                        <div key={label}>
+                          <dt>{label}</dt>
+                          <dd><AnimatedStat value={value} /></dd>
+                        </div>
+                      ))}
+                    </dl>
+
+                    <div className="debug-api-strip">
+                      <code>window.ml</code>
+                      <code>capture(["display", "boardPreview", "combined"])</code>
+                      <code>media("ping-pong")</code>
+                    </div>
+
+                    <article className="debug-latest">
+                      <span>Latest Event</span>
+                      {latestEvent ? (
+                        <p>
+                          <code>{formatMillis(latestEvent.atMillis)}ms</code>
+                          <b>{latestEvent.cue}</b>
+                          <strong>{latestEvent.message}</strong>
+                        </p>
+                      ) : (
+                        <p>No events</p>
+                      )}
+                    </article>
+
+                    <article className="debug-events">
+                      <div className="debug-section-heading">
+                        <span>Recent Events</span>
+                        <strong>{events.length}</strong>
+                      </div>
+                      <ol>
+                        {events.map((event, index) => (
+                          <li key={`${event.atMillis}-${event.cue}-${index}`}>
+                            <code>{formatMillis(event.atMillis)}ms</code>
+                            <span>{event.cue}</span>
+                            <strong>{event.message}</strong>
+                          </li>
+                        ))}
+                      </ol>
+                    </article>
+
+                    <article className="debug-snapshot">
+                      <div className="debug-section-heading">
+                        <span>Snapshot</span>
+                        <strong>{snapshot.score} pts</strong>
+                      </div>
+                      <pre>{JSON.stringify(snapshot, null, 2)}</pre>
+                    </article>
+                  </div>
+                ) : null}
+              </section>
+              <div className="capture-actions" aria-label="Capture actions">
+                <button
+                  aria-label="Copy display"
+                  className="icon-button"
+                  onClick={() => handleCopySurface("display")}
+                  title="Copy display"
+                  type="button"
+                >
+                  <Monitor size={15} aria-hidden="true" />
+                </button>
+                <button
+                  aria-label="Copy board"
+                  className="icon-button"
+                  onClick={() => handleCopySurface("boardPreview")}
+                  title="Copy board"
+                  type="button"
+                >
+                  <LayoutGrid size={15} aria-hidden="true" />
+                </button>
+                <button
+                  aria-label="Copy all"
+                  className="icon-button"
+                  onClick={() => handleCopySurface("combined")}
+                  title="Copy all"
+                  type="button"
+                >
+                  <Copy size={15} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            {settingsOpen ? (
+              <div className="settings-popover" id="settings-popover" ref={settingsRef} role="dialog" aria-label="Game settings">
+                <div className="settings-popover-head">
+                  <div>
+                    <span>Settings</span>
+                    <strong>{selectedGame.manifest.label}</strong>
+                  </div>
+                  <PopoverCloseButton
+                    label="Close settings"
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+                    }}
+                  />
+                </div>
+
+                <div className="settings-list">
+                  {gameConfigVars.length > 0 ? (
+                    gameConfigVars.map((configVar) => (
+                      <GameConfigControl
+                        configVar={configVar}
+                        key={configVar.key}
+                        onChange={(value) => setGameOptionState(configVar, value)}
+                        value={gameOptions[configVar.key]}
+                      />
+                    ))
+                  ) : (
+                    <p className="settings-empty">This game has no custom settings.</p>
+                  )}
+                </div>
+
+                {gameConfigVars.length > 0 ? (
+                  <div className="settings-footer">
+                    <button className="settings-reset" onClick={resetGameOptions} type="button">
+                      <RotateCcw size={14} aria-hidden="true" />
+                      Reset to defaults
                     </button>
                   </div>
+                ) : null}
+              </div>
+            ) : null}
+          </header>
 
-                  <dl className="debug-stat-grid">
-                    {debugStats.map(([label, value]) => (
-                      <div key={label}>
-                        <dt>{label}</dt>
-                        <dd>{value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-
-                  <div className="debug-api-strip">
-                    <code>window.ml</code>
-                    <code>capture(["display", "boardPreview", "combined"])</code>
-                    <code>media("ping-pong")</code>
-                  </div>
-
-                  <article className="debug-latest">
-                    <span>Latest Event</span>
-                    {latestEvent ? (
-                      <p>
-                        <code>{latestEvent.atMillis}ms</code>
-                        <b>{latestEvent.cue}</b>
-                        <strong>{latestEvent.message}</strong>
-                      </p>
-                    ) : (
-                      <p>No events</p>
-                    )}
-                  </article>
-
-                  <article className="debug-events">
-                    <div className="debug-section-heading">
-                      <span>Recent Events</span>
-                      <strong>{events.length}</strong>
-                    </div>
-                    <ol>
-                      {events.map((event, index) => (
-                        <li key={`${event.atMillis}-${event.cue}-${index}`}>
-                          <code>{event.atMillis}ms</code>
-                          <span>{event.cue}</span>
-                          <strong>{event.message}</strong>
-                        </li>
-                      ))}
-                    </ol>
-                  </article>
-
-                  <article className="debug-snapshot">
-                    <div className="debug-section-heading">
-                      <span>Snapshot</span>
-                      <strong>{snapshot.score} pts</strong>
-                    </div>
-                    <pre>{JSON.stringify(snapshot, null, 2)}</pre>
-                  </article>
-                </div>
-              ) : null}
-            </section>
-            <div className="capture-actions" aria-label="Capture actions">
-              <button onClick={() => handleCopySurface("display")} type="button">
-                Copy display
-              </button>
-              <button onClick={() => handleCopySurface("boardPreview")} type="button">
-                Copy board
-              </button>
-              <button onClick={() => handleCopySurface("combined")} type="button">
-                Copy all
-              </button>
-            </div>
-            {captureMessage ? <span className="capture-status">{captureMessage}</span> : null}
-          </div>
           <div className="display-preview-box" ref={displayPreviewRef}>
             <div className="display-preview-native" ref={displayNativeRef}>
               <PlayerDisplay snapshot={snapshot} frame={frame} />
             </div>
           </div>
+
+          <section className="status-dock" aria-label="Playground status">
+            <article className="status-card status-card-runtime">
+              <div className="status-card-head">
+                <span>Runtime</span>
+                <strong className={`runtime-state ${paused ? "is-paused" : ""}`}>
+                  <i aria-hidden="true" />
+                  {phaseLabels[displayedPhase] ?? displayedPhase}
+                </strong>
+              </div>
+              <div className="status-runtime-summary">
+                <span>Engine clock</span>
+                <strong>{formatClockHMS(engineRef.current.clockMillis)}</strong>
+                <small>{frameNumber.toLocaleString()} frames processed</small>
+              </div>
+              <dl className="status-metrics">
+                <div>
+                  <dt>Clock</dt>
+                  <dd>{formatClockHMS(engineRef.current.clockMillis)}</dd>
+                </div>
+                <div>
+                  <dt>FPS</dt>
+                  <dd>{engineRef.current.fps}</dd>
+                </div>
+                <div>
+                  <dt>Frame</dt>
+                  <dd>{frameNumber}</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article className="status-card status-card-event">
+              <div className="status-card-head">
+                <span>Latest event</span>
+                <code>{latestEvent ? `${formatMillis(latestEvent.atMillis)}ms` : "—"}</code>
+              </div>
+              {latestEvent ? (
+                <div className="status-event-copy">
+                  <strong>{latestEvent.cue}</strong>
+                  <p>{latestEvent.message}</p>
+                </div>
+              ) : (
+                <p className="status-empty">No events yet</p>
+              )}
+              {recentEvents.length > 0 ? (
+                <ol className="status-event-history" aria-label="Recent events">
+                  {recentEvents.map((event, index) => (
+                    <li key={`${event.atMillis}-${event.cue}-${index}`}>
+                      <code>{formatMillis(event.atMillis)}ms</code>
+                      <strong>{event.cue}</strong>
+                      <span>{event.message}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </article>
+
+            <article className="status-card status-card-config">
+              <div className="status-card-head">
+                <span>Active run</span>
+                <strong>{selectedGame.manifest.label}</strong>
+              </div>
+              <dl className="status-run-summary">
+                <div>
+                  <dt>Score</dt>
+                  <dd>{snapshot.score}</dd>
+                </div>
+                <div>
+                  <dt>Targets</dt>
+                  <dd>{snapshot.activeTargets}</dd>
+                </div>
+                <div>
+                  <dt>Events</dt>
+                  <dd>{events.length}</dd>
+                </div>
+              </dl>
+              <dl className="status-config-list">
+                {activeRunSettings.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </article>
+          </section>
         </article>
 
         <article className="panel floor-panel">
           <FloorPreview
             className="playground-floor-preview"
-            frame={previewFrame}
+            frame={frame}
             interactive
             onTilePress={(x, y) => handleTilePress(x, y, "preview")}
             onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}
           />
         </article>
       </section>
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        className={`capture-toast capture-toast-${captureToastTone} ${captureMessage ? "is-visible" : ""}`.trim()}
+        role="status"
+      >
+        {captureMessage ? (
+          <>
+            {captureToastTone === "success" ? <Check size={16} aria-hidden="true" /> : null}
+            {captureToastTone === "pending" ? <LoaderCircle size={16} aria-hidden="true" /> : null}
+            {captureToastTone === "warning" ? <TriangleAlert size={16} aria-hidden="true" /> : null}
+            <span>{captureMessage}</span>
+          </>
+        ) : null}
+      </div>
     </main>
   );
 }
@@ -836,21 +1137,17 @@ function GameConfigControl({
 }) {
   if (configVar.type === "bool") {
     return (
-      <label className="checkbox-control">
-        {configVar.label}
-        <input
-          checked={value === true}
-          onChange={(event) => onChange(event.target.checked)}
-          type="checkbox"
-        />
+      <label className="setting-control setting-control-bool">
+        <span>{configVar.label}</span>
+        <input checked={value === true} onChange={(event) => onChange(event.target.checked)} type="checkbox" />
       </label>
     );
   }
 
   if (configVar.type === "enum") {
     return (
-      <label>
-        {configVar.label}
+      <label className="setting-control">
+        <span>{configVar.label}</span>
         <select
           onChange={(event) => onChange(event.target.value)}
           value={String(value ?? configVar.default ?? configVar.options?.[0]?.value ?? "")}
@@ -865,20 +1162,62 @@ function GameConfigControl({
     );
   }
 
+  const numericValue = Number(value ?? configVar.default ?? configVar.min ?? 0);
+  const hasRange = typeof configVar.min === "number" && typeof configVar.max === "number";
+
   return (
-    <label>
-      {configVar.label}
-      <input
-        inputMode={configVar.type === "int" ? "numeric" : "decimal"}
-        max={configVar.max}
-        min={configVar.min}
-        onChange={(event) => onChange(event.target.value)}
-        step={configVar.step ?? (configVar.type === "int" ? 1 : "any")}
-        type="number"
-        value={String(value ?? configVar.default ?? configVar.min ?? 0)}
-      />
+    <label className="setting-control setting-control-number">
+      <span>{configVar.label}</span>
+      <div className="setting-number-row">
+        {hasRange ? (
+          <input
+            max={configVar.max}
+            min={configVar.min}
+            onChange={(event) => onChange(event.target.value)}
+            step={configVar.step ?? (configVar.type === "int" ? 1 : "any")}
+            type="range"
+            value={String(numericValue)}
+          />
+        ) : null}
+        <input
+          inputMode={configVar.type === "int" ? "numeric" : "decimal"}
+          max={configVar.max}
+          min={configVar.min}
+          onChange={(event) => onChange(event.target.value)}
+          step={configVar.step ?? (configVar.type === "int" ? 1 : "any")}
+          type="number"
+          value={String(numericValue)}
+        />
+      </div>
     </label>
   );
+}
+
+function PopoverCloseButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-label={label}
+      className="icon-button popover-close-button"
+      onClick={onClick}
+      title="Close"
+      type="button"
+    >
+      <X aria-hidden="true" size={16} strokeWidth={2.4} />
+    </button>
+  );
+}
+
+function formatConfigValue(configVar: GameConfigVar, value: unknown): string {
+  if (configVar.type === "bool") {
+    return value === true ? "On" : "Off";
+  }
+
+  if (configVar.type === "enum") {
+    const option = configVar.options?.find((candidate) => candidate.value === String(value));
+    return option?.label ?? option?.value ?? String(value ?? "—");
+  }
+
+  return String(value ?? configVar.default ?? "—");
 }
 
 function defaultPlayerCountFor(game: PlaygroundGame): number {
@@ -950,27 +1289,51 @@ function clampNumber(value: number, min: number | undefined, max: number | undef
   return Math.max(min ?? -Infinity, Math.min(max ?? Infinity, value));
 }
 
-function pointToPhysicalTile(
-  x: number,
-  y: number,
-  space: PlaygroundPointSpace,
-  rotatedBoard: boolean,
-  originalHeight: number
-) {
+function pointToPhysicalTile(x: number, y: number, _space: PlaygroundPointSpace) {
   const point = {
     x: Math.trunc(x),
     y: Math.trunc(y)
   };
 
-  if (space === "preview" && rotatedBoard) {
-    return unrotateFloorPoint(point.x, point.y, originalHeight);
-  }
-
   return point;
+}
+
+function clampSeed(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_SEED;
+  }
+  return Math.min(MAX_SEED, Math.max(MIN_SEED, Math.trunc(value)));
+}
+
+function randomSeed(): number {
+  return MIN_SEED + Math.floor(Math.random() * (MAX_SEED - MIN_SEED + 1));
 }
 
 function formatMillis(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+// Human-friendly HH:MM:SS.CS clock (centisecond precision), e.g. 00:01:43.20.
+function formatClockHMS(ms: number): string {
+  const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+  const totalCentis = Math.floor(safeMs / 10);
+  const centis = totalCentis % 100;
+  const totalSeconds = Math.floor(totalCentis / 100);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / 3600);
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(centis)}`;
+}
+
+// Re-keys on each value change so the CSS highlight animation replays, giving
+// updating debug numbers a subtle live pulse.
+function AnimatedStat({ value }: { value: ReactNode }) {
+  return (
+    <span className="debug-value" key={String(value)}>
+      {value}
+    </span>
+  );
 }
 
 function waitForPaint(): Promise<void> {

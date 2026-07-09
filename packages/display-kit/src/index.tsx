@@ -12,6 +12,21 @@ export type RoundSummary = {
   hits?: number;
 };
 
+// Player-facing displays are Spanish only. Phase enums stay in English in code
+// (they drive logic and class names); this maps them to Spanish for the pill.
+const phaseLabels: Record<string, string> = {
+  ready: "Listo",
+  waiting: "En espera",
+  starting: "Preparados",
+  running: "En juego",
+  paused: "Pausa",
+  finished: "Terminado"
+};
+
+export function phaseLabel(phase: string): string {
+  return phaseLabels[phase] ?? phase;
+}
+
 export function GameDisplayShell({
   title,
   phase,
@@ -24,7 +39,7 @@ export function GameDisplayShell({
   children?: ReactNode;
 }) {
   return (
-    <section className={`ml-display-shell ml-tv-display ml-tv-display-${variant}`} aria-label={`${title} display`}>
+    <section className={`ml-display-shell ml-tv-display ml-tv-display-${variant}`} aria-label={`Pantalla de ${title}`}>
       <header className="ml-display-header ml-tv-header">
         <div className="ml-tv-brand" aria-hidden="true">
           <span className="ml-tv-brand-mark" />
@@ -34,10 +49,10 @@ export function GameDisplayShell({
           </span>
         </div>
         <div className="ml-tv-title">
-          <span className="ml-display-label">Game</span>
+          <span className="ml-display-label">Juego</span>
           <h1>{title}</h1>
         </div>
-        <span className={`ml-status-pill ml-status-${phase}`}>{phase}</span>
+        <span className={`ml-status-pill ml-status-${phase}`}>{phaseLabel(phase)}</span>
       </header>
       <div className="ml-display-content">{children}</div>
     </section>
@@ -122,7 +137,7 @@ export function VersusScoreboard({
   className?: string;
 }) {
   return (
-    <section className={`ml-versus-scoreboard ${className}`.trim()} aria-label="Scoreboard">
+    <section className={`ml-versus-scoreboard ${className}`.trim()} aria-label="Marcador">
       <PlayerScorePanel player={left} side="red" target={target} />
       <article className="ml-versus-center">
         <span>{centerLabel}</span>
@@ -169,39 +184,81 @@ export function PlayerScorePanel({
 export function RoundStrip({
   rounds,
   totalRounds,
-  fallbackLabel = "Pending",
+  activeRound,
+  activeLabel = "Ronda actual",
+  activeCaption = "Punto en curso",
+  fallbackLabel = "Pendiente",
   className = ""
 }: {
   rounds: RoundSummary[];
   totalRounds?: number;
+  activeRound?: number | null;
+  activeLabel?: string;
+  activeCaption?: string;
   fallbackLabel?: string;
   className?: string;
 }) {
   const roundCount = Math.max(rounds.length, totalRounds ?? 0, 1);
   const roundByIndex = new Map(rounds.map((round) => [round.index, round]));
-  const visibleRounds = Array.from({ length: roundCount }, (_, index) => {
+  const allRounds = Array.from({ length: roundCount }, (_, index) => {
     const roundIndex = index + 1;
     return roundByIndex.get(roundIndex) ?? { index: roundIndex, winnerLabel: fallbackLabel, hits: 0 };
-  }).slice(-12);
-  const progressLabel = totalRounds ? `${rounds.length}/${totalRounds}` : rounds.length;
+  });
+  const defaultActiveRound = rounds.length < roundCount ? rounds.length + 1 : null;
+  const resolvedActiveRound = activeRound === undefined ? defaultActiveRound : activeRound;
+  const focusRound = resolvedActiveRound ?? Math.max(rounds.length, 1);
+  const visibleLimit = 12;
+  const visibleStart = Math.min(
+    Math.max(0, focusRound - Math.ceil(visibleLimit / 2)),
+    Math.max(0, roundCount - visibleLimit)
+  );
+  const visibleRounds = allRounds.slice(visibleStart, visibleStart + visibleLimit);
+  const visibleRangeLabel = roundCount > visibleRounds.length
+    ? `Rondas ${visibleRounds[0]?.index}-${visibleRounds.at(-1)?.index} de ${roundCount}`
+    : "Historial del partido";
+  const stripStyle = {
+    "--ml-round-count": visibleRounds.length,
+    "--ml-round-progress": `${Math.min(1, rounds.length / roundCount) * 100}%`
+  } as CSSProperties;
 
   return (
-    <section className={`ml-round-strip ${className}`.trim()} aria-label="Rounds">
+    <section className={`ml-round-strip ${className}`.trim()} aria-label="Rondas" style={stripStyle}>
       <div className="ml-round-strip-head">
-        <span>Rounds</span>
-        <strong>{progressLabel}</strong>
+        <div className="ml-round-strip-title">
+          <span>Rondas</span>
+          <small>{visibleRangeLabel}</small>
+        </div>
+        <div className="ml-round-strip-count" aria-label={`${rounds.length} de ${roundCount} rondas jugadas`}>
+          <strong>{rounds.length}</strong>
+          <span>de {roundCount}</span>
+        </div>
       </div>
+      <div className="ml-round-progress" aria-hidden="true"><i /></div>
       <div className="ml-round-list">
-        {visibleRounds.map((round) => (
-          <article
-            className={`ml-round-card ${round.winnerIndex === 0 ? "is-red" : round.winnerIndex === 1 ? "is-blue" : "is-pending"}`}
-            key={round.index}
-          >
-            <span>#{round.index}</span>
-            <strong>{round.winnerLabel || fallbackLabel}</strong>
-            <b>{round.hits ?? 0}</b>
-          </article>
-        ))}
+        {visibleRounds.map((round) => {
+          const completed = round.winnerIndex === 0 || round.winnerIndex === 1;
+          const current = !completed && round.index === resolvedActiveRound;
+          const stateClass = round.winnerIndex === 0
+            ? "is-red"
+            : round.winnerIndex === 1
+              ? "is-blue"
+              : current
+                ? "is-current"
+                : "is-pending";
+          const hits = round.hits ?? 0;
+
+          return (
+            <article className={`ml-round-card ${stateClass}`} key={round.index}>
+              <div className="ml-round-card-head">
+                <span>R{round.index}</span>
+                <i aria-hidden="true" />
+              </div>
+              <strong>{completed ? (round.winnerLabel || fallbackLabel) : current ? activeLabel : fallbackLabel}</strong>
+              {completed ? <b>{hits} {hits === 1 ? "golpe" : "golpes"}</b> : null}
+              {current ? <b>{activeCaption}</b> : null}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
@@ -209,7 +266,7 @@ export function RoundStrip({
 
 export function FramePreviewPanel({
   frame,
-  label = "Floor preview",
+  label = "Vista del suelo",
   className = ""
 }: {
   frame: Frame | { width: number; height: number; cells: FrameCell[] };
@@ -247,6 +304,12 @@ export function FloorPreview({
     "--ml-floor-rows": frame.height
   } as CSSProperties;
   const rootClassName = `ml-floor-preview ${interactive ? "ml-floor-interactive" : ""} ${className}`.trim();
+  const clearPointerFocus = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && rootRef.current?.contains(activeElement)) {
+      activeElement.blur();
+    }
+  }, []);
   const clearActiveTile = useCallback((delayMillis = 0) => {
     if (activeTileTimeoutRef.current !== null) {
       window.clearTimeout(activeTileTimeoutRef.current);
@@ -351,11 +414,12 @@ export function FloorPreview({
       }
 
       event.preventDefault();
+      clearPointerFocus();
       activePointerIdRef.current = event.pointerId;
       rootRef.current?.setPointerCapture(event.pointerId);
       moveToTile(tileFromPoint(event.clientX, event.clientY));
     },
-    [interactive, moveToTile, tileFromPoint]
+    [clearPointerFocus, interactive, moveToTile, tileFromPoint]
   );
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -376,16 +440,18 @@ export function FloorPreview({
 
       activePointerIdRef.current = null;
       releaseLastTile();
+      clearPointerFocus();
       if (rootRef.current?.hasPointerCapture(event.pointerId)) {
         rootRef.current.releasePointerCapture(event.pointerId);
       }
     },
-    [interactive, releaseLastTile]
+    [clearPointerFocus, interactive, releaseLastTile]
   );
   const handleLostPointerCapture = useCallback(() => {
     activePointerIdRef.current = null;
     releaseLastTile(0);
-  }, [releaseLastTile]);
+    clearPointerFocus();
+  }, [clearPointerFocus, releaseLastTile]);
 
   return (
     <div
@@ -398,7 +464,7 @@ export function FloorPreview({
       ref={rootRef}
       style={style}
       role="grid"
-      aria-label="Floor preview"
+      aria-label="Vista del suelo"
     >
       {frame.cells.map((cell) => {
         const tileStyle = {
@@ -421,7 +487,7 @@ export function FloorPreview({
           return (
             <button
               {...sharedProps}
-              aria-label={`Tile ${cell.x}, ${cell.y}`}
+              aria-label={`Baldosa ${cell.x}, ${cell.y}`}
               key={key}
               type="button"
             />

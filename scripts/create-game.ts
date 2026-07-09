@@ -222,7 +222,7 @@ class ScaffoldedGame implements GameInstance {
   private players: GamePlayer[];
   private lastEvent: GameEvent = {
     cue: "none",
-    message: "Ready",
+    message: "Listo",
     atMillis: 0
   };
 
@@ -237,7 +237,7 @@ class ScaffoldedGame implements GameInstance {
     this.nowMillis = nowMillis;
     this.lastEvent = {
       cue: "start",
-      message: "Find the green tile",
+      message: "Pisa la baldosa verde",
       atMillis: nowMillis
     };
     return [this.lastEvent];
@@ -259,7 +259,7 @@ class ScaffoldedGame implements GameInstance {
     this.players = this.scoredPlayers();
     this.lastEvent = {
       cue: this.score >= targetScore ? "win" : "hit",
-      message: this.score >= targetScore ? "Finished" : "Hit " + this.score,
+      message: this.score >= targetScore ? "Terminado" : "Acierto " + this.score,
       atMillis: event.atMillis
     };
 
@@ -285,7 +285,7 @@ class ScaffoldedGame implements GameInstance {
     this.phase = "finished";
     this.lastEvent = {
       cue: this.score >= targetScore ? "win" : "fail",
-      message: "Time",
+      message: "Tiempo",
       atMillis: event.atMillis
     };
     return [this.lastEvent];
@@ -330,7 +330,7 @@ class ScaffoldedGame implements GameInstance {
     this.players = this.scoredPlayers();
     this.lastEvent = {
       cue: "none",
-      message: "Ready",
+      message: "Listo",
       atMillis: this.config.nowMillis
     };
   }
@@ -372,10 +372,10 @@ export function PlayerDisplay({
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
       <MetricRow columns={4}>
-        <MetricPanel label="Score" tone="green" value={snapshot.score} />
-        <MetricPanel label="Target" tone="yellow" value={snapshot.matchTarget ?? 3} />
-        <MetricPanel label="Time" tone="cyan" value={formatClock(snapshot.remainingMillis)} />
-        <MetricPanel label="Cue" tone={snapshot.success ? "green" : "blue"} value={snapshot.lastEventMessage || "Ready"} />
+        <MetricPanel label="Puntos" tone="green" value={snapshot.score} />
+        <MetricPanel label="Objetivo" tone="yellow" value={snapshot.matchTarget ?? 3} />
+        <MetricPanel label="Tiempo" tone="cyan" value={formatClock(snapshot.remainingMillis)} />
+        <MetricPanel label="Aviso" tone={snapshot.success ? "green" : "blue"} value={snapshot.lastEventMessage || "Listo"} />
       </MetricRow>
 
       {frame ? <FramePreviewPanel frame={frame} /> : null}

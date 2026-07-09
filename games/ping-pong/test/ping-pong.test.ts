@@ -3,7 +3,16 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FLOOR_COLS, FLOOR_ROWS, frameCell, type Frame } from "@motion-levels-games/game-sdk";
-import { PlayerDisplay, ballColor, createGame, manifest, runningFrame, runningSnapshot, waitingSnapshot } from "../src/index.ts";
+import {
+  PlayerDisplay,
+  ballColor,
+  createGame,
+  finishedSnapshot,
+  manifest,
+  runningFrame,
+  runningSnapshot,
+  waitingSnapshot
+} from "../src/index.ts";
 
 function countColor(frame: Frame, color: string): number {
   return frame.cells.filter((cell) => cell.color === color).length;
@@ -118,8 +127,11 @@ test("fixtures and display render score state", () => {
       frame: runningFrame
     })
   );
-  assert.match(waitingHtml, /Ready/);
+  assert.match(waitingHtml, /Listos/);
   assert.match(waitingHtml, /0\/2/);
+  assert.match(waitingHtml, /Siguiente/);
+  assert.match(waitingHtml, /Por comenzar/);
+  assert.match(waitingHtml, /ml-metric-neutral[^>]*>[\s\S]*?Último/);
 
   const html = renderToStaticMarkup(
     React.createElement(PlayerDisplay, {
@@ -129,9 +141,27 @@ test("fixtures and display render score state", () => {
   );
 
   assert.match(html, /Ping Pong/);
-  assert.match(html, /Rally/);
-  assert.match(html, /Round/);
+  assert.match(html, /Peloteo/);
+  assert.match(html, /Ronda/);
   assert.match(html, /1\/9/);
-  assert.doesNotMatch(html, /Ready/);
+  assert.match(html, /En juego/);
+  assert.match(html, /Punto en curso/);
+  assert.doesNotMatch(html, /Listos/);
   assert.doesNotMatch(html, /2\/2/);
+
+  const blueWinnerHtml = renderToStaticMarkup(
+    React.createElement(PlayerDisplay, {
+      snapshot: finishedSnapshot,
+      frame: runningFrame
+    })
+  );
+  assert.match(blueWinnerHtml, /ml-metric-blue[^>]*>[\s\S]*?Último/);
+
+  const redWinnerHtml = renderToStaticMarkup(
+    React.createElement(PlayerDisplay, {
+      snapshot: { ...finishedSnapshot, lastRoundWinner: "Rojo" },
+      frame: runningFrame
+    })
+  );
+  assert.match(redWinnerHtml, /ml-metric-red[^>]*>[\s\S]*?Último/);
 });

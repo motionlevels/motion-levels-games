@@ -59,6 +59,9 @@ test("fixtures and display render the example state", () => {
   );
 
   assert.match(html, /Hello World/);
-  assert.match(html, /Goal/);
+  assert.match(html, /ml-solo-display/);
+  assert.match(html, /ml-solo-message/);
+  assert.match(html, /Pisa la baldosa verde/);
+  assert.match(html, /Meta/);
   assert.match(html, /0\/5/);
 });

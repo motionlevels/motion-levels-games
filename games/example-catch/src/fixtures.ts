@@ -25,7 +25,7 @@ export const runningSnapshot: GameSnapshot = {
   activeTargets: 1,
   success: false,
   lastEventCue: "hit",
-  lastEventMessage: "Target 4"
+  lastEventMessage: "Objetivo 4"
 };
 
 export const hitSnapshot: GameSnapshot = {
@@ -40,7 +40,7 @@ export const hitSnapshot: GameSnapshot = {
   elapsedMillis: 14_000,
   remainingMillis: 46_000,
   lastEventCue: "hit",
-  lastEventMessage: "Target 5"
+  lastEventMessage: "Objetivo 5"
 };
 
 export const finishedSnapshot: GameSnapshot = {
@@ -51,6 +51,6 @@ export const finishedSnapshot: GameSnapshot = {
   activeTargets: 0,
   success: true,
   lastEventCue: "win",
-  lastEventMessage: "Time"
+  lastEventMessage: "Tiempo"
 };
 

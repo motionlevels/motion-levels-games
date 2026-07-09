@@ -44,7 +44,7 @@ class ExampleCatchGame implements GameInstance {
   private finishedEventEmitted = false;
   private lastEvent: GameEvent = {
     cue: "none",
-    message: "Ready",
+    message: "Listo",
     atMillis: 0
   };
   private players: GamePlayer[];
@@ -63,7 +63,7 @@ class ExampleCatchGame implements GameInstance {
     this.finishedEventEmitted = false;
     this.lastEvent = {
       cue: "start",
-      message: "Catch the blue tile",
+      message: "Pisa la baldosa azul",
       atMillis: nowMillis
     };
 
@@ -90,7 +90,7 @@ class ExampleCatchGame implements GameInstance {
     this.target = this.nextTarget(previousTarget);
     this.lastEvent = {
       cue: "hit",
-      message: `Target ${this.score}`,
+      message: `Objetivo ${this.score}`,
       atMillis: event.atMillis
     };
 
@@ -121,7 +121,7 @@ class ExampleCatchGame implements GameInstance {
     this.finishedEventEmitted = true;
     this.lastEvent = {
       cue: "win",
-      message: "Time",
+      message: "Tiempo",
       atMillis: event.atMillis
     };
 
@@ -169,7 +169,7 @@ class ExampleCatchGame implements GameInstance {
     this.finishedEventEmitted = false;
     this.lastEvent = {
       cue: "none",
-      message: "Ready",
+      message: "Listo",
       atMillis: this.config.nowMillis
     };
     this.players = defaultPlayers(this.config.playerCount, this.config.players);
