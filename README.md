@@ -20,7 +20,7 @@ npm run dev
 
 - `packages/game-sdk`: framework-agnostic TypeScript game contract.
 - `packages/display-kit`: reusable React display primitives.
-- `games/example-catch`: tiny example game used to validate the strategy.
+- `games/hello-world`: reference game and lifecycle example used by CI.
 - `apps/playground`: local app that runs the game, floor, display, event log,
   and snapshot inspector together.
 
@@ -29,4 +29,3 @@ npm run dev
 This is intentionally a proof-of-strategy repo. Production `motion-levels`
 integration should happen later by consuming built game packages, manifests, or
 an exported catalog from this repo.
-
