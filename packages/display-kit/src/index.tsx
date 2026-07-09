@@ -1,5 +1,5 @@
 import React from "react";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { Frame } from "@motion-levels-games/game-sdk";
 
@@ -84,6 +84,8 @@ export function FloorPreview({
   const rootRef = useRef<HTMLDivElement>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const lastTileRef = useRef<{ x: number; y: number } | null>(null);
+  const activeTileTimeoutRef = useRef<number | null>(null);
+  const [activeTile, setActiveTile] = useState<{ x: number; y: number } | null>(null);
   const style = {
     "--ml-floor-cols": frame.width,
     "--ml-floor-rows": frame.height
@@ -104,8 +106,13 @@ export function FloorPreview({
   }, []);
   const pressTile = useCallback(
     (tile: { x: number; y: number }) => {
+      if (activeTileTimeoutRef.current !== null) {
+        window.clearTimeout(activeTileTimeoutRef.current);
+        activeTileTimeoutRef.current = null;
+      }
       onTilePress?.(tile.x, tile.y);
       lastTileRef.current = tile;
+      setActiveTile(tile);
     },
     [onTilePress]
   );
@@ -117,7 +124,19 @@ export function FloorPreview({
 
     onTileRelease?.(lastTile.x, lastTile.y);
     lastTileRef.current = null;
+    activeTileTimeoutRef.current = window.setTimeout(() => {
+      setActiveTile(null);
+      activeTileTimeoutRef.current = null;
+    }, 1200);
   }, [onTileRelease]);
+  useEffect(
+    () => () => {
+      if (activeTileTimeoutRef.current !== null) {
+        window.clearTimeout(activeTileTimeoutRef.current);
+      }
+    },
+    []
+  );
   const moveToTile = useCallback(
     (tile: { x: number; y: number } | null) => {
       const lastTile = lastTileRef.current;
@@ -188,12 +207,14 @@ export function FloorPreview({
       {frame.cells.map((cell) => {
         const tileStyle = { backgroundColor: cell.color } as CSSProperties;
         const key = `${cell.x}-${cell.y}`;
+        const active = activeTile?.x === cell.x && activeTile.y === cell.y;
         const sharedProps = {
-          className: "ml-floor-tile",
+          className: `ml-floor-tile ${active ? "ml-floor-tile-active" : ""}`.trim(),
           style: tileStyle,
           "data-tile-x": cell.x,
           "data-tile-y": cell.y,
-          "data-color": cell.color
+          "data-color": cell.color,
+          "data-active": active ? "true" : undefined
         };
 
         if (interactive) {

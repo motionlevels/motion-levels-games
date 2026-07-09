@@ -306,10 +306,6 @@ export function App() {
 
       <section className="playground-grid">
         <article className="panel floor-panel">
-          <div className="panel-heading">
-            <span>Interactive floor</span>
-            <strong>{snapshot.phase}</strong>
-          </div>
           <FloorPreview
             className="playground-floor-preview"
             frame={frame}
@@ -326,10 +322,6 @@ export function App() {
         </article>
 
         <article className="display-panel">
-          <div className="panel-heading display-panel-heading">
-            <span>Player display</span>
-            <strong>{nativeDisplayWidth}x{nativeDisplayHeight}</strong>
-          </div>
           <div className="display-preview-box" ref={displayPreviewRef}>
             <div className="display-preview-native">
               <PlayerDisplay snapshot={snapshot} frame={frame} />

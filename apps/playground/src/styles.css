@@ -125,7 +125,7 @@ select {
   display: grid;
   gap: 12px;
   grid-template-columns:
-    minmax(320px, var(--floor-preview-width))
+    max-content
     minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
@@ -183,32 +183,42 @@ select {
 
 .floor-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  place-items: center;
   position: relative;
+  width: calc(min(var(--floor-preview-width), calc((100dvh - 112px) / 2)) + 24px);
 }
 
 .floor-panel .ml-floor-preview {
-  height: min(100%, calc(100dvh - 98px));
-  justify-self: center;
+  height: auto;
+  max-height: calc(100dvh - 112px);
+  max-width: 100%;
   touch-action: none;
   user-select: none;
-  width: min(100%, var(--floor-preview-width));
+  width: min(100%, var(--floor-preview-width), calc((100dvh - 112px) / 2));
 }
 
 .floor-panel .ml-floor-tile {
   touch-action: none;
 }
 
-.display-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  padding: 12px;
-  position: relative;
+.floor-panel .ml-floor-tile-active {
+  box-shadow:
+    inset 0 0 0 2px #ffffff,
+    0 0 0 2px rgba(53, 215, 255, 0.86),
+    0 0 18px rgba(53, 215, 255, 0.72);
+  filter: brightness(1.8) saturate(1.25);
+  outline: 2px solid rgba(255, 255, 255, 0.92);
+  outline-offset: -2px;
+  transform: scale(1.12);
+  z-index: 2;
 }
 
-.display-panel-heading {
-  margin-bottom: 10px;
+.display-panel {
+  display: grid;
+  overflow: hidden;
+  padding: 12px;
+  place-items: start;
+  position: relative;
 }
 
 .display-preview-box {
@@ -216,7 +226,7 @@ select {
   background: #01040a;
   border: 1px solid rgba(196, 214, 238, 0.18);
   border-radius: 8px;
-  max-height: calc(100dvh - 116px);
+  max-height: calc(100dvh - 88px);
   max-width: 100%;
   overflow: hidden;
   position: relative;
