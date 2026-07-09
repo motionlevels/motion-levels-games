@@ -17,7 +17,7 @@ const tickMillis = 100;
 const nativeDisplayWidth = 1920;
 const nativeDisplayHeight = 1080;
 const minDisplayPreviewWidth = 420;
-const maxDisplayPreviewWidth = 1280;
+const maxDisplayPreviewWidth = 1920;
 const minFloorPreviewWidth = 300;
 const maxFloorPreviewWidth = 720;
 
@@ -71,8 +71,11 @@ export function App() {
   const [snapshot, setSnapshot] = useState<GameSnapshot>(started.game.snapshot());
   const [frame, setFrame] = useState<Frame>(started.game.render());
   const [events, setEvents] = useState<GameEvent[]>(started.events);
-  const [displayPreviewWidth, setDisplayPreviewWidth] = useState(760);
+  const [displayPreviewWidth, setDisplayPreviewWidth] = useState(1280);
   const [floorPreviewWidth, setFloorPreviewWidth] = useState(540);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenFallback, setFullscreenFallback] = useState(false);
+  const shellRef = useRef<HTMLElement>(null);
   const displayPreviewRef = useRef<HTMLDivElement>(null);
   const [displayPreviewScale, setDisplayPreviewScale] = useState(displayPreviewWidth / nativeDisplayWidth);
   const PlayerDisplay = selectedGame.PlayerDisplay;
@@ -100,6 +103,21 @@ export function App() {
     observer.observe(element);
     return () => observer.disconnect();
   }, [displayPreviewWidth]);
+
+  useEffect(() => {
+    const updateFullscreen = () => {
+      const isFullscreen = document.fullscreenElement === shellRef.current;
+
+      setFullscreen(isFullscreen);
+      if (isFullscreen) {
+        setFullscreenFallback(false);
+      }
+    };
+
+    updateFullscreen();
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    return () => document.removeEventListener("fullscreenchange", updateFullscreen);
+  }, []);
 
   const refresh = useCallback((nextEvents: GameEvent[] = []) => {
     setSnapshot(gameRef.current.snapshot());
@@ -217,90 +235,136 @@ export function App() {
     },
     [floorPreviewWidth]
   );
+  const toggleFullscreen = useCallback(async () => {
+    const element = shellRef.current;
+    if (!element) {
+      return;
+    }
+
+    if (fullscreenFallback) {
+      setFullscreenFallback(false);
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      if (typeof element.requestFullscreen !== "function") {
+        setFullscreenFallback(true);
+        return;
+      }
+
+      await element.requestFullscreen();
+    } catch {
+      setFullscreenFallback(true);
+      setFullscreen(document.fullscreenElement === element);
+    }
+  }, [fullscreenFallback]);
+
+  const isFullscreenMode = fullscreen || fullscreenFallback;
 
   return (
-    <main className="playground-shell" style={workbenchStyle}>
+    <main
+      className={`playground-shell${fullscreenFallback ? " is-fullscreen-fallback" : ""}`}
+      ref={shellRef}
+      style={workbenchStyle}
+    >
       <header className="playground-header">
         <div className="playground-title">
           <span className="eyebrow">Motion Levels Games</span>
-          <h1>Playground</h1>
+          <div className="playground-title-row">
+            <h1>Playground</h1>
+            <span className={`phase-chip phase-${snapshot.phase}`}>{snapshot.phase}</span>
+          </div>
         </div>
         <div className="playground-controls">
-          <label>
-            Game
-            <select
-              onChange={(event) => selectGame(event.target.value)}
-              value={selectedGame.manifest.id}
+          <div className="control-group control-group-primary">
+            <label>
+              Game
+              <select
+                onChange={(event) => selectGame(event.target.value)}
+                value={selectedGame.manifest.id}
+              >
+                {playgroundGames.map((game) => (
+                  <option key={game.manifest.id} value={game.manifest.id}>
+                    {game.manifest.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Players
+              <select
+                onChange={(event) => setPlayerCount(Number(event.target.value))}
+                value={playerCount}
+              >
+                {Array.from(
+                  { length: selectedGame.manifest.players.max - selectedGame.manifest.players.min + 1 },
+                  (_, index) => selectedGame.manifest.players.min + index
+                ).map((count) => (
+                  <option key={count} value={count}>
+                    {count}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="control-group">
+            <label>
+              Seed
+              <input
+                inputMode="numeric"
+                onChange={(event) => setSeed(Number(event.target.value) || 1)}
+                value={seed}
+              />
+            </label>
+            <label>
+              Floor
+              <input
+                inputMode="numeric"
+                min={minFloorPreviewWidth}
+                max={maxFloorPreviewWidth}
+                onChange={(event) => setFloorPreviewWidth(clamp(Number(event.target.value) || floorPreviewWidth, minFloorPreviewWidth, maxFloorPreviewWidth))}
+                type="number"
+                value={floorPreviewWidth}
+              />
+            </label>
+            <label>
+              Display
+              <input
+                inputMode="numeric"
+                min={minDisplayPreviewWidth}
+                max={maxDisplayPreviewWidth}
+                onChange={(event) => setDisplayPreviewWidth(clamp(Number(event.target.value) || displayPreviewWidth, minDisplayPreviewWidth, maxDisplayPreviewWidth))}
+                type="number"
+                value={displayPreviewWidth}
+              />
+            </label>
+          </div>
+          <div className="control-group control-actions">
+            <button onClick={() => restart()} type="button">
+              Restart
+            </button>
+            <button
+              onClick={() => {
+                const nextSeed = seed + 1;
+                setSeed(nextSeed);
+                restart(nextSeed, playerCount);
+              }}
+              type="button"
             >
-              {playgroundGames.map((game) => (
-                <option key={game.manifest.id} value={game.manifest.id}>
-                  {game.manifest.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Seed
-            <input
-              inputMode="numeric"
-              onChange={(event) => setSeed(Number(event.target.value) || 1)}
-              value={seed}
-            />
-          </label>
-          <label>
-            Players
-            <select
-              onChange={(event) => setPlayerCount(Number(event.target.value))}
-              value={playerCount}
-            >
-              {Array.from(
-                { length: selectedGame.manifest.players.max - selectedGame.manifest.players.min + 1 },
-                (_, index) => selectedGame.manifest.players.min + index
-              ).map((count) => (
-                <option key={count} value={count}>
-                  {count}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Floor
-            <input
-              inputMode="numeric"
-              min={minFloorPreviewWidth}
-              max={maxFloorPreviewWidth}
-              onChange={(event) => setFloorPreviewWidth(clamp(Number(event.target.value) || floorPreviewWidth, minFloorPreviewWidth, maxFloorPreviewWidth))}
-              type="number"
-              value={floorPreviewWidth}
-            />
-          </label>
-          <label>
-            Display
-            <input
-              inputMode="numeric"
-              min={minDisplayPreviewWidth}
-              max={maxDisplayPreviewWidth}
-              onChange={(event) => setDisplayPreviewWidth(clamp(Number(event.target.value) || displayPreviewWidth, minDisplayPreviewWidth, maxDisplayPreviewWidth))}
-              type="number"
-              value={displayPreviewWidth}
-            />
-          </label>
-          <button onClick={() => restart()} type="button">
-            Restart
-          </button>
-          <button
-            onClick={() => {
-              const nextSeed = seed + 1;
-              setSeed(nextSeed);
-              restart(nextSeed, playerCount);
-            }}
-            type="button"
-          >
-            New seed
-          </button>
-          <button onClick={() => setPaused((value) => !value)} type="button">
-            {paused ? "Resume" : "Pause"}
-          </button>
+              New seed
+            </button>
+            <button onClick={() => setPaused((value) => !value)} type="button">
+              {paused ? "Resume" : "Pause"}
+            </button>
+            <button className="fullscreen-button" onClick={toggleFullscreen} type="button">
+              {isFullscreenMode ? "Exit full" : "Fullscreen"}
+            </button>
+          </div>
         </div>
       </header>
 
