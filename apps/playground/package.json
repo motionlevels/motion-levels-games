@@ -11,10 +11,7 @@
   },
   "dependencies": {
     "@motion-levels-games/display-kit": "0.1.0",
-    "@motion-levels-games/example-catch": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
-    "@motion-levels-games/hello-world": "0.1.0",
-    "@motion-levels-games/ping-pong": "0.1.0",
     "@vitejs/plugin-react": "^6.0.2",
     "html-to-image": "^1.11.13",
     "react": "^19.2.7",

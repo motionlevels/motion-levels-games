@@ -1,63 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { FloorPreview } from "@motion-levels-games/display-kit";
-import {
-  PlayerDisplay as ExampleCatchDisplay,
-  createGame as createExampleCatchGame,
-  manifest as exampleCatchManifest
-} from "@motion-levels-games/example-catch";
-import {
-  PlayerDisplay as PingPongDisplay,
-  createGame as createPingPongGame,
-  manifest as pingPongManifest
-} from "@motion-levels-games/ping-pong";
-import {
-  PlayerDisplay as HelloWorldDisplay,
-  createGame as createHelloWorldGame,
-  manifest as helloWorldManifest
-} from "@motion-levels-games/hello-world";
 import {
   createGameEngine,
   DEFAULT_ENGINE_FPS,
   DEFAULT_ENGINE_FRAME_MILLIS,
   DEFAULT_ENGINE_MAX_CATCH_UP_STEPS,
   type Frame,
-  type GameConfig,
   type GameEngine,
   type GameEngineState,
   type GameEvent,
-  type GameInstance,
-  type GameManifest,
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
 import { capturePlaygroundSurfaces, copyCaptureToClipboard } from "./captureImages.ts";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
+import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
 import { rotateFrameClockwise, unrotateFloorPoint, type RenderableFrame } from "./frameTransforms.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
-
-type PlaygroundGame = {
-  manifest: GameManifest;
-  createGame: (config: GameConfig) => GameInstance;
-  PlayerDisplay: ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>;
-};
-
-const playgroundGames: PlaygroundGame[] = [
-  {
-    manifest: pingPongManifest,
-    createGame: createPingPongGame,
-    PlayerDisplay: PingPongDisplay as ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>
-  },
-  {
-    manifest: helloWorldManifest,
-    createGame: createHelloWorldGame,
-    PlayerDisplay: HelloWorldDisplay
-  },
-  {
-    manifest: exampleCatchManifest,
-    createGame: createExampleCatchGame,
-    PlayerDisplay: ExampleCatchDisplay
-  }
-];
-const defaultGame = playgroundGames[0];
 
 function createStartedGame(gameModule: PlaygroundGame, seed: number, playerCount: number) {
   const game = gameModule.createGame({

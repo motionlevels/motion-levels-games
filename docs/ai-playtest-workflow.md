@@ -19,6 +19,8 @@ make small code changes, and verify improvements with captures and tests.
 npm run create:game -- <game-id> "Display Name"
 ```
 
+   The playground discovers games from `games/*/src/index.ts`, so new games
+   should appear in the selector automatically while Vite is running.
 3. Inspect the target game under `games/<game-id>/`, especially `README.md`, `game.ts`,
    `display.tsx`, `manifest.ts`, fixtures, and tests.
 4. Start the playground:
@@ -74,6 +76,8 @@ For every playthrough, judge both surfaces:
 - Keep game logic deterministic; randomness must flow through SDK seeded RNG
   helpers.
 - Keep `manifest.id` exactly equal to the `games/<game-id>` directory name.
+- Let the playground discover games through `games/*/src/index.ts`; do not add
+  manual game imports to `apps/playground/src/App.tsx`.
 - Prefer focused edits in the target game and shared display/game helpers.
 - Keep `apps/playground` changes about tooling only; do not put game-specific
   gameplay rules there.

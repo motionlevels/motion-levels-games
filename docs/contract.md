@@ -55,5 +55,7 @@ npm run create:game -- color-chase "Color Chase"
 ```
 
 The scaffold creates the package, manifest, game logic, player display,
-fixtures, tests, and README. After generation, run `npm install`, add the game
-to the playground when it is ready for local play, then run `npm run check`.
+fixtures, tests, and README. The playground discovers games from
+`games/*/src/index.ts`, so new games should appear in the selector automatically
+while the Vite dev server is running. Run `npm install` before committing so the
+workspace lockfile knows about the new package, then run `npm run check`.

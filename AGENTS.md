@@ -15,6 +15,8 @@ no database, venue hardware, Motion Go, or platform API coupling.
 - Run `npm test` and `npm run build` before publishing changes when practical.
 - Create new games with `npm run create:game -- <game-id> "Display Name"`
   instead of copying an existing game by hand.
+- The playground discovers games from `games/*/src/index.ts`; do not add
+  manual game imports to `apps/playground/src/App.tsx`.
 - Prefer deterministic game logic. Any randomness should flow through the SDK
   seeded RNG helpers.
 - Keep `docs/ai-playtest-workflow.md` and `docs/playground-ai-api.md` in sync

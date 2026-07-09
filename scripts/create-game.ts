@@ -22,7 +22,7 @@ if (isCliEntry()) {
   await createGameScaffold(options);
 
   console.log(`Created ${options.gameId} in ${path.relative(process.cwd(), gameRoot(options)) || "."}`);
-  console.log("Run npm install, then register the game in apps/playground/src/App.tsx when it is ready for local play.");
+  console.log("The playground discovers games from games/*/src/index.ts; restart is usually not needed while Vite is running.");
 }
 
 export async function createGameScaffold(options: CreateGameOptions): Promise<void> {
