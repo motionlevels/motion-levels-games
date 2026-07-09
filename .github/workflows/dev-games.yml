@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure dev is rebased on main
+      - name: Ensure dev includes main
         run: |
           git fetch origin main
           git merge-base --is-ancestor origin/main HEAD

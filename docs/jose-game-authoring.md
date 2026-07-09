@@ -5,23 +5,25 @@ games before they are manually reviewed and merged into `main`.
 
 ## Branch Rules
 
-When starting new work on `dev`, rebase it on top of latest `main`:
+When starting new work on `dev`, merge latest `main` into it with a normal
+forward merge:
 
 ```sh
 git fetch origin
 git switch dev
-git rebase origin/main
+git merge --no-edit origin/main
 ```
 
-If there are conflicts, resolve them deliberately, then continue:
+If there are conflicts, resolve them deliberately, then complete the merge:
 
 ```sh
 git status
 git add <resolved-files>
-git rebase --continue
+git commit --no-edit
 ```
 
-Do not merge `main` into `dev`. Keep `dev` linear by rebasing.
+Never rebase, amend, force-push, or otherwise rewrite history. Keep work
+additive with normal commits and merge commits.
 
 ## Create A Game
 
@@ -62,8 +64,8 @@ git status
 git push origin dev
 ```
 
-The `Dev Games CI` workflow runs on every push to `dev`. It fails if `dev` is
-not rebased on latest `origin/main`, or if validation, tests, build, scaffold
+The `Dev Games CI` workflow runs on every push to `dev`. It fails if `dev` does
+not include latest `origin/main`, or if validation, tests, build, scaffold
 test, or playtest fail. `main` can move independently; update `dev` when Jose
 or an agent resumes work there, rather than after every `main` commit.
 
@@ -72,7 +74,7 @@ or an agent resumes work there, rather than after every `main` commit.
 1. Read `AGENTS.md`, `docs/contract.md`, `docs/ai-playtest-workflow.md`, and
    this file before editing.
 2. Work only on branch `dev`.
-3. Rebase `dev` on `origin/main` before starting new `dev` work and before pushing `dev` changes.
+3. Merge `origin/main` into `dev` before starting new `dev` work and before pushing `dev` changes.
 4. Create new games with `npm run create:game -- <game-id> "Display Name"`.
 5. Keep all game code inside `games/<game-id>/`.
 6. Do not manually add game imports to `apps/playground/src/App.tsx`.
@@ -80,3 +82,5 @@ or an agent resumes work there, rather than after every `main` commit.
 8. Run `npm run check` before pushing.
 9. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
    green.
+10. Commit every completed task before handing it off. Never force-push,
+    rebase, amend, or otherwise rewrite history.
