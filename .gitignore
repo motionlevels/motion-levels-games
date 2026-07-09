@@ -4,4 +4,4 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 .vite/
-
+.idea/
