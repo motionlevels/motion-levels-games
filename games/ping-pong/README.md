@@ -6,6 +6,10 @@ Ping Pong is a two-player rally game for the Motion Levels floor. Players ready
 up on opposite halves, then rally a visible ball until one side reaches the
 configured target score.
 
+The red and blue halves are separate player-presence zones. Both must remain
+occupied through the pre-start countdown; if either player leaves after the
+release grace, the countdown is cancelled and the waiting animation returns.
+
 ## Speed tuning
 
 The game exposes three shared speed controls in the playground settings:

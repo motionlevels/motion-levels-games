@@ -4,6 +4,8 @@ import {
   FLOOR_COLS,
   FLOOR_ROWS,
   createGameEngine,
+  createHorizontalPlayerReadyZones,
+  createPlayerReadyGate,
   createFrame,
   createSeededRng,
   defaultGamePlayerCount,
@@ -70,6 +72,38 @@ test("floor bounds match the physical grid", () => {
   assert.equal(inFloorBounds(15, 32), false);
 });
 
+test("player ready gate requires every presence zone and cancels when a player leaves", () => {
+  const zones = createHorizontalPlayerReadyZones(2);
+  const gate = createPlayerReadyGate(
+    { mode: "player-ready", countdownMillis: 2_000, releaseGraceMillis: 500 },
+    zones
+  );
+
+  assert.deepEqual(gate.state(0), {
+    phase: "waiting",
+    readyPlayers: 0,
+    requiredPlayers: 2,
+    countdownMillis: 0
+  });
+  assert.equal(gate.update({ x: 4, y: 4, pressed: true, atMillis: 100 }), "none");
+  assert.equal(gate.update({ x: 10, y: 28, pressed: true, atMillis: 200 }), "players-ready");
+  assert.equal(gate.state(700).countdownMillis, 1_500);
+  assert.equal(gate.update({ x: 10, y: 28, pressed: false, atMillis: 800 }), "none");
+  assert.equal(gate.tick(1_301), "players-left");
+  assert.equal(gate.state(1_301).phase, "waiting");
+
+  gate.update({ x: 10, y: 28, pressed: true, atMillis: 1_400 });
+  assert.equal(gate.tick(3_399), "none");
+  assert.equal(gate.tick(3_400), "started");
+  assert.equal(gate.state(3_400).phase, "running");
+});
+
+test("immediate start policy must be explicit and bypasses player detection", () => {
+  const gate = createPlayerReadyGate({ mode: "immediate" }, []);
+  assert.equal(gate.state(0).phase, "running");
+  assert.equal(gate.tick(5_000), "none");
+});
+
 test("seeded rng is deterministic", () => {
   const first = createSeededRng(1234);
   const second = createSeededRng(1234);
@@ -93,6 +127,7 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
     id: "test",
     label: "Test",
     players: { min: 1, max: 2 },
+    start: { mode: "player-ready" },
     config: {
       difficulty: { default: "hard", options: ["easy", "hard"] },
       vars: [
@@ -166,6 +201,7 @@ test("config value helpers use manifest definitions as the only schema", () => {
       id: "options",
       label: "Options",
       players: { min: 1, max: 1 },
+      start: { mode: "player-ready" },
       config: { vars: [integerVar, booleanVar, enumVar] },
       defaultDurationMillis: 1000,
       display: { entry: "./display" }
@@ -179,6 +215,7 @@ test("difficulty options expose only manifest choices or shared defaults", () =>
     id: "difficulty",
     label: "Difficulty",
     players: { min: 1, max: 1 },
+    start: { mode: "player-ready" },
     defaultDurationMillis: 1000,
     display: { entry: "./display" }
   } satisfies GameManifest;

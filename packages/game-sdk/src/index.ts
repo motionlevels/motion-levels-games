@@ -4,6 +4,8 @@ export const DEFAULT_GAME_SEED = 137;
 export const MIN_GAME_SEED = 0;
 export const MAX_GAME_SEED = 0xffff_ffff;
 export const FRAME_SIZE = FLOOR_COLS * FLOOR_ROWS;
+export const DEFAULT_START_COUNTDOWN_MILLIS = 2_000;
+export const DEFAULT_PLAYER_RELEASE_GRACE_MILLIS = 650;
 
 export type HexColor = `#${string}`;
 export type RgbColor = {
@@ -25,7 +27,45 @@ export type Frame = {
   cells: FrameCell[];
 };
 
-export type GamePhase = "ready" | "running" | "paused" | "finished";
+export type GamePhase = "waiting" | "starting" | "ready" | "running" | "paused" | "finished";
+
+export type GameStartPolicy =
+  | {
+      mode: "player-ready";
+      countdownMillis?: number;
+      releaseGraceMillis?: number;
+    }
+  | {
+      mode: "immediate";
+      countdownMillis?: never;
+      releaseGraceMillis?: never;
+    };
+
+export type PlayerReadyZone = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
+export type PlayerReadyPhase = "waiting" | "starting" | "running";
+
+export type PlayerReadyTransition = "none" | "players-ready" | "players-left" | "started";
+
+export type PlayerReadyGateState = {
+  phase: PlayerReadyPhase;
+  readyPlayers: number;
+  requiredPlayers: number;
+  countdownMillis: number;
+};
+
+export type PlayerReadyGate = {
+  reset(nowMillis?: number): PlayerReadyGateState;
+  update(event: PressEvent): PlayerReadyTransition;
+  tick(nowMillis: number): PlayerReadyTransition;
+  state(nowMillis: number): PlayerReadyGateState;
+  zoneReady(index: number, nowMillis: number): boolean;
+};
 
 export type GamePlayer = {
   index: number;
@@ -80,6 +120,8 @@ export type GameSnapshot = {
   lastEventCue: GameEventCue;
   lastEventMessage: string;
   countdownMillis?: number;
+  readyPlayers?: number;
+  requiredPlayers?: number;
   matchTarget?: number;
   roundHits?: number;
   lastRoundHits?: number;
@@ -96,6 +138,7 @@ export type GameManifest = {
     min: number;
     max: number;
   };
+  start: GameStartPolicy;
   config?: GameManifestConfig;
   defaultDurationMillis: number;
   display: {
@@ -475,6 +518,47 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function createHorizontalPlayerReadyZones(
+  count: number,
+  bounds: Partial<PlayerReadyZone> = {}
+): PlayerReadyZone[] {
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error("player ready zone count must be a positive integer");
+  }
+
+  const minX = clamp(Math.round(bounds.minX ?? 0), 0, FLOOR_COLS - 1);
+  const maxX = clamp(Math.round(bounds.maxX ?? FLOOR_COLS - 1), minX, FLOOR_COLS - 1);
+  const minY = clamp(Math.round(bounds.minY ?? 0), 0, FLOOR_ROWS - 1);
+  const maxY = clamp(Math.round(bounds.maxY ?? FLOOR_ROWS - 1), minY, FLOOR_ROWS - 1);
+  const height = maxY - minY + 1;
+
+  if (count > height) {
+    throw new Error("player ready zone count cannot exceed the available floor rows");
+  }
+
+  return Array.from({ length: count }, (_, index) => ({
+    minX,
+    maxX,
+    minY: minY + Math.floor((height * index) / count),
+    maxY: minY + Math.floor((height * (index + 1)) / count) - 1
+  }));
+}
+
+export function createPlayerReadyGate(
+  policy: GameStartPolicy,
+  zones: PlayerReadyZone[],
+  nowMillis = 0
+): PlayerReadyGate {
+  return new DefaultPlayerReadyGate(policy, zones, nowMillis);
+}
+
+export function gameStartCountdownMillis(policy: GameStartPolicy): number {
+  return normalizePositiveMillis(
+    policy.mode === "player-ready" ? policy.countdownMillis : undefined,
+    DEFAULT_START_COUNTDOWN_MILLIS
+  );
+}
+
 export function createGameEngine(game: GameInstance, options: GameEngineOptions = {}): GameEngine {
   return new DefaultGameEngine(game, options);
 }
@@ -489,6 +573,128 @@ function normalizeEngineFps(fps: number | undefined): number {
 
 function normalizeMillis(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+class DefaultPlayerReadyGate implements PlayerReadyGate {
+  private readonly countdownDuration: number;
+  private readonly releaseGraceMillis: number;
+  private readonly tileZones = new Int16Array(FRAME_SIZE).fill(-1);
+  private readonly tileHeld = new Uint8Array(FRAME_SIZE);
+  private readonly zoneHeld: number[];
+  private readonly zoneGraceUntil: number[];
+  private phase: PlayerReadyPhase;
+  private startAtMillis = 0;
+
+  constructor(
+    private readonly policy: GameStartPolicy,
+    private readonly zones: PlayerReadyZone[],
+    nowMillis: number
+  ) {
+    if (policy.mode === "player-ready" && zones.length === 0) {
+      throw new Error("player-ready games require at least one presence zone");
+    }
+
+    this.countdownDuration = gameStartCountdownMillis(policy);
+    this.releaseGraceMillis = normalizePositiveMillis(
+      policy.mode === "player-ready" ? policy.releaseGraceMillis : undefined,
+      DEFAULT_PLAYER_RELEASE_GRACE_MILLIS
+    );
+    this.zoneHeld = Array.from({ length: zones.length }, () => 0);
+    this.zoneGraceUntil = Array.from({ length: zones.length }, () => 0);
+    this.phase = policy.mode === "immediate" ? "running" : "waiting";
+
+    for (let y = 0; y < FLOOR_ROWS; y += 1) {
+      for (let x = 0; x < FLOOR_COLS; x += 1) {
+        this.tileZones[y * FLOOR_COLS + x] = zones.findIndex((zone) => pointInReadyZone(x, y, zone));
+      }
+    }
+
+    this.reset(nowMillis);
+  }
+
+  reset(nowMillis = 0): PlayerReadyGateState {
+    this.tileHeld.fill(0);
+    this.zoneHeld.fill(0);
+    this.zoneGraceUntil.fill(0);
+    this.phase = this.policy.mode === "immediate" ? "running" : "waiting";
+    this.startAtMillis = normalizeMillis(nowMillis);
+    return this.state(nowMillis);
+  }
+
+  update(event: PressEvent): PlayerReadyTransition {
+    if (!inFloorBounds(event.x, event.y)) {
+      return this.tick(event.atMillis);
+    }
+
+    const tileIndex = event.y * FLOOR_COLS + event.x;
+    const zoneIndex = this.tileZones[tileIndex];
+    const held = this.tileHeld[tileIndex] === 1;
+    if (zoneIndex >= 0 && held !== event.pressed) {
+      this.tileHeld[tileIndex] = event.pressed ? 1 : 0;
+      if (event.pressed) {
+        this.zoneHeld[zoneIndex] += 1;
+        this.zoneGraceUntil[zoneIndex] = 0;
+      } else {
+        this.zoneHeld[zoneIndex] = Math.max(0, this.zoneHeld[zoneIndex] - 1);
+        if (this.zoneHeld[zoneIndex] === 0) {
+          this.zoneGraceUntil[zoneIndex] = normalizeMillis(event.atMillis) + this.releaseGraceMillis;
+        }
+      }
+    }
+
+    return this.tick(event.atMillis);
+  }
+
+  tick(nowMillis: number): PlayerReadyTransition {
+    if (this.policy.mode === "immediate" || this.phase === "running") {
+      return "none";
+    }
+
+    const now = normalizeMillis(nowMillis);
+    const allReady = this.readyPlayerCount(now) === this.zones.length;
+    if (this.phase === "waiting" && allReady) {
+      this.phase = "starting";
+      this.startAtMillis = now + this.countdownDuration;
+      return "players-ready";
+    }
+    if (this.phase === "starting" && !allReady) {
+      this.phase = "waiting";
+      this.startAtMillis = 0;
+      return "players-left";
+    }
+    if (this.phase === "starting" && now >= this.startAtMillis) {
+      this.phase = "running";
+      return "started";
+    }
+    return "none";
+  }
+
+  state(nowMillis: number): PlayerReadyGateState {
+    const now = normalizeMillis(nowMillis);
+    return {
+      phase: this.phase,
+      readyPlayers: this.readyPlayerCount(now),
+      requiredPlayers: this.zones.length,
+      countdownMillis: this.phase === "starting" ? Math.max(0, this.startAtMillis - now) : 0
+    };
+  }
+
+  zoneReady(index: number, nowMillis: number): boolean {
+    const graceUntil = this.zoneGraceUntil[index] ?? 0;
+    return (this.zoneHeld[index] ?? 0) > 0 || (graceUntil > 0 && graceUntil >= normalizeMillis(nowMillis));
+  }
+
+  private readyPlayerCount(nowMillis: number): number {
+    return this.zones.reduce((count, _zone, index) => count + Number(this.zoneReady(index, nowMillis)), 0);
+  }
+}
+
+function normalizePositiveMillis(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function pointInReadyZone(x: number, y: number, zone: PlayerReadyZone): boolean {
+  return x >= zone.minX && x <= zone.maxX && y >= zone.minY && y <= zone.maxY;
 }
 
 class DefaultGameEngine implements GameEngine {

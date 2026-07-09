@@ -4,9 +4,12 @@ import {
   addRgb,
   clamp,
   createFrame,
+  createHorizontalPlayerReadyZones,
+  createPlayerReadyGate,
   createSeededRng,
   fillFrameRect,
   gameEvent,
+  gameStartCountdownMillis,
   normalizeGameConfig,
   paintFrameCell,
   readGameConfigOption,
@@ -21,6 +24,8 @@ import {
   type GameSnapshot,
   type HexColor,
   type NormalizedGameConfig,
+  type PlayerReadyGate,
+  type PlayerReadyTransition,
   type PressEvent,
   type RgbColor,
   type SeededRng,
@@ -37,8 +42,6 @@ const redRgb: RgbColor = { r: 255, g: 28, b: 40 };
 const blueRgb: RgbColor = { r: 20, g: 92, b: 255 };
 const whiteRgb: RgbColor = { r: 255, g: 255, b: 255 };
 
-const readyAnimationMillis = 2000;
-const startGraceMillis = 1000;
 const postPointPauseMillis = 900;
 const winAnimationMillis = 3000;
 const paddleYRed = 2;
@@ -112,7 +115,7 @@ class PingPongGame implements PingPongGameInstance {
   private speed: SpeedSettings;
   private startedAtMillis = 0;
   private nowMillis = 0;
-  private readyAtMillis = 0;
+  private readyGate: PlayerReadyGate;
   private lastStepMillis = 0;
   private pauseUntilMillis = 0;
   private finishAtMillis = 0;
@@ -123,9 +126,6 @@ class PingPongGame implements PingPongGameInstance {
   private ball: PingPongBallSnapshot = { x: serveX, y: serveY, dx: 1, dy: 1 };
   private ballTrail: PingPongBallPosition[] = [];
   private teamScore: [number, number] = [0, 0];
-  private tileHeld = Array.from({ length: FLOOR_COLS * FLOOR_ROWS }, () => false);
-  private halfHeld: [number, number] = [0, 0];
-  private halfGraceUntil: [number, number] = [0, 0];
   private rounds: GameRoundSnapshot[] = [];
   private lastRoundHits = 0;
   private lastRoundWinner = "";
@@ -142,6 +142,7 @@ class PingPongGame implements PingPongGameInstance {
   constructor(config: GameConfig) {
     this.config = normalizeGameConfig(config, manifest);
     this.rng = createSeededRng(this.config.seed);
+    this.readyGate = createPlayerReadyGate(manifest.start, createHorizontalPlayerReadyZones(2), this.config.nowMillis);
     this.winningScore = this.readWinningScore();
     this.players = this.createPlayers();
     this.speed = speedForConfig(this.config);
@@ -158,24 +159,24 @@ class PingPongGame implements PingPongGameInstance {
 
   press(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
-    this.updateOccupancy(event.x, event.y, event.pressed, event.atMillis);
+    const readyTransition = this.readyGate.update(event);
 
     if (event.pressed) {
       this.movePaddle(event.x, event.y);
     }
 
-    return this.recordEvents(this.updatePhase(event.atMillis));
+    return this.recordEvents(this.updatePhase(event.atMillis, readyTransition));
   }
 
   release(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
-    this.updateOccupancy(event.x, event.y, false, event.atMillis);
-    return this.recordEvents(this.updatePhase(event.atMillis));
+    const readyTransition = this.readyGate.update({ ...event, pressed: false });
+    return this.recordEvents(this.updatePhase(event.atMillis, readyTransition));
   }
 
   tick(event: TickEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
-    const events = this.updatePhase(event.atMillis);
+    const events = this.updatePhase(event.atMillis, this.readyGate.tick(event.atMillis));
 
     if (this.phase !== "running" || event.atMillis < this.pauseUntilMillis) {
       return this.recordEvents(events);
@@ -232,10 +233,8 @@ class PingPongGame implements PingPongGameInstance {
 
   snapshot(): PingPongSnapshot {
     this.recordEvents(this.updatePhase(this.nowMillis));
-    const countdownMillis =
-      this.phase === "starting" && this.nowMillis < this.readyAtMillis
-        ? this.readyAtMillis - this.nowMillis
-        : 0;
+    const readyState = this.readyGate.state(this.nowMillis);
+    const countdownMillis = this.phase === "starting" ? readyState.countdownMillis : 0;
     const remainingMillis =
       this.phase === "finished" && this.nowMillis < this.finishAtMillis + winAnimationMillis
         ? this.finishAtMillis + winAnimationMillis - this.nowMillis
@@ -271,6 +270,8 @@ class PingPongGame implements PingPongGameInstance {
       lastEventCue: this.lastEvent.cue,
       lastEventMessage: this.lastEvent.message,
       countdownMillis,
+      readyPlayers: readyState.readyPlayers,
+      requiredPlayers: readyState.requiredPlayers,
       matchTarget: this.winningScore,
       roundHits: this.hitCount,
       lastRoundHits: this.lastRoundHits,
@@ -325,9 +326,7 @@ class PingPongGame implements PingPongGameInstance {
   }
 
   private resetGame(nowMillis: number): void {
-    this.tileHeld = this.tileHeld.map(() => false);
-    this.halfHeld = [0, 0];
-    this.halfGraceUntil = [0, 0];
+    this.readyGate.reset(nowMillis);
     this.teamScore = [0, 0];
     this.rounds = [];
     this.lastRoundHits = 0;
@@ -343,13 +342,12 @@ class PingPongGame implements PingPongGameInstance {
     this.lastImpact = null;
     this.motionEventId += 1;
     this.startedAtMillis = nowMillis;
-    this.readyAtMillis = 0;
     this.finishAtMillis = 0;
     this.resetBall();
     this.lastEvent = gameEvent("none", "Esperando a rojo arriba y azul abajo", nowMillis);
   }
 
-  private updatePhase(nowMillis: number): GameEvent[] {
+  private updatePhase(nowMillis: number, readyTransition: PlayerReadyTransition = this.readyGate.tick(nowMillis)): GameEvent[] {
     if (this.phase === "finished") {
       if (nowMillis - this.finishAtMillis >= winAnimationMillis) {
         this.resetGame(nowMillis);
@@ -358,14 +356,19 @@ class PingPongGame implements PingPongGameInstance {
       return [];
     }
 
-    if (this.phase === "waiting" && this.halvesReady(nowMillis)) {
+    if (readyTransition === "players-ready") {
       this.phase = "starting";
-      this.readyAtMillis = nowMillis + readyAnimationMillis;
       this.motionEventId += 1;
       return [gameEvent("start", "Rojo y azul listos", nowMillis)];
     }
 
-    if (this.phase === "starting" && nowMillis >= this.readyAtMillis) {
+    if (readyTransition === "players-left") {
+      this.phase = "waiting";
+      this.motionEventId += 1;
+      return [gameEvent("ready", "Vuelve a las zonas roja y azul", nowMillis)];
+    }
+
+    if (readyTransition === "started") {
       this.phase = "running";
       this.startedAtMillis = nowMillis;
       this.lastStepMillis = nowMillis;
@@ -375,29 +378,6 @@ class PingPongGame implements PingPongGameInstance {
     }
 
     return [];
-  }
-
-  private updateOccupancy(x: number, y: number, pressed: boolean, nowMillis: number): void {
-    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x >= FLOOR_COLS || y < 0 || y >= FLOOR_ROWS) {
-      return;
-    }
-
-    const index = y * FLOOR_COLS + x;
-    if (this.tileHeld[index] === pressed) {
-      return;
-    }
-
-    this.tileHeld[index] = pressed;
-    const half = halfForY(y);
-    if (pressed) {
-      this.halfHeld[half] += 1;
-      this.halfGraceUntil[half] = nowMillis + startGraceMillis;
-    } else if (this.halfHeld[half] > 0) {
-      this.halfHeld[half] -= 1;
-      if (this.halfHeld[half] === 0) {
-        this.halfGraceUntil[half] = nowMillis + startGraceMillis;
-      }
-    }
   }
 
   private movePaddle(x: number, y: number): void {
@@ -558,8 +538,9 @@ class PingPongGame implements PingPongGameInstance {
   }
 
   private drawReady(frame: Frame): void {
-    const elapsed = Math.max(0, this.nowMillis - (this.readyAtMillis - readyAnimationMillis));
-    const progress = clamp(elapsed / readyAnimationMillis, 0, 1);
+    const countdownDuration = gameStartCountdownMillis(manifest.start);
+    const elapsed = Math.max(0, countdownDuration - this.readyGate.state(this.nowMillis).countdownMillis);
+    const progress = clamp(elapsed / countdownDuration, 0, 1);
     const radius = progress * (FLOOR_ROWS * 0.7);
     const pulse = 0.5 + Math.sin(elapsed / 86) * 0.5;
 
@@ -762,16 +743,12 @@ class PingPongGame implements PingPongGameInstance {
     fillFrameRect(frame, x + safeWidth - 1, y, 1, safeHeight, color);
   }
 
-  private halvesReady(nowMillis: number): boolean {
-    return this.halfReady(0, nowMillis) && this.halfReady(1, nowMillis);
-  }
-
   private halfReady(half: TeamIndex, nowMillis: number): boolean {
-    return this.halfHeld[half] > 0 || (this.halfGraceUntil[half] > 0 && nowMillis <= this.halfGraceUntil[half]);
+    return this.readyGate.zoneReady(half, nowMillis);
   }
 
   private activeHalves(nowMillis: number): number {
-    return Number(this.halfReady(0, nowMillis)) + Number(this.halfReady(1, nowMillis));
+    return this.readyGate.state(nowMillis).readyPlayers;
   }
 
   private labelForTeam(team: TeamIndex): string {
@@ -784,10 +761,6 @@ class PingPongGame implements PingPongGameInstance {
     }
     return events;
   }
-}
-
-function halfForY(y: number): TeamIndex {
-  return y < FLOOR_ROWS / 2 ? 0 : 1;
 }
 
 function speedForConfig(config: NormalizedGameConfig): SpeedSettings {

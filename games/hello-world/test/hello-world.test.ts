@@ -19,13 +19,21 @@ test("manifest documents the example game", () => {
   assert.equal(manifest.id, "hello-world");
   assert.equal(manifest.label, "Hello World");
   assert.deepEqual(manifest.players, { min: 1, max: 1 });
+  assert.deepEqual(manifest.start, { mode: "player-ready" });
 });
 
-test("initial frame shows the first target", () => {
+test("game waits for a player and counts down before showing the first target", () => {
   const firstTarget = helloWorldTargets()[0];
   const game = createGame({ playerCount: 1 });
 
   game.init(0);
+
+  assert.equal(game.snapshot().phase, "waiting");
+  assert.equal(game.snapshot().readyPlayers, 0);
+  game.press({ x: 8, y: 16, pressed: true, atMillis: 100 });
+  assert.equal(game.snapshot().phase, "starting");
+  assert.ok((game.snapshot().countdownMillis ?? 0) > 0);
+  game.tick({ atMillis: 2_100 });
 
   assert.equal(frameCell(game.render(), firstTarget.x - 1, firstTarget.y - 1)?.color, targetColor);
   assert.equal(game.snapshot().activeTargets, 1);
@@ -34,10 +42,10 @@ test("initial frame shows the first target", () => {
 test("pressing targets completes the hello world path", () => {
   const game = createGame({ playerCount: 1 });
 
-  game.init(0);
+  startGame(game);
 
   helloWorldTargets().forEach((target, index) => {
-    const events = game.press({ ...target, pressed: true, atMillis: (index + 1) * 100 });
+    const events = game.press({ ...target, pressed: true, atMillis: 2_200 + index * 100 });
     assert.equal(game.snapshot().score, index + 1);
     assert.equal(events.length, 1);
   });
@@ -65,3 +73,9 @@ test("fixtures and display render the example state", () => {
   assert.match(html, /Meta/);
   assert.match(html, /0\/5/);
 });
+
+function startGame(game: ReturnType<typeof createGame>): void {
+  game.init(0);
+  game.press({ x: 8, y: 16, pressed: true, atMillis: 100 });
+  game.tick({ atMillis: 2_100 });
+}

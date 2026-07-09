@@ -201,6 +201,18 @@ test("countdown enters running phase and renders a single visible ball", () => {
   assert.equal(snapshot.rallyPace, 0);
 });
 
+test("countdown returns to waiting when a required half is vacated", () => {
+  const game = startGame();
+  game.press({ x: 0, y: 4, pressed: true, atMillis: 100 });
+  game.press({ x: 0, y: FLOOR_ROWS - 5, pressed: true, atMillis: 200 });
+  game.release({ x: 0, y: 4, pressed: false, atMillis: 300 });
+
+  const events = game.tick({ atMillis: 1_301 });
+  assert.equal(game.snapshot().phase, "waiting");
+  assert.equal(game.snapshot().readyPlayers, 1);
+  assert.equal(events[0]?.message, "Vuelve a las zonas roja y azul");
+});
+
 test("running animation exposes deterministic trail, pace, and impact state", () => {
   const game = createGame({
     seed: 7,

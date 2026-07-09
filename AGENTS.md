@@ -40,6 +40,27 @@ no database, venue hardware, Motion Go, or platform API coupling.
   never independently force both width and height. Empty surrounding space is
   preferable to stretching either surface.
 
+## Game Start Lifecycle
+
+- Every game manifest must explicitly declare `start.mode`. Use
+  `player-ready` by default. `immediate` is an exceptional opt-in and is allowed
+  only when the product requirement explicitly says the game should autoplay
+  as soon as it is selected.
+- A `player-ready` game must begin in `waiting`, detect the required real
+  players through intentional floor zones, transition to `starting`, and only
+  enter `running` after the shared countdown. Selecting or initializing the
+  game must never start its gameplay timer.
+- The floor and player display must both animate while waiting and while
+  starting. Waiting motion should make the required player zones obvious;
+  starting motion must clearly communicate that play is imminent.
+- Keep player presence live throughout the countdown. If a required player
+  leaves after the release-grace window, cancel the countdown and return to
+  `waiting`.
+- Use `createPlayerReadyGate` and rectangular player zones from
+  `@motion-levels-games/game-sdk`; expose `readyPlayers`, `requiredPlayers`, and
+  `countdownMillis` in the snapshot. Use the shared `PlayerReadyOverlay` for
+  standard solo/cooperative displays instead of creating a one-off overlay.
+
 ## Developer UI Consistency
 
 - Prefer icons for compact, repeated developer actions. Every icon-only button

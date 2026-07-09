@@ -21,7 +21,7 @@ baseline. `ml.step()` with no argument advances exactly one engine frame.
 await ml.pause();
 ml.reset();
 ml.press(4, 20);
-ml.step(250);
+ml.step(2000);
 ml.release(4, 20);
 ml.step(1000);
 
@@ -138,6 +138,15 @@ only the options declared by the manifest.
 
 `getState()` includes the active `seed`, `playerCount`, `difficulty`, and
 `options` values so agents can record the exact run configuration.
+
+## Start Lifecycle
+
+Games normally initialize in `waiting`, not `running`. Their snapshot reports
+`readyPlayers`, `requiredPlayers`, and `countdownMillis`. Hold the required
+floor zones with `ml.press(...)`, then advance time through `starting` with
+`ml.step(...)`; use `ml.release(...)` to verify that leaving a required zone
+after its grace window cancels the countdown. Only a manifest with the explicit
+exception `start: { mode: "immediate" }` may run on selection.
 
 All option values exposed by the API have passed through the SDK's
 manifest-driven normalization. Undeclared options are removed, missing values

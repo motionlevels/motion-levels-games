@@ -28,6 +28,8 @@ export const waitingSnapshot: PingPongSnapshot = {
   lastEventCue: "ready",
   lastEventMessage: "Ping Pong espera rojo y azul",
   countdownMillis: 0,
+  readyPlayers: 0,
+  requiredPlayers: 2,
   matchTarget: 5,
   roundHits: 0,
   lastRoundHits: 0,
@@ -50,6 +52,7 @@ export const waitingSnapshot: PingPongSnapshot = {
 export const runningSnapshot: PingPongSnapshot = {
   ...waitingSnapshot,
   phase: "running",
+  readyPlayers: 2,
   elapsedMillis: 8200,
   activeTargets: 2,
   lastEventCue: "coin",

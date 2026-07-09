@@ -26,6 +26,13 @@ function playtestHelloWorld() {
 
   assert.equal(engine.fps, 30);
   assert.equal(engine.state.snapshot.currentGame, helloWorldManifest.id);
+  assert.equal(engine.state.snapshot.phase, "waiting");
+  assert.equal(engine.state.snapshot.readyPlayers, 0);
+
+  engine.press(8, 16);
+  engine.step(2_000);
+  engine.release(8, 16);
+
   assert.equal(engine.state.snapshot.phase, "running");
   assert.ok(countColor(engine.state.frame, targetColor) > 0, "target should be visible");
 

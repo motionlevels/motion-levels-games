@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createFrame, setFrameCell } from "@motion-levels-games/game-sdk";
-import { FloorPreview, GameDisplayShell, HeartMeter, MetricPanel, RoundStrip } from "../src/index.tsx";
+import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-games/game-sdk";
+import { FloorPreview, GameDisplayShell, HeartMeter, MetricPanel, PlayerReadyOverlay, RoundStrip } from "../src/index.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
@@ -67,11 +67,41 @@ test("FloorPreview keeps pointer hover separate from persistent focus", () => {
 
 test("GameDisplayShell renders title and phase", () => {
   const html = renderToStaticMarkup(
-    React.createElement(GameDisplayShell, { title: "Example Catch", phase: "running" }, "body")
+    React.createElement(GameDisplayShell, { title: "Hello World", phase: "running" }, "body")
   );
 
-  assert.match(html, /Example Catch/);
+  assert.match(html, /Hello World/);
   assert.match(html, /running/);
+});
+
+test("PlayerReadyOverlay renders shared waiting and countdown states in Spanish", () => {
+  const baseSnapshot: GameSnapshot = {
+    currentGame: "test",
+    label: "Test",
+    phase: "waiting",
+    playerCount: 2,
+    players: [],
+    score: 0,
+    lives: -1,
+    elapsedMillis: 0,
+    remainingMillis: 0,
+    activeTargets: 0,
+    success: false,
+    lastEventCue: "ready",
+    lastEventMessage: "Esperando jugadores",
+    readyPlayers: 1,
+    requiredPlayers: 2
+  };
+  const waitingHtml = renderToStaticMarkup(React.createElement(PlayerReadyOverlay, { snapshot: baseSnapshot }));
+  const startingHtml = renderToStaticMarkup(React.createElement(PlayerReadyOverlay, {
+    snapshot: { ...baseSnapshot, phase: "starting", countdownMillis: 1_200, readyPlayers: 2 }
+  }));
+
+  assert.match(waitingHtml, /Esperando jugadores/);
+  assert.match(waitingHtml, /1\/2/);
+  assert.match(startingHtml, /Todos listos/);
+  assert.match(startingHtml, />2<\/strong>/);
+  assert.match(styleSource, /@keyframes ml-ready-ring/);
 });
 
 test("GameDisplayShell balances its brand and status rails", () => {

@@ -48,9 +48,10 @@ Run short, repeatable playthroughs:
 ```js
 await ml.pause();
 ml.reset();
+ml.press(8, 16);
+ml.step(2000);
+ml.release(8, 16);
 ml.tap(4, 4);
-ml.step(500);
-ml.tap(10, 27);
 ml.step(1000);
 
 const feedback = await ml.capture(["display", "boardPhysical", "boardPreview", "combined"]);
@@ -96,6 +97,9 @@ For every playthrough, judge both surfaces:
 
 - **Gameplay:** Is the goal understandable? Does input timing feel fair? Are
   successes, misses, readiness, and transitions clear?
+- **Start lifecycle:** Does selection remain in `waiting`? Do the floor and TV
+  show where players must stand, does `starting` visibly count down, and does
+  leaving a required zone cancel the countdown?
 - **Board:** Can a person on the floor infer what to do from lights alone? Are
   important objects visible and distinguishable?
 - **Player display:** Does the TV explain state, score, round progress, target,

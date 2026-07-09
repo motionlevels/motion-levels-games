@@ -12,6 +12,11 @@ type ManifestModule = {
       min?: unknown;
       max?: unknown;
     };
+    start?: {
+      mode?: unknown;
+      countdownMillis?: unknown;
+      releaseGraceMillis?: unknown;
+    };
     config?: {
       difficulty?: {
         default?: unknown;
@@ -94,6 +99,21 @@ for (const gameId of gameDirs) {
       }
       if (!isInteger(manifest.players?.max) || Number(manifest.players?.max) < Number(manifest.players?.min)) {
         problems.push(`${gameId}: manifest.players.max must be an integer greater than or equal to min`);
+      }
+      if (manifest.start?.mode !== "player-ready" && manifest.start?.mode !== "immediate") {
+        problems.push(`${gameId}: manifest.start.mode must explicitly be player-ready or immediate`);
+      }
+      if (manifest.start?.mode === "immediate" &&
+        (manifest.start.countdownMillis !== undefined || manifest.start.releaseGraceMillis !== undefined)) {
+        problems.push(`${gameId}: immediate start must not declare countdown or release grace`);
+      }
+      if (manifest.start?.mode === "player-ready") {
+        for (const field of ["countdownMillis", "releaseGraceMillis"] as const) {
+          const value = manifest.start[field];
+          if (value !== undefined && (!isFiniteNumber(value) || value <= 0)) {
+            problems.push(`${gameId}: manifest.start.${field} must be a positive finite number when present`);
+          }
+        }
       }
       if (manifest.display?.entry !== "./display") {
         problems.push(`${gameId}: manifest.display.entry must be ./display`);

@@ -165,6 +165,7 @@ export const manifest: GameManifest = {
     min: 1,
     max: 1
   },
+  start: { mode: "player-ready" },
   defaultDurationMillis: 30_000,
   display: {
     entry: "./display"
@@ -177,6 +178,8 @@ export const manifest: GameManifest = {
 function gameTemplate(_options: CreateGameOptions): string {
   return `import {
   createFrame,
+  createHorizontalPlayerReadyZones,
+  createPlayerReadyGate,
   defaultPlayers,
   gameEvent,
   normalizeGameConfig,
@@ -190,6 +193,8 @@ function gameTemplate(_options: CreateGameOptions): string {
   type GameSnapshot,
   type HexColor,
   type NormalizedGameConfig,
+  type PlayerReadyGate,
+  type PlayerReadyTransition,
   type PressEvent,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
@@ -216,6 +221,7 @@ export function createGame(config: GameConfig): GameInstance {
 class ScaffoldedGame implements GameInstance {
   private config: NormalizedGameConfig;
   private phase: GamePhase = "ready";
+  private readyGate: PlayerReadyGate;
   private score = 0;
   private startedAtMillis = 0;
   private nowMillis = 0;
@@ -224,19 +230,24 @@ class ScaffoldedGame implements GameInstance {
 
   constructor(config: GameConfig) {
     this.config = normalizeGameConfig(config, manifest);
+    this.readyGate = createPlayerReadyGate(manifest.start, createHorizontalPlayerReadyZones(1), this.config.nowMillis);
     this.players = this.scoredPlayers();
   }
 
   init(nowMillis: number): GameEvent[] {
-    this.phase = "running";
-    this.startedAtMillis = nowMillis;
+    this.readyGate.reset(nowMillis);
+    this.phase = "waiting";
     this.nowMillis = nowMillis;
-    this.lastEvent = gameEvent("start", "Pisa la baldosa verde", nowMillis);
+    this.lastEvent = gameEvent("ready", "Esperando jugador", nowMillis);
     return [this.lastEvent];
   }
 
   press(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.update(event), event.atMillis);
+    }
 
     if (this.phase !== "running" || !event.pressed) {
       return [];
@@ -264,11 +275,18 @@ class ScaffoldedGame implements GameInstance {
 
   release(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.update({ ...event, pressed: false }), event.atMillis);
+    }
     return [];
   }
 
   tick(event: TickEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.tick(event.atMillis), event.atMillis);
+    }
 
     if (this.phase !== "running" || this.remainingMillis() > 0) {
       return [];
@@ -283,6 +301,20 @@ class ScaffoldedGame implements GameInstance {
     const frame = createFrame("#05070a");
     const target = targetPath[this.score];
 
+    if (this.phase === "waiting" || this.phase === "starting") {
+      const centerX = 8;
+      const centerY = 16;
+      const radius = 2 + Math.floor(this.nowMillis / 150) % 8;
+      for (let y = 0; y < 32; y += 1) {
+        for (let x = 0; x < 16; x += 1) {
+          if (Math.abs(Math.abs(x - centerX) + Math.abs(y - centerY) - radius) <= 1) {
+            paintFrameCell(frame, x, y, this.phase === "starting" ? "#ffe176" : targetColor);
+          }
+        }
+      }
+      return frame;
+    }
+
     if (this.phase === "running" && target) {
       paintFrameCell(frame, target.x, target.y, targetColor);
     }
@@ -291,6 +323,7 @@ class ScaffoldedGame implements GameInstance {
   }
 
   snapshot(): GameSnapshot {
+    const readyState = this.readyGate.state(this.nowMillis);
     return {
       currentGame: manifest.id,
       label: manifest.label,
@@ -305,21 +338,48 @@ class ScaffoldedGame implements GameInstance {
       success: this.score >= targetScore,
       lastEventCue: this.lastEvent.cue,
       lastEventMessage: this.lastEvent.message,
+      countdownMillis: this.phase === "starting" ? readyState.countdownMillis : 0,
+      readyPlayers: readyState.readyPlayers,
+      requiredPlayers: readyState.requiredPlayers,
       matchTarget: targetScore
     };
   }
 
   reset(config: Partial<GameConfig> = {}): void {
     this.config = normalizeGameConfig({ ...this.config, ...config }, manifest);
-    this.phase = "ready";
+    this.readyGate.reset(this.config.nowMillis);
+    this.phase = "waiting";
     this.score = 0;
     this.startedAtMillis = this.config.nowMillis;
     this.nowMillis = this.config.nowMillis;
     this.players = this.scoredPlayers();
-    this.lastEvent = gameEvent("none", "Listo", this.config.nowMillis);
+    this.lastEvent = gameEvent("ready", "Esperando jugador", this.config.nowMillis);
+  }
+
+  private applyReadyTransition(transition: PlayerReadyTransition, nowMillis: number): GameEvent[] {
+    if (transition === "players-ready") {
+      this.phase = "starting";
+      this.lastEvent = gameEvent("ready", "Jugador listo", nowMillis);
+      return [this.lastEvent];
+    }
+    if (transition === "players-left") {
+      this.phase = "waiting";
+      this.lastEvent = gameEvent("ready", "Vuelve a la zona iluminada", nowMillis);
+      return [this.lastEvent];
+    }
+    if (transition === "started") {
+      this.phase = "running";
+      this.startedAtMillis = nowMillis;
+      this.lastEvent = gameEvent("start", "Pisa la baldosa verde", nowMillis);
+      return [this.lastEvent];
+    }
+    return [];
   }
 
   private elapsedMillis(): number {
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return 0;
+    }
     return Math.max(0, this.nowMillis - this.startedAtMillis);
   }
 
@@ -343,7 +403,7 @@ export function scaffoldTargets(): Target[] {
 
 function displayTemplate(): string {
   return `import React from "react";
-import { FramePreviewPanel, GameDisplayShell, MetricPanel, MetricRow } from "@motion-levels-games/display-kit";
+import { FramePreviewPanel, GameDisplayShell, MetricPanel, MetricRow, PlayerReadyOverlay } from "@motion-levels-games/display-kit";
 import { formatClock, type Frame, type GameSnapshot } from "@motion-levels-games/game-sdk";
 
 export function PlayerDisplay({
@@ -355,14 +415,18 @@ export function PlayerDisplay({
 }) {
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
-      <MetricRow columns={4}>
-        <MetricPanel label="Puntos" tone="green" value={snapshot.score} />
-        <MetricPanel label="Objetivo" tone="yellow" value={snapshot.matchTarget ?? 3} />
-        <MetricPanel label="Tiempo" tone="cyan" value={formatClock(snapshot.remainingMillis)} />
-        <MetricPanel label="Aviso" tone={snapshot.success ? "green" : "blue"} value={snapshot.lastEventMessage || "Listo"} />
-      </MetricRow>
-
-      {frame ? <FramePreviewPanel frame={frame} /> : null}
+      <div className="ml-solo-display">
+        <PlayerReadyOverlay snapshot={snapshot} />
+        <div className="ml-solo-summary">
+          <MetricRow columns={3} className="ml-solo-number-row">
+            <MetricPanel label="Puntos" tone="green" value={snapshot.score} />
+            <MetricPanel label="Objetivo" tone="yellow" value={snapshot.matchTarget ?? 3} />
+            <MetricPanel label="Tiempo" tone="cyan" value={formatClock(snapshot.remainingMillis)} />
+          </MetricRow>
+          <MetricPanel className="ml-solo-message" label="Aviso" tone={snapshot.success ? "green" : "blue"} value={snapshot.lastEventMessage || "Listo"} />
+        </div>
+        {frame ? <FramePreviewPanel className="ml-solo-floor" frame={frame} label="Juego en el suelo" /> : null}
+      </div>
     </GameDisplayShell>
   );
 }
@@ -379,12 +443,14 @@ const game = createGame({
 });
 
 export const initEvents = game.init(0);
+game.press({ x: 8, y: 16, pressed: true, atMillis: 100 });
+game.tick({ atMillis: 2_100 });
 export const runningFrame = game.render();
 export const runningSnapshot = game.snapshot();
 
-game.press({ x: 4, y: 8, pressed: true, atMillis: 100 });
-game.press({ x: 11, y: 16, pressed: true, atMillis: 200 });
-game.press({ x: 4, y: 24, pressed: true, atMillis: 300 });
+game.press({ x: 4, y: 8, pressed: true, atMillis: 2_200 });
+game.press({ x: 11, y: 16, pressed: true, atMillis: 2_300 });
+game.press({ x: 4, y: 24, pressed: true, atMillis: 2_400 });
 
 export const finishedFrame = game.render();
 export const finishedSnapshot = game.snapshot();
@@ -424,12 +490,16 @@ test("manifest id matches the game directory", () => {
 test("game renders and completes the scaffolded path", () => {
   const game = createGame({ playerCount: manifest.players.min });
   game.init(0);
+  assert.equal(game.snapshot().phase, "waiting");
+  game.press({ x: 8, y: 16, pressed: true, atMillis: 100 });
+  assert.equal(game.snapshot().phase, "starting");
+  game.tick({ atMillis: 2_100 });
 
   const firstTarget = scaffoldTargets()[0];
   assert.equal(frameCell(game.render(), firstTarget.x, firstTarget.y)?.color, targetColor);
 
   scaffoldTargets().forEach((target, index) => {
-    game.press({ ...target, pressed: true, atMillis: (index + 1) * 100 });
+    game.press({ ...target, pressed: true, atMillis: 2_200 + index * 100 });
   });
 
   assert.equal(game.snapshot().phase, "finished");
@@ -449,7 +519,7 @@ test("fixtures and display render", () => {
   );
 
   assert.match(html, new RegExp(manifest.label));
-  assert.match(html, /Score/);
+  assert.match(html, /Puntos/);
 });
 `;
 }
@@ -467,6 +537,9 @@ npm run create:game -- ${options.gameId} "${options.label}"
 
 ## Gameplay
 
+The game waits for one player to remain on the illuminated floor, then shows a
+two-second start animation before gameplay begins.
+
 Step on each visible green target to finish the sequence.
 
 ## Development
@@ -477,6 +550,9 @@ npm run typecheck --workspace @motion-levels-games/${options.gameId}
 \`\`\`
 
 Keep \`manifest.id\` exactly equal to the directory name: \`${options.gameId}\`.
+Keep the player-presence gate and pre-start animation when replacing the
+scaffolded gameplay. Use \`start: { mode: "immediate" }\` only when a product
+requirement explicitly calls for selection-time autoplay.
 `;
 }
 

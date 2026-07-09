@@ -1,5 +1,5 @@
 import React from "react";
-import { FramePreviewPanel, GameDisplayShell, MetricPanel, MetricRow } from "@motion-levels-games/display-kit";
+import { FramePreviewPanel, GameDisplayShell, MetricPanel, MetricRow, PlayerReadyOverlay } from "@motion-levels-games/display-kit";
 import { formatClock, type Frame, type GameSnapshot } from "@motion-levels-games/game-sdk";
 
 export function PlayerDisplay({
@@ -14,6 +14,7 @@ export function PlayerDisplay({
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
       <div className="ml-solo-display hello-world-display">
+        <PlayerReadyOverlay snapshot={snapshot} />
         <div className="ml-solo-summary">
           <MetricRow columns={3} className="ml-solo-number-row">
             <MetricPanel label="Meta" tone="green" value={`${snapshot.score}/${target}`} />

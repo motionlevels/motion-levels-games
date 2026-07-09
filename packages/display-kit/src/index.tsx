@@ -1,7 +1,7 @@
 import React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Frame, FrameCell, GamePlayer } from "@motion-levels-games/game-sdk";
+import type { Frame, FrameCell, GamePlayer, GameSnapshot } from "@motion-levels-games/game-sdk";
 
 export type Tone = "amber" | "blue" | "cyan" | "green" | "magenta" | "pink" | "red" | "yellow" | "neutral";
 export type DisplayPlayer = Pick<GamePlayer, "label" | "score" | "color">;
@@ -55,6 +55,33 @@ export function GameDisplayShell({
         <span className={`ml-status-pill ml-status-${phase}`}>{phaseLabel(phase)}</span>
       </header>
       <div className="ml-display-content">{children}</div>
+    </section>
+  );
+}
+
+export function PlayerReadyOverlay({ snapshot }: { snapshot: GameSnapshot }) {
+  if (snapshot.phase !== "waiting" && snapshot.phase !== "starting") {
+    return null;
+  }
+
+  const readyPlayers = snapshot.readyPlayers ?? 0;
+  const requiredPlayers = Math.max(snapshot.requiredPlayers ?? snapshot.playerCount, 1);
+  const starting = snapshot.phase === "starting";
+  const countdown = Math.max(1, Math.ceil((snapshot.countdownMillis ?? 0) / 1_000));
+
+  return (
+    <section
+      aria-label={starting ? "El juego está a punto de empezar" : "Esperando jugadores"}
+      className={`ml-player-ready-overlay is-${snapshot.phase}`}
+    >
+      <div className="ml-player-ready-pulse" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
+      <span>{starting ? "Todos listos" : "Esperando jugadores"}</span>
+      <strong>{starting ? countdown : `${readyPlayers}/${requiredPlayers}`}</strong>
+      <b>{starting ? "El juego está a punto de empezar" : "Entra y permanece en la zona iluminada"}</b>
     </section>
   );
 }

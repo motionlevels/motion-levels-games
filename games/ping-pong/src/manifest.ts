@@ -52,6 +52,10 @@ export const manifest: GameManifest = {
     min: 2,
     max: 2
   },
+  start: {
+    mode: "player-ready",
+    releaseGraceMillis: 1_000
+  },
   config: {
     difficulty: {
       default: "medium",

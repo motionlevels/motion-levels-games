@@ -3,6 +3,7 @@ import {
   FLOOR_ROWS,
   clamp,
   createFrame,
+  createPlayerReadyGate,
   createSeededRng,
   defaultPlayers,
   fillFrameRect,
@@ -18,6 +19,8 @@ import {
   type GameSnapshot,
   type HexColor,
   type NormalizedGameConfig,
+  type PlayerReadyGate,
+  type PlayerReadyTransition,
   type PressEvent,
   type SeededRng,
   type TickEvent
@@ -97,55 +100,62 @@ class ArkanoidGame implements ArkanoidGameInstance {
   private phase: GamePhase = "ready";
   private players: GamePlayer[] = [];
   private rng: SeededRng;
+  private readyGate: PlayerReadyGate;
   private score = 0;
   private startedAtMillis = 0;
 
   constructor(config: GameConfig) {
     this.config = normalizeGameConfig(config, manifest);
     this.rng = createSeededRng(this.config.seed);
+    this.readyGate = createPlayerReadyGate(manifest.start, [{
+      minX: 0,
+      maxX: FLOOR_COLS - 1,
+      minY: controlZoneStartY,
+      maxY: FLOOR_ROWS - 1
+    }], this.config.nowMillis);
     this.resetState(this.config.nowMillis);
   }
 
   init(nowMillis: number): GameEvent[] {
-    this.startedAtMillis = nowMillis;
     this.nowMillis = nowMillis;
-    this.phase = "ready";
+    this.readyGate.reset(nowMillis);
+    this.phase = "waiting";
     this.attachBall();
-    this.lastEvent = gameEvent("ready", "Pisa abajo para lanzar", nowMillis);
+    this.lastEvent = gameEvent("ready", "Esperando jugador abajo", nowMillis);
     return [this.lastEvent];
   }
 
   press(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
-    if (!event.pressed || event.y < controlZoneStartY || event.y >= FLOOR_ROWS) {
+    if (event.y < controlZoneStartY || event.y >= FLOOR_ROWS) {
       return [];
     }
 
-    this.movePaddle(event.x);
-    if (this.phase !== "ready") {
-      return [];
+    if (event.pressed) {
+      this.movePaddle(event.x);
     }
-
-    this.phase = "running";
-    this.ball = {
-      x: this.paddleCenter(),
-      y: paddleY - 1,
-      dx: this.rng.next() < 0.5 ? -1 : 1,
-      dy: -1
-    };
-    this.ballTrail = [];
-    this.lastMoveMillis = event.atMillis;
-    this.lastEvent = gameEvent("start", "Pelota en juego", event.atMillis);
-    return [this.lastEvent];
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.update(event), event.atMillis);
+    }
+    if (this.phase === "ready" && event.pressed) {
+      return this.launchBall(event.atMillis);
+    }
+    return [];
   }
 
   release(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.update({ ...event, pressed: false }), event.atMillis);
+    }
     return [];
   }
 
   tick(event: TickEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.tick(event.atMillis), event.atMillis);
+    }
     if (this.phase !== "running") {
       return [];
     }
@@ -181,6 +191,10 @@ class ArkanoidGame implements ArkanoidGameInstance {
       }
     }
 
+    if (this.phase === "waiting" || this.phase === "starting") {
+      this.drawPlayerStart(frame);
+    }
+
     if (this.phase === "finished" && this.score === this.bricks.length) {
       drawSuccessFrame(frame);
     }
@@ -209,6 +223,7 @@ class ArkanoidGame implements ArkanoidGameInstance {
 
   snapshot(): ArkanoidSnapshot {
     const remaining = this.bricksRemaining();
+    const readyState = this.readyGate.state(this.nowMillis);
     return {
       currentGame: manifest.id,
       label: manifest.label,
@@ -223,6 +238,9 @@ class ArkanoidGame implements ArkanoidGameInstance {
       success: remaining === 0,
       lastEventCue: this.lastEvent.cue,
       lastEventMessage: this.lastEvent.message,
+      countdownMillis: this.phase === "starting" ? readyState.countdownMillis : 0,
+      readyPlayers: readyState.readyPlayers,
+      requiredPlayers: readyState.requiredPlayers,
       matchTarget: this.bricks.length,
       ball: { ...this.ball },
       ballMoves: this.ballMoves,
@@ -239,6 +257,41 @@ class ArkanoidGame implements ArkanoidGameInstance {
     this.config = normalizeGameConfig({ ...this.config, ...config }, manifest);
     this.rng = createSeededRng(this.config.seed);
     this.resetState(this.config.nowMillis);
+  }
+
+  private applyReadyTransition(transition: PlayerReadyTransition, nowMillis: number): GameEvent[] {
+    if (transition === "players-ready") {
+      this.phase = "starting";
+      this.lastEvent = gameEvent("ready", "Jugador listo", nowMillis);
+      return [this.lastEvent];
+    }
+    if (transition === "players-left") {
+      this.phase = "waiting";
+      this.lastEvent = gameEvent("ready", "Vuelve a la zona iluminada", nowMillis);
+      return [this.lastEvent];
+    }
+    if (transition === "started") {
+      return this.launchBall(nowMillis);
+    }
+    return [];
+  }
+
+  private launchBall(nowMillis: number): GameEvent[] {
+    const firstLaunch = this.phase === "waiting" || this.phase === "starting";
+    this.phase = "running";
+    if (firstLaunch) {
+      this.startedAtMillis = nowMillis;
+    }
+    this.ball = {
+      x: this.paddleCenter(),
+      y: paddleY - 1,
+      dx: this.rng.next() < 0.5 ? -1 : 1,
+      dy: -1
+    };
+    this.ballTrail = [];
+    this.lastMoveMillis = nowMillis;
+    this.lastEvent = gameEvent("start", "Pelota en juego", nowMillis);
+    return [this.lastEvent];
   }
 
   private attachBall(): void {
@@ -334,8 +387,31 @@ class ArkanoidGame implements ArkanoidGameInstance {
     const center = clamp(Math.round(x), half, FLOOR_COLS - 1 - half);
     this.paddleX = center - half;
     this.lastControlX = clamp(Math.round(x), 0, FLOOR_COLS - 1);
-    if (this.phase === "ready") {
+    if (this.phase === "ready" || this.phase === "waiting" || this.phase === "starting") {
       this.attachBall();
+    }
+  }
+
+  private drawPlayerStart(frame: Frame): void {
+    if (this.phase === "waiting") {
+      const scanY = controlZoneStartY + Math.floor(this.nowMillis / 150) % (FLOOR_ROWS - controlZoneStartY);
+      for (let y = controlZoneStartY; y < FLOOR_ROWS; y += 1) {
+        for (let x = 0; x < FLOOR_COLS; x += 1) {
+          if (y === scanY || x === 0 || x === FLOOR_COLS - 1) {
+            paintFrameCell(frame, x, y, y === scanY ? "#35d7ff" : "#0b4260");
+          }
+        }
+      }
+      return;
+    }
+
+    const pulse = Math.floor(this.nowMillis / 125) % 4;
+    for (let y = 0; y < FLOOR_ROWS; y += 1) {
+      for (let x = 0; x < FLOOR_COLS; x += 1) {
+        if ((Math.abs(x - this.paddleCenter()) + Math.abs(y - paddleY) + pulse) % 6 === 0) {
+          paintFrameCell(frame, x, y, y >= controlZoneStartY ? "#ffe176" : "#176783");
+        }
+      }
     }
   }
 
@@ -358,13 +434,14 @@ class ArkanoidGame implements ArkanoidGameInstance {
     this.lastMoveMillis = nowMillis;
     this.paddleX = Math.floor((FLOOR_COLS - paddleWidth) / 2);
     this.lastControlX = this.paddleCenter();
-    this.phase = "ready";
+    this.readyGate.reset(nowMillis);
+    this.phase = "waiting";
     this.score = 0;
     this.ballMoves = 0;
     this.ball = { x: this.paddleCenter(), y: paddleY - 1, dx: 1, dy: -1 };
     this.ballTrail = [];
     this.players = this.scoredPlayers();
-    this.lastEvent = gameEvent("ready", "Pisa abajo para lanzar", nowMillis);
+    this.lastEvent = gameEvent("ready", "Esperando jugador abajo", nowMillis);
   }
 
   private scoredPlayers(): GamePlayer[] {

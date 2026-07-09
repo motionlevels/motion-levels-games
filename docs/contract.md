@@ -109,6 +109,39 @@ use the actual configured players. The `defaultPlayers(count, players)` helper
 uses supplied player names when available and falls back to `Player 1`,
 `Player 2`, and so on.
 
+## Player Readiness and Start Policy
+
+Every manifest must declare one start policy:
+
+```ts
+start: { mode: "player-ready" }
+```
+
+`player-ready` is the normal policy. The game starts in `waiting`, maps the
+required players or teams to explicit floor zones, and feeds press/release
+events to `createPlayerReadyGate`. Once every zone is occupied, the gate enters
+`starting` for the shared two-second countdown. It enters `running` only if all
+required zones stay occupied through the release-grace window. Gameplay timers,
+targets, and scoring begin at that transition, never during selection or
+initialization.
+
+Use `createHorizontalPlayerReadyZones(count)` for evenly divided floor zones,
+or pass game-specific rectangular zones such as an Arkanoid control area. The
+snapshot must report `readyPlayers`, `requiredPlayers`, and `countdownMillis` so
+the display and external runners can explain the transition. Standard displays
+should render `PlayerReadyOverlay`; bespoke versus displays may provide an
+equivalent waiting/countdown treatment.
+
+An immediate start is deliberately noisy and must be explicit:
+
+```ts
+start: { mode: "immediate" }
+```
+
+Use it only when the game specification explicitly requires autoplay on
+selection. The validator rejects missing or malformed start policies, and the
+scaffold generates the player-ready lifecycle by default.
+
 ## Creating Games
 
 Use the scaffold command instead of copying another game by hand:
@@ -122,3 +155,6 @@ fixtures, tests, and README. The playground discovers games from
 `games/*/src/index.ts`, so new games should appear in the selector automatically
 while the Vite dev server is running. Run `npm install` before committing so the
 workspace lockfile knows about the new package, then run `npm run check`.
+Preserve the scaffolded waiting and starting states when replacing its example
+gameplay; define intentional player-detection zones before adding running-state
+logic.

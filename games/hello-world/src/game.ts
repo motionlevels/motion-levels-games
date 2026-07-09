@@ -2,6 +2,8 @@ import {
   FLOOR_COLS,
   FLOOR_ROWS,
   createFrame,
+  createHorizontalPlayerReadyZones,
+  createPlayerReadyGate,
   defaultPlayers,
   fillFrameRect,
   normalizeGameConfig,
@@ -15,6 +17,8 @@ import {
   type GameSnapshot,
   type HexColor,
   type NormalizedGameConfig,
+  type PlayerReadyGate,
+  type PlayerReadyTransition,
   type PressEvent,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
@@ -45,6 +49,7 @@ export function createGame(config: GameConfig): GameInstance {
 class HelloWorldGame implements GameInstance {
   private config: NormalizedGameConfig;
   private phase: GamePhase = "ready";
+  private readyGate: PlayerReadyGate;
   private score = 0;
   private startedAtMillis = 0;
   private nowMillis = 0;
@@ -57,16 +62,17 @@ class HelloWorldGame implements GameInstance {
 
   constructor(config: GameConfig) {
     this.config = normalizeGameConfig(config, manifest);
+    this.readyGate = createPlayerReadyGate(manifest.start, createHorizontalPlayerReadyZones(1), this.config.nowMillis);
     this.players = this.scoredPlayers();
   }
 
   init(nowMillis: number): GameEvent[] {
-    this.phase = "running";
-    this.startedAtMillis = nowMillis;
+    this.readyGate.reset(nowMillis);
+    this.phase = "waiting";
     this.nowMillis = nowMillis;
     this.lastEvent = {
-      cue: "start",
-      message: "Pisa la baldosa verde",
+      cue: "ready",
+      message: "Esperando jugador",
       atMillis: nowMillis
     };
 
@@ -75,6 +81,10 @@ class HelloWorldGame implements GameInstance {
 
   press(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.update(event), event.atMillis);
+    }
 
     if (this.phase !== "running" || !event.pressed) {
       return [];
@@ -102,11 +112,18 @@ class HelloWorldGame implements GameInstance {
 
   release(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.update({ ...event, pressed: false }), event.atMillis);
+    }
     return [];
   }
 
   tick(event: TickEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
+
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return this.applyReadyTransition(this.readyGate.tick(event.atMillis), event.atMillis);
+    }
 
     if (this.phase !== "running" || this.remainingMillis() > 0) {
       return [];
@@ -125,6 +142,11 @@ class HelloWorldGame implements GameInstance {
   render(): Frame {
     const frame = createFrame(idleColor);
 
+    if (this.phase === "waiting" || this.phase === "starting") {
+      this.drawPlayerStart(frame);
+      return frame;
+    }
+
     for (let index = 0; index < Math.min(this.score, targetPath.length); index += 1) {
       const target = targetPath[index];
       paintFrameCell(frame, target.x, target.y, trailColor);
@@ -142,6 +164,7 @@ class HelloWorldGame implements GameInstance {
   }
 
   snapshot(): GameSnapshot {
+    const readyState = this.readyGate.state(this.nowMillis);
     return {
       currentGame: manifest.id,
       label: manifest.label,
@@ -156,6 +179,9 @@ class HelloWorldGame implements GameInstance {
       success: this.score >= helloWorldTargetScore,
       lastEventCue: this.lastEvent.cue,
       lastEventMessage: this.lastEvent.message,
+      countdownMillis: this.phase === "starting" ? readyState.countdownMillis : 0,
+      readyPlayers: readyState.readyPlayers,
+      requiredPlayers: readyState.requiredPlayers,
       matchTarget: helloWorldTargetScore
     };
   }
@@ -165,14 +191,15 @@ class HelloWorldGame implements GameInstance {
       ...this.config,
       ...config
     }, manifest);
-    this.phase = "ready";
+    this.readyGate.reset(this.config.nowMillis);
+    this.phase = "waiting";
     this.score = 0;
     this.startedAtMillis = this.config.nowMillis;
     this.nowMillis = this.config.nowMillis;
     this.players = this.scoredPlayers();
     this.lastEvent = {
-      cue: "none",
-      message: "Listo",
+      cue: "ready",
+      message: "Esperando jugador",
       atMillis: this.config.nowMillis
     };
   }
@@ -181,7 +208,47 @@ class HelloWorldGame implements GameInstance {
     return targetPath[this.score];
   }
 
+  private applyReadyTransition(transition: PlayerReadyTransition, nowMillis: number): GameEvent[] {
+    if (transition === "players-ready") {
+      this.phase = "starting";
+      this.lastEvent = { cue: "ready", message: "Jugador listo", atMillis: nowMillis };
+      return [this.lastEvent];
+    }
+    if (transition === "players-left") {
+      this.phase = "waiting";
+      this.lastEvent = { cue: "ready", message: "Vuelve a la zona iluminada", atMillis: nowMillis };
+      return [this.lastEvent];
+    }
+    if (transition === "started") {
+      this.phase = "running";
+      this.startedAtMillis = nowMillis;
+      this.lastEvent = { cue: "start", message: "Pisa la baldosa verde", atMillis: nowMillis };
+      return [this.lastEvent];
+    }
+    return [];
+  }
+
+  private drawPlayerStart(frame: Frame): void {
+    const centerX = Math.floor(FLOOR_COLS / 2);
+    const centerY = Math.floor(FLOOR_ROWS / 2);
+    const pulse = Math.floor(this.nowMillis / (this.phase === "starting" ? 110 : 180));
+    const color: HexColor = this.phase === "starting" ? "#ffe176" : targetColor;
+    const radius = this.phase === "starting" ? 2 + pulse % 10 : 3 + pulse % 4;
+
+    for (let y = 0; y < FLOOR_ROWS; y += 1) {
+      for (let x = 0; x < FLOOR_COLS; x += 1) {
+        const distance = Math.abs(x - centerX) + Math.abs(y - centerY);
+        if (Math.abs(distance - radius) <= 1) {
+          paintFrameCell(frame, x, y, color);
+        }
+      }
+    }
+  }
+
   private elapsedMillis(): number {
+    if (this.phase === "waiting" || this.phase === "starting") {
+      return 0;
+    }
     return Math.max(0, this.nowMillis - this.startedAtMillis);
   }
 

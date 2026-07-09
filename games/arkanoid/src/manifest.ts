@@ -8,6 +8,7 @@ export const manifest: GameManifest = {
     min: 1,
     max: 1
   },
+  start: { mode: "player-ready" },
   config: {
     difficulty: {
       default: "medium",
