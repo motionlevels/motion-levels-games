@@ -126,7 +126,7 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
   const manifest = {
     id: "test",
     label: "Test",
-    players: { min: 1, max: 2 },
+    players: { allowAny: false, min: 1, max: 2 },
     start: { mode: "player-ready" },
     config: {
       difficulty: { default: "hard", options: ["easy", "hard"] },
@@ -200,7 +200,7 @@ test("config value helpers use manifest definitions as the only schema", () => {
     normalizeGameConfigOptions({}, {
       id: "options",
       label: "Options",
-      players: { min: 1, max: 1 },
+      players: { allowAny: false, min: 1, max: 1 },
       start: { mode: "player-ready" },
       config: { vars: [integerVar, booleanVar, enumVar] },
       defaultDurationMillis: 1000,
@@ -214,7 +214,7 @@ test("difficulty options expose only manifest choices or shared defaults", () =>
   const manifest = {
     id: "difficulty",
     label: "Difficulty",
-    players: { min: 1, max: 1 },
+    players: { allowAny: false, min: 1, max: 1 },
     start: { mode: "player-ready" },
     defaultDurationMillis: 1000,
     display: { entry: "./display" }

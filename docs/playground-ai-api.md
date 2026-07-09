@@ -136,6 +136,11 @@ declared min/max range. `allowAny` adds `0 / Any` to that declared range; it
 does not make every positive count valid. Player and difficulty selectors show
 only the options declared by the manifest.
 
+Game authors should default `allowAny` to `true` whenever configured group size
+does not alter the board or rules. `allowAny: false` is reserved for games with
+a real count-dependent layout, team, target, turn, or scoring model. Any mode
+still follows the normal physical player-readiness lifecycle.
+
 `getState()` includes the active `seed`, `playerCount`, `difficulty`, and
 `options` values so agents can record the exact run configuration.
 

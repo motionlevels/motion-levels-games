@@ -83,6 +83,19 @@ no database, venue hardware, Motion Go, or platform API coupling.
   `countdownMillis` in the snapshot. Use the shared `PlayerReadyOverlay` for
   standard solo/cooperative displays instead of creating a one-off overlay.
 
+## Player Count Policy
+
+- Every manifest must explicitly set `players.allowAny`. Default it to `true`
+  when the board, readiness zones, scoring, and rules do not change with the
+  configured player count. This lets larger groups choose `0 / Any` and take
+  turns without rearranging bookings or teams.
+- Set `allowAny: false` only when the exact number of configured players
+  materially changes gameplay, such as per-player zones, targets, turns,
+  scoring, team composition, or board layout. Document that dependency in the
+  game README and test each supported count.
+- `0 / Any` does not remove physical readiness detection. The game must still
+  wait for the real players its current board layout requires before starting.
+
 ## Round And Game Win Animations
 
 - Every new game must include a distinct game-winning animation by default.

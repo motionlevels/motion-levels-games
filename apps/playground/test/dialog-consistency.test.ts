@@ -109,6 +109,29 @@ test("compact action groups use zero-gap shared control styling", () => {
   );
 });
 
+test("header selectors keep stable field widths across selected values", () => {
+  const expectedWidths = {
+    game: "148px",
+    players: "82px",
+    difficulty: "104px",
+    seed: "72px"
+  };
+
+  for (const [field, width] of Object.entries(expectedWidths)) {
+    assert.match(
+      styleSource,
+      new RegExp(`\\.control-${field}\\s*\\{[^}]*width:\\s*${width};`, "s"),
+      `${field} must reserve a stable width`
+    );
+  }
+
+  assert.match(
+    styleSource,
+    /@container display-panel \(max-width: 660px\)[\s\S]*?\.playground-controls label\s*\{[^}]*width:\s*100%;/s,
+    "narrow layouts must still let fields fill their responsive grid cells"
+  );
+});
+
 test("copy feedback uses an out-of-flow toast", () => {
   assert.doesNotMatch(appSource, /capture-status/, "copy feedback must not remain inside the toolbar");
   assert.match(appSource, /className=\{`capture-toast/, "copy feedback must use the shared toast");

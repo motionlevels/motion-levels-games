@@ -5,6 +5,7 @@ export const manifest: GameManifest = {
   label: "Hello World",
   description: "A tiny deterministic example game for CI playtests and new game authors.",
   players: {
+    allowAny: true,
     min: 1,
     max: 1
   },

@@ -66,6 +66,10 @@ reproducible. Use `playerCount: 0` only for games with
 `manifest.players.allowAny: true`; strict player-count games should be tested
 inside their declared min/max range. For `allowAny` games, valid values are `0`
 plus the manifest's declared min/max range; other positive values are clamped.
+Treat `allowAny: true` as the default for games whose board and rules are
+independent of booking size. Use a strict count only with a documented gameplay
+dependency, and verify that Any mode still waits for the physical players the
+current board requires.
 
 Configuration returned by `ml.getState()` is manifest-normalized: defaults are
 filled, numeric bounds are enforced, undeclared options are removed, and an
@@ -105,6 +109,9 @@ For every playthrough, judge both surfaces:
 - **Start lifecycle:** Does selection remain in `waiting`? Do the floor and TV
   show where players must stand, does `starting` visibly count down, and does
   leaving a required zone cancel the countdown?
+- **Player count:** If the game is unchanged by group size, does the selector
+  offer `0 / Any` and produce the same board/rules as its concrete count? If it
+  is strict, is the count-dependent behavior visible and tested?
 - **Win transitions:** Does a round win pause scoring and celebrate clearly on
   both surfaces before the next round? Does the final game win have a distinct,
   satisfying animation before reset, with the winner and completed result

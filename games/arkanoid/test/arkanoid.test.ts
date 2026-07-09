@@ -14,11 +14,24 @@ import {
   type ArkanoidGameInstance
 } from "../src/index.ts";
 
-test("manifest exposes a strict one-player Arkanoid game", () => {
+test("manifest exposes turn-friendly Any or one-player Arkanoid", () => {
   assert.equal(manifest.id, "arkanoid");
   assert.equal(manifest.label, "Arkanoid");
-  assert.deepEqual(gamePlayerCountOptions(manifest), [1]);
+  assert.deepEqual(manifest.players, { allowAny: true, min: 1, max: 1 });
+  assert.deepEqual(gamePlayerCountOptions(manifest), [0, 1]);
   assert.deepEqual(gameDifficultyOptions(manifest), ["easy", "medium", "hard", "expert"]);
+});
+
+test("Any player mode preserves the same Arkanoid board and rules", () => {
+  const anyPlayers = createGame({ playerCount: 0, seed: 137 });
+  const onePlayer = createGame({ playerCount: 1, seed: 137 });
+
+  anyPlayers.init(0);
+  onePlayer.init(0);
+
+  assert.equal(anyPlayers.snapshot().playerCount, 0);
+  assert.deepEqual(anyPlayers.render(), onePlayer.render());
+  assert.equal(anyPlayers.snapshot().requiredPlayers, onePlayer.snapshot().requiredPlayers);
 });
 
 test("waiting floor shows the complete brick wall and player detection zone", () => {

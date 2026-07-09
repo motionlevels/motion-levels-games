@@ -295,6 +295,22 @@ select {
   line-height: 1;
 }
 
+.control-game {
+  width: 148px;
+}
+
+.control-players {
+  width: 82px;
+}
+
+.control-difficulty {
+  width: 104px;
+}
+
+.control-seed {
+  width: 72px;
+}
+
 .playground-controls input,
 .playground-controls select,
 .playground-controls button {
@@ -313,7 +329,7 @@ select {
 }
 
 .playground-controls input {
-  width: 72px;
+  width: 100%;
 }
 
 .playground-controls input[type="checkbox"] {
@@ -325,7 +341,8 @@ select {
 }
 
 .playground-controls select {
-  max-width: 148px;
+  max-width: none;
+  width: 100%;
 }
 
 .playground-controls button {

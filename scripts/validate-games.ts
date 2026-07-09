@@ -91,8 +91,8 @@ for (const gameId of gameDirs) {
       if (!isFiniteNumber(manifest.defaultDurationMillis) || manifest.defaultDurationMillis < 0) {
         problems.push(`${gameId}: manifest.defaultDurationMillis must be a non-negative finite number`);
       }
-      if (manifest.players?.allowAny !== undefined && typeof manifest.players.allowAny !== "boolean") {
-        problems.push(`${gameId}: manifest.players.allowAny must be a boolean when present`);
+      if (typeof manifest.players?.allowAny !== "boolean") {
+        problems.push(`${gameId}: manifest.players.allowAny must explicitly declare true or false`);
       }
       if (!isInteger(manifest.players?.min) || Number(manifest.players?.min) < 1) {
         problems.push(`${gameId}: manifest.players.min must be an integer of at least 1`);

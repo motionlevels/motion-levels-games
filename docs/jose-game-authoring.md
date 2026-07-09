@@ -46,6 +46,11 @@ The scaffold creates:
 The game id must match the directory exactly. For `games/color-chase`,
 `manifest.id` must be `color-chase`.
 
+The scaffold enables `0 / Any` players. Keep it when the game plays the same
+regardless of booking size, so groups can take turns without changing teams.
+Use a strict player count only when the number of configured players actually
+changes zones, targets, turns, scoring, teams, or board layout.
+
 ## Run The Playground
 
 ```sh
@@ -115,8 +120,10 @@ or an agent resumes work there, rather than after every `main` commit.
    animation when the game has rounds.
 10. If the game uses lives, use `LivesMeter` and inspect full, partial, and zero
     life states.
-11. Run `npm run check` before pushing.
-12. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
+11. Keep `players.allowAny: true` unless player count materially changes the
+    game; document and test the reason when setting it to `false`.
+12. Run `npm run check` before pushing.
+13. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
    green.
-13. Commit every completed task before handing it off. Never force-push,
+14. Commit every completed task before handing it off. Never force-push,
     rebase, amend, or otherwise rewrite history.

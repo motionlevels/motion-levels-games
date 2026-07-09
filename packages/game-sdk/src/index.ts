@@ -135,7 +135,7 @@ export type GameManifest = {
   label: string;
   description?: string;
   players: {
-    allowAny?: boolean;
+    allowAny: boolean;
     min: number;
     max: number;
   };

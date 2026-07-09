@@ -18,8 +18,20 @@ import {
 test("manifest documents the example game", () => {
   assert.equal(manifest.id, "hello-world");
   assert.equal(manifest.label, "Hello World");
-  assert.deepEqual(manifest.players, { min: 1, max: 1 });
+  assert.deepEqual(manifest.players, { allowAny: true, min: 1, max: 1 });
   assert.deepEqual(manifest.start, { mode: "player-ready" });
+});
+
+test("Any player mode preserves the same Hello World board and rules", () => {
+  const anyPlayers = createGame({ playerCount: 0, seed: 137 });
+  const onePlayer = createGame({ playerCount: 1, seed: 137 });
+
+  anyPlayers.init(0);
+  onePlayer.init(0);
+
+  assert.equal(anyPlayers.snapshot().playerCount, 0);
+  assert.deepEqual(anyPlayers.render(), onePlayer.render());
+  assert.equal(anyPlayers.snapshot().requiredPlayers, onePlayer.snapshot().requiredPlayers);
 });
 
 test("game waits for a player and counts down before showing the first target", () => {

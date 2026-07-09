@@ -5,6 +5,7 @@ export const manifest: GameManifest = {
   label: "Arkanoid",
   description: "Single-player floor Arkanoid with step-controlled paddle movement and deterministic brick physics.",
   players: {
+    allowAny: true,
     min: 1,
     max: 1
   },

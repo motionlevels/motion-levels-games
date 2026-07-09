@@ -162,6 +162,7 @@ export const manifest: GameManifest = {
   label: ${JSON.stringify(options.label)},
   description: "Scaffolded Motion Levels game.",
   players: {
+    allowAny: true,
     min: 1,
     max: 1
   },
@@ -553,6 +554,14 @@ Keep \`manifest.id\` exactly equal to the directory name: \`${options.gameId}\`.
 Keep the player-presence gate and pre-start animation when replacing the
 scaffolded gameplay. Use \`start: { mode: "immediate" }\` only when a product
 requirement explicitly calls for selection-time autoplay.
+
+## Player count policy
+
+This scaffold enables \`0 / Any\` so groups can take turns without changing
+their booking or teams. Keep \`players.allowAny: true\` while player count does
+not change the board, readiness zones, scoring, or rules. Set it to \`false\`
+only when the exact count materially changes gameplay, then document and test
+each supported count.
 
 ## Required winning animations
 

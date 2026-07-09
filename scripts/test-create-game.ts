@@ -47,10 +47,14 @@ const manifestModule = await import(pathToFileURL(path.join(gameRoot, "src/manif
   manifest?: {
     id?: string;
     label?: string;
+    players?: {
+      allowAny?: boolean;
+    };
   };
 };
 assert.equal(manifestModule.manifest?.id, "ci-smoke-game");
 assert.equal(manifestModule.manifest?.label, "CI Smoke Game");
+assert.equal(manifestModule.manifest?.players?.allowAny, true);
 
 const readme = await readFile(path.join(gameRoot, "README.md"), "utf8");
 assert.match(readme, /ci-smoke-game/);
@@ -60,5 +64,7 @@ assert.match(readme, /Required winning animations/);
 assert.match(readme, /distinct game-win animation/);
 assert.match(readme, /Lives, when applicable/);
 assert.match(readme, /render `LivesMeter`/);
+assert.match(readme, /Player count policy/);
+assert.match(readme, /players\.allowAny: true/);
 
 console.log(`Scaffold smoke test created ${gameRoot}`);

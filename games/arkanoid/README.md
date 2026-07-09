@@ -6,6 +6,8 @@ Single-player floor Arkanoid for Motion Levels.
 
 ## Gameplay
 
+- Player selection supports `0 / Any` or `1`; the board is unchanged, so groups
+  can take turns without reconfiguring the booking.
 - Step into the illuminated lower eight rows to register the player and center
   the paddle under that column.
 - Remain there through the two-second start animation; the ball launches when

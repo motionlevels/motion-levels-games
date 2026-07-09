@@ -108,13 +108,18 @@ the native player display for clipping or wrapping in each state.
 
 ## Player Counts
 
-By default, `manifest.players.min` and `manifest.players.max` describe the
-valid player-count range and the SDK clamps incoming counts into that range.
-Use `manifest.players.allowAny: true` only for games whose board and gameplay
-do not depend on the exact number of real players. In that mode `playerCount: 0`
-means "unspecified/any". Positive counts are still clamped into the declared
+Every manifest explicitly declares `players.allowAny`. The authoring default is
+`true` whenever the board, readiness zones, rules, and scoring do not depend on
+the configured group size. In that mode `playerCount: 0` means
+"unspecified/any", so a larger group can keep its booking intact and rotate
+through a turn-based game. Positive counts are still clamped into the declared
 `min`–`max` range, so `allowAny` adds one choice rather than disabling the
 manifest constraint.
+
+Use `allowAny: false` only when the exact count materially changes per-player
+zones, targets, turns, scoring, teams, or board layout. Document why the count
+matters and test every supported value. Any mode still uses the game's physical
+player-readiness zones; it does not permit autoplay without players present.
 
 For two-team games such as Ping Pong, `allowAny` is acceptable because the
 floor always renders red and blue halves; the player display can keep showing
@@ -192,6 +197,8 @@ logic. Implement a game-win animation before considering the scaffolded game
 complete, and add a separate round-win animation if the game introduces rounds.
 If the game uses lives, expose `maxLives` and use the shared `LivesMeter`
 instead of implementing heart markup or colors inside the game.
+The scaffold enables `0 / Any` by default. Keep it unless the implemented game
+materially changes its board or rules by configured player count.
 
 Before a new game is considered complete, run it in the browser and visually
 inspect native 1920x1080 player-display captures. Review every supported main
