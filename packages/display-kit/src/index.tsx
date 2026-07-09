@@ -1,25 +1,43 @@
 import React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Frame, FrameCell } from "@motion-levels-games/game-sdk";
+import type { Frame, FrameCell, GamePlayer } from "@motion-levels-games/game-sdk";
 
-export type Tone = "cyan" | "pink" | "yellow" | "green" | "neutral";
+export type Tone = "amber" | "blue" | "cyan" | "green" | "magenta" | "pink" | "red" | "yellow" | "neutral";
+export type DisplayPlayer = Pick<GamePlayer, "label" | "score" | "color">;
+export type RoundSummary = {
+  index: number;
+  winnerIndex?: number;
+  winnerLabel?: string;
+  hits?: number;
+};
 
 export function GameDisplayShell({
   title,
   phase,
+  variant = "default",
   children
 }: {
   title: string;
   phase: string;
+  variant?: "default" | "versus";
   children?: ReactNode;
 }) {
   return (
-    <section className="ml-display-shell">
-      <header className="ml-display-header">
-        <span className="ml-display-label">Game</span>
-        <h1>{title}</h1>
-        <span className="ml-status-pill">{phase}</span>
+    <section className={`ml-display-shell ml-tv-display ml-tv-display-${variant}`} aria-label={`${title} display`}>
+      <header className="ml-display-header ml-tv-header">
+        <div className="ml-tv-brand" aria-hidden="true">
+          <span className="ml-tv-brand-mark" />
+          <span className="ml-tv-brand-name">
+            <b>Motion</b>
+            <b>Levels</b>
+          </span>
+        </div>
+        <div className="ml-tv-title">
+          <span className="ml-display-label">Game</span>
+          <h1>{title}</h1>
+        </div>
+        <span className={`ml-status-pill ml-status-${phase}`}>{phase}</span>
       </header>
       <div className="ml-display-content">{children}</div>
     </section>
@@ -29,14 +47,16 @@ export function GameDisplayShell({
 export function MetricPanel({
   label,
   value,
-  tone = "cyan"
+  tone = "cyan",
+  className = ""
 }: {
   label: string;
   value: ReactNode;
   tone?: Tone;
+  className?: string;
 }) {
   return (
-    <article className={`ml-metric ml-metric-${tone}`}>
+    <article className={`ml-metric ml-metric-${tone} ${className}`.trim()}>
       <span className="ml-metric-label">{label}</span>
       <strong className="ml-metric-value">{value}</strong>
     </article>
@@ -65,6 +85,134 @@ export function HeartMeter({
         );
       })}
     </div>
+  );
+}
+
+export function MetricRow({
+  children,
+  columns = 3,
+  className = ""
+}: {
+  children: ReactNode;
+  columns?: number;
+  className?: string;
+}) {
+  return (
+    <section className={`ml-metric-row ${className}`.trim()} style={{ "--ml-metric-columns": columns } as CSSProperties}>
+      {children}
+    </section>
+  );
+}
+
+export function VersusScoreboard({
+  left,
+  right,
+  target,
+  centerLabel,
+  centerValue,
+  centerCaption = "",
+  className = ""
+}: {
+  left: DisplayPlayer;
+  right: DisplayPlayer;
+  target: number;
+  centerLabel: string;
+  centerValue: ReactNode;
+  centerCaption?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`ml-versus-scoreboard ${className}`.trim()} aria-label="Scoreboard">
+      <PlayerScorePanel player={left} side="red" target={target} />
+      <article className="ml-versus-center">
+        <span>{centerLabel}</span>
+        <strong>{centerValue}</strong>
+        {centerCaption ? <b>{centerCaption}</b> : null}
+      </article>
+      <PlayerScorePanel player={right} side="blue" target={target} />
+    </section>
+  );
+}
+
+export function PlayerScorePanel({
+  player,
+  side,
+  target
+}: {
+  player: DisplayPlayer;
+  side: "red" | "blue";
+  target: number;
+}) {
+  const progress = Math.max(0, Math.min(1, player.score / Math.max(target, 1)));
+
+  return (
+    <article
+      className={`ml-player-score-panel ml-player-score-${side}`}
+      style={{
+        "--ml-player": player.color,
+        "--ml-player-rgb": hexToRgb(player.color),
+        "--ml-score-progress": progress
+      } as CSSProperties}
+    >
+      <div className="ml-player-score-head">
+        <span>{player.label}</span>
+        <b>{player.score}/{target}</b>
+      </div>
+      <strong>{player.score}</strong>
+      <div className="ml-player-score-track" aria-hidden="true">
+        <i />
+      </div>
+    </article>
+  );
+}
+
+export function RoundStrip({
+  rounds,
+  fallbackLabel = "Pending",
+  className = ""
+}: {
+  rounds: RoundSummary[];
+  fallbackLabel?: string;
+  className?: string;
+}) {
+  const visibleRounds = rounds.length > 0 ? rounds : [{ index: 1, winnerLabel: fallbackLabel, hits: 0 }];
+
+  return (
+    <section className={`ml-round-strip ${className}`.trim()} aria-label="Rounds">
+      <div className="ml-round-strip-head">
+        <span>Rounds</span>
+        <strong>{rounds.length}</strong>
+      </div>
+      <div className="ml-round-list">
+        {visibleRounds.slice(-7).map((round) => (
+          <article
+            className={`ml-round-card ${round.winnerIndex === 0 ? "is-red" : round.winnerIndex === 1 ? "is-blue" : "is-pending"}`}
+            key={round.index}
+          >
+            <span>#{round.index}</span>
+            <strong>{round.winnerLabel || fallbackLabel}</strong>
+            <b>{round.hits ?? 0}</b>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function FramePreviewPanel({
+  frame,
+  label = "Floor preview",
+  className = ""
+}: {
+  frame: Frame | { width: number; height: number; cells: FrameCell[] };
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <section className={`ml-frame-preview-panel ${className}`.trim()}>
+      <span>{label}</span>
+      <FloorPreview frame={frame} />
+    </section>
   );
 }
 
@@ -276,4 +424,18 @@ export function FloorPreview({
       })}
     </div>
   );
+}
+
+function hexToRgb(color: string): string {
+  const hex = color.replace("#", "").trim();
+  const normalized = hex.length === 3
+    ? hex.split("").map((character) => character + character).join("")
+    : hex.padEnd(6, "0").slice(0, 6);
+  const value = Number.parseInt(normalized, 16);
+
+  if (!Number.isFinite(value)) {
+    return "255, 255, 255";
+  }
+
+  return `${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}`;
 }

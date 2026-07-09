@@ -11,77 +11,202 @@
   --ml-pink: #d2a8ff;
   --ml-yellow: #ffe176;
   --ml-green: #7ee787;
+  --ml-red: #ff5268;
+  --ml-magenta: #d85cff;
+  --ml-amber: #ffcf5a;
 }
 
 .ml-display-shell {
-  background: var(--ml-bg);
+  background:
+    radial-gradient(circle at 16% 8%, rgba(88, 166, 255, 0.22), transparent 30%),
+    radial-gradient(circle at 84% 10%, rgba(255, 82, 104, 0.2), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055), transparent 34%),
+    var(--ml-bg);
   color: var(--ml-text);
+  display: grid;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
   min-width: 0;
   overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  width: 100%;
+  -webkit-user-select: none;
+}
+
+.ml-tv-display * {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ml-display-header {
   align-items: center;
   display: grid;
-  gap: 6px 16px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding: 22px 24px 8px;
+  gap: 24px;
+  grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.2fr) minmax(260px, 0.56fr);
+  min-height: 150px;
+  padding: 40px 52px 18px;
+}
+
+.ml-tv-brand {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  min-width: 0;
+}
+
+.ml-tv-brand-mark {
+  background:
+    linear-gradient(135deg, #36d9ff 0 48%, transparent 48%),
+    linear-gradient(315deg, #ff5268 0 48%, transparent 48%),
+    #ffffff;
+  box-shadow:
+    0 0 34px rgba(54, 217, 255, 0.26),
+    0 0 54px rgba(255, 82, 104, 0.18);
+  display: block;
+  height: 86px;
+  width: 86px;
+}
+
+.ml-tv-brand-name {
+  color: #ffffff;
+  display: grid;
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 0.88;
+  text-transform: uppercase;
+}
+
+.ml-tv-title {
+  min-width: 0;
+  text-align: center;
 }
 
 .ml-display-label {
   color: var(--ml-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
+  display: block;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
 }
 
 .ml-display-header h1 {
-  font-size: 38px;
-  font-weight: 750;
+  color: #ffffff;
+  font-size: 62px;
+  font-weight: 950;
+  letter-spacing: 0;
   line-height: 1;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 34px rgba(255, 255, 255, 0.18);
+  white-space: nowrap;
 }
 
 .ml-status-pill {
-  align-self: start;
-  background: rgba(139, 148, 158, 0.16);
-  border-radius: 999px;
-  color: var(--ml-muted);
+  align-self: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035)),
+    rgba(8, 12, 22, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #dce8f8;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  padding: 6px 9px;
+  font-size: 22px;
+  font-weight: 900;
+  justify-self: end;
+  min-width: 190px;
+  padding: 16px 20px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.ml-status-running {
+  border-color: rgba(126, 231, 135, 0.38);
+  color: var(--ml-green);
+}
+
+.ml-status-finished {
+  border-color: rgba(255, 207, 90, 0.44);
+  color: var(--ml-amber);
 }
 
 .ml-display-content {
   display: grid;
-  gap: 18px;
-  padding: 16px 24px 24px;
+  gap: 28px;
+  min-height: 0;
+  padding: 24px 52px 54px;
 }
 
 .ml-metric {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.026)),
+    rgba(6, 9, 16, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  display: grid;
+  gap: 14px;
   min-width: 0;
-  padding: 8px 18px;
+  overflow: hidden;
+  padding: 24px 30px;
 }
 
 .ml-metric-label {
   color: var(--ml-muted);
   display: block;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-  margin-bottom: 8px;
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .ml-metric-value {
   color: var(--ml-text);
   display: block;
-  font-size: 42px;
+  font-size: 72px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  letter-spacing: 0;
   line-height: 0.95;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-shadow: none;
+  white-space: nowrap;
+}
+
+.ml-metric-row {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: repeat(var(--ml-metric-columns), minmax(0, 1fr));
+  min-height: 0;
+}
+
+.ml-metric-amber .ml-metric-value {
+  color: var(--ml-amber);
+}
+
+.ml-metric-blue .ml-metric-value {
+  color: var(--ml-blue);
+}
+
+.ml-metric-cyan .ml-metric-value {
+  color: var(--ml-cyan);
 }
 
 .ml-metric-pink .ml-metric-value {
   color: var(--ml-pink);
+}
+
+.ml-metric-red .ml-metric-value {
+  color: var(--ml-red);
+}
+
+.ml-metric-magenta .ml-metric-value {
+  color: var(--ml-magenta);
 }
 
 .ml-metric-yellow .ml-metric-value {
@@ -118,6 +243,254 @@
 .ml-heart-empty {
   color: rgba(255, 255, 255, 0.16);
   filter: none;
+}
+
+.ml-versus-scoreboard {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.36fr) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.ml-player-score-panel {
+  background:
+    radial-gradient(80% 120% at 18% 8%, rgba(var(--ml-player-rgb), 0.34), transparent 58%),
+    linear-gradient(180deg, rgba(var(--ml-player-rgb), 0.08), rgba(5, 8, 15, 0.18)),
+    rgba(4, 8, 16, 0.88);
+  border: 1px solid rgba(var(--ml-player-rgb), 0.58);
+  box-shadow:
+    0 26px 74px -32px rgba(0, 0, 0, 0.9),
+    0 0 54px -24px rgba(var(--ml-player-rgb), 0.74),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  display: grid;
+  gap: 24px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 40px 46px;
+}
+
+.ml-player-score-red {
+  clip-path: polygon(0 0, 96% 0, 100% 8%, 100% 100%, 0 100%);
+}
+
+.ml-player-score-blue {
+  clip-path: polygon(4% 0, 100% 0, 100% 100%, 0 100%, 0 8%);
+}
+
+.ml-player-score-head {
+  align-items: center;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ml-player-score-head span {
+  color: #ffffff;
+  font-size: 38px;
+  font-weight: 950;
+  line-height: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ml-player-score-head b {
+  color: var(--ml-player);
+  flex: 0 0 auto;
+  font-size: 24px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+
+.ml-player-score-panel > strong {
+  align-self: center;
+  color: #ffffff;
+  font-size: 220px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 0.8;
+  text-shadow:
+    0 0 0.04em var(--ml-player),
+    0 0 0.22em rgba(var(--ml-player-rgb), 0.68);
+}
+
+.ml-player-score-blue > strong {
+  text-align: right;
+}
+
+.ml-player-score-track {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--ml-player-rgb), 0.32);
+  height: 18px;
+  overflow: hidden;
+}
+
+.ml-player-score-track i {
+  background: linear-gradient(90deg, var(--ml-player), rgba(255, 255, 255, 0.95));
+  box-shadow: 0 0 24px rgba(var(--ml-player-rgb), 0.72);
+  display: block;
+  height: 100%;
+  width: calc(var(--ml-score-progress, 0) * 100%);
+}
+
+.ml-versus-center {
+  align-content: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025)),
+    rgba(6, 9, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  clip-path: polygon(10% 0, 90% 0, 100% 12%, 100% 88%, 90% 100%, 10% 100%, 0 88%, 0 12%);
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  min-width: 0;
+  padding: 34px 28px;
+  text-align: center;
+}
+
+.ml-versus-center span,
+.ml-versus-center b,
+.ml-round-strip-head span,
+.ml-round-card span,
+.ml-round-card b {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.ml-versus-center strong {
+  color: #ffffff;
+  font-size: 126px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 0.84;
+  text-shadow:
+    -0.04em 0 0 rgba(255, 28, 40, 0.52),
+    0.04em 0 0 rgba(20, 92, 255, 0.56),
+    0 0 34px rgba(255, 255, 255, 0.24);
+}
+
+.ml-round-strip {
+  background:
+    linear-gradient(90deg, rgba(255, 28, 40, 0.08), transparent 50%, rgba(20, 92, 255, 0.09)),
+    rgba(5, 8, 15, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: grid;
+  gap: 18px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  padding: 24px;
+}
+
+.ml-round-strip-head {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+.ml-round-strip-head strong {
+  color: #ffffff;
+  font-size: 38px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.ml-round-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  min-height: 0;
+}
+
+.ml-round-card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 18px 20px;
+}
+
+.ml-round-card.is-red {
+  background: linear-gradient(160deg, rgba(255, 28, 40, 0.2), rgba(255, 255, 255, 0.035));
+  border-color: rgba(255, 28, 40, 0.5);
+}
+
+.ml-round-card.is-blue {
+  background: linear-gradient(160deg, rgba(20, 92, 255, 0.24), rgba(255, 255, 255, 0.035));
+  border-color: rgba(20, 92, 255, 0.56);
+}
+
+.ml-round-card.is-pending {
+  opacity: 0.42;
+}
+
+.ml-round-card strong {
+  color: #ffffff;
+  font-size: 34px;
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 0.95;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ml-versus-display {
+  display: grid;
+  gap: 26px;
+  grid-template-rows: minmax(0, 1fr) auto minmax(190px, 0.48fr);
+  min-height: 0;
+}
+
+.ml-versus-display .ml-versus-scoreboard {
+  min-height: 0;
+}
+
+.ml-versus-display .ml-metric-row {
+  min-height: 128px;
+}
+
+.ml-versus-display .ml-metric {
+  padding-block: 20px;
+}
+
+.ml-versus-display .ml-metric-value {
+  font-size: 58px;
+}
+
+.ml-frame-preview-panel {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  min-height: 0;
+}
+
+.ml-frame-preview-panel > span {
+  color: var(--ml-muted);
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ml-frame-preview-panel .ml-floor-preview {
+  height: 360px;
+  width: 190px;
 }
 
 .ml-floor-preview {
