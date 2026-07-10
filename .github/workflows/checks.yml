@@ -64,10 +64,19 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run playtest
-      - name: Upload playground build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run generate:media
+      - run: npm run build:bundle
+        env:
+          MOTION_LEVELS_GAMES_SOURCE_REVISION: ${{ github.sha }}
+      - run: npm run verify:bundle
+      - name: Upload production bundle
         uses: actions/upload-artifact@v4
         with:
-          name: playground-dist
-          path: apps/playground/dist
+          name: motion-levels-games-${{ github.sha }}
+          path: |
+            dist/bundle
+            dist/motion-levels-games-${{ github.sha }}.tgz
+            dist/motion-levels-games-${{ github.sha }}.tgz.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30

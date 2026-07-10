@@ -34,7 +34,7 @@ function playtestHelloWorld() {
     initialEvents: game.init(0)
   });
 
-  assert.equal(engine.fps, 30);
+  assert.equal(engine.fps, 50);
   assert.equal(engine.state.snapshot.currentGame, helloWorldManifest.id);
   assert.equal(engine.state.snapshot.phase, "waiting");
   assert.equal(engine.state.snapshot.readyPlayers, 0);

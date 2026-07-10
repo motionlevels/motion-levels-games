@@ -1,7 +1,6 @@
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import {
   DEFAULT_ENGINE_FPS,
-  DEFAULT_ENGINE_FRAME_MILLIS,
   DEFAULT_GAME_SEED,
   createGameEngine,
   defaultGamePlayerCount,
@@ -78,15 +77,16 @@ export async function generateGameMediaBundle(
   renderPlayerDisplay: PlayerDisplayAssetRenderer,
   options: PlaygroundMediaOptions = {}
 ): Promise<PlaygroundMediaBundle> {
+  const preview = game.manifest.preview;
   const config = normalizeGameConfig({
-    seed: options.seed ?? DEFAULT_GAME_SEED,
-    playerCount: options.playerCount ?? defaultGamePlayerCount(game.manifest),
-    difficulty: options.difficulty,
-    options: options.options,
+    seed: options.seed ?? preview.seed ?? DEFAULT_GAME_SEED,
+    playerCount: options.playerCount ?? preview.playerCount ?? defaultGamePlayerCount(game.manifest),
+    difficulty: options.difficulty ?? preview.difficulty,
+    options: options.options ?? preview.options,
     players: options.players
   }, game.manifest);
   const engine = createPreviewEngine(game, config);
-  const frames = collectPreviewFrames(engine);
+  const frames = collectPreviewFrames(engine, game);
   const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
   const baseName = game.manifest.id;
   const playerDisplay = await renderPlayerDisplay({
@@ -145,42 +145,30 @@ function createPreviewEngine(
   });
 }
 
-function collectPreviewFrames(engine: GameEngine): PreviewFrame[] {
+function collectPreviewFrames(engine: GameEngine, game: PlaygroundGame): PreviewFrame[] {
+  const preview = game.manifest.preview;
   const frames: PreviewFrame[] = [];
 
-  primePreviewInputs(engine);
-  for (let index = 0; index < animationFrameCount; index += 1) {
-    if (index > 0 && index % 5 === 0) {
-      tapPreviewPoint(engine, index);
+  for (const action of [...preview.actions].sort((left, right) => left.atMillis - right.atMillis)) {
+    engine.tickTo(action.atMillis);
+    if (action.type === "press") {
+      engine.press(action.x, action.y, action.atMillis);
+    } else {
+      engine.release(action.x, action.y, action.atMillis);
     }
-
-    const state = engine.step(animationFrameDelayMs);
+  }
+  engine.tickTo(preview.captureStartMillis);
+  const frameCount = Math.max(1, Math.min(120, preview.frameCount || animationFrameCount));
+  const frameIntervalMillis = Math.max(1, preview.frameIntervalMillis || animationFrameDelayMs);
+  for (let index = 0; index < frameCount; index += 1) {
+    const state = index === 0 ? engine.state : engine.step(frameIntervalMillis);
     frames.push({
       frame: rotateFrameClockwise(state.frame),
-      delayMs: animationFrameDelayMs
+      delayMs: frameIntervalMillis
     });
   }
 
   return frames;
-}
-
-function primePreviewInputs(engine: GameEngine): void {
-  engine.press(4, 4);
-  engine.press(11, 27);
-  engine.step(DEFAULT_ENGINE_FRAME_MILLIS);
-}
-
-function tapPreviewPoint(engine: GameEngine, index: number): void {
-  const points = [
-    { x: 3, y: 5 },
-    { x: 12, y: 8 },
-    { x: 5, y: 17 },
-    { x: 10, y: 25 },
-    { x: 8, y: 16 }
-  ] as const;
-  const point = points[index % points.length] ?? points[0];
-  engine.press(point.x, point.y);
-  engine.release(point.x, point.y);
 }
 
 function frameToImageAsset(

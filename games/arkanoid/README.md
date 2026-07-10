@@ -16,7 +16,7 @@ Single-player floor Arkanoid for Motion Levels.
 - Missing the ball costs one of three lives. Step in the control zone again to relaunch.
 - Easy, Medium, Hard, and Expert change only ball speed.
 
-The game is deterministic for a given seed and uses the shared 30fps engine.
+The game is deterministic for a given seed and uses the shared 50fps engine.
 Leaving the control zone during the pre-start grace window cancels the
 countdown and returns the game to its waiting animation.
 

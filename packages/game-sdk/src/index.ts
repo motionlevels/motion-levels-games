@@ -143,6 +143,18 @@ export type GameManifest = {
   id: string;
   label: string;
   description?: string;
+  availability: {
+    development: boolean;
+    production: boolean;
+  };
+  catalog: {
+    category: "team" | "versus" | "individual" | "arcade";
+    color: HexColor;
+    durationLabel: string;
+    modeLabel: string;
+    audioLabel: string;
+    rules: readonly string[];
+  };
   players: {
     allowAny: boolean;
     min: number;
@@ -154,7 +166,26 @@ export type GameManifest = {
   display: {
     entry: string;
   };
+  preview: GamePreviewScenario;
   tags?: string[];
+};
+
+export type GamePreviewAction = {
+  atMillis: number;
+  type: "press" | "release";
+  x: number;
+  y: number;
+};
+
+export type GamePreviewScenario = {
+  seed: number;
+  playerCount: number;
+  difficulty?: GameDifficulty;
+  options?: GameConfigOptions;
+  actions: readonly GamePreviewAction[];
+  captureStartMillis: number;
+  frameCount: number;
+  frameIntervalMillis: number;
 };
 
 export type GameManifestConfig = {
@@ -253,7 +284,7 @@ export type GameInstance = {
   reset(config?: Partial<GameConfig>): void;
 };
 
-export const DEFAULT_ENGINE_FPS = 30;
+export const DEFAULT_ENGINE_FPS = 50;
 export const DEFAULT_ENGINE_FRAME_MILLIS = 1000 / DEFAULT_ENGINE_FPS;
 export const DEFAULT_ENGINE_MAX_CATCH_UP_STEPS = 5;
 

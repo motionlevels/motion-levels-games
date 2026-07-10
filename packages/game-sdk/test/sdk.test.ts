@@ -38,6 +38,26 @@ import {
   type TickEvent
 } from "../src/index.ts";
 
+const testManifestFields = {
+  availability: { development: true, production: false },
+  catalog: {
+    category: "individual",
+    color: "#35d7ff",
+    durationLabel: "Test",
+    modeLabel: "Test",
+    audioLabel: "Sin audio",
+    rules: []
+  },
+  preview: {
+    seed: 137,
+    playerCount: 1,
+    actions: [],
+    captureStartMillis: 0,
+    frameCount: 1,
+    frameIntervalMillis: 20
+  }
+} as const;
+
 test("frame helpers create a fixed 16x32 floor", () => {
   const frame = createFrame("#000000");
 
@@ -155,6 +175,7 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
     max: 21
   } satisfies GameConfigVar;
   const manifest = {
+    ...testManifestFields,
     id: "test",
     label: "Test",
     players: { allowAny: false, min: 1, max: 2 },
@@ -231,6 +252,7 @@ test("config value helpers use manifest definitions as the only schema", () => {
   assert.equal(normalizeGameConfigValue(enumVar, "unknown"), "blue");
   assert.deepEqual(
     normalizeGameConfigOptions({}, {
+      ...testManifestFields,
       id: "options",
       label: "Options",
       players: { allowAny: false, min: 1, max: 1 },
@@ -245,6 +267,7 @@ test("config value helpers use manifest definitions as the only schema", () => {
 
 test("difficulty options expose only manifest choices or shared defaults", () => {
   const manifest = {
+    ...testManifestFields,
     id: "difficulty",
     label: "Difficulty",
     players: { allowAny: false, min: 1, max: 1 },
@@ -291,7 +314,7 @@ test("gameEvent removes terminal periods from event messages", () => {
   });
 });
 
-test("game engine uses 30fps fixed step defaults", () => {
+test("game engine uses 50fps fixed step defaults", () => {
   const game = createFakeGame();
   const engine = createGameEngine(game, {
     initialEvents: [gameEvent("ready", "Ready", 0)]

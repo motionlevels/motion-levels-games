@@ -165,6 +165,15 @@ export const manifest: GameManifest = {
   id: ${JSON.stringify(options.gameId)},
   label: ${JSON.stringify(options.label)},
   description: "Scaffolded Motion Levels game.",
+  availability: { development: true, production: false },
+  catalog: {
+    category: "individual",
+    color: "#35d7ff",
+    durationLabel: "30s",
+    modeLabel: "Objetivos",
+    audioLabel: "Efectos",
+    rules: ["Ocupa la zona indicada", "Completa todos los objetivos"]
+  },
   players: {
     allowAny: true,
     min: 1,
@@ -174,6 +183,17 @@ export const manifest: GameManifest = {
   defaultDurationMillis: 30_000,
   display: {
     entry: "./display"
+  },
+  preview: {
+    seed: 137,
+    playerCount: 1,
+    actions: [
+      { atMillis: 100, type: "press", x: 8, y: 16 },
+      { atMillis: 2_150, type: "release", x: 8, y: 16 }
+    ],
+    captureStartMillis: 2_200,
+    frameCount: 18,
+    frameIntervalMillis: 120
   },
   tags: ["scaffold", "typescript"]
 };

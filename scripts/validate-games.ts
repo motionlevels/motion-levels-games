@@ -7,6 +7,18 @@ type ManifestModule = {
   manifest?: {
     id?: string;
     label?: string;
+    availability?: {
+      development?: unknown;
+      production?: unknown;
+    };
+    catalog?: {
+      category?: unknown;
+      color?: unknown;
+      durationLabel?: unknown;
+      modeLabel?: unknown;
+      audioLabel?: unknown;
+      rules?: unknown;
+    };
     players?: {
       allowAny?: unknown;
       min?: unknown;
@@ -27,9 +39,20 @@ type ManifestModule = {
     display?: {
       entry?: string;
     };
+    preview?: {
+      seed?: unknown;
+      playerCount?: unknown;
+      actions?: unknown;
+      captureStartMillis?: unknown;
+      frameCount?: unknown;
+      frameIntervalMillis?: unknown;
+    };
     defaultDurationMillis?: unknown;
   };
 };
+
+type PreviewManifest = NonNullable<NonNullable<ManifestModule["manifest"]>["preview"]>;
+type PlayersManifest = NonNullable<NonNullable<ManifestModule["manifest"]>["players"]>;
 
 const repoRoot = process.cwd();
 const gamesRoot = path.join(repoRoot, "games");
@@ -88,6 +111,23 @@ for (const gameId of gameDirs) {
       if (!manifest.label) {
         problems.push(`${gameId}: manifest.label is required`);
       }
+      if (typeof manifest.availability?.development !== "boolean" || typeof manifest.availability?.production !== "boolean") {
+        problems.push(`${gameId}: manifest.availability must explicitly declare development and production booleans`);
+      }
+      if (!["team", "versus", "individual", "arcade"].includes(String(manifest.catalog?.category))) {
+        problems.push(`${gameId}: manifest.catalog.category must be team, versus, individual, or arcade`);
+      }
+      if (!/^#[0-9a-f]{6}$/iu.test(String(manifest.catalog?.color || ""))) {
+        problems.push(`${gameId}: manifest.catalog.color must be a six-digit hex color`);
+      }
+      for (const field of ["durationLabel", "modeLabel", "audioLabel"] as const) {
+        if (!String(manifest.catalog?.[field] || "").trim()) {
+          problems.push(`${gameId}: manifest.catalog.${field} is required`);
+        }
+      }
+      if (!isStringArray(manifest.catalog?.rules)) {
+        problems.push(`${gameId}: manifest.catalog.rules must be a string array`);
+      }
       if (!isFiniteNumber(manifest.defaultDurationMillis) || manifest.defaultDurationMillis < 0) {
         problems.push(`${gameId}: manifest.defaultDurationMillis must be a non-negative finite number`);
       }
@@ -118,6 +158,7 @@ for (const gameId of gameDirs) {
       if (manifest.display?.entry !== "./display") {
         problems.push(`${gameId}: manifest.display.entry must be ./display`);
       }
+      validatePreviewScenario(gameId, manifest.preview, manifest.players, problems);
       if (manifest.config?.difficulty?.options !== undefined && !isStringArray(manifest.config.difficulty.options)) {
         problems.push(`${gameId}: manifest.config.difficulty.options must be a string array`);
       }
@@ -205,6 +246,47 @@ if (problems.length > 0) {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function validatePreviewScenario(
+  gameId: string,
+  preview: PreviewManifest | undefined,
+  players: PlayersManifest | undefined,
+  problemList: string[]
+): void {
+  if (!preview || !isInteger(preview.seed) || Number(preview.seed) < 0) {
+    problemList.push(`${gameId}: manifest.preview.seed must be a non-negative integer`);
+  }
+  if (!preview || !isInteger(preview.playerCount) || Number(preview.playerCount) < 0) {
+    problemList.push(`${gameId}: manifest.preview.playerCount must be a non-negative integer`);
+  } else if (Number(preview.playerCount) === 0 && players?.allowAny !== true) {
+    problemList.push(`${gameId}: manifest.preview.playerCount may be 0 only when players.allowAny is true`);
+  }
+  if (!preview || !isFiniteNumber(preview.captureStartMillis) || preview.captureStartMillis < 0) {
+    problemList.push(`${gameId}: manifest.preview.captureStartMillis must be a non-negative finite number`);
+  }
+  if (!preview || !isInteger(preview.frameCount) || Number(preview.frameCount) < 1 || Number(preview.frameCount) > 120) {
+    problemList.push(`${gameId}: manifest.preview.frameCount must be an integer from 1 to 120`);
+  }
+  if (!preview || !isFiniteNumber(preview.frameIntervalMillis) || preview.frameIntervalMillis <= 0) {
+    problemList.push(`${gameId}: manifest.preview.frameIntervalMillis must be a positive finite number`);
+  }
+  if (!preview || !Array.isArray(preview.actions)) {
+    problemList.push(`${gameId}: manifest.preview.actions must be an array`);
+    return;
+  }
+  for (const [index, action] of preview.actions.entries()) {
+    if (!action || typeof action !== "object" || Array.isArray(action)) {
+      problemList.push(`${gameId}: manifest.preview.actions[${index}] must be an object`);
+      continue;
+    }
+    const record = action as Record<string, unknown>;
+    if (!isFiniteNumber(record.atMillis) || record.atMillis < 0 || !["press", "release"].includes(String(record.type)) ||
+      !isInteger(record.x) || Number(record.x) < 0 || Number(record.x) > 15 ||
+      !isInteger(record.y) || Number(record.y) < 0 || Number(record.y) > 31) {
+      problemList.push(`${gameId}: manifest.preview.actions[${index}] must contain a valid time, type, and 16x32 coordinate`);
+    }
+  }
 }
 
 function validateNumericConfigVar(

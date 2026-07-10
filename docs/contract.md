@@ -27,7 +27,8 @@ WASM dependency. A production integration can later adapt `Frame`, input events,
 and `GameSnapshot` to the existing Motion Levels runtime surfaces.
 
 The shared TypeScript engine lives in `@motion-levels-games/game-sdk`. Its
-baseline is 30fps (`DEFAULT_ENGINE_FPS`), and playground/platform runners should
+baseline is 50fps (`DEFAULT_ENGINE_FPS`), matching the production floor engine,
+and playground/platform runners should
 advance games through that engine instead of owning separate timing semantics.
 The SDK-wide default seed is `137`; manifests do not define per-game seed
 defaults. Explicit seeds are normalized to the seeded RNG's unsigned 32-bit
@@ -101,6 +102,21 @@ Difficulty choices and their default belong only in
 for strict games so playground, media, and runtime defaults remain identical.
 `gamePlayerCountOptions` and `gameDifficultyOptions` produce the exact selector
 choices from those manifest declarations.
+
+Every manifest also owns three pieces of production-facing metadata:
+
+- `availability.development` and `availability.production` decide whether a
+  game may enter the development or production bundle catalog.
+- `catalog` contains intrinsic category, color, duration/mode/audio labels, and
+  rules. Platform-owned visibility, featured state, ordering, narration, and
+  usage statistics are deliberately not part of the game manifest.
+- `preview` is a deterministic seed, configuration, input timeline, and capture
+  window used to generate the catalog thumbnail, animation, and player-display
+  capture. CI never substitutes a generic preview script.
+
+The published bundle keeps the game contract's camelCase `playerFacing` field.
+Platform importers map it to any storage-specific naming at their boundary;
+the games contract does not expose database-shaped `player_facing` fields.
 
 ## Expected Game Shape
 

@@ -26,11 +26,17 @@
     "create:game": "tsx scripts/create-game.ts",
     "test:scaffold": "tsx scripts/test-create-game.ts",
     "playtest": "tsx scripts/playtest-games.ts",
+    "generate:media": "tsx scripts/generate-media.ts",
+    "build:bundle": "tsx scripts/build-bundle.ts",
+    "verify:bundle": "tsx scripts/verify-bundle.ts",
     "check": "npm run lint && npm run validate:games && npm run typecheck && npm run test:all && npm run build && npm run playtest"
   },
   "devDependencies": {
     "@types/node": "^25.0.2",
+    "esbuild": "^0.27.3",
     "oxlint": "^1.73.0",
+    "playwright": "^1.61.1",
+    "tar": "^7.5.7",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

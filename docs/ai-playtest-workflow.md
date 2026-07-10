@@ -38,7 +38,7 @@ document.documentElement.dataset.motionLevelsPlaygroundApi === "ready"
 ```
 
 6. Use `window.ml` or `window.motionLevelsPlayground` for deterministic control.
-   The playground uses the shared TypeScript SDK engine at 30fps, so `ml.step()`
+   The playground uses the shared TypeScript SDK engine at 50fps, so `ml.step()`
    advances one frame unless you pass an explicit millisecond delta.
 
 ## Playtest Loop

@@ -51,6 +51,15 @@ export const manifest: GameManifest = {
   id: "ping-pong",
   label: "Ping Pong",
   description: "Two-player arcade ping pong for red and blue halves of the Motion Levels floor.",
+  availability: { development: true, production: true },
+  catalog: {
+    category: "versus",
+    color: "#145cff",
+    durationLabel: "A 5 puntos",
+    modeLabel: "Rojo contra azul",
+    audioLabel: "Música + efectos",
+    rules: ["Un equipo ocupa la mitad roja y otro la azul", "Devuelve la pelota pisando la zona iluminada"]
+  },
   players: {
     allowAny: true,
     min: 2,
@@ -70,6 +79,19 @@ export const manifest: GameManifest = {
   defaultDurationMillis: 0,
   display: {
     entry: "./display"
+  },
+  preview: {
+    seed: 137,
+    playerCount: 2,
+    difficulty: "medium",
+    options: { points_to_win: 5 },
+    actions: [
+      { atMillis: 100, type: "press", x: 7, y: 3 },
+      { atMillis: 100, type: "press", x: 7, y: 28 }
+    ],
+    captureStartMillis: 2_200,
+    frameCount: 18,
+    frameIntervalMillis: 120
   },
   tags: ["arcade", "two-player", "typescript"]
 };

@@ -12,7 +12,7 @@ The root `<html>` element gets `data-motion-levels-playground-api="ready"`
 when the API has been installed.
 
 The API is intentionally local tooling, not part of the game contract.
-The playground runs games through the shared TypeScript SDK engine at a 30fps
+The playground runs games through the shared TypeScript SDK engine at a 50fps
 baseline. `ml.step()` with no argument advances exactly one engine frame.
 
 ## Deterministic Playthrough
