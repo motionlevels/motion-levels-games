@@ -10,6 +10,7 @@ import {
   gameEvent,
   normalizeGameConfig,
   paintFrameCell,
+  readGameConfigOption,
   type Frame,
   type GameConfig,
   type GameEvent,
@@ -25,7 +26,7 @@ import {
   type SeededRng,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
-import { manifest } from "./manifest.ts";
+import { arkanoidConfigVars, manifest } from "./manifest.ts";
 
 export const ballColor: HexColor = "#ffffff";
 export const paddleColor: HexColor = "#35d7ff";
@@ -163,7 +164,7 @@ class ArkanoidGame implements ArkanoidGameInstance {
     }
 
     const events: GameEvent[] = [];
-    const interval = moveIntervalForDifficulty(this.config.difficulty);
+    const interval = 1000 / ballSpeedForConfig(this.config);
     for (let moves = 0; moves < maxCatchUpMoves; moves += 1) {
       if (event.atMillis - this.lastMoveMillis < interval) {
         break;
@@ -247,7 +248,7 @@ class ArkanoidGame implements ArkanoidGameInstance {
       matchTarget: this.bricks.length,
       ball: { ...this.ball },
       ballMoves: this.ballMoves,
-      ballSpeed: 1000 / moveIntervalForDifficulty(this.config.difficulty),
+      ballSpeed: ballSpeedForConfig(this.config),
       bricksRemaining: remaining,
       launched: this.phase === "running",
       paddleWidth,
@@ -489,15 +490,20 @@ function drawSuccessFrame(frame: Frame): void {
   paintFrameCell(frame, 10, 15, successColor);
 }
 
-function moveIntervalForDifficulty(difficulty: string): number {
+function ballSpeedForConfig(config: NormalizedGameConfig): number {
+  const baseSpeed = readGameConfigOption(config.options, arkanoidConfigVars.ballSpeed);
+  return baseSpeed * difficultySpeedFactor(config.difficulty);
+}
+
+function difficultySpeedFactor(difficulty: string): number {
   switch (difficulty) {
-    case "easy":
-      return 240;
+    case "medium":
+      return 1.25;
     case "hard":
-      return 150;
+      return 1.6;
     case "expert":
-      return 120;
+      return 2;
     default:
-      return 190;
+      return 1;
   }
 }

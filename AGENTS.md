@@ -206,6 +206,11 @@ no database, venue hardware, Motion Go, or platform API coupling.
   type, default, bounds, step, and choices. Normalize through
   `normalizeGameConfig` and read the exported variable descriptor with
   `readGameConfigOption`; do not repeat schema values in game logic.
+- During early gameplay tuning, prefer manifest variables for values likely to
+  need iteration, such as movement speed, spawn rate, or transition duration,
+  instead of hiding them as constants. After playtesting, deliberately keep the
+  variable, mark it internal with `playerFacing: false`, or hardcode the chosen
+  value and remove the variable. Do not leave unused tuning controls behind.
 - `packages/display-kit` owns reusable React display primitives, including the
   canonical `LivesMeter`; games must not recreate shared player-display UI.
   Reusable TV motion belongs with the primitive and shared CSS in display-kit,

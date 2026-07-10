@@ -67,6 +67,12 @@ rejects undeclared options, and resolves difficulty against the manifest before
 the game receives its configuration. The playground and media generator use
 that same SDK path.
 
+Values likely to change during gameplay tuning—such as speed, spawn pressure,
+or transition duration—should begin as manifest variables rather than hidden
+constants. Once playtesting settles them, either retain the supported option,
+set `playerFacing: false` to keep an operator-only control, or hardcode the
+chosen value and remove the variable entirely.
+
 Export reusable variable descriptors from `manifest.ts` when game logic needs a
 value. Pass the descriptor to `readGameConfigOption` so defaults and ranges are
 not repeated in `game.ts`:

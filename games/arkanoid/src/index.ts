@@ -10,4 +10,4 @@ export {
   type ArkanoidSnapshot
 } from "./game.ts";
 export { finishedFrame, finishedSnapshot, initEvents, runningFrame, runningSnapshot } from "./fixtures.ts";
-export { manifest } from "./manifest.ts";
+export { arkanoidConfigVars, manifest } from "./manifest.ts";

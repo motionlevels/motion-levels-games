@@ -14,7 +14,9 @@ Single-player floor Arkanoid for Motion Levels.
   the countdown completes. Subsequent steps move the paddle.
 - Break all 32 blocks to win.
 - Missing the ball costs one of three lives. Step in the control zone again to relaunch.
-- Easy, Medium, Hard, and Expert change only ball speed.
+- Ball speed is configurable in tiles per second. The selected difficulty
+  multiplies that base value, so tuning keeps the same progression between
+  Easy, Medium, Hard, and Expert.
 
 The game is deterministic for a given seed and uses the shared 30fps engine.
 Leaving the control zone during the pre-start grace window cancels the
