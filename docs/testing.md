@@ -10,7 +10,8 @@ job. Keep each layer focused so failures point to the relevant contract.
 - `npm run test:contracts`: dynamically discovers every game and verifies its
   exports, manifest-derived configurations, deterministic init/tick/reset,
   16x32 frame integrity, snapshot/event invariants, display rendering, and
-  shared paused-TV behavior. It also checks the CI workflow topology.
+  shared paused-TV behavior. It also checks package boundaries, the floor
+  visual-state invariant, and the CI workflow topology.
 - `npm run test:coverage`: runs separate thresholded coverage suites for the
   game SDK, display kit, and all game packages. Thresholds stay package-scoped
   so a well-tested game cannot hide a weak shared library.
@@ -23,6 +24,12 @@ Do not replace behavioral tests with source-text assertions when the behavior
 can be exercised through an exported function or rendered component. Source
 contracts remain appropriate for CSS rules and workflow wiring that do not
 have a runtime API in this repository.
+
+Package-boundary tests enforce dependency direction, not implementation size:
+the SDK stays framework-agnostic, the display kit may depend only on the SDK,
+games may depend only on shared packages, and the playground discovers games
+without importing individual game packages. Avoid line-count gates and broad
+snapshots; extract cohesive ownership and test its public behavior instead.
 
 ## Coverage Floors
 

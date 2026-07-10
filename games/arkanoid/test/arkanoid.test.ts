@@ -2,9 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FLOOR_COLS, FLOOR_ROWS, gameDifficultyOptions, gamePlayerCountOptions } from "@motion-levels-games/game-sdk";
+import {
+  FLOOR_COLS,
+  FLOOR_ROWS,
+  gameDifficultyOptions,
+  gamePlayerCountOptions,
+  normalizeGameConfig
+} from "@motion-levels-games/game-sdk";
 import {
   PlayerDisplay,
+  arkanoidConfigVars,
   brickColors,
   createGame,
   finishedSnapshot,
@@ -20,6 +27,8 @@ test("manifest exposes turn-friendly Any or one-player Arkanoid", () => {
   assert.deepEqual(manifest.players, { allowAny: true, min: 1, max: 1 });
   assert.deepEqual(gamePlayerCountOptions(manifest), [0, 1]);
   assert.deepEqual(gameDifficultyOptions(manifest), ["easy", "medium", "hard", "expert"]);
+  assert.deepEqual(manifest.config?.vars, Object.values(arkanoidConfigVars));
+  assert.equal(arkanoidConfigVars.ballSpeed.playerFacing, true);
 });
 
 test("Any player mode preserves the same Arkanoid board and rules", () => {
@@ -69,15 +78,31 @@ test("only the lower control zone detects the player and starts a countdown", ()
   assert.equal(game.snapshot().lastEventMessage, "Pelota en juego");
 });
 
-test("difficulty changes ball speed through deterministic movement", () => {
-  const easy = createStartedGame("easy");
-  const expert = createStartedGame("expert");
+test("manifest owns ball speed normalization", () => {
+  const belowRange = normalizeGameConfig({ options: { ball_speed: -100 } }, manifest);
+  const aboveRange = normalizeGameConfig({ options: { ball_speed: 100 } }, manifest);
+
+  assert.equal(belowRange.options.ball_speed, arkanoidConfigVars.ballSpeed.min);
+  assert.equal(aboveRange.options.ball_speed, arkanoidConfigVars.ballSpeed.max);
+  assert.equal(
+    normalizeGameConfig({}, manifest).options.ball_speed,
+    arkanoidConfigVars.ballSpeed.default
+  );
+});
+
+test("configured ball speed is amplified by difficulty", () => {
+  const easy = createStartedGame("easy", 137, 4);
+  const expert = createStartedGame("expert", 137, 4);
+  const fasterEasy = createStartedGame("easy", 137, 8);
 
   easy.tick({ atMillis: 3_400 });
   expert.tick({ atMillis: 3_400 });
+  fasterEasy.tick({ atMillis: 3_400 });
 
   assert.ok(expert.snapshot().ballMoves > easy.snapshot().ballMoves);
   assert.ok(expert.snapshot().ballSpeed > easy.snapshot().ballSpeed);
+  assert.ok(fasterEasy.snapshot().ballMoves > easy.snapshot().ballMoves);
+  assert.equal(fasterEasy.snapshot().ballSpeed, easy.snapshot().ballSpeed * 2);
 });
 
 test("leaving the control zone cancels the pre-start countdown", () => {
@@ -157,8 +182,13 @@ test("fixtures and Spanish player display render the game state", () => {
   assert.doesNotMatch(html, /Score|Lives|Message/);
 });
 
-function createStartedGame(difficulty: string, seed = 137): ArkanoidGameInstance {
-  const game = createGame({ difficulty, playerCount: 1, seed });
+function createStartedGame(difficulty: string, seed = 137, ballSpeed?: number): ArkanoidGameInstance {
+  const game = createGame({
+    difficulty,
+    options: ballSpeed === undefined ? undefined : { ball_speed: ballSpeed },
+    playerCount: 1,
+    seed
+  });
   game.init(0);
   game.press({ x: 7, y: 30, pressed: true, atMillis: 100 });
   game.tick({ atMillis: 2_100 });

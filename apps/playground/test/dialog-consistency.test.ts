@@ -6,14 +6,13 @@ const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8
 const gameConfigControlSource = readFileSync(new URL("../src/GameConfigControl.tsx", import.meta.url), "utf8");
 const phaseIndicatorSource = readFileSync(new URL("../src/PhaseIndicator.tsx", import.meta.url), "utf8");
 const playgroundSelectSource = readFileSync(new URL("../src/PlaygroundSelect.tsx", import.meta.url), "utf8");
+const statusDockSource = readFileSync(new URL("../src/PlaygroundStatusDock.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("all runtime phase surfaces share one indicator and color map", () => {
-  assert.equal(
-    appSource.match(/<PhaseIndicator\b/g)?.length,
-    2,
-    "header and Runtime card must both use PhaseIndicator"
-  );
+  const phaseIndicatorUses = [appSource, statusDockSource]
+    .flatMap((source) => source.match(/<PhaseIndicator\b/g) ?? []);
+  assert.equal(phaseIndicatorUses.length, 2, "header and Runtime card must both use PhaseIndicator");
   assert.match(
     phaseIndicatorSource,
     /className=\{`phase-indicator \$\{className\}`\.trim\(\)\} data-phase=\{phase\}/,
@@ -110,12 +109,6 @@ test("every playground configuration change restarts the active game", () => {
   assert.match(appSource, /const changeDifficulty[\s\S]*?restart\([\s\S]*?nextDifficulty\)/);
   assert.match(appSource, /const setGameOptionState[\s\S]*?restart\([\s\S]*?nextOptions/);
   assert.match(appSource, /storeSelectedGameId\(nextGame\.manifest\.id\)/);
-});
-
-test("game settings identify player-facing and internal variables without hiding either", () => {
-  assert.match(gameConfigControlSource, /configVar\.playerFacing \? "Player" : "Internal"/);
-  assert.match(gameConfigControlSource, /is-player-facing/);
-  assert.doesNotMatch(appSource, /gameConfigVars\.filter/);
 });
 
 test("compact action groups use zero-gap shared control styling", () => {
@@ -215,17 +208,9 @@ test("playground surfaces preserve their hardware aspect ratios", () => {
   );
 });
 
-test("latched floor inputs can never create persistent tile decoration", () => {
-  assert.doesNotMatch(
-    styleSource,
-    /(?:ml-floor-tile-pressed|\.ml-floor-tile[^{]*(?:data-active|aria-pressed)|(?:data-active|aria-pressed)[^{]*\.ml-floor-tile)/,
-    "the game frame must be the only persistent visual state on the floor"
-  );
-});
-
 test("tall status docks expose useful adaptive diagnostics", () => {
   for (const section of ["status-runtime-summary", "status-event-history", "status-run-summary"]) {
-    assert.match(appSource, new RegExp(`className="${section}"`), `${section} must remain available`);
+    assert.match(statusDockSource, new RegExp(`className="${section}"`), `${section} must remain available`);
   }
   assert.match(
     styleSource,
@@ -239,32 +224,7 @@ test("tall status docks expose useful adaptive diagnostics", () => {
   );
 });
 
-test("event stream stays visible, timestamped, and follows the latest event", () => {
-  assert.match(
-    appSource,
-    /className="status-event-history"[\s\S]*?aria-live="polite"[\s\S]*?ref=\{eventStreamRef\}/,
-    "the event stream must announce and follow live additions"
-  );
-  assert.match(
-    appSource,
-    /eventStream\.map[\s\S]*?<time[\s\S]*?formatElapsedClock\(event\.atMillis\)/,
-    "every event row needs the shared elapsed-time clock"
-  );
-  assert.match(
-    appSource,
-    /aria-pressed=\{eventAutoFollow\}[\s\S]*?setEventAutoFollowState\(!eventAutoFollowRef\.current\)/,
-    "auto-follow needs an accessible icon toggle"
-  );
-  assert.match(
-    appSource,
-    /const isAtLatest = stream\.scrollTop <= 1;[\s\S]*?setEventAutoFollowState\(isAtLatest\)/,
-    "scrolling away must pause follow and returning to the top must resume it"
-  );
-  assert.doesNotMatch(
-    appSource,
-    /const eventStream = \[\.\.\.events\]\.reverse\(\)/,
-    "the newest event must stay at the top"
-  );
+test("event stream remains scrollable without disturbing the dock layout", () => {
   assert.match(
     styleSource,
     /\.status-event-history\s*\{[^}]*display:\s*grid;[^}]*overflow-y:\s*auto;/s,

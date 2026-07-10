@@ -53,9 +53,8 @@ mouse or touch drag on an empty tile presses every crossed tile; starting on an
 occupied tile releases every crossed tile. Those inputs remain active after
 pointer-up so one gesture can represent several simultaneous players, but they
 do not add persistent tile decoration: the rendered game frame remains the
-only persistent floor visual. `aria-pressed` and `data-active` expose occupancy
-semantically without CSS styling. Pausing or restarting clears all occupied
-preview tiles.
+only persistent floor visual. `aria-pressed` exposes occupancy semantically
+without CSS styling. Pausing or restarting clears all occupied preview tiles.
 
 ## Manifest-driven configuration
 
@@ -68,6 +67,12 @@ Numeric variables may declare their bounds and UI step.
 rejects undeclared options, and resolves difficulty against the manifest before
 the game receives its configuration. The playground and media generator use
 that same SDK path.
+
+Values likely to change during gameplay tuning—such as speed, spawn pressure,
+or transition duration—should begin as manifest variables rather than hidden
+constants. Once playtesting settles them, either retain the supported option,
+set `playerFacing: false` to keep an operator-only control, or hardcode the
+chosen value and remove the variable entirely.
 
 Export reusable variable descriptors from `manifest.ts` when game logic needs a
 value. Pass the descriptor to `readGameConfigOption` so defaults and ranges are

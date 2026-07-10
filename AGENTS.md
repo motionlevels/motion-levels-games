@@ -131,10 +131,10 @@ no database, venue hardware, Motion Go, or platform API coupling.
 ## Developer UI Consistency
 
 - Interactive floor occupancy is semantic state, not a visual effect. Latched
-  mouse/touch inputs may expose `aria-pressed` and `data-active`, but CSS must
-  never style those attributes or add a persistent active/pressed tile class.
-  Only a real `:hover` or `:focus-visible` state may decorate an input tile;
-  the game frame owns every persistent floor visual.
+  mouse/touch inputs expose only `aria-pressed`; CSS must never style that
+  attribute or add a persistent active/pressed tile class. Only a real `:hover`
+  or `:focus-visible` state may decorate an input tile; the game frame owns
+  every persistent floor visual.
 - Persist the last selected playground game and restore it only when its id is
   still present in the discovered game catalog. Every player count,
   difficulty, seed, or manifest setting change must restart the active game.
@@ -206,6 +206,11 @@ no database, venue hardware, Motion Go, or platform API coupling.
   type, default, bounds, step, and choices. Normalize through
   `normalizeGameConfig` and read the exported variable descriptor with
   `readGameConfigOption`; do not repeat schema values in game logic.
+- During early gameplay tuning, prefer manifest variables for values likely to
+  need iteration, such as movement speed, spawn rate, or transition duration,
+  instead of hiding them as constants. After playtesting, deliberately keep the
+  variable, mark it internal with `playerFacing: false`, or hardcode the chosen
+  value and remove the variable. Do not leave unused tuning controls behind.
 - `packages/display-kit` owns reusable React display primitives, including the
   canonical `LivesMeter`; games must not recreate shared player-display UI.
   Reusable TV motion belongs with the primitive and shared CSS in display-kit,

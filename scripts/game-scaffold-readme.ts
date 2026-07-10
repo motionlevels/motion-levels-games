@@ -41,6 +41,16 @@ not change the board, readiness zones, scoring, or rules. Set it to \`false\`
 only when the exact count materially changes gameplay, then document and test
 each supported count.
 
+## Gameplay tuning variables
+
+Expose values likely to need playtesting—such as movement speed, spawn rate,
+or transition duration—through \`manifest.config.vars\` while tuning the game.
+Export each descriptor from \`manifest.ts\` and read it with
+\`readGameConfigOption\` so its default, bounds, and step are declared once.
+After tuning, deliberately keep the supported option, set \`playerFacing: false\`
+for an operator-only control, or hardcode the chosen value and remove the
+variable. Do not leave unused controls behind.
+
 ## Required winning animations
 
 Implement a distinct game-win animation on both the floor and player display
