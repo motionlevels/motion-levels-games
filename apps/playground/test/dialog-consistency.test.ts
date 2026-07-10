@@ -209,11 +209,12 @@ test("playground surfaces preserve their hardware aspect ratios", () => {
   );
 });
 
-test("latched floor inputs never imitate the transient mouse hover", () => {
-  const pressedRule = styleSource.match(/\.floor-panel \.ml-floor-tile-pressed\s*\{[^}]*\}/s)?.[0];
-  assert.ok(pressedRule, "the floor needs an intentional occupied-tile treatment");
-  assert.match(pressedRule, /inset 0 0 0 2px rgba\(53, 215, 255,/);
-  assert.doesNotMatch(pressedRule, /outline|transform|#ffffff/, "persistent input must not reuse the white scaled hover effect");
+test("latched floor inputs can never create persistent tile decoration", () => {
+  assert.doesNotMatch(
+    styleSource,
+    /(?:ml-floor-tile-pressed|\.ml-floor-tile[^{]*(?:data-active|aria-pressed)|(?:data-active|aria-pressed)[^{]*\.ml-floor-tile)/,
+    "the game frame must be the only persistent visual state on the floor"
+  );
 });
 
 test("tall status docks expose useful adaptive diagnostics", () => {

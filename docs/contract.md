@@ -49,9 +49,12 @@ must not manually thread or recreate the runner's pause state.
 
 The interactive playground floor models occupied physical tiles. Starting a
 mouse or touch drag on an empty tile presses every crossed tile; starting on an
-occupied tile releases every crossed tile. Those inputs remain visible and
-active after pointer-up so one gesture can represent several simultaneous
-players. Pausing or restarting clears all occupied preview tiles.
+occupied tile releases every crossed tile. Those inputs remain active after
+pointer-up so one gesture can represent several simultaneous players, but they
+do not add persistent tile decoration: the rendered game frame remains the
+only persistent floor visual. `aria-pressed` and `data-active` expose occupancy
+semantically without CSS styling. Pausing or restarting clears all occupied
+preview tiles.
 
 ## Manifest-driven configuration
 

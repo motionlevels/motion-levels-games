@@ -166,6 +166,18 @@ test("FloorPreview keeps pointer hover separate from persistent focus", () => {
   );
 });
 
+test("occupied floor inputs remain semantic and never gain persistent visuals", () => {
+  assert.doesNotMatch(componentSource, /ml-floor-tile-pressed/);
+  assert.match(componentSource, /className: "ml-floor-tile"/);
+  assert.match(componentSource, /"data-active": occupied \? "true" : undefined/);
+  assert.match(componentSource, /aria-pressed=\{occupied\}/);
+  assert.doesNotMatch(
+    styleSource,
+    /(?:data-active|aria-pressed|ml-floor-tile-pressed)/,
+    "only real hover and keyboard focus may decorate an interactive tile"
+  );
+});
+
 test("GameDisplayShell renders title and phase", () => {
   const html = renderToStaticMarkup(
     React.createElement(GameDisplayShell, { title: "Hello World", phase: "running" }, "body")

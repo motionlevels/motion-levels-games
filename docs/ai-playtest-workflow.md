@@ -94,6 +94,12 @@ targets, and held-player readiness do not change. Capture the native display
 and confirm that its status says `En pausa` for both manual and temporary UI
 pause locks.
 
+After any pointer floor interaction, move the pointer completely outside the
+floor and inspect the board. Latched inputs may remain logically active, but no
+outline, glow, brightness, scale, or other tile decoration may remain; only the
+game-rendered frame may persist. Keyboard `:focus-visible` styling is allowed
+only while that tile genuinely has visible keyboard focus.
+
 Generate catalog-style media when reviewing a game card or TV display:
 
 ```js

@@ -403,7 +403,7 @@ export function FloorPreview({
   const activePointerIdRef = useRef<number | null>(null);
   const inputPainterRef = useRef(new FloorInputPainter());
   const previousInputResetKeyRef = useRef(inputResetKey);
-  const [pressedTileKeys, setPressedTileKeys] = useState(() => new Set<string>());
+  const [occupiedTileKeys, setOccupiedTileKeys] = useState(() => new Set<string>());
   const style = {
     "--ml-floor-cols": frame.width,
     "--ml-floor-rows": frame.height
@@ -440,7 +440,7 @@ export function FloorPreview({
         onTileRelease?.(action.x, action.y);
       }
     }
-    setPressedTileKeys(new Set(inputPainterRef.current.keys()));
+    setOccupiedTileKeys(new Set(inputPainterRef.current.keys()));
   }, [onTilePress, onTileRelease]);
   const beginInputGesture = useCallback((tile: FloorInputTile | null) => {
     if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
@@ -458,7 +458,7 @@ export function FloorPreview({
   }, [applyInputActions]);
   const clearInputPainter = useCallback(() => {
     inputPainterRef.current.reset();
-    setPressedTileKeys(new Set());
+    setOccupiedTileKeys(new Set());
   }, []);
   useEffect(() => {
     if (Object.is(previousInputResetKeyRef.current, inputResetKey)) {
@@ -569,14 +569,14 @@ export function FloorPreview({
           gridRowStart: cell.y + 1
         } as CSSProperties;
         const key = `${cell.x}-${cell.y}`;
-        const active = pressedTileKeys.has(`${cell.x}:${cell.y}`);
+        const occupied = occupiedTileKeys.has(`${cell.x}:${cell.y}`);
         const sharedProps = {
-          className: `ml-floor-tile ${active ? "ml-floor-tile-pressed" : ""}`.trim(),
+          className: "ml-floor-tile",
           style: tileStyle,
           "data-tile-x": cell.x,
           "data-tile-y": cell.y,
           "data-color": cell.color,
-          "data-active": active ? "true" : undefined
+          "data-active": occupied ? "true" : undefined
         };
 
         if (interactive) {
@@ -584,7 +584,7 @@ export function FloorPreview({
             <button
               {...sharedProps}
               aria-label={`Baldosa ${cell.x}, ${cell.y}`}
-              aria-pressed={active}
+              aria-pressed={occupied}
               key={key}
               onClick={(event) => {
                 if (event.detail === 0) {

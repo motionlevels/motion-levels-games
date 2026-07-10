@@ -169,6 +169,12 @@ existing engine state for deterministic inspection; it does not apply blocked
 input. For deterministic input, briefly `resume()`, send the input
 synchronously, then `pause()` before stepping time.
 
+The interactive floor keeps latched mouse/touch occupancy after pointer-up so
+one gesture can represent multiple simultaneous players. Occupancy is exposed
+through `aria-pressed` and `data-active` for semantics and automation, but it
+has no persistent CSS treatment. Once the pointer leaves, all hover visuals
+must disappear; the game frame is the only persistent visual floor state.
+
 ## Start Lifecycle
 
 Games normally initialize in `waiting`, not `running`. Their snapshot reports
