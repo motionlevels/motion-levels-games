@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
-  ArrowUpToLine,
   Bug,
   Check,
   Copy,
@@ -53,10 +52,12 @@ import {
 } from "./captureImages.ts";
 import motionLevelsLogo from "./assets/motion-levels-icon.webp";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
+import { eventKey, isEventStreamAtLatest } from "./eventStream.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
 import { GameConfigControl } from "./GameConfigControl.tsx";
 import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
 import { PhaseIndicator } from "./PhaseIndicator.tsx";
+import { PlaygroundStatusDock, type ActiveRunSetting } from "./PlaygroundStatusDock.tsx";
 import { PlaygroundSelect } from "./PlaygroundSelect.tsx";
 import { isPlaygroundPaused, updatePauseLocks, type PauseLockSet } from "./pausePolicy.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
@@ -249,7 +250,7 @@ export function App() {
       return;
     }
 
-    const isAtLatest = stream.scrollTop <= 1;
+    const isAtLatest = isEventStreamAtLatest(stream.scrollTop);
     if (isAtLatest !== eventAutoFollowRef.current) {
       setEventAutoFollowState(isAtLatest);
     }
@@ -851,7 +852,6 @@ export function App() {
     fullscreenFallback ? "is-fullscreen-fallback" : ""
   ].filter(Boolean).join(" ");
   const latestEvent = events[0];
-  const eventStream = events;
   const displayedPhase = paused ? "paused" : snapshot.phase;
   const frameMillis = engineRef.current.frameMillis;
   const frameNumber = frameMillis > 0 ? Math.round(engineRef.current.clockMillis / frameMillis) : 0;
@@ -869,11 +869,11 @@ export function App() {
     ["Frame", frameNumber],
     ["API", "ready"]
   ];
-  const activeRunSettings = [
+  const activeRunSettings: ActiveRunSetting[] = [
     ["Difficulty", difficultyLabels[difficulty] ?? difficulty],
     ["Players", playerCount === 0 ? "Any" : String(playerCount)],
     ["Seed", String(seed)],
-    ...gameConfigVars.map((configVar) => [
+    ...gameConfigVars.map((configVar): ActiveRunSetting => [
       configVar.label,
       formatConfigValue(configVar, gameOptions[configVar.key])
     ])
@@ -1187,103 +1187,21 @@ export function App() {
             </div>
           </div>
 
-          <section className="status-dock" aria-label="Playground status">
-            <article className="status-card status-card-runtime">
-              <div className="status-card-head">
-                <span>Runtime</span>
-                <PhaseIndicator as="strong" className="runtime-state" phase={displayedPhase} />
-              </div>
-              <div className="status-runtime-summary">
-                <span>Engine clock</span>
-                <strong>{formatElapsedClock(engineRef.current.clockMillis)}</strong>
-                <small>{frameNumber.toLocaleString()} frames processed</small>
-              </div>
-              <dl className="status-metrics">
-                <div>
-                  <dt>Clock</dt>
-                  <dd>{formatElapsedClock(engineRef.current.clockMillis)}</dd>
-                </div>
-                <div>
-                  <dt>FPS</dt>
-                  <dd>{engineRef.current.fps}</dd>
-                </div>
-                <div>
-                  <dt>Frame</dt>
-                  <dd>{frameNumber}</dd>
-                </div>
-              </dl>
-            </article>
-
-            <article className="status-card status-card-event">
-              <div className="status-card-head">
-                <span>Event stream</span>
-                <div className="status-stream-controls">
-                  <code aria-label={`${events.length} retained events`}>{events.length}</code>
-                  <button
-                    aria-label={eventAutoFollow ? "Disable event auto-follow" : "Enable event auto-follow"}
-                    aria-pressed={eventAutoFollow}
-                    className={`status-stream-follow ${eventAutoFollow ? "is-active" : ""}`}
-                    onClick={() => setEventAutoFollowState(!eventAutoFollowRef.current)}
-                    title={eventAutoFollow ? "Auto-following newest events" : "Event auto-follow paused"}
-                    type="button"
-                  >
-                    {eventAutoFollow ? <ArrowUpToLine aria-hidden="true" /> : <Pause aria-hidden="true" />}
-                  </button>
-                </div>
-              </div>
-              <ol
-                className="status-event-history"
-                aria-label="Live event stream"
-                aria-live="polite"
-                aria-relevant="additions"
-                onScroll={handleEventStreamScroll}
-                ref={eventStreamRef}
-              >
-                {eventStream.length > 0 ? (
-                  eventStream.map((event) => (
-                    <li key={eventKey(event)}>
-                      <time dateTime={`PT${Math.max(0, event.atMillis) / 1000}S`}>
-                        {formatElapsedClock(event.atMillis)}
-                      </time>
-                      <strong>{event.cue}</strong>
-                      <span>{event.message}</span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="status-event-empty">No events yet</li>
-                )}
-              </ol>
-            </article>
-
-            <article className="status-card status-card-config">
-              <div className="status-card-head">
-                <span>Active run</span>
-                <strong>{selectedGame.manifest.label}</strong>
-              </div>
-              <dl className="status-run-summary">
-                <div>
-                  <dt>Score</dt>
-                  <dd>{snapshot.score}</dd>
-                </div>
-                <div>
-                  <dt>Targets</dt>
-                  <dd>{snapshot.activeTargets}</dd>
-                </div>
-                <div>
-                  <dt>Events</dt>
-                  <dd>{events.length}</dd>
-                </div>
-              </dl>
-              <dl className="status-config-list">
-                {activeRunSettings.map(([label, value]) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </article>
-          </section>
+          <PlaygroundStatusDock
+            activeRunSettings={activeRunSettings}
+            autoFollow={eventAutoFollow}
+            clockMillis={engineRef.current.clockMillis}
+            eventStreamRef={eventStreamRef}
+            events={events}
+            fps={engineRef.current.fps}
+            frameNumber={frameNumber}
+            gameLabel={selectedGame.manifest.label}
+            onAutoFollowChange={setEventAutoFollowState}
+            onEventStreamScroll={handleEventStreamScroll}
+            phase={displayedPhase}
+            score={snapshot.score}
+            targets={snapshot.activeTargets}
+          />
         </article>
 
         <article className="panel floor-panel">
@@ -1362,10 +1280,6 @@ function pointToPhysicalTile(x: number, y: number, _space: PlaygroundPointSpace)
 
 function randomSeed(): number {
   return MIN_GAME_SEED + Math.floor(Math.random() * (MAX_GAME_SEED - MIN_GAME_SEED + 1));
-}
-
-function eventKey(event: GameEvent): string {
-  return `${event.atMillis}:${event.cue}:${event.message}`;
 }
 
 // Re-keys on each value change so the CSS highlight animation replays, giving
