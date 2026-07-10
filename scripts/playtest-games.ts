@@ -5,6 +5,9 @@ import { createGameEngine, type Frame } from "@motion-levels-games/game-sdk";
 import {
   PlayerDisplay as HelloWorldDisplay,
   createGame as createHelloWorldGame,
+  hazardColor,
+  helloWorldHazards,
+  helloWorldStartingLives,
   helloWorldTargetScore,
   helloWorldTargets,
   manifest as helloWorldManifest,
@@ -35,6 +38,15 @@ function playtestHelloWorld() {
 
   assert.equal(engine.state.snapshot.phase, "running");
   assert.ok(countColor(engine.state.frame, targetColor) > 0, "target should be visible");
+  assert.equal(countColor(engine.state.frame, hazardColor), 1, "one red hazard should be visible");
+
+  const [firstHazard] = helloWorldHazards();
+  assert.ok(firstHazard);
+  engine.press(firstHazard.x, firstHazard.y);
+  engine.release(firstHazard.x, firstHazard.y);
+  engine.step();
+  assert.equal(engine.state.snapshot.lives, helloWorldStartingLives - 1);
+  assert.equal(countColor(engine.state.frame, hazardColor), 1, "the next red hazard should replace the pressed one");
 
   helloWorldTargets().forEach((target, index) => {
     engine.press(target.x, target.y);
@@ -54,7 +66,7 @@ function playtestHelloWorld() {
     })
   );
 
-  assert.match(html, /Hello World/);
+  assert.ok(html.includes(helloWorldManifest.label));
   assert.match(html, /5\/5/);
 
   return {

@@ -52,6 +52,16 @@ test("LivesMeter owns calm idle and life-change motion", () => {
   );
 });
 
+test("Hola Mundo result motion is distinct and honors reduced motion", () => {
+  assert.match(styleSource, /\.hello-world-display\.is-result-win \.ml-solo-message\s*\{[^}]*helloWorldWinGlow/s);
+  assert.match(styleSource, /\.hello-world-display\.is-result-lose \.ml-solo-message\s*\{[^}]*helloWorldLosePulse/s);
+  assert.match(styleSource, /@keyframes helloWorldResultEnter/);
+  assert.match(
+    styleSource,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.hello-world-display\.is-result-win[\s\S]*?animation:\s*none;/
+  );
+});
+
 test("primary solo metrics use distance-readable typography", () => {
   assert.match(
     styleSource,
