@@ -1,0 +1,54 @@
+# Testing And CI
+
+The repository uses several small verification layers instead of one opaque
+job. Keep each layer focused so failures point to the relevant contract.
+
+## Local Commands
+
+- `npm run check:fast`: lint and strict TypeScript checks for the edit loop.
+- `npm test`: workspace unit and behavioral tests.
+- `npm run test:contracts`: dynamically discovers every game and verifies its
+  exports, manifest-derived configurations, deterministic init/tick/reset,
+  16x32 frame integrity, snapshot/event invariants, display rendering, and
+  shared paused-TV behavior. It also checks the CI workflow topology.
+- `npm run test:coverage`: runs separate thresholded coverage suites for the
+  game SDK, display kit, and all game packages. Thresholds stay package-scoped
+  so a well-tested game cannot hide a weak shared library.
+- `npm run test:all`: workspace tests, repository contracts, and the generated
+  game scaffold smoke test.
+- `npm run check`: the complete local gate: quality checks, all tests, build,
+  and deterministic playtests.
+
+Do not replace behavioral tests with source-text assertions when the behavior
+can be exercised through an exported function or rendered component. Source
+contracts remain appropriate for CSS rules and workflow wiring that do not
+have a runtime API in this repository.
+
+## Coverage Floors
+
+Coverage is a regression floor, not a target to game. Current minimums are:
+
+| Surface | Lines | Functions | Branches |
+| --- | ---: | ---: | ---: |
+| Game SDK | 90% | 90% | 80% |
+| Display kit | 75% | 60% | 70% |
+| Games | 85% | 80% | 80% |
+
+Raise a floor when durable behavioral tests increase the baseline. Do not lower
+one to land an unrelated change without documenting the uncovered behavior.
+
+## GitHub Actions
+
+`ci.yml` and `dev-games.yml` call the same reusable `checks.yml` workflow. This
+prevents the main and authoring branches from drifting apart. The reusable
+workflow runs four independent jobs:
+
+1. lint, manifest validation, and TypeScript;
+2. the full test set on Node 22 for compatibility;
+3. repository contracts and thresholded coverage on Node 24;
+4. the production build and deterministic playtests on Node 24, with the
+   playground build uploaded for inspection.
+
+Caller workflows use concurrency cancellation so obsolete commits stop
+consuming CI time. Every job has a timeout and read-only repository permission.
+The `dev` caller retains its additional ancestry check before shared CI runs.

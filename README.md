@@ -18,12 +18,15 @@ npm run dev
 `npm run check:fast` runs the native linter and strict workspace typechecks for
 the normal edit loop. `npm run check` adds all tests, validation, builds, the
 scaffold smoke test, and deterministic game playtests before a commit or push.
+See [`docs/testing.md`](docs/testing.md) for the contract, coverage, and CI
+layers.
 
 ## Workspace
 
 - `packages/game-sdk`: framework-agnostic TypeScript game contract.
 - `packages/display-kit`: reusable React display primitives.
-- `games/hello-world`: reference game and lifecycle example used by CI.
+- `games/*`: independently tested game packages discovered through their
+  manifests and index exports.
 - `apps/playground`: local app that runs the game, floor, display, event log,
   and snapshot inspector together.
 

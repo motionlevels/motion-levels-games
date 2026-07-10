@@ -1,0 +1,73 @@
+name: Shared checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint, manifests, and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run validate:games
+      - run: npm run typecheck
+
+  compatibility-tests:
+    name: Node 22 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:all
+
+  coverage-tests:
+    name: Node 24 coverage and contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:contracts
+      - run: npm run test:coverage
+      - run: npm run test --workspace @motion-levels-games/playground
+      - run: npm run test:scaffold
+
+  build-and-playtest:
+    name: Production build and deterministic playtest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run playtest
+      - name: Upload playground build
+        uses: actions/upload-artifact@v4
+        with:
+          name: playground-dist
+          path: apps/playground/dist
+          if-no-files-found: error
+          retention-days: 7

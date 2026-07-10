@@ -310,6 +310,7 @@ class PingPongGame implements PingPongGameInstance {
     this.winningScore = this.readWinningScore();
     this.players = this.createPlayers();
     this.speed = speedForConfig(this.config);
+    this.motionEventId = 0;
     this.resetGame(this.config.nowMillis);
     this.lastEvent = gameEvent("none", "Listo", this.config.nowMillis);
   }

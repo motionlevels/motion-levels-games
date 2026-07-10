@@ -163,6 +163,10 @@ no database, venue hardware, Motion Go, or platform API coupling.
   linter with strict workspace typechecks and should remain quick enough to run
   after every meaningful code edit. Use `npm run lint:fix` only for safe lint
   fixes, then inspect the diff.
+- Use `npm run test:contracts` after changing a manifest, game lifecycle,
+  reset behavior, frame rendering, or player-display shell integration. Use
+  `npm run test:coverage` when changing tested runtime behavior or coverage
+  boundaries. `docs/testing.md` defines the local and CI layers.
 - After every task or prompt that changes repository files, commit the completed
   work before handing it off. Do not leave finished changes uncommitted.
 - Never force-push or rewrite Git history. Do not use `git push --force`,

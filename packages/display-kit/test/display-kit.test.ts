@@ -4,7 +4,19 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-games/game-sdk";
-import { FloorPreview, GameDisplayShell, LivesMeter, MetricPanel, PlayerDisplayRuntimeProvider, PlayerReadyOverlay, RoundStrip } from "../src/index.tsx";
+import {
+  FloorPreview,
+  FramePreviewPanel,
+  GameDisplayShell,
+  LivesMeter,
+  MetricPanel,
+  MetricRow,
+  PlayerDisplayRuntimeProvider,
+  PlayerReadyOverlay,
+  PlayerScorePanel,
+  RoundStrip,
+  VersusScoreboard
+} from "../src/index.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const componentSource = readFileSync(new URL("../src/index.tsx", import.meta.url), "utf8");
@@ -22,6 +34,50 @@ test("MetricPanel renders label and value without app dependencies", () => {
 
   assert.match(html, /Score/);
   assert.match(html, /42/);
+});
+
+test("score primitives clamp progress and preserve both team identities", () => {
+  const left = { label: "Rojo", score: 3, color: "#ff1c28" as const };
+  const right = { label: "Azul", score: 7, color: "#145cff" as const };
+  const scoreboard = renderToStaticMarkup(React.createElement(VersusScoreboard, {
+    centerLabel: "Objetivo",
+    centerValue: 5,
+    left,
+    right,
+    target: 5
+  }));
+  const overTarget = renderToStaticMarkup(React.createElement(PlayerScorePanel, {
+    player: right,
+    side: "blue",
+    target: 5
+  }));
+
+  assert.match(scoreboard, /aria-label="Marcador"/);
+  assert.match(scoreboard, /Rojo/);
+  assert.match(scoreboard, /Azul/);
+  assert.match(scoreboard, /--ml-score-progress:0\.6/);
+  assert.match(overTarget, /--ml-score-progress:1/);
+});
+
+test("layout primitives expose their semantic labels and column contract", () => {
+  const frame = createFrame("#05070a");
+  const rowProps = {
+    children: React.createElement(MetricPanel, { label: "Tiempo", value: "0:30" }),
+    className: "summary",
+    columns: 4
+  } satisfies React.ComponentProps<typeof MetricRow>;
+  const row = renderToStaticMarkup(React.createElement(MetricRow, rowProps));
+  const preview = renderToStaticMarkup(React.createElement(FramePreviewPanel, {
+    className: "arena",
+    frame,
+    label: "Juego en el suelo"
+  }));
+
+  assert.match(row, /ml-metric-row summary/);
+  assert.match(row, /--ml-metric-columns:4/);
+  assert.match(preview, /ml-frame-preview-panel arena/);
+  assert.match(preview, /Juego en el suelo/);
+  assert.equal((preview.match(/data-tile-x=/g) ?? []).length, 512);
 });
 
 test("LivesMeter renders red remaining hearts and gray lost hearts", () => {
@@ -162,6 +218,13 @@ test("PlayerReadyOverlay renders shared waiting and countdown states in Spanish"
   assert.match(startingHtml, /Todos listos/);
   assert.match(startingHtml, />2<\/strong>/);
   assert.match(styleSource, /@keyframes ml-ready-ring/);
+  assert.equal(
+    renderToStaticMarkup(React.createElement(PlayerReadyOverlay, {
+      snapshot: { ...baseSnapshot, phase: "running" }
+    })),
+    "",
+    "the readiness overlay must leave live gameplay unobstructed"
+  );
 });
 
 test("GameDisplayShell balances its brand and status rails", () => {
