@@ -23,3 +23,6 @@ so the playground and development environments can inspect the same artifact.
 Tagged releases matching `games-v*` publish a deterministic `.tgz` and its
 SHA-256 through GitHub Releases. Normal CI uploads the same bundle as a
 revision-named workflow artifact.
+
+The runtime entry is bundled for Node.js 20, matching the Debian 13 venue
+package. Consumers must provide Node.js 20 or newer.

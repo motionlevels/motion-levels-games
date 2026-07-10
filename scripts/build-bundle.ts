@@ -26,7 +26,7 @@ await build({
   bundle: true,
   format: "esm",
   platform: "node",
-  target: "node22",
+  target: "node20",
   define: { MOTION_LEVELS_GAMES_REVISION: JSON.stringify(sourceRevision) },
   sourcemap: false,
   legalComments: "none"
