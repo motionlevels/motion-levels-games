@@ -861,6 +861,9 @@
 
 .ping-pong-display.is-phase-starting .ml-versus-center strong {
   animation: pingPongCountdown 620ms cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
+  font-size: clamp(68px, 4.4vw, 86px);
+  letter-spacing: -0.06em;
+  white-space: nowrap;
 }
 
 .ping-pong-display.is-scoring-red .ml-player-score-red,

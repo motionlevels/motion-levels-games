@@ -29,6 +29,10 @@ test("Ping Pong motion is namespaced and honors reduced motion", () => {
   assert.match(styleSource, /\.ping-pong-display \*/);
 });
 
+test("Ping Pong start countdown fits the center scoreboard card", () => {
+  assert.match(styleSource, /\.ping-pong-display\.is-phase-starting \.ml-versus-center strong \{[\s\S]*font-size: clamp\(68px, 4\.4vw, 86px\);[\s\S]*white-space: nowrap;/u);
+});
+
 test("MetricPanel renders label and value without app dependencies", () => {
   const html = renderToStaticMarkup(React.createElement(MetricPanel, { label: "Score", value: 42 }));
 
