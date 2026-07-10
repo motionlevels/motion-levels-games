@@ -57,6 +57,7 @@ assert.equal(manifestModule.manifest?.label, "CI Smoke Game");
 assert.equal(manifestModule.manifest?.players?.allowAny, true);
 
 const readme = await readFile(path.join(gameRoot, "README.md"), "utf8");
+const gameSource = await readFile(path.join(gameRoot, "src/game.ts"), "utf8");
 assert.match(readme, /ci-smoke-game/);
 assert.match(readme, /Required player display review/);
 assert.match(readme, /native 1920x1080 player display/);
@@ -68,5 +69,7 @@ assert.match(readme, /Player count policy/);
 assert.match(readme, /players\.allowAny: true/);
 assert.match(readme, /Design for venue viewing distance/);
 assert.match(readme, /large empty metric cards/);
+assert.match(readme, /@motion-levels-games\/game-sdk\/effects/);
+assert.match(gameSource, /import \{ paintDiamondRing \} from "@motion-levels-games\/game-sdk\/effects"/);
 
 console.log(`Scaffold smoke test created ${gameRoot}`);

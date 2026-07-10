@@ -23,6 +23,7 @@ import {
   type PressEvent,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
+import { paintDiamondRing, paintDiamondWave } from "@motion-levels-games/game-sdk/effects";
 import { manifest } from "./manifest.ts";
 
 export const targetColor: HexColor = "#7ee787";
@@ -262,28 +263,24 @@ class HelloWorldGame implements HelloWorldGameInstance {
     const color: HexColor = this.phase === "starting" ? "#ffe176" : targetColor;
     const radius = this.phase === "starting" ? 2 + pulse % 10 : 3 + pulse % 4;
 
-    for (let y = 0; y < FLOOR_ROWS; y += 1) {
-      for (let x = 0; x < FLOOR_COLS; x += 1) {
-        const distance = Math.abs(x - centerX) + Math.abs(y - centerY);
-        if (Math.abs(distance - radius) <= 1) {
-          paintFrameCell(frame, x, y, color);
-        }
-      }
-    }
+    paintDiamondRing(frame, { centerX, centerY, color, radius });
   }
 
   private drawResultAnimation(frame: Frame): void {
     const animationStep = Math.floor((this.nowMillis - (this.finishedAtMillis ?? this.nowMillis)) / 140);
     const won = this.score >= helloWorldTargetScore;
 
+    if (won) {
+      paintDiamondWave(frame, {
+        color: ({ x, y }) => (x + y + animationStep) % 3 === 0 ? "#ffffff" : targetColor,
+        step: animationStep
+      });
+      return;
+    }
+
     for (let y = 0; y < FLOOR_ROWS; y += 1) {
       for (let x = 0; x < FLOOR_COLS; x += 1) {
-        if (won) {
-          const distance = Math.abs(x - (FLOOR_COLS - 1) / 2) + Math.abs(y - (FLOOR_ROWS - 1) / 2);
-          if ((Math.floor(distance) + animationStep) % 7 <= 1) {
-            paintFrameCell(frame, x, y, (x + y + animationStep) % 3 === 0 ? "#ffffff" : targetColor);
-          }
-        } else if ((x + y + animationStep) % 8 <= 1 || (x - y - animationStep + 64) % 11 === 0) {
+        if ((x + y + animationStep) % 8 <= 1 || (x - y - animationStep + 64) % 11 === 0) {
           paintFrameCell(frame, x, y, (x + animationStep) % 4 === 0 ? "#ff8090" : hazardColor);
         }
       }

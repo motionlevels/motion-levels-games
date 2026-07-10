@@ -104,6 +104,20 @@ The directory name is part of the contract. For a game in `games/<id>`,
 The game logic should be deterministic. Use `createSeededRng(seed)` from the SDK
 for randomness so tests, fixtures, and local playback can be reproduced.
 
+## Shared Effects And Animation
+
+Reusable floor-effect geometry lives in `@motion-levels-games/game-sdk/effects`.
+These helpers mutate a provided frame using explicit deterministic inputs such
+as an engine-derived step; they do not own clocks, game phases, palettes, or
+win conditions. `paintDiamondRing` is the shared readiness/target-ring
+primitive, while `paintDiamondWave` provides expanding celebration bands with
+either a fixed color or a per-cell color callback.
+
+Keep game-specific choreography inside the game and compose these primitives
+instead of building a generic animation state machine. Reusable TV components
+and CSS motion belong in `packages/display-kit`; a display-only effect tied to
+one game remains namespaced to that game until a second real use case appears.
+
 ## Lives
 
 A game that uses lives reports both the current `lives` and its `maxLives` in

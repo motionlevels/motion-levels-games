@@ -7,6 +7,15 @@ export const FRAME_SIZE = FLOOR_COLS * FLOOR_ROWS;
 export const DEFAULT_START_COUNTDOWN_MILLIS = 2_000;
 export const DEFAULT_PLAYER_RELEASE_GRACE_MILLIS = 650;
 
+export {
+  paintDiamondRing,
+  paintDiamondWave,
+  type DiamondRingOptions,
+  type DiamondWaveOptions,
+  type FloorEffectCell,
+  type FloorEffectColor
+} from "./effects.ts";
+
 export type HexColor = `#${string}`;
 export type RgbColor = {
   r: number;

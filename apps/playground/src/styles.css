@@ -521,14 +521,9 @@ select {
 
 .floor-panel .ml-floor-tile-pressed {
   box-shadow:
-    inset 0 0 0 2px #ffffff,
-    0 0 0 2px rgba(53, 215, 255, 0.86),
-    0 0 18px rgba(53, 215, 255, 0.72);
-  filter: brightness(1.8) saturate(1.25);
-  outline: 2px solid rgba(255, 255, 255, 0.92);
-  outline-offset: -2px;
-  transform: scale(1.12);
-  z-index: 2;
+    inset 0 0 0 2px rgba(53, 215, 255, 0.64),
+    inset 0 0 10px rgba(53, 215, 255, 0.18);
+  filter: brightness(1.16) saturate(1.08);
 }
 
 .display-panel {
@@ -1144,13 +1139,13 @@ select {
   display: grid;
   gap: 5px;
   list-style: none;
-  margin: 8px -2px 0 0;
+  margin: 8px 0 0;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
-  padding: 0 4px 0 0;
+  padding: 0;
   scrollbar-color: rgba(132, 145, 160, 0.32) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;

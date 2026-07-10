@@ -23,6 +23,8 @@ import {
   normalizeGameConfigOptions,
   normalizeGameConfigValue,
   normalizeGameSeed,
+  paintDiamondRing,
+  paintDiamondWave,
   readGameConfigOption,
   paintFrameCell,
   rgbToHex,
@@ -63,6 +65,34 @@ test("mutable frame helpers paint bounded cells and rectangles", () => {
   assert.equal(frameCell(frame, 1, 2)?.color, "#ffffff");
   assert.equal(frameCell(frame, 14, 30)?.color, "#148cff");
   assert.equal(frameCell(frame, 15, 31)?.color, "#148cff");
+});
+
+test("shared floor effects paint deterministic diamond rings and waves", () => {
+  const ring = createFrame("#000000");
+  paintDiamondRing(ring, {
+    centerX: 8,
+    centerY: 16,
+    color: "#ffffff",
+    radius: 2,
+    thickness: 0
+  });
+
+  assert.equal(ring.cells.filter((cell) => cell.color === "#ffffff").length, 8);
+  assert.equal(frameCell(ring, 8, 14)?.color, "#ffffff");
+  assert.equal(frameCell(ring, 8, 16)?.color, "#000000");
+
+  const wave = createFrame("#000000");
+  paintDiamondWave(wave, {
+    bandWidth: 1,
+    centerX: 8,
+    centerY: 16,
+    color: ({ phase }) => phase === 0 ? "#35d7ff" : undefined,
+    period: 4,
+    step: 1
+  });
+
+  assert.equal(frameCell(wave, 8, 13)?.color, "#35d7ff");
+  assert.equal(frameCell(wave, 8, 16)?.color, "#000000");
 });
 
 test("floor bounds match the physical grid", () => {

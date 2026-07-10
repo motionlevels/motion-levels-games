@@ -184,12 +184,19 @@ no database, venue hardware, Motion Go, or platform API coupling.
 ## Package Boundaries
 
 - `packages/game-sdk` owns framework-agnostic contracts and helpers.
+- Reusable deterministic floor geometry and animation helpers belong in
+  `packages/game-sdk/src/effects.ts` and are exported from
+  `@motion-levels-games/game-sdk/effects`. Keep palette, timing, and
+  game-specific choreography in the game unless multiple games genuinely use
+  the same behavior.
 - Treat each manifest config variable as the single source of truth for its
   type, default, bounds, step, and choices. Normalize through
   `normalizeGameConfig` and read the exported variable descriptor with
   `readGameConfigOption`; do not repeat schema values in game logic.
 - `packages/display-kit` owns reusable React display primitives, including the
   canonical `LivesMeter`; games must not recreate shared player-display UI.
+  Reusable TV motion belongs with the primitive and shared CSS in display-kit,
+  while game-only display animation stays namespaced to that game.
 - Each game owns its `manifest.ts`, `game.ts`, `display.tsx`, and `fixtures.ts`.
 - Every `games/<id>` package must include a `README.md`, and `manifest.id` must
   exactly match `<id>`.

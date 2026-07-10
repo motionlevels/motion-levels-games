@@ -24,6 +24,7 @@ import {
   type SeededRng,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
+import { paintDiamondWave } from "@motion-levels-games/game-sdk/effects";
 import { manifest } from "./manifest.ts";
 
 export const startingLives = 3;
@@ -349,16 +350,10 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
 
   private drawWinAnimation(frame: Frame): void {
     const step = Math.floor(Math.max(0, this.nowMillis - this.finishedAtMillis) / 120);
-    const centerX = 7.5;
-    const centerY = 15.5;
-    for (let y = 0; y < FLOOR_ROWS; y += 1) {
-      for (let x = 0; x < FLOOR_COLS; x += 1) {
-        const distance = Math.floor(Math.abs(x - centerX) + Math.abs(y - centerY));
-        if ((distance + step) % 7 <= 1) {
-          paintFrameCell(frame, x, y, successColors[(distance + step) % successColors.length] ?? successColors[0]);
-        }
-      }
-    }
+    paintDiamondWave(frame, {
+      color: ({ distance }) => successColors[(distance + step) % successColors.length] ?? successColors[0],
+      step
+    });
   }
 
   private elapsedMillis(): number {

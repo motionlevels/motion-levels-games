@@ -204,6 +204,13 @@ test("playground surfaces preserve their hardware aspect ratios", () => {
   );
 });
 
+test("latched floor inputs never imitate the transient mouse hover", () => {
+  const pressedRule = styleSource.match(/\.floor-panel \.ml-floor-tile-pressed\s*\{[^}]*\}/s)?.[0];
+  assert.ok(pressedRule, "the floor needs an intentional occupied-tile treatment");
+  assert.match(pressedRule, /inset 0 0 0 2px rgba\(53, 215, 255,/);
+  assert.doesNotMatch(pressedRule, /outline|transform|#ffffff/, "persistent input must not reuse the white scaled hover effect");
+});
+
 test("tall status docks expose useful adaptive diagnostics", () => {
   for (const section of ["status-runtime-summary", "status-event-history", "status-run-summary"]) {
     assert.match(appSource, new RegExp(`className="${section}"`), `${section} must remain available`);
@@ -250,6 +257,11 @@ test("event stream stays visible, timestamped, and follows the latest event", ()
     styleSource,
     /\.status-event-history\s*\{[^}]*display:\s*grid;[^}]*overflow-y:\s*auto;/s,
     "event history must remain visible and scroll within its card"
+  );
+  assert.match(
+    styleSource,
+    /\.status-event-history\s*\{[^}]*margin:\s*8px 0 0;[^}]*padding:\s*0;/s,
+    "event rows and the auto-follow button must share the same right edge"
   );
 });
 
