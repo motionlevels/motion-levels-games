@@ -26,6 +26,7 @@
     "create:game": "tsx scripts/create-game.ts",
     "test:scaffold": "tsx scripts/test-create-game.ts",
     "playtest": "tsx scripts/playtest-games.ts",
+    "playtest:browser": "tsx scripts/playtest-playground.ts",
     "generate:media": "tsx scripts/generate-media.ts",
     "build:bundle": "tsx scripts/build-bundle.ts",
     "verify:bundle": "tsx scripts/verify-bundle.ts",

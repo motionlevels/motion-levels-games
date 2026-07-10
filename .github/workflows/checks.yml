@@ -65,6 +65,7 @@ jobs:
       - run: npm run build
       - run: npm run playtest
       - run: npx playwright install --with-deps chromium
+      - run: npm run playtest:browser
       - run: npm run generate:media
       - run: npm run build:bundle
         env:

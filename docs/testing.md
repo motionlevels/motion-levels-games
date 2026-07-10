@@ -17,6 +17,9 @@ job. Keep each layer focused so failures point to the relevant contract.
   so a well-tested game cannot hide a weak shared library.
 - `npm run test:all`: workspace tests, repository contracts, and the generated
   game scaffold smoke test.
+- `npm run playtest:browser`: exercises the built playground with a real
+  browser, including Ping Pong initialization through the interactive floor's
+  tile seams. Run `npm run build` first.
 - `npm run check`: the complete local gate: quality checks, all tests, build,
   and deterministic playtests.
 
@@ -53,8 +56,9 @@ workflow runs four independent jobs:
 1. lint, manifest validation, and TypeScript;
 2. the full test set on Node 22 for compatibility;
 3. repository contracts and thresholded coverage on Node 24;
-4. the production build and deterministic playtests on Node 24, with the
-   playground build uploaded for inspection.
+4. the production build, deterministic engine playtests, and a real-browser
+   playground interaction playtest on Node 24, with the playground build
+   uploaded for inspection.
 
 Caller workflows use concurrency cancellation so obsolete commits stop
 consuming CI time. Every job has a timeout and read-only repository permission.

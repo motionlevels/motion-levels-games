@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Frame, FrameCell } from "@motion-levels-games/game-sdk";
-import { FloorInputPainter, type FloorInputAction, type FloorInputTile } from "./floor-input-painter.ts";
+import {
+  FloorInputPainter,
+  floorTileFromClientPoint,
+  type FloorInputAction,
+  type FloorInputTile
+} from "./floor-input-painter.ts";
 
 type PreviewFrame = Frame | { width: number; height: number; cells: FrameCell[] };
 
@@ -54,18 +59,13 @@ export function FloorPreview({
     }
   }, []);
   const tileFromPoint = useCallback((clientX: number, clientY: number) => {
-    const element = document.elementFromPoint(clientX, clientY);
-    const tile = element?.closest<HTMLElement>("[data-tile-x][data-tile-y]");
-
-    if (!tile || !rootRef.current?.contains(tile)) {
+    const root = rootRef.current;
+    if (!root) {
       return null;
     }
 
-    return {
-      x: Number(tile.dataset.tileX),
-      y: Number(tile.dataset.tileY)
-    };
-  }, []);
+    return floorTileFromClientPoint(clientX, clientY, root.getBoundingClientRect(), frame.width, frame.height);
+  }, [frame.height, frame.width]);
   const applyInputActions = useCallback((actions: FloorInputAction[]) => {
     if (actions.length === 0) {
       return;
@@ -168,6 +168,7 @@ export function FloorPreview({
         return;
       }
 
+      continueInputGesture(tileFromPoint(event.clientX, event.clientY));
       activePointerIdRef.current = null;
       inputPainterRef.current.end();
       clearPointerFocus();
@@ -175,7 +176,7 @@ export function FloorPreview({
         rootRef.current.releasePointerCapture(event.pointerId);
       }
     },
-    [clearPointerFocus, interactive]
+    [clearPointerFocus, continueInputGesture, interactive, tileFromPoint]
   );
   const handleLostPointerCapture = useCallback(() => {
     activePointerIdRef.current = null;
