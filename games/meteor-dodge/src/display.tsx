@@ -1,4 +1,4 @@
-import React from "react";
+/** @jsxRuntime automatic */
 import {
   FramePreviewPanel,
   GameDisplayShell,

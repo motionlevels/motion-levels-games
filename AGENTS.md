@@ -155,6 +155,10 @@ no database, venue hardware, Motion Go, or platform API coupling.
 
 - Pull before new work and before pushing.
 - Keep commits small and focused.
+- Use `npm run check:fast` during the edit loop. It combines the fast native
+  linter with strict workspace typechecks and should remain quick enough to run
+  after every meaningful code edit. Use `npm run lint:fix` only for safe lint
+  fixes, then inspect the diff.
 - After every task or prompt that changes repository files, commit the completed
   work before handing it off. Do not leave finished changes uncommitted.
 - Never force-push or rewrite Git history. Do not use `git push --force`,

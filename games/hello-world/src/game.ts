@@ -162,8 +162,7 @@ class HelloWorldGame implements HelloWorldGameInstance {
       return frame;
     }
 
-    for (let index = 0; index < Math.min(this.score, targetPath.length); index += 1) {
-      const target = targetPath[index];
+    for (const target of targetPath.slice(0, this.score)) {
       paintFrameCell(frame, target.x, target.y, trailColor);
     }
 

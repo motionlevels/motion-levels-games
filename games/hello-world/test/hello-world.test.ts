@@ -48,6 +48,7 @@ test("Any player mode preserves the same Hola Mundo board and rules", () => {
 
 test("game waits for a player and counts down before showing targets", () => {
   const firstTarget = helloWorldTargets()[0];
+  assert.ok(firstTarget);
   const game = createGame({ playerCount: 1 });
 
   game.init(0);
@@ -67,23 +68,28 @@ test("game waits for a player and counts down before showing targets", () => {
 test("the visible red tile costs one life, disappears, and advances deterministically", () => {
   const game = createGame({ playerCount: 1 });
   const hazards = helloWorldHazards();
+  const [firstHazard, secondHazard] = hazards;
+  assert.ok(firstHazard);
+  assert.ok(secondHazard);
   startGame(game);
 
-  assert.deepEqual(game.snapshot().hazard, hazards[0]);
-  assert.equal(frameCell(game.render(), hazards[0].x, hazards[0].y)?.color, hazardColor);
+  assert.deepEqual(game.snapshot().hazard, firstHazard);
+  assert.equal(frameCell(game.render(), firstHazard.x, firstHazard.y)?.color, hazardColor);
 
-  const events = game.press({ ...hazards[0], pressed: true, atMillis: 2_200 });
+  const events = game.press({ ...firstHazard, pressed: true, atMillis: 2_200 });
 
   assert.equal(events[0]?.cue, "fail");
   assert.equal(events[0]?.message, "Vida perdida, quedan 2");
   assert.equal(game.snapshot().lives, 2);
-  assert.equal(frameCell(game.render(), hazards[0].x, hazards[0].y)?.color, idleColor);
-  assert.deepEqual(game.snapshot().hazard, hazards[1]);
-  assert.equal(frameCell(game.render(), hazards[1].x, hazards[1].y)?.color, hazardColor);
+  assert.equal(frameCell(game.render(), firstHazard.x, firstHazard.y)?.color, idleColor);
+  assert.deepEqual(game.snapshot().hazard, secondHazard);
+  assert.equal(frameCell(game.render(), secondHazard.x, secondHazard.y)?.color, hazardColor);
 });
 
 test("completing the path celebrates for five seconds, ignores input, and restarts", () => {
   const game = createGame({ playerCount: 1 });
+  const firstHazard = helloWorldHazards()[0];
+  assert.ok(firstHazard);
   startGame(game);
 
   helloWorldTargets().forEach((target, index) => {
@@ -98,7 +104,7 @@ test("completing the path celebrates for five seconds, ignores input, and restar
   assert.equal(game.snapshot().celebrationMillis, helloWorldCelebrationMillis);
   const firstCelebrationFrame = game.render();
 
-  game.press({ ...helloWorldHazards()[0], pressed: true, atMillis: 3_000 });
+  game.press({ ...firstHazard, pressed: true, atMillis: 3_000 });
   game.tick({ atMillis: 3_200 });
   assert.equal(game.snapshot().lives, helloWorldStartingLives, "finished games must ignore hazards");
   assert.notDeepEqual(game.render(), firstCelebrationFrame, "the win floor animation must evolve with engine time");
@@ -114,6 +120,8 @@ test("completing the path celebrates for five seconds, ignores input, and restar
 
 test("losing all lives celebrates for five seconds, ignores input, and restarts", () => {
   const game = createGame({ playerCount: 1 });
+  const firstTarget = helloWorldTargets()[0];
+  assert.ok(firstTarget);
   startGame(game);
 
   helloWorldHazards().forEach((hazard, index) => {
@@ -128,7 +136,7 @@ test("losing all lives celebrates for five seconds, ignores input, and restarts"
   assert.equal(game.snapshot().hazard, undefined);
   const firstCelebrationFrame = game.render();
 
-  game.press({ ...helloWorldTargets()[0], pressed: true, atMillis: 3_000 });
+  game.press({ ...firstTarget, pressed: true, atMillis: 3_000 });
   game.tick({ atMillis: 3_200 });
   assert.equal(game.snapshot().score, 0, "finished games must ignore green targets");
   assert.notDeepEqual(game.render(), firstCelebrationFrame, "the loss floor animation must evolve with engine time");

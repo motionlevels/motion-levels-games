@@ -208,36 +208,36 @@ function validateNumericConfigVar(
   gameId: string,
   index: number,
   configVar: Record<string, unknown>,
-  problems: string[]
+  problemList: string[]
 ): void {
   const prefix = `${gameId}: manifest.config.vars[${index}]`;
   if (!isFiniteNumber(configVar.default)) {
-    problems.push(`${prefix}.default must be a finite number`);
+    problemList.push(`${prefix}.default must be a finite number`);
     return;
   }
-  validateAbsentFields(gameId, index, configVar, ["options"], problems);
+  validateAbsentFields(gameId, index, configVar, ["options"], problemList);
 
   for (const field of ["min", "max", "step"] as const) {
     if (configVar[field] !== undefined && !isFiniteNumber(configVar[field])) {
-      problems.push(`${prefix}.${field} must be a finite number when present`);
+      problemList.push(`${prefix}.${field} must be a finite number when present`);
     }
   }
   if (isFiniteNumber(configVar.min) && isFiniteNumber(configVar.max) && configVar.min > configVar.max) {
-    problems.push(`${prefix}.min must not exceed max`);
+    problemList.push(`${prefix}.min must not exceed max`);
   }
   if (isFiniteNumber(configVar.min) && configVar.default < configVar.min) {
-    problems.push(`${prefix}.default must not be below min`);
+    problemList.push(`${prefix}.default must not be below min`);
   }
   if (isFiniteNumber(configVar.max) && configVar.default > configVar.max) {
-    problems.push(`${prefix}.default must not exceed max`);
+    problemList.push(`${prefix}.default must not exceed max`);
   }
   if (isFiniteNumber(configVar.step) && configVar.step <= 0) {
-    problems.push(`${prefix}.step must be greater than zero`);
+    problemList.push(`${prefix}.step must be greater than zero`);
   }
   if (configVar.type === "int") {
     for (const field of ["default", "min", "max", "step"] as const) {
       if (isFiniteNumber(configVar[field]) && !Number.isInteger(configVar[field])) {
-        problems.push(`${prefix}.${field} must be an integer for int vars`);
+        problemList.push(`${prefix}.${field} must be an integer for int vars`);
       }
     }
   }
@@ -247,11 +247,11 @@ function validateEnumConfigVar(
   gameId: string,
   index: number,
   configVar: Record<string, unknown>,
-  problems: string[]
+  problemList: string[]
 ): void {
   const prefix = `${gameId}: manifest.config.vars[${index}]`;
   if (!Array.isArray(configVar.options) || configVar.options.length === 0) {
-    problems.push(`${prefix}.options must be a non-empty array for enum vars`);
+    problemList.push(`${prefix}.options must be a non-empty array for enum vars`);
     return;
   }
 
@@ -261,13 +261,13 @@ function validateEnumConfigVar(
       : ""
   );
   if (values.some((value) => value === "")) {
-    problems.push(`${prefix}.options must contain non-empty values`);
+    problemList.push(`${prefix}.options must contain non-empty values`);
   }
   if (new Set(values).size !== values.length) {
-    problems.push(`${prefix}.options must not contain duplicate values`);
+    problemList.push(`${prefix}.options must not contain duplicate values`);
   }
   if (typeof configVar.default !== "string" || !values.includes(configVar.default)) {
-    problems.push(`${prefix}.default must match an enum option value`);
+    problemList.push(`${prefix}.default must match an enum option value`);
   }
 }
 
@@ -276,11 +276,11 @@ function validateAbsentFields(
   index: number,
   configVar: Record<string, unknown>,
   fields: string[],
-  problems: string[]
+  problemList: string[]
 ): void {
   for (const field of fields) {
     if (configVar[field] !== undefined) {
-      problems.push(`${gameId}: manifest.config.vars[${index}].${field} is not valid for ${String(configVar.type)} vars`);
+      problemList.push(`${gameId}: manifest.config.vars[${index}].${field} is not valid for ${String(configVar.type)} vars`);
     }
   }
 }

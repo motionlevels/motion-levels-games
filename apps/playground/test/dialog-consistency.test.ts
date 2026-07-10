@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const gameConfigControlSource = readFileSync(new URL("../src/GameConfigControl.tsx", import.meta.url), "utf8");
 const phaseIndicatorSource = readFileSync(new URL("../src/PhaseIndicator.tsx", import.meta.url), "utf8");
+const playgroundSelectSource = readFileSync(new URL("../src/PlaygroundSelect.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("all runtime phase surfaces share one indicator and color map", () => {
@@ -60,15 +62,15 @@ test("dialogs and selectors use composable pause locks", () => {
   for (const selector of ["game-select", "players-select", "difficulty-select"]) {
     assert.match(
       appSource,
-      new RegExp(`onBlur=\\{\\(\\) => setInteractionPauseState\\("${selector}", false\\)\\}[\\s\\S]*?onFocus=\\{\\(\\) => setInteractionPauseState\\("${selector}", true\\)\\}`),
-      `${selector} must pause while focused and release only its own lock`
-    );
-    assert.match(
-      appSource,
-      new RegExp(`onPointerDown=\\{\\(\\) => setInteractionPauseState\\("${selector}", true\\)\\}`),
-      `${selector} must reacquire its lock when an already-focused selector opens again`
+      new RegExp(`lockId="${selector}"`),
+      `${selector} must use its own shared selector lock`
     );
   }
+
+  assert.match(playgroundSelectSource, /onBlur=\{\(\) => setOpen\(false\)\}/);
+  assert.match(playgroundSelectSource, /onFocus=\{\(\) => setOpen\(true\)\}/);
+  assert.match(playgroundSelectSource, /onPointerDown=\{\(\) => setOpen\(true\)\}/);
+  assert.match(playgroundSelectSource, /if \(event\.key === "Escape"\) \{\s*setOpen\(false\);/);
 
   assert.match(appSource, /disabled=\{pauseLocks\.size > 0\}/, "temporary pause must not expose a misleading resume action");
 });
@@ -135,7 +137,7 @@ test("compact action groups use zero-gap shared control styling", () => {
 
 test("header selectors keep stable field widths across selected values", () => {
   const expectedWidths = {
-    game: "148px",
+    game: "176px",
     players: "82px",
     difficulty: "104px",
     seed: "72px"
@@ -252,11 +254,11 @@ test("event stream stays visible, timestamped, and follows the latest event", ()
 });
 
 test("numeric settings use app-format decimals and documented help", () => {
-  assert.match(appSource, /className="setting-number-input"[\s\S]*?type="text"/);
-  assert.doesNotMatch(appSource, /type="number"/, "native localized number inputs are not allowed");
-  assert.match(appSource, /replaceAll\(",", "\."\)/, "typed decimal commas must normalize to periods");
-  assert.match(appSource, /function ConfigVarLabel/);
-  assert.match(appSource, /className="setting-tooltip"[^>]*role="tooltip"/);
+  assert.match(gameConfigControlSource, /className="setting-number-input"[\s\S]*?type="text"/);
+  assert.doesNotMatch(gameConfigControlSource, /type="number"/, "native localized number inputs are not allowed");
+  assert.match(gameConfigControlSource, /replaceAll\(",", "\."\)/, "typed decimal commas must normalize to periods");
+  assert.match(gameConfigControlSource, /function ConfigVarLabel/);
+  assert.match(gameConfigControlSource, /className="setting-tooltip"[^>]*role="tooltip"/);
   assert.match(styleSource, /\.setting-info:hover \.setting-tooltip,[\s\S]*?\.setting-info:focus-visible \.setting-tooltip/);
 });
 

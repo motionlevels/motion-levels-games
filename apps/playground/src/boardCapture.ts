@@ -1,5 +1,6 @@
 import type { FrameCell } from "@motion-levels-games/game-sdk";
 import type { RenderableFrame } from "./frameTransforms.ts";
+import { loadDataUrlImage } from "./imageLoading.ts";
 import type { PlaygroundCapture, PlaygroundCaptureSurface } from "./playgroundApi.ts";
 
 export const boardTilePixels = 32;
@@ -29,8 +30,8 @@ export async function combinedCapture(
   board: PlaygroundCapture
 ): Promise<PlaygroundCapture> {
   const [displayImage, boardImage] = await Promise.all([
-    loadImage(display.dataUrl),
-    loadImage(board.dataUrl)
+    loadDataUrlImage(display.dataUrl, "Could not load player display capture."),
+    loadDataUrlImage(board.dataUrl, "Could not load board capture.")
   ]);
   const boardScale = display.height / board.height;
   const boardWidth = Math.round(board.width * boardScale);
@@ -70,13 +71,4 @@ function drawCell(context: CanvasRenderingContext2D, cell: FrameCell, tilePixels
   context.strokeStyle = "rgba(0, 0, 0, 0.16)";
   context.lineWidth = 1;
   context.strokeRect(cell.x * tilePixels + 0.5, cell.y * tilePixels + 0.5, tilePixels - 1, tilePixels - 1);
-}
-
-function loadImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not load capture image."));
-    image.src = dataUrl;
-  });
 }

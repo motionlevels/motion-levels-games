@@ -9,12 +9,15 @@ Motion Go, TinyGo, or deploy steps.
 
 ```sh
 npm install
-npm test
-npm run build
+npm run check:fast
+npm run check
 npm run dev
 ```
 
 `npm run dev` starts the playground at the Vite URL printed in the terminal.
+`npm run check:fast` runs the native linter and strict workspace typechecks for
+the normal edit loop. `npm run check` adds all tests, validation, builds, the
+scaffold smoke test, and deterministic game playtests before a commit or push.
 
 ## Workspace
 

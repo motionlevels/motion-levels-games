@@ -1,4 +1,4 @@
-import React from "react";
+/** @jsxRuntime automatic */
 import type { CSSProperties } from "react";
 import { GameDisplayShell, MetricPanel, MetricRow, RoundStrip, VersusScoreboard } from "@motion-levels-games/display-kit";
 import { formatClock, type Frame } from "@motion-levels-games/game-sdk";

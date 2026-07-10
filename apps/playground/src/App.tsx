@@ -7,7 +7,6 @@ import {
   Check,
   Copy,
   Dices,
-  Info,
   LayoutGrid,
   LoaderCircle,
   Maximize,
@@ -45,12 +44,20 @@ import {
   type GameEvent,
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
-import { captureDisplayElement, capturePlaygroundSurfaces, copyCaptureToClipboard } from "./captureImages.ts";
+import {
+  captureDisplayElement,
+  capturePlaygroundSurfaces,
+  copyCaptureToClipboard,
+  downscaleCaptureToWebp,
+  waitForPaint
+} from "./captureImages.ts";
 import motionLevelsLogo from "./assets/motion-levels-icon.webp";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
+import { GameConfigControl } from "./GameConfigControl.tsx";
 import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
 import { PhaseIndicator } from "./PhaseIndicator.tsx";
+import { PlaygroundSelect } from "./PlaygroundSelect.tsx";
 import { isPlaygroundPaused, updatePauseLocks, type PauseLockSet } from "./pausePolicy.ts";
 import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
@@ -898,84 +905,48 @@ export function App() {
             </div>
             <div className="playground-controls">
               <div className="control-group control-group-primary">
-                <label className="control-field control-game">
-                  <span>Game</span>
-                  <select
-                    onBlur={() => setInteractionPauseState("game-select", false)}
-                    onChange={(event) => {
-                      selectGame(event.target.value);
-                      setInteractionPauseState("game-select", false);
-                    }}
-                    onFocus={() => setInteractionPauseState("game-select", true)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        setInteractionPauseState("game-select", false);
-                      } else if ([" ", "Enter", "ArrowDown", "ArrowUp"].includes(event.key)) {
-                        setInteractionPauseState("game-select", true);
-                      }
-                    }}
-                    onPointerDown={() => setInteractionPauseState("game-select", true)}
-                    value={selectedGame.manifest.id}
-                  >
-                    {playgroundGames.map((game) => (
-                      <option key={game.manifest.id} value={game.manifest.id}>
-                        {game.manifest.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="control-field control-players">
-                  <span>Players</span>
-                  <select
-                    onBlur={() => setInteractionPauseState("players-select", false)}
-                    onChange={(event) => {
-                      changePlayerCount(Number(event.target.value));
-                      setInteractionPauseState("players-select", false);
-                    }}
-                    onFocus={() => setInteractionPauseState("players-select", true)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        setInteractionPauseState("players-select", false);
-                      } else if ([" ", "Enter", "ArrowDown", "ArrowUp"].includes(event.key)) {
-                        setInteractionPauseState("players-select", true);
-                      }
-                    }}
-                    onPointerDown={() => setInteractionPauseState("players-select", true)}
-                    value={playerCount}
-                  >
-                    {playerCountChoices.map((count) => (
-                      <option key={count} value={count}>
-                        {count === 0 ? "0 / Any" : count}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="control-field control-difficulty">
-                  <span>Difficulty</span>
-                  <select
-                    onBlur={() => setInteractionPauseState("difficulty-select", false)}
-                    onChange={(event) => {
-                      changeDifficulty(event.target.value);
-                      setInteractionPauseState("difficulty-select", false);
-                    }}
-                    onFocus={() => setInteractionPauseState("difficulty-select", true)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        setInteractionPauseState("difficulty-select", false);
-                      } else if ([" ", "Enter", "ArrowDown", "ArrowUp"].includes(event.key)) {
-                        setInteractionPauseState("difficulty-select", true);
-                      }
-                    }}
-                    onPointerDown={() => setInteractionPauseState("difficulty-select", true)}
-                    value={difficulty}
-                  >
-                    {difficultyChoices.map((choice) => (
-                      <option key={choice} value={choice}>
-                        {difficultyLabels[choice] ?? choice}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <PlaygroundSelect
+                  className="control-field control-game"
+                  label="Game"
+                  lockId="game-select"
+                  onLockChange={setInteractionPauseState}
+                  onValueChange={selectGame}
+                  value={selectedGame.manifest.id}
+                >
+                  {playgroundGames.map((game) => (
+                    <option key={game.manifest.id} value={game.manifest.id}>
+                      {game.manifest.label}
+                    </option>
+                  ))}
+                </PlaygroundSelect>
+                <PlaygroundSelect
+                  className="control-field control-players"
+                  label="Players"
+                  lockId="players-select"
+                  onLockChange={setInteractionPauseState}
+                  onValueChange={(value) => changePlayerCount(Number(value))}
+                  value={playerCount}
+                >
+                  {playerCountChoices.map((count) => (
+                    <option key={count} value={count}>
+                      {count === 0 ? "0 / Any" : count}
+                    </option>
+                  ))}
+                </PlaygroundSelect>
+                <PlaygroundSelect
+                  className="control-field control-difficulty"
+                  label="Difficulty"
+                  lockId="difficulty-select"
+                  onLockChange={setInteractionPauseState}
+                  onValueChange={changeDifficulty}
+                  value={difficulty}
+                >
+                  {difficultyChoices.map((choice) => (
+                    <option key={choice} value={choice}>
+                      {difficultyLabels[choice] ?? choice}
+                    </option>
+                  ))}
+                </PlaygroundSelect>
               </div>
               <div className="control-group">
                 <label className="control-field control-seed">
@@ -1343,173 +1314,6 @@ export function App() {
   );
 }
 
-function GameConfigControl({
-  configVar,
-  onChange,
-  value
-}: {
-  configVar: GameConfigVar;
-  onChange: (value: unknown) => void;
-  value: unknown;
-}) {
-  if (configVar.type === "bool") {
-    return (
-      <label className="setting-control setting-control-bool" data-setting-key={configVar.key}>
-        <ConfigVarLabel configVar={configVar} />
-        <input
-          aria-describedby={configDescriptionId(configVar)}
-          aria-label={configVar.label}
-          checked={value === true}
-          onChange={(event) => onChange(event.target.checked)}
-          type="checkbox"
-        />
-      </label>
-    );
-  }
-
-  if (configVar.type === "enum") {
-    return (
-      <label className="setting-control" data-setting-key={configVar.key}>
-        <ConfigVarLabel configVar={configVar} />
-        <select
-          aria-describedby={configDescriptionId(configVar)}
-          aria-label={configVar.label}
-          onChange={(event) => onChange(event.target.value)}
-          value={String(value ?? configVar.default ?? configVar.options?.[0]?.value ?? "")}
-        >
-          {(configVar.options ?? []).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label ?? option.value}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-
-  return <NumberConfigControl configVar={configVar} onChange={onChange} value={value} />;
-}
-
-function NumberConfigControl({
-  configVar,
-  onChange,
-  value
-}: {
-  configVar: GameConfigVar;
-  onChange: (value: unknown) => void;
-  value: unknown;
-}) {
-  const numericValue = Number(value ?? configVar.default ?? configVar.min ?? 0);
-  const hasRange = typeof configVar.min === "number" && typeof configVar.max === "number";
-  const [draftValue, setDraftValue] = useState(() => formatNumericInput(numericValue));
-  const editingRef = useRef(false);
-
-  useEffect(() => {
-    if (!editingRef.current) {
-      setDraftValue(formatNumericInput(numericValue));
-    }
-  }, [numericValue]);
-
-  const updateDraft = (nextDraft: string) => {
-    const normalized = nextDraft.replaceAll(",", ".");
-    if (!/^-?\d*(?:\.\d*)?$/.test(normalized)) {
-      return;
-    }
-
-    setDraftValue(normalized);
-    if (normalized !== "" && normalized !== "-" && normalized !== "." && normalized !== "-.") {
-      onChange(normalized);
-    }
-  };
-
-  const finishEditing = () => {
-    editingRef.current = false;
-    const parsed = Number(draftValue);
-    const fallback = typeof configVar.default === "number" ? configVar.default : configVar.min ?? 0;
-    const nextValue = normalizeGameConfigValue(configVar, Number.isFinite(parsed) ? parsed : fallback);
-    onChange(nextValue);
-    setDraftValue(formatNumericInput(Number(nextValue)));
-  };
-
-  return (
-    <label className="setting-control setting-control-number" data-setting-key={configVar.key}>
-      <ConfigVarLabel configVar={configVar} />
-      <div className="setting-number-row">
-        {hasRange ? (
-          <input
-            aria-describedby={configDescriptionId(configVar)}
-            aria-label={configVar.label}
-            max={configVar.max}
-            min={configVar.min}
-            onChange={(event) => {
-              onChange(event.target.value);
-              setDraftValue(formatNumericInput(Number(event.target.value)));
-            }}
-            step={configVar.step ?? (configVar.type === "int" ? 1 : "any")}
-            type="range"
-            value={String(numericValue)}
-          />
-        ) : null}
-        <input
-          aria-describedby={configDescriptionId(configVar)}
-          aria-label={configVar.label}
-          className="setting-number-input"
-          inputMode={configVar.type === "int" ? "numeric" : "decimal"}
-          onBlur={finishEditing}
-          onChange={(event) => updateDraft(event.target.value)}
-          onFocus={() => {
-            editingRef.current = true;
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-          }}
-          pattern={configVar.type === "int" ? "-?[0-9]*" : "-?[0-9]*[.]?[0-9]*"}
-          spellCheck={false}
-          type="text"
-          value={draftValue}
-        />
-      </div>
-    </label>
-  );
-}
-
-function ConfigVarLabel({ configVar }: { configVar: GameConfigVar }) {
-  return (
-    <span className="setting-label">
-      <span>{configVar.label}</span>
-      {configVar.description ? (
-        <span
-          aria-describedby={configDescriptionId(configVar)}
-          aria-label={`About ${configVar.label}`}
-          className="setting-info"
-          onClick={(event) => {
-            event.preventDefault();
-            event.currentTarget.focus();
-          }}
-          role="img"
-          tabIndex={0}
-          title={configVar.description}
-        >
-          <Info aria-hidden="true" size={13} strokeWidth={2.4} />
-          <span className="setting-tooltip" id={configDescriptionId(configVar)} role="tooltip">
-            {configVar.description}
-          </span>
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-function configDescriptionId(configVar: GameConfigVar): string | undefined {
-  return configVar.description ? `setting-${configVar.key}-description` : undefined;
-}
-
-function formatNumericInput(value: number): string {
-  return Number.isFinite(value) ? String(value) : "0";
-}
-
 function PopoverCloseButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
@@ -1570,40 +1374,4 @@ function AnimatedStat({ value }: { value: ReactNode }) {
       {value}
     </span>
   );
-}
-
-function waitForPaint(): Promise<void> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  });
-}
-
-async function downscaleCaptureToWebp(
-  dataUrl: string,
-  width: number,
-  height: number,
-  quality: number
-): Promise<string> {
-  const image = await loadDataUrlImage(dataUrl);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Could not create player display media canvas.");
-  }
-
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
-  context.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL("image/webp", quality);
-}
-
-function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not load player display capture."));
-    image.src = dataUrl;
-  });
 }

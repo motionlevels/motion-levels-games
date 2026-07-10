@@ -1,3 +1,5 @@
+const padClockPart = (value: number) => value.toString().padStart(2, "0");
+
 // Human-friendly HH:MM:SS.CS clock with centisecond precision.
 export function formatElapsedClock(ms: number): string {
   const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
@@ -7,7 +9,6 @@ export function formatElapsedClock(ms: number): string {
   const seconds = totalSeconds % 60;
   const minutes = Math.floor(totalSeconds / 60) % 60;
   const hours = Math.floor(totalSeconds / 3600);
-  const pad = (value: number) => value.toString().padStart(2, "0");
 
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(centis)}`;
+  return `${padClockPart(hours)}:${padClockPart(minutes)}:${padClockPart(seconds)}.${padClockPart(centis)}`;
 }

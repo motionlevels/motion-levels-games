@@ -40,12 +40,12 @@ const backgroundStripeColor: HexColor = "#050d19";
 const readyZoneColor: HexColor = "#145cff";
 const readyPulseColor: HexColor = "#35d7ff";
 const startingColor: HexColor = "#ffe176";
-const successColors: HexColor[] = ["#35d7ff", "#5fff9e", "#ffe176", "#ff3bd7", "#ffffff"];
-const failColors: HexColor[] = ["#ff3151", "#7b1428", "#2a0710"];
+const successColors = ["#35d7ff", "#5fff9e", "#ffe176", "#ff3bd7", "#ffffff"] as const satisfies readonly HexColor[];
+const failColors = ["#ff3151", "#7b1428", "#2a0710"] as const satisfies readonly HexColor[];
 const damageCooldownMillis = 1_000;
 const firstMeteorDelayMillis = 350;
 const maxSpawnCatchUp = 64;
-const readyZone = [{ minX: 4, maxX: 11, minY: 12, maxY: 19 }];
+const readyZone = { minX: 4, maxX: 11, minY: 12, maxY: 19 };
 
 type MeteorResult = "pending" | "dodged" | "hit" | "protected";
 
@@ -80,9 +80,16 @@ type DifficultyProfile = {
   warningMillis: number;
 };
 
+const mediumDifficultyProfile: DifficultyProfile = {
+  intervalMillis: 1_550,
+  largeMeteorEvery: 5,
+  radius: 1,
+  warningMillis: 1_350
+};
+
 const difficultyProfiles: Record<string, DifficultyProfile> = {
   easy: { intervalMillis: 1_900, largeMeteorEvery: 0, radius: 1, warningMillis: 1_650 },
-  medium: { intervalMillis: 1_550, largeMeteorEvery: 5, radius: 1, warningMillis: 1_350 },
+  medium: mediumDifficultyProfile,
   hard: { intervalMillis: 1_200, largeMeteorEvery: 3, radius: 1, warningMillis: 1_050 },
   expert: { intervalMillis: 900, largeMeteorEvery: 1, radius: 2, warningMillis: 800 }
 };
@@ -113,7 +120,7 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
   constructor(config: GameConfig) {
     this.config = normalizeGameConfig(config, manifest);
     this.rng = createSeededRng(this.config.seed);
-    this.readyGate = createPlayerReadyGate(manifest.start, readyZone, this.config.nowMillis);
+    this.readyGate = createPlayerReadyGate(manifest.start, [readyZone], this.config.nowMillis);
     this.resetState(this.config.nowMillis);
   }
 
@@ -212,7 +219,7 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
     }
 
     for (const tile of this.occupiedTiles) {
-      const [x, y] = tile.split(",").map(Number);
+      const [x, y] = occupiedTileCoordinates(tile);
       paintFrameCell(frame, x, y, playerFootprintColor);
     }
 
@@ -283,7 +290,7 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
   }
 
   private difficultyProfile(): DifficultyProfile {
-    return difficultyProfiles[this.config.difficulty] ?? difficultyProfiles.medium;
+    return difficultyProfiles[this.config.difficulty] ?? mediumDifficultyProfile;
   }
 
   private drawBackground(frame: Frame): void {
@@ -327,10 +334,10 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
     const pulse = Math.floor(this.nowMillis / (this.phase === "starting" ? 100 : 190));
     const color = this.phase === "starting" ? startingColor : pulse % 2 === 0 ? readyPulseColor : readyZoneColor;
     const inset = this.phase === "starting" ? pulse % 3 : pulse % 2;
-    const x = readyZone[0].minX + inset;
-    const y = readyZone[0].minY + inset;
-    const width = readyZone[0].maxX - readyZone[0].minX + 1 - inset * 2;
-    const height = readyZone[0].maxY - readyZone[0].minY + 1 - inset * 2;
+    const x = readyZone.minX + inset;
+    const y = readyZone.minY + inset;
+    const width = readyZone.maxX - readyZone.minX + 1 - inset * 2;
+    const height = readyZone.maxY - readyZone.minY + 1 - inset * 2;
 
     fillFrameRect(frame, x, y, width, height, color);
     if (width > 2 && height > 2) {
@@ -348,7 +355,7 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
       for (let x = 0; x < FLOOR_COLS; x += 1) {
         const distance = Math.floor(Math.abs(x - centerX) + Math.abs(y - centerY));
         if ((distance + step) % 7 <= 1) {
-          paintFrameCell(frame, x, y, successColors[(distance + step) % successColors.length]);
+          paintFrameCell(frame, x, y, successColors[(distance + step) % successColors.length] ?? successColors[0]);
         }
       }
     }
@@ -373,7 +380,7 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
 
   private meteorContainsOccupiedTile(meteor: Meteor): boolean {
     for (const tile of this.occupiedTiles) {
-      const [x, y] = tile.split(",").map(Number);
+      const [x, y] = occupiedTileCoordinates(tile);
       if (Math.abs(x - meteor.x) <= meteor.radius && Math.abs(y - meteor.y) <= meteor.radius) {
         return true;
       }
@@ -382,8 +389,9 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
   }
 
   private recordEvents(events: GameEvent[]): GameEvent[] {
-    if (events.length > 0) {
-      this.lastEvent = events[events.length - 1];
+    const latestEvent = events.at(-1);
+    if (latestEvent) {
+      this.lastEvent = latestEvent;
     }
     return events;
   }
@@ -447,5 +455,10 @@ class MeteorDodgeGame implements MeteorDodgeGameInstance {
 }
 
 export function meteorDifficultyProfile(difficulty: string): DifficultyProfile {
-  return { ...(difficultyProfiles[difficulty] ?? difficultyProfiles.medium) };
+  return { ...(difficultyProfiles[difficulty] ?? mediumDifficultyProfile) };
+}
+
+function occupiedTileCoordinates(tile: string): [number, number] {
+  const [x = "0", y = "0"] = tile.split(",");
+  return [Number(x), Number(y)];
 }

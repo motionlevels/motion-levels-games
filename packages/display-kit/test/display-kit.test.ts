@@ -84,9 +84,11 @@ test("FloorPreview renders the 16x32 frame with tile metadata", () => {
 
 test("FloorPreview positions tiles by coordinates instead of cell order", () => {
   const frame = setFrameCell(createFrame("#05070a"), 3, 4, "#148cff");
+  const positionedCell = frame.cells[4 * frame.width + 3];
+  assert.ok(positionedCell);
   const shuffledFrame = {
     ...frame,
-    cells: [frame.cells[4 * frame.width + 3], ...frame.cells.filter((cell) => cell.x !== 3 || cell.y !== 4)]
+    cells: [positionedCell, ...frame.cells.filter((cell) => cell.x !== 3 || cell.y !== 4)]
   };
   const html = renderToStaticMarkup(React.createElement(FloorPreview, { frame: shuffledFrame }));
 

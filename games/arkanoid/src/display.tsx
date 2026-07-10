@@ -1,4 +1,4 @@
-import React from "react";
+/** @jsxRuntime automatic */
 import { FramePreviewPanel, GameDisplayShell, LivesMeter, MetricPanel, MetricRow, PlayerReadyOverlay } from "@motion-levels-games/display-kit";
 import { formatClock, type Frame } from "@motion-levels-games/game-sdk";
 import type { ArkanoidSnapshot } from "./game.ts";

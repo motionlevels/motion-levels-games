@@ -177,7 +177,7 @@ function tapPreviewPoint(engine: GameEngine, index: number): void {
     { x: 5, y: 17 },
     { x: 10, y: 25 },
     { x: 8, y: 16 }
-  ];
+  ] as const;
   const point = points[index % points.length] ?? points[0];
   engine.press(point.x, point.y);
   engine.release(point.x, point.y);

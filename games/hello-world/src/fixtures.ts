@@ -17,7 +17,11 @@ export const runningFrame = runningGame.render();
 export const runningSnapshot = runningGame.snapshot();
 
 const damagedGame = createStartedGame();
-damagedGame.press({ ...helloWorldHazards()[0], pressed: true, atMillis: 2_200 });
+const firstHazard = helloWorldHazards()[0];
+if (!firstHazard) {
+  throw new Error("Hola Mundo requires at least one hazard fixture.");
+}
+damagedGame.press({ ...firstHazard, pressed: true, atMillis: 2_200 });
 export const damagedFrame = damagedGame.render();
 export const damagedSnapshot = damagedGame.snapshot();
 

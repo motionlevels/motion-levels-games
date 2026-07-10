@@ -60,6 +60,9 @@ function parseArgs(rawArgs: string[]): CreateGameOptions {
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index];
+    if (arg === undefined) {
+      continue;
+    }
     if (arg === "--force") {
       force = true;
     } else if (arg === "--root") {
@@ -403,7 +406,7 @@ export function scaffoldTargets(): Target[] {
 }
 
 function displayTemplate(): string {
-  return `import React from "react";
+  return `/** @jsxRuntime automatic */
 import { FramePreviewPanel, GameDisplayShell, MetricPanel, MetricRow, PlayerReadyOverlay } from "@motion-levels-games/display-kit";
 import { formatClock, type Frame, type GameSnapshot } from "@motion-levels-games/game-sdk";
 
@@ -613,5 +616,5 @@ Example:
 
 function isCliEntry(): boolean {
   const entry = process.argv[1];
-  return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
+  return entry !== undefined && import.meta.url === pathToFileURL(entry).href;
 }

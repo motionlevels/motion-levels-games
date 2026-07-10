@@ -756,8 +756,9 @@ class PingPongGame implements PingPongGameInstance {
   }
 
   private recordEvents(events: GameEvent[]): GameEvent[] {
-    if (events.length > 0) {
-      this.lastEvent = events[events.length - 1];
+    const latestEvent = events.at(-1);
+    if (latestEvent) {
+      this.lastEvent = latestEvent;
     }
     return events;
   }

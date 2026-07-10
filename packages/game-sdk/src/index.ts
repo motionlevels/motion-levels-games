@@ -504,12 +504,12 @@ export function createSeededRng(seed: number): SeededRng {
 }
 
 export function defaultPlayers(count: number, players: GameConfigPlayer[] = []): GamePlayer[] {
-  const colors: HexColor[] = ["#35d7ff", "#ff3bd7", "#ffe176", "#5fff9e"];
+  const colors = ["#35d7ff", "#ff3bd7", "#ffe176", "#5fff9e"] as const satisfies readonly HexColor[];
 
   return Array.from({ length: count }, (_, index) => ({
     index,
     label: players[index]?.label || players[index]?.name || `Player ${index + 1}`,
-    color: players[index]?.color || colors[index % colors.length],
+    color: players[index]?.color || colors[index % colors.length] || colors[0],
     score: 0,
     lives: -1
   }));
@@ -628,15 +628,15 @@ class DefaultPlayerReadyGate implements PlayerReadyGate {
     }
 
     const tileIndex = event.y * FLOOR_COLS + event.x;
-    const zoneIndex = this.tileZones[tileIndex];
+    const zoneIndex = this.tileZones[tileIndex] ?? -1;
     const held = this.tileHeld[tileIndex] === 1;
     if (zoneIndex >= 0 && held !== event.pressed) {
       this.tileHeld[tileIndex] = event.pressed ? 1 : 0;
       if (event.pressed) {
-        this.zoneHeld[zoneIndex] += 1;
+        this.zoneHeld[zoneIndex] = (this.zoneHeld[zoneIndex] ?? 0) + 1;
         this.zoneGraceUntil[zoneIndex] = 0;
       } else {
-        this.zoneHeld[zoneIndex] = Math.max(0, this.zoneHeld[zoneIndex] - 1);
+        this.zoneHeld[zoneIndex] = Math.max(0, (this.zoneHeld[zoneIndex] ?? 0) - 1);
         if (this.zoneHeld[zoneIndex] === 0) {
           this.zoneGraceUntil[zoneIndex] = normalizeMillis(event.atMillis) + this.releaseGraceMillis;
         }

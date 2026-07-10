@@ -11,6 +11,7 @@ import {
   helloWorldTargetScore,
   helloWorldTargets,
   manifest as helloWorldManifest,
+  type HelloWorldSnapshot,
   targetColor
 } from "@motion-levels-games/hello-world";
 import {
@@ -67,7 +68,7 @@ function playtestHelloWorld() {
 
   const html = renderToStaticMarkup(
     React.createElement(HelloWorldDisplay, {
-      snapshot: engine.state.snapshot,
+      snapshot: engine.state.snapshot as HelloWorldSnapshot,
       frame: engine.state.frame
     })
   );

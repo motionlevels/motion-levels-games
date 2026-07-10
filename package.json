@@ -11,16 +11,20 @@
   "scripts": {
     "dev": "npm run dev --workspace apps/playground",
     "build": "npm run build --workspaces --if-present",
+    "check:fast": "npm run lint && npm run typecheck",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspaces --if-present",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
     "validate:games": "tsx scripts/validate-games.ts",
     "create:game": "tsx scripts/create-game.ts",
     "test:scaffold": "tsx scripts/test-create-game.ts",
     "playtest": "tsx scripts/playtest-games.ts",
-    "check": "npm run validate:games && npm run typecheck && npm test && npm run test:scaffold && npm run build && npm run playtest"
+    "check": "npm run lint && npm run validate:games && npm run typecheck && npm test && npm run test:scaffold && npm run build && npm run playtest"
   },
   "devDependencies": {
     "@types/node": "^25.0.2",
+    "oxlint": "^1.73.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

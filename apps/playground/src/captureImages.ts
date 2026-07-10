@@ -2,6 +2,7 @@ import { toPng } from "html-to-image";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { combinedCapture, frameToCapture } from "./boardCapture.ts";
 import type { RenderableFrame } from "./frameTransforms.ts";
+import { loadDataUrlImage } from "./imageLoading.ts";
 import type { PlaygroundCapture, PlaygroundCaptureSurface } from "./playgroundApi.ts";
 
 export const defaultCaptureSurfaces: PlaygroundCaptureSurface[] = [
@@ -83,6 +84,33 @@ export async function captureDisplayElement(displayElement: HTMLElement | null):
     height: nativeDisplayHeight,
     dataUrl
   };
+}
+
+export async function downscaleCaptureToWebp(
+  dataUrl: string,
+  width: number,
+  height: number,
+  quality: number
+): Promise<string> {
+  const image = await loadDataUrlImage(dataUrl, "Could not load player display capture.");
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not create player display media canvas.");
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/webp", quality);
+}
+
+export function waitForPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
 
 async function captureDisplay(displayElement: HTMLElement | null): Promise<PlaygroundCapture> {

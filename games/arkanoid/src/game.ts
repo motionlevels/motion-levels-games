@@ -29,7 +29,8 @@ import { manifest } from "./manifest.ts";
 
 export const ballColor: HexColor = "#ffffff";
 export const paddleColor: HexColor = "#35d7ff";
-export const brickColors: HexColor[] = ["#ff3151", "#ff8a2a", "#ffd45f", "#74e58d"];
+export const brickColors: readonly HexColor[] = ["#ff3151", "#ff8a2a", "#ffd45f", "#74e58d"];
+const defaultBrickColor: HexColor = "#ff3151";
 
 const backgroundColor: HexColor = "#03070c";
 const controlZoneColor: HexColor = "#06101d";
@@ -422,8 +423,9 @@ class ArkanoidGame implements ArkanoidGameInstance {
   }
 
   private recordEvents(events: GameEvent[]): GameEvent[] {
-    if (events.length > 0) {
-      this.lastEvent = events[events.length - 1];
+    const latestEvent = events.at(-1);
+    if (latestEvent) {
+      this.lastEvent = latestEvent;
     }
     return events;
   }
@@ -462,7 +464,7 @@ function createBricks(): Brick[] {
     for (let x = 0; x < FLOOR_COLS; x += brickWidth) {
       bricks.push({
         alive: true,
-        color: brickColors[row] ?? brickColors[0],
+        color: brickColors[row] ?? defaultBrickColor,
         id,
         width: brickWidth,
         x,
