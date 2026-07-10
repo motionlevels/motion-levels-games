@@ -128,6 +128,12 @@ function ConfigVarLabel({ configVar }: { configVar: GameConfigVar }) {
   return (
     <span className="setting-label">
       <span>{configVar.label}</span>
+      <span
+        className={`setting-exposure ${configVar.playerFacing ? "is-player-facing" : "is-internal"}`}
+        title={configVar.playerFacing ? "Available to players in the venue menu" : "Operator and developer setting"}
+      >
+        {configVar.playerFacing ? "Player" : "Internal"}
+      </span>
       {configVar.description ? (
         <span
           aria-describedby={configDescriptionId(configVar)}

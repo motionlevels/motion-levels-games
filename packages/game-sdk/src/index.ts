@@ -170,6 +170,7 @@ export type GameConfigVarType = "int" | "float" | "bool" | "enum";
 type GameConfigVarBase = {
   key: string;
   label: string;
+  playerFacing: boolean;
   description?: string;
 };
 

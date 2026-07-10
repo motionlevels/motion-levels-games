@@ -148,6 +148,7 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
   const pointsToWin = {
     key: "points_to_win",
     label: "Points to win",
+    playerFacing: true,
     type: "int",
     default: 5,
     min: 1,
@@ -162,11 +163,12 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
       difficulty: { default: "hard", options: ["easy", "hard"] },
       vars: [
         pointsToWin,
-        { key: "pace", label: "Pace", type: "float", default: 1.25, min: 1, max: 2 },
-        { key: "sound", label: "Sound", type: "bool", default: true },
+        { key: "pace", label: "Pace", playerFacing: false, type: "float", default: 1.25, min: 1, max: 2 },
+        { key: "sound", label: "Sound", playerFacing: true, type: "bool", default: true },
         {
           key: "color",
           label: "Color",
+          playerFacing: true,
           type: "enum",
           default: "blue",
           options: [{ value: "blue" }, { value: "red" }]
@@ -213,11 +215,12 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
 });
 
 test("config value helpers use manifest definitions as the only schema", () => {
-  const integerVar = { key: "rounds", label: "Rounds", type: "int", default: 3, min: 1, max: 9 } satisfies GameConfigVar;
-  const booleanVar = { key: "sound", label: "Sound", type: "bool", default: true } satisfies GameConfigVar;
+  const integerVar = { key: "rounds", label: "Rounds", playerFacing: true, type: "int", default: 3, min: 1, max: 9 } satisfies GameConfigVar;
+  const booleanVar = { key: "sound", label: "Sound", playerFacing: true, type: "bool", default: true } satisfies GameConfigVar;
   const enumVar = {
     key: "team",
     label: "Team",
+    playerFacing: true,
     type: "enum",
     default: "blue",
     options: [{ value: "blue" }, { value: "red" }]

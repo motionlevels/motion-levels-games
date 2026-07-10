@@ -59,7 +59,10 @@ preview tiles.
 ## Manifest-driven configuration
 
 `manifest.config.vars` is the only schema for game options. Every variable has
-a required default, and numeric variables may declare their bounds and UI step.
+a required default and a required `playerFacing` boolean. The playground shows
+all variables and labels each one as player-facing or internal; production
+player menus expose only variables whose `playerFacing` value is `true`.
+Numeric variables may declare their bounds and UI step.
 `normalizeGameConfig` fills defaults, coerces values, clamps numeric bounds,
 rejects undeclared options, and resolves difficulty against the manifest before
 the game receives its configuration. The playground and media generator use
@@ -74,6 +77,7 @@ export const gameConfigVars = {
   pointsToWin: {
     key: "points_to_win",
     label: "Points to win",
+    playerFacing: true,
     type: "int",
     default: 5,
     min: 1,

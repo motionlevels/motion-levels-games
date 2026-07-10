@@ -810,6 +810,26 @@ select {
   overflow-wrap: break-word;
 }
 
+.setting-exposure {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  padding: 4px 6px;
+  text-transform: uppercase;
+}
+
+.setting-exposure.is-player-facing {
+  color: #54e891;
+}
+
+.setting-exposure.is-internal {
+  color: #98a4b3;
+}
+
 .setting-info {
   align-items: center;
   background: rgba(53, 215, 255, 0.07);

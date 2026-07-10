@@ -4,6 +4,7 @@ export const pingPongConfigVars = {
   pointsToWin: {
     key: "points_to_win",
     label: "Points to win",
+    playerFacing: true,
     description: "The first team to reach this score wins. A match can last up to twice this value minus one rounds.",
     type: "int",
     default: 5,
@@ -14,6 +15,7 @@ export const pingPongConfigVars = {
   initialBallSpeed: {
     key: "initial_ball_speed",
     label: "Initial ball speed (tiles/s)",
+    playerFacing: false,
     description: "The ball's starting speed in floor tiles per second on Easy. Medium, Hard, and Expert apply the difficulty multiplier curve to this value.",
     type: "float",
     default: 5.75,
@@ -24,6 +26,7 @@ export const pingPongConfigVars = {
   returnSpeedMultiplier: {
     key: "return_speed_multiplier",
     label: "Speed multiplier per return",
+    playerFacing: false,
     description: "The ball accelerates after every successful paddle return. Difficulty scales the increase above 1x, with a safety cap at 2.5 times the starting speed.",
     type: "float",
     default: 1.035,
@@ -34,6 +37,7 @@ export const pingPongConfigVars = {
   difficultyMultiplier: {
     key: "difficulty_multiplier",
     label: "Difficulty multiplier step",
+    playerFacing: false,
     description: "Easy uses 1x, Medium uses one step, Hard uses the step squared, and Expert uses the step cubed. It affects both starting speed and return acceleration.",
     type: "float",
     default: 1.2,

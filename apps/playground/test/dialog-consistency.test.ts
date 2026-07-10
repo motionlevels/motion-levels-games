@@ -112,6 +112,12 @@ test("every playground configuration change restarts the active game", () => {
   assert.match(appSource, /storeSelectedGameId\(nextGame\.manifest\.id\)/);
 });
 
+test("game settings identify player-facing and internal variables without hiding either", () => {
+  assert.match(gameConfigControlSource, /configVar\.playerFacing \? "Player" : "Internal"/);
+  assert.match(gameConfigControlSource, /is-player-facing/);
+  assert.doesNotMatch(appSource, /gameConfigVars\.filter/);
+});
+
 test("compact action groups use zero-gap shared control styling", () => {
   assert.match(styleSource, /--pg-control-bg:/, "shared control background token is required");
   assert.match(styleSource, /--pg-control-border:/, "shared control border token is required");

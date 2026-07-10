@@ -157,6 +157,9 @@ for (const gameId of gameDirs) {
             if (!String(record.label || "").trim()) {
               problems.push(`${gameId}: manifest.config.vars[${index}].label is required`);
             }
+            if (typeof record.playerFacing !== "boolean") {
+              problems.push(`${gameId}: manifest.config.vars[${index}].playerFacing must be a boolean`);
+            }
             if (!["int", "float", "bool", "enum"].includes(String(record.type))) {
               problems.push(`${gameId}: manifest.config.vars[${index}].type must be int, float, bool, or enum`);
             }
