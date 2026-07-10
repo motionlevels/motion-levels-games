@@ -63,10 +63,11 @@ no database, venue hardware, Motion Go, or platform API coupling.
   `@motion-levels-games/display-kit`. Remaining lives are solid red hearts;
   lost lives stay visible as the same solid heart shape in muted gray. Never
   substitute green hearts, outline hearts, ad hoc text glyph strings, or
-  game-specific life colors. Include `maxLives` in the snapshot so the display
-  does not duplicate the game's starting-life constant. Games without a lives
-  mechanic use `lives: -1`; never repurpose `lives` for score, rounds, or
-  progress.
+  game-specific life colors or animations. The shared meter owns the calm idle
+  pulse and the lost/regained transitions so motion stays consistent across
+  games. Include `maxLives` in the snapshot so the display does not duplicate
+  the game's starting-life constant. Games without a lives mechanic use
+  `lives: -1`; never repurpose `lives` for score, rounds, or progress.
 - Test and visually inspect the lives display at full, partially depleted, and
   zero lives. Every state must preserve the same number of heart slots and fit
   its container without clipping or wrapping.

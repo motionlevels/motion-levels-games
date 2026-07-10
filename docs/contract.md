@@ -111,7 +111,9 @@ the field must never carry remaining points, rounds, or other progress.
 Keep the total slot count stable while lives are lost so players can read both
 remaining and lost lives at a glance. Fixtures and tests must cover full,
 partially depleted, and zero-life states, and browser verification must inspect
-the native player display for clipping or wrapping in each state.
+the native player display for clipping or wrapping in each state. `LivesMeter`
+also owns the shared calm pulse and the lost/regained life transitions; games
+must not recreate or override that motion locally.
 
 ## Distance Readability
 

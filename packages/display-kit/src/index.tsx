@@ -116,6 +116,36 @@ export function LivesMeter({
 }) {
   const totalLives = Math.max(0, Math.trunc(maxLives));
   const remainingLives = Math.min(totalLives, Math.max(0, Math.trunc(lives)));
+  const previousLivesRef = useRef(remainingLives);
+  const changeSequenceRef = useRef(0);
+  const [lifeChange, setLifeChange] = useState<{
+    from: number;
+    id: number;
+    to: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const previousLives = previousLivesRef.current;
+    previousLivesRef.current = remainingLives;
+
+    if (previousLives === remainingLives) {
+      return;
+    }
+
+    changeSequenceRef.current += 1;
+    const nextChange = {
+      from: previousLives,
+      id: changeSequenceRef.current,
+      to: remainingLives
+    };
+    setLifeChange(nextChange);
+
+    const clearChange = window.setTimeout(() => {
+      setLifeChange((currentChange) => currentChange?.id === nextChange.id ? null : currentChange);
+    }, 1_100);
+
+    return () => window.clearTimeout(clearChange);
+  }, [remainingLives]);
 
   return (
     <div
@@ -125,14 +155,25 @@ export function LivesMeter({
     >
       {Array.from({ length: totalLives }, (_, index) => {
         const remaining = index < remainingLives;
+        const changed = lifeChange
+          && index >= Math.min(lifeChange.from, lifeChange.to)
+          && index < Math.max(lifeChange.from, lifeChange.to);
+        const changeClass = changed
+          ? lifeChange.to > lifeChange.from
+            ? "is-regained"
+            : "is-losing"
+          : "";
+
         return (
           <span
             aria-hidden="true"
-            className={`ml-life-heart ${remaining ? "is-remaining" : "is-lost"}`}
+            className={`ml-life-heart ${remaining ? "is-remaining" : "is-lost"} ${changeClass}`.trim()}
+            data-life-change={changeClass || undefined}
             data-life-state={remaining ? "remaining" : "lost"}
             key={index}
+            style={{ "--ml-heart-index": index } as CSSProperties}
           >
-            ♥
+            <span className="ml-life-heart-glyph">♥</span>
           </span>
         );
       })}

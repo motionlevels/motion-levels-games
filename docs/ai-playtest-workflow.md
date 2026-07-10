@@ -138,7 +138,9 @@ For every playthrough, judge both surfaces:
   values before increasing type.
 - **Lives:** When present, are remaining lives solid red hearts and lost lives
   the same solid heart shape in muted gray? Does the shared `LivesMeter` keep
-  every slot visible at full, partial, and zero lives without wrapping?
+  every slot visible at full, partial, and zero lives without wrapping? Do
+  remaining hearts pulse calmly, and do lost and regained slots use the shared
+  distinct transitions without overpowering the rest of the display?
 - **Agent feedback:** Do `ml.getState()` and captures provide enough evidence to
   diagnose the next change?
 
@@ -200,7 +202,9 @@ deterministic durations.
 
 For games with lives, capture the native player display at full, partially
 depleted, and zero lives. Confirm that every state uses the shared red/gray
-heart treatment and keeps the maximum number of slots visible.
+heart treatment and keeps the maximum number of slots visible. Trigger at least
+one life loss and one life increase or reset to inspect both transitions, and
+confirm that reduced-motion preferences disable all heart animation.
 
 Report:
 

@@ -7,6 +7,7 @@ import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-gam
 import { FloorPreview, GameDisplayShell, LivesMeter, MetricPanel, PlayerReadyOverlay, RoundStrip } from "../src/index.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const componentSource = readFileSync(new URL("../src/index.tsx", import.meta.url), "utf8");
 
 test("Ping Pong motion is namespaced and honors reduced motion", () => {
   assert.match(styleSource, /\.ping-pong-rally-lane/);
@@ -32,6 +33,23 @@ test("LivesMeter renders red remaining hearts and gray lost hearts", () => {
   assert.equal((html.match(/♥/g) ?? []).length, 3, "lost lives must remain filled heart shapes");
   assert.match(styleSource, /\.ml-life-heart\.is-remaining\s*\{[^}]*color:\s*#ff2036;/s);
   assert.match(styleSource, /\.ml-life-heart\.is-lost\s*\{[^}]*color:\s*#566171;/s);
+});
+
+test("LivesMeter owns calm idle and life-change motion", () => {
+  assert.match(componentSource, /const previousLivesRef = useRef\(remainingLives\)/);
+  assert.match(componentSource, /lifeChange\.to > lifeChange\.from[\s\S]*?"is-regained"[\s\S]*?"is-losing"/);
+  assert.match(componentSource, /data-life-change=\{changeClass \|\| undefined\}/);
+  assert.match(styleSource, /\.ml-life-heart-glyph\s*\{[^}]*animation:\s*ml-heart-pulse 3\.4s/s);
+  assert.match(styleSource, /\.ml-life-heart\.is-losing\s*\{[^}]*animation:\s*ml-life-lost 900ms/s);
+  assert.match(styleSource, /\.ml-life-heart\.is-regained\s*\{[^}]*animation:\s*ml-life-regained 1s/s);
+  assert.match(styleSource, /@keyframes ml-heart-pulse/);
+  assert.match(styleSource, /@keyframes ml-life-lost/);
+  assert.match(styleSource, /@keyframes ml-life-regained/);
+  assert.match(
+    styleSource,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.ml-life-heart,[\s\S]*?\.ml-life-heart-glyph\s*\{\s*animation:\s*none;/,
+    "heart motion must honor reduced-motion preferences"
+  );
 });
 
 test("primary solo metrics use distance-readable typography", () => {
