@@ -1,5 +1,5 @@
 import React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { Frame, FrameCell, GamePlayer, GameSnapshot } from "@motion-levels-games/game-sdk";
 import { FloorInputPainter, type FloorInputAction, type FloorInputTile } from "./floor-input-painter.ts";
@@ -20,12 +20,28 @@ const phaseLabels: Record<string, string> = {
   waiting: "En espera",
   starting: "Preparados",
   running: "En juego",
-  paused: "Pausa",
+  paused: "En pausa",
   finished: "Terminado"
 };
 
 export function phaseLabel(phase: string): string {
   return phaseLabels[phase] ?? phase;
+}
+
+const PlayerDisplayRuntimeContext = createContext({ paused: false });
+
+export function PlayerDisplayRuntimeProvider({
+  paused,
+  children
+}: {
+  paused: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <PlayerDisplayRuntimeContext.Provider value={{ paused }}>
+      {children}
+    </PlayerDisplayRuntimeContext.Provider>
+  );
 }
 
 export function GameDisplayShell({
@@ -39,8 +55,16 @@ export function GameDisplayShell({
   variant?: "default" | "versus";
   children?: ReactNode;
 }) {
+  const runtime = useContext(PlayerDisplayRuntimeContext);
+  const isPaused = runtime.paused;
+  const displayedPhase = isPaused ? "paused" : phase;
+
   return (
-    <section className={`ml-display-shell ml-tv-display ml-tv-display-${variant}`} aria-label={`Pantalla de ${title}`}>
+    <section
+      className={`ml-display-shell ml-tv-display ml-tv-display-${variant}${isPaused ? " is-paused" : ""}`}
+      aria-label={`Pantalla de ${title}`}
+      data-paused={isPaused || undefined}
+    >
       <header className="ml-display-header ml-tv-header">
         <div className="ml-tv-brand" aria-hidden="true">
           <span className="ml-tv-brand-mark" />
@@ -53,7 +77,7 @@ export function GameDisplayShell({
           <span className="ml-display-label">Juego</span>
           <h1>{title}</h1>
         </div>
-        <span className={`ml-status-pill ml-status-${phase}`}>{phaseLabel(phase)}</span>
+        <span className={`ml-status-pill ml-status-${displayedPhase}`}>{phaseLabel(displayedPhase)}</span>
       </header>
       <div className="ml-display-content">{children}</div>
     </section>

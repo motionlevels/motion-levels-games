@@ -77,7 +77,8 @@ current board requires.
 Paused games reject player input. For deterministic playtests, call `resume()`,
 send `press`, `release`, or `tap` synchronously, and call `pause()` again before
 advancing with `step()`. Never expect an input sent while paused to be queued or
-applied later.
+applied later. A paused display must replace its normal TV phase status with
+`En pausa` without changing the underlying game snapshot.
 
 Configuration returned by `ml.getState()` is manifest-normalized: defaults are
 filled, numeric bounds are enforced, undeclared options are removed, and an
@@ -89,7 +90,9 @@ reload, every configuration change restarts the engine, and dialogs/selectors
 pause only while they are active. Include a manually paused case so closing a
 control cannot accidentally resume the game.
 Also attempt floor and API input while paused and verify that snapshot, paddle,
-targets, and held-player readiness do not change.
+targets, and held-player readiness do not change. Capture the native display
+and confirm that its status says `En pausa` for both manual and temporary UI
+pause locks.
 
 Generate catalog-style media when reviewing a game card or TV display:
 

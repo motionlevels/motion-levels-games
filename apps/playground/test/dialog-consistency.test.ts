@@ -97,6 +97,11 @@ test("effective pause blocks every player input path", () => {
     /if \(!pausedRef\.current && nextEffectivePaused\) \{\s*releaseActivePlayerInputs\(\);\s*\}/,
     "entering pause must release inputs that were already held"
   );
+  assert.match(
+    appSource,
+    /<PlayerDisplayRuntimeProvider paused=\{paused\}>[\s\S]*?<PlayerDisplay snapshot=\{snapshot\} frame=\{frame\} \/>/,
+    "the shared runtime provider must always carry effective pause into every TV display"
+  );
 });
 
 test("every playground configuration change restarts the active game", () => {

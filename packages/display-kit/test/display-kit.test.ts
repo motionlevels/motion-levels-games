@@ -4,7 +4,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-games/game-sdk";
-import { FloorPreview, GameDisplayShell, LivesMeter, MetricPanel, PlayerReadyOverlay, RoundStrip } from "../src/index.tsx";
+import { FloorPreview, GameDisplayShell, LivesMeter, MetricPanel, PlayerDisplayRuntimeProvider, PlayerReadyOverlay, RoundStrip } from "../src/index.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const componentSource = readFileSync(new URL("../src/index.tsx", import.meta.url), "utf8");
@@ -117,6 +117,21 @@ test("GameDisplayShell renders title and phase", () => {
 
   assert.match(html, /Hello World/);
   assert.match(html, /running/);
+});
+
+test("GameDisplayShell replaces the live TV status while the runner is paused", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      PlayerDisplayRuntimeProvider,
+      { paused: true },
+      React.createElement(GameDisplayShell, { title: "Ping Pong", phase: "running" }, "body")
+    )
+  );
+
+  assert.match(html, /data-paused="true"/);
+  assert.match(html, /ml-status-paused/);
+  assert.match(html, /En pausa/);
+  assert.doesNotMatch(html, /En juego/);
 });
 
 test("PlayerReadyOverlay renders shared waiting and countdown states in Spanish", () => {

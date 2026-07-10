@@ -200,6 +200,20 @@
   box-shadow: 0 0 18px rgba(126, 231, 135, 0.76);
 }
 
+.ml-status-paused {
+  background:
+    linear-gradient(135deg, rgba(255, 225, 118, 0.12), rgba(15, 20, 34, 0.2)),
+    rgba(24, 20, 10, 0.72);
+  border-color: rgba(255, 225, 118, 0.5);
+  color: var(--ml-yellow);
+}
+
+.ml-status-paused::before {
+  animation: ml-status-breathe 1.8s ease-in-out infinite;
+  background: var(--ml-yellow);
+  box-shadow: 0 0 18px rgba(255, 225, 118, 0.72);
+}
+
 .ml-status-finished {
   border-color: rgba(255, 207, 90, 0.44);
   color: var(--ml-amber);

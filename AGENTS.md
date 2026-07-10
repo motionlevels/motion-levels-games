@@ -27,6 +27,10 @@ no database, venue hardware, Motion Go, or platform API coupling.
 
 ## Player Display Layout
 
+- Runners must wrap player displays in the shared
+  `PlayerDisplayRuntimeProvider`. `GameDisplayShell` reads its pause state from
+  that provider and owns the Spanish `En pausa` TV status; do not mutate the
+  game snapshot phase or recreate pause labels inside individual games.
 - **A rendered visual inspection is mandatory for every new game and every
   material player-display change.** Open the game in the playground, capture
   the native 1920x1080 `display` surface, and actually inspect the image before

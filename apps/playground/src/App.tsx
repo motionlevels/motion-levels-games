@@ -19,7 +19,7 @@ import {
   TriangleAlert,
   X
 } from "lucide-react";
-import { FloorPreview } from "@motion-levels-games/display-kit";
+import { FloorPreview, PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
 import {
   createGameEngine,
   defaultGamePlayerCount,
@@ -1181,7 +1181,9 @@ export function App() {
 
           <div className="display-preview-box" ref={displayPreviewRef}>
             <div className="display-preview-native" ref={displayNativeRef}>
-              <PlayerDisplay snapshot={snapshot} frame={frame} />
+              <PlayerDisplayRuntimeProvider paused={paused}>
+                <PlayerDisplay snapshot={snapshot} frame={frame} />
+              </PlayerDisplayRuntimeProvider>
             </div>
           </div>
 

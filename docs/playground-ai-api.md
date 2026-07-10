@@ -157,7 +157,9 @@ Opening a playground dialog or focusing a selector temporarily pauses the live
 engine. Pause locks compose, so closing one control does not resume while
 another is still open. Manual pause is independent: a game that was manually
 paused before opening a control remains paused after every control closes.
-`getState().paused` reports the effective combined pause state.
+`getState().paused` reports the effective combined pause state. While that
+value is true, the TV display status reads `En pausa`; the snapshot's game phase
+remains unchanged so its gameplay content does not shift.
 
 Pause is a hard player-input boundary. `press`, `release`, and `tap` are ignored
 while `getState().paused` is true, whether pause is manual or comes from an open

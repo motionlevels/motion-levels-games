@@ -16,8 +16,9 @@ module.
   player display shape: phase, score, lives, elapsed/remaining time, active
   targets, players, success, and event cue/message.
 - **PlayerDisplay**: React component owned by each game. It receives the
-  snapshot and optional frame, then renders the display using generic primitives
-  from `@motion-levels-games/display-kit`.
+  snapshot and optional frame, then renders the display using generic
+  primitives from `@motion-levels-games/display-kit`. Runners supply shared TV
+  state around it with `PlayerDisplayRuntimeProvider`.
 
 ## Runtime Boundary
 
@@ -38,6 +39,13 @@ inputs when entering pause so readiness zones and controls cannot stick after
 resume. A development runner may expose explicit deterministic stepping while
 paused, but stepping must only evolve the state established before pause and
 must not apply blocked player input.
+
+Pause is runtime state, not a game phase transition. A runner wraps the game
+display with `PlayerDisplayRuntimeProvider` and passes its effective pause state
+once. Every `GameDisplayShell` below that provider automatically replaces its
+normal Spanish phase label with `En pausa` while leaving the snapshot unchanged,
+so scores, rounds, readiness, and game-specific content remain stable. Games
+must not manually thread or recreate the runner's pause state.
 
 The interactive playground floor models occupied physical tiles. Starting a
 mouse or touch drag on an empty tile presses every crossed tile; starting on an
