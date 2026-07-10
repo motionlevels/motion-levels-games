@@ -9,7 +9,8 @@ Methods:
 
 - `init`: selects a `gameId` and accepts seed, player count/roster, difficulty,
   duration, and manifest-defined options.
-- `input`: applies one physical 16x32 press or release.
+- `input`: applies one physical 16x32 press or release at an absolute monotonic
+  `atMillis` timestamp.
 - `control`: pauses, resumes, resets, or returns status. Pause releases held
   inputs and blocks new input without changing the snapshot phase.
 - `tick`: advances to an absolute monotonic `atMillis` timestamp.

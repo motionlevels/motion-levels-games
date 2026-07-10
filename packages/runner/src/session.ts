@@ -51,8 +51,9 @@ export class RunnerSession {
     const x = boundedInteger(params.x, 0, 15, "x");
     const y = boundedInteger(params.y, 0, 31, "y");
     const pressed = params.pressed === true;
+    const atMillis = finiteNumber(params.atMillis, engine.clockMillis);
     const key = `${x},${y}`;
-    const state = pressed ? engine.press(x, y) : engine.release(x, y);
+    const state = pressed ? engine.press(x, y, atMillis) : engine.release(x, y, atMillis);
     if (pressed) this.held.add(key); else this.held.delete(key);
     return this.state(state);
   }
