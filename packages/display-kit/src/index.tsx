@@ -2,6 +2,7 @@ import React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { Frame, FrameCell, GamePlayer, GameSnapshot } from "@motion-levels-games/game-sdk";
+import { FloorInputPainter, type FloorInputAction, type FloorInputTile } from "./floor-input-painter.ts";
 
 export type Tone = "amber" | "blue" | "cyan" | "green" | "magenta" | "pink" | "red" | "yellow" | "neutral";
 export type DisplayPlayer = Pick<GamePlayer, "label" | "score" | "color">;
@@ -362,21 +363,23 @@ export function FramePreviewPanel({
 export function FloorPreview({
   frame,
   interactive = false,
+  inputResetKey,
   onTilePress,
   onTileRelease,
   className = ""
 }: {
   frame: Frame | { width: number; height: number; cells: FrameCell[] };
   interactive?: boolean;
+  inputResetKey?: string | number;
   onTilePress?: (x: number, y: number) => void;
   onTileRelease?: (x: number, y: number) => void;
   className?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const activePointerIdRef = useRef<number | null>(null);
-  const lastTileRef = useRef<{ x: number; y: number } | null>(null);
-  const activeTileTimeoutRef = useRef<number | null>(null);
-  const [activeTile, setActiveTile] = useState<{ x: number; y: number } | null>(null);
+  const inputPainterRef = useRef(new FloorInputPainter());
+  const previousInputResetKeyRef = useRef(inputResetKey);
+  const [pressedTileKeys, setPressedTileKeys] = useState(() => new Set<string>());
   const style = {
     "--ml-floor-cols": frame.width,
     "--ml-floor-rows": frame.height
@@ -387,22 +390,6 @@ export function FloorPreview({
     if (activeElement instanceof HTMLElement && rootRef.current?.contains(activeElement)) {
       activeElement.blur();
     }
-  }, []);
-  const clearActiveTile = useCallback((delayMillis = 0) => {
-    if (activeTileTimeoutRef.current !== null) {
-      window.clearTimeout(activeTileTimeoutRef.current);
-      activeTileTimeoutRef.current = null;
-    }
-
-    if (delayMillis <= 0) {
-      setActiveTile(null);
-      return;
-    }
-
-    activeTileTimeoutRef.current = window.setTimeout(() => {
-      setActiveTile(null);
-      activeTileTimeoutRef.current = null;
-    }, delayMillis);
   }, []);
   const tileFromPoint = useCallback((clientX: number, clientY: number) => {
     const element = document.elementFromPoint(clientX, clientY);
@@ -417,48 +404,51 @@ export function FloorPreview({
       y: Number(tile.dataset.tileY)
     };
   }, []);
-  const pressTile = useCallback(
-    (tile: { x: number; y: number }) => {
-      clearActiveTile();
-      onTilePress?.(tile.x, tile.y);
-      lastTileRef.current = tile;
-      setActiveTile(tile);
-    },
-    [clearActiveTile, onTilePress]
-  );
-  const releaseLastTile = useCallback((clearDelayMillis = 120) => {
-    const lastTile = lastTileRef.current;
-    if (lastTile) {
-      onTileRelease?.(lastTile.x, lastTile.y);
-      lastTileRef.current = null;
+  const applyInputActions = useCallback((actions: FloorInputAction[]) => {
+    if (actions.length === 0) {
+      return;
     }
 
-    clearActiveTile(clearDelayMillis);
-  }, [clearActiveTile, onTileRelease]);
-  useEffect(
-    () => () => {
-      if (activeTileTimeoutRef.current !== null) {
-        window.clearTimeout(activeTileTimeoutRef.current);
+    for (const action of actions) {
+      if (action.pressed) {
+        onTilePress?.(action.x, action.y);
+      } else {
+        onTileRelease?.(action.x, action.y);
       }
-    },
-    []
-  );
-  const moveToTile = useCallback(
-    (tile: { x: number; y: number } | null) => {
-      const lastTile = lastTileRef.current;
-      if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
-        releaseLastTile(0);
-        return;
-      }
-      if (lastTile && lastTile.x === tile.x && lastTile.y === tile.y) {
-        return;
-      }
+    }
+    setPressedTileKeys(new Set(inputPainterRef.current.keys()));
+  }, [onTilePress, onTileRelease]);
+  const beginInputGesture = useCallback((tile: FloorInputTile | null) => {
+    if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
+      return;
+    }
 
-      releaseLastTile(0);
-      pressTile(tile);
-    },
-    [pressTile, releaseLastTile]
-  );
+    applyInputActions(inputPainterRef.current.begin(tile));
+  }, [applyInputActions]);
+  const continueInputGesture = useCallback((tile: FloorInputTile | null) => {
+    if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
+      return;
+    }
+
+    applyInputActions(inputPainterRef.current.move(tile));
+  }, [applyInputActions]);
+  const clearInputPainter = useCallback(() => {
+    inputPainterRef.current.reset();
+    setPressedTileKeys(new Set());
+  }, []);
+  useEffect(() => {
+    if (Object.is(previousInputResetKeyRef.current, inputResetKey)) {
+      return;
+    }
+
+    previousInputResetKeyRef.current = inputResetKey;
+    clearInputPainter();
+  }, [clearInputPainter, inputResetKey]);
+  useEffect(() => {
+    if (!interactive) {
+      clearInputPainter();
+    }
+  }, [clearInputPainter, interactive]);
   useEffect(() => {
     if (!interactive) {
       return undefined;
@@ -466,7 +456,7 @@ export function FloorPreview({
 
     const endActivePointer = () => {
       activePointerIdRef.current = null;
-      releaseLastTile(0);
+      inputPainterRef.current.end();
     };
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -484,7 +474,7 @@ export function FloorPreview({
       window.removeEventListener("pointerup", endActivePointer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [interactive, releaseLastTile]);
+  }, [interactive]);
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!interactive || event.button !== 0) {
@@ -495,9 +485,9 @@ export function FloorPreview({
       clearPointerFocus();
       activePointerIdRef.current = event.pointerId;
       rootRef.current?.setPointerCapture(event.pointerId);
-      moveToTile(tileFromPoint(event.clientX, event.clientY));
+      beginInputGesture(tileFromPoint(event.clientX, event.clientY));
     },
-    [clearPointerFocus, interactive, moveToTile, tileFromPoint]
+    [beginInputGesture, clearPointerFocus, interactive, tileFromPoint]
   );
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -506,9 +496,9 @@ export function FloorPreview({
       }
 
       event.preventDefault();
-      moveToTile(tileFromPoint(event.clientX, event.clientY));
+      continueInputGesture(tileFromPoint(event.clientX, event.clientY));
     },
-    [interactive, moveToTile, tileFromPoint]
+    [continueInputGesture, interactive, tileFromPoint]
   );
   const endPointer = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -517,19 +507,23 @@ export function FloorPreview({
       }
 
       activePointerIdRef.current = null;
-      releaseLastTile();
+      inputPainterRef.current.end();
       clearPointerFocus();
       if (rootRef.current?.hasPointerCapture(event.pointerId)) {
         rootRef.current.releasePointerCapture(event.pointerId);
       }
     },
-    [clearPointerFocus, interactive, releaseLastTile]
+    [clearPointerFocus, interactive]
   );
   const handleLostPointerCapture = useCallback(() => {
     activePointerIdRef.current = null;
-    releaseLastTile(0);
+    inputPainterRef.current.end();
     clearPointerFocus();
-  }, [clearPointerFocus, releaseLastTile]);
+  }, [clearPointerFocus]);
+  const handleKeyboardActivation = useCallback((tile: FloorInputTile) => {
+    applyInputActions(inputPainterRef.current.begin(tile));
+    inputPainterRef.current.end();
+  }, [applyInputActions]);
 
   return (
     <div
@@ -551,9 +545,9 @@ export function FloorPreview({
           gridRowStart: cell.y + 1
         } as CSSProperties;
         const key = `${cell.x}-${cell.y}`;
-        const active = activeTile?.x === cell.x && activeTile.y === cell.y;
+        const active = pressedTileKeys.has(`${cell.x}:${cell.y}`);
         const sharedProps = {
-          className: `ml-floor-tile ${active ? "ml-floor-tile-active" : ""}`.trim(),
+          className: `ml-floor-tile ${active ? "ml-floor-tile-pressed" : ""}`.trim(),
           style: tileStyle,
           "data-tile-x": cell.x,
           "data-tile-y": cell.y,
@@ -566,7 +560,13 @@ export function FloorPreview({
             <button
               {...sharedProps}
               aria-label={`Baldosa ${cell.x}, ${cell.y}`}
+              aria-pressed={active}
               key={key}
+              onClick={(event) => {
+                if (event.detail === 0) {
+                  handleKeyboardActivation(cell);
+                }
+              }}
               type="button"
             />
           );

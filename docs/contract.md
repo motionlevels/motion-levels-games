@@ -39,6 +39,12 @@ resume. A development runner may expose explicit deterministic stepping while
 paused, but stepping must only evolve the state established before pause and
 must not apply blocked player input.
 
+The interactive playground floor models occupied physical tiles. Starting a
+mouse or touch drag on an empty tile presses every crossed tile; starting on an
+occupied tile releases every crossed tile. Those inputs remain visible and
+active after pointer-up so one gesture can represent several simultaneous
+players. Pausing or restarting clears all occupied preview tiles.
+
 ## Manifest-driven configuration
 
 `manifest.config.vars` is the only schema for game options. Every variable has

@@ -129,6 +129,7 @@ export function App() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [eventAutoFollow, setEventAutoFollow] = useState(true);
+  const [inputResetSequence, setInputResetSequence] = useState(0);
   const shellRef = useRef<HTMLElement>(null);
   const debugRef = useRef<HTMLElement>(null);
   const debugTriggerRef = useRef<HTMLButtonElement>(null);
@@ -380,6 +381,7 @@ export function App() {
       const nextState = nextEngine.state;
       engineRef.current = nextEngine;
       activePlayerInputsRef.current.clear();
+      setInputResetSequence((current) => current + 1);
       eventAutoFollowRef.current = true;
       previousLatestEventRef.current = "";
       setEventAutoFollow(true);
@@ -1316,6 +1318,7 @@ export function App() {
             className="playground-floor-preview"
             frame={frame}
             interactive={!paused}
+            inputResetKey={inputResetSequence}
             onTilePress={(x, y) => handleTilePress(x, y, "preview")}
             onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}
           />

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createGameEngine, type Frame } from "@motion-levels-games/game-sdk";
+import { FLOOR_ROWS, createGameEngine, type Frame } from "@motion-levels-games/game-sdk";
 import {
   PlayerDisplay as HelloWorldDisplay,
   createGame as createHelloWorldGame,
@@ -13,6 +13,12 @@ import {
   manifest as helloWorldManifest,
   targetColor
 } from "@motion-levels-games/hello-world";
+import {
+  PlayerDisplay as PingPongDisplay,
+  createGame as createPingPongGame,
+  manifest as pingPongManifest,
+  type PingPongSnapshot
+} from "@motion-levels-games/ping-pong";
 
 function countColor(frame: Frame, color: string): number {
   return frame.cells.filter((cell) => cell.color === color).length;
@@ -80,8 +86,65 @@ function playtestHelloWorld() {
   };
 }
 
+function playtestPingPong() {
+  const game = createPingPongGame({
+    difficulty: "medium",
+    options: { points_to_win: 3 },
+    playerCount: 2,
+    seed: 137
+  });
+  const engine = createGameEngine(game, {
+    initialEvents: game.init(0)
+  });
+
+  let snapshot = engine.state.snapshot as PingPongSnapshot;
+  assert.equal(snapshot.currentGame, pingPongManifest.id);
+  assert.equal(snapshot.phase, "waiting");
+  assert.equal(snapshot.readyPlayers, 0);
+
+  engine.press(7, 3);
+  engine.press(7, FLOOR_ROWS - 4);
+  snapshot = engine.state.snapshot as PingPongSnapshot;
+  assert.equal(snapshot.phase, "starting");
+  assert.equal(snapshot.readyPlayers, 2);
+
+  engine.step(2_000);
+  snapshot = engine.state.snapshot as PingPongSnapshot;
+  assert.equal(snapshot.phase, "running");
+
+  for (let step = 0; step < 600 && snapshot.rounds.length < 2; step += 1) {
+    engine.step(100);
+    snapshot = engine.state.snapshot as PingPongSnapshot;
+  }
+
+  assert.equal(snapshot.phase, "running", "the match should continue after two of three points");
+  assert.equal(snapshot.rounds.length, 2, "the CI playtest should complete two rounds");
+  assert.equal(snapshot.score, 2);
+  assert.equal(snapshot.players.reduce((score, player) => score + player.score, 0), 2);
+  assert.ok(snapshot.rounds.every((round) => round.winnerIndex === 0 || round.winnerIndex === 1));
+
+  const html = renderToStaticMarkup(
+    React.createElement(PingPongDisplay, {
+      snapshot,
+      frame: engine.state.frame
+    })
+  );
+
+  assert.ok(html.includes(pingPongManifest.label));
+  assert.match(html, /2 de 5 rondas jugadas/);
+
+  return {
+    clockMillis: engine.clockMillis,
+    fps: engine.fps,
+    phase: snapshot.phase,
+    rounds: snapshot.rounds.length,
+    score: snapshot.players.map((player) => player.score)
+  };
+}
+
 const result = {
-  helloWorld: playtestHelloWorld()
+  helloWorld: playtestHelloWorld(),
+  pingPong: playtestPingPong()
 };
 
 console.log(JSON.stringify(result, null, 2));
