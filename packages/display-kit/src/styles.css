@@ -50,6 +50,16 @@
   -webkit-user-select: none;
 }
 
+/* Native captures freeze presentation-only CSS motion at a complete frame.
+ * Game-state animation still advances between captures, which keeps generated
+ * player-display media deterministic without serializing half-entered text. */
+[data-native-capture="true"] .ml-display-shell *,
+[data-native-capture="true"] .ml-display-shell *::before,
+[data-native-capture="true"] .ml-display-shell *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 .ml-display-header {
   align-items: center;
   display: grid;
@@ -795,6 +805,467 @@
 
 .ml-versus-display .ml-metric-value {
   font-size: 60px;
+}
+
+/* Duelo is a 2–8 player free-for-all. Its roster never reorders: players can
+ * keep tracking the same color and screen position throughout the race. */
+.duelo-display {
+  display: grid;
+  gap: 16px;
+  grid-template-rows: 164px minmax(0, 1fr) 86px;
+  isolation: isolate;
+  min-height: 0;
+  position: relative;
+}
+
+.duelo-hero {
+  align-items: stretch;
+  background:
+    radial-gradient(90% 180% at 10% 50%, rgba(255, 82, 104, 0.16), transparent 62%),
+    linear-gradient(100deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
+    rgba(5, 9, 17, 0.9);
+  border: 1px solid rgba(127, 170, 210, 0.3);
+  box-shadow:
+    0 22px 60px -38px rgba(0, 0, 0, 0.94),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  clip-path: polygon(1.2% 0, 100% 0, 98.8% 100%, 0 100%);
+  display: grid;
+  gap: 26px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(520px, 0.9fr);
+  min-height: 0;
+  overflow: hidden;
+  padding: 22px 34px;
+  position: relative;
+}
+
+.duelo-hero::before {
+  background: linear-gradient(90deg, #ff3048, #24d9ff, #42e879, #ff4fd8, #376bff, #ffd84d, #a66cff, #ff8a3d);
+  bottom: 0;
+  box-shadow: 0 0 22px rgba(54, 217, 255, 0.42);
+  content: "";
+  height: 3px;
+  inset-inline: 0;
+  position: absolute;
+}
+
+.duelo-hero-copy {
+  align-content: center;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.duelo-hero-copy > span,
+.duelo-hero-copy > b,
+.duelo-hero-metric > span,
+.duelo-player-card header b,
+.duelo-player-card footer span,
+.duelo-event-rail > span,
+.duelo-event-rail > b {
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.duelo-hero-copy > span {
+  color: var(--ml-cyan);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.duelo-hero-copy > strong {
+  color: #ffffff;
+  font-size: clamp(50px, 3.7vw, 72px);
+  font-weight: 950;
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+  overflow-wrap: break-word;
+  text-shadow: 0 0 30px rgba(54, 217, 255, 0.2);
+  white-space: normal;
+}
+
+.duelo-hero-copy > b {
+  color: rgba(232, 240, 249, 0.74);
+  font-size: 17px;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  text-transform: none;
+  white-space: normal;
+}
+
+.duelo-hero-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.duelo-hero-metric {
+  align-content: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(151, 178, 205, 0.2);
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  min-width: 0;
+  padding: 14px;
+  text-align: center;
+}
+
+.duelo-hero-metric > span {
+  color: var(--ml-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.duelo-hero-metric > strong {
+  color: #ffffff;
+  font-size: clamp(34px, 2.45vw, 48px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  line-height: 0.9;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.duelo-player-grid {
+  display: grid;
+  gap: 14px;
+  grid-auto-rows: minmax(0, 1fr);
+  grid-template-columns: repeat(var(--duelo-grid-columns), minmax(0, 1fr));
+  min-height: 0;
+}
+
+.duelo-player-card {
+  --duelo-card-value-size: 92px;
+  background:
+    radial-gradient(100% 130% at 8% 0%, rgba(var(--duelo-player-rgb), 0.27), transparent 58%),
+    linear-gradient(150deg, rgba(var(--duelo-player-rgb), 0.09), rgba(5, 9, 17, 0.88) 65%),
+    rgba(5, 9, 17, 0.92);
+  border: 1px solid rgba(var(--duelo-player-rgb), 0.52);
+  box-shadow:
+    0 18px 54px -36px rgba(0, 0, 0, 0.92),
+    0 0 34px -24px rgba(var(--duelo-player-rgb), 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
+  display: grid;
+  gap: 10px;
+  grid-template-rows: auto minmax(0, 1fr) 12px auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 18px 22px 16px;
+  position: relative;
+  transition:
+    border-color 300ms ease,
+    filter 360ms ease,
+    opacity 360ms ease,
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.duelo-display.is-player-count-2 .duelo-player-card {
+  --duelo-card-value-size: 180px;
+  gap: 18px;
+  padding: 28px 34px 24px;
+}
+
+.duelo-display.is-player-count-3 .duelo-player-card,
+.duelo-display.is-player-count-4 .duelo-player-card {
+  --duelo-card-value-size: 124px;
+}
+
+.duelo-player-card::after {
+  background: var(--duelo-player);
+  bottom: 0;
+  box-shadow: 0 0 18px rgba(var(--duelo-player-rgb), 0.75);
+  content: "";
+  height: 4px;
+  inset-inline: 0;
+  position: absolute;
+}
+
+.duelo-player-card header {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.duelo-player-card header > i {
+  background: var(--duelo-player);
+  border-radius: 2px;
+  box-shadow: 0 0 18px rgba(var(--duelo-player-rgb), 0.82);
+  display: block;
+  height: 12px;
+  margin-top: 7px;
+  width: 12px;
+}
+
+.duelo-player-name {
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+  min-width: 0;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.duelo-player-name.is-long {
+  font-size: 23px;
+  line-height: 1.06;
+}
+
+.duelo-player-name.is-extra-long {
+  font-size: 19px;
+  line-height: 1.08;
+}
+
+.duelo-display.is-player-count-2 .duelo-player-name {
+  font-size: 40px;
+}
+
+.duelo-display.is-player-count-2 .duelo-player-name.is-long {
+  font-size: 32px;
+}
+
+.duelo-display.is-player-count-2 .duelo-player-name.is-extra-long {
+  font-size: 26px;
+}
+
+.duelo-player-card header b {
+  color: var(--duelo-player);
+  font-size: 13px;
+  line-height: 1.15;
+  max-width: 130px;
+  overflow-wrap: break-word;
+  text-align: right;
+  white-space: normal;
+}
+
+.duelo-player-score {
+  align-content: center;
+  align-items: baseline;
+  display: flex;
+  gap: 14px;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.duelo-player-score > strong {
+  color: #ffffff;
+  font-size: var(--duelo-card-value-size);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  letter-spacing: -0.06em;
+  line-height: 0.78;
+  text-shadow:
+    0 0 0.035em var(--duelo-player),
+    0 0 0.2em rgba(var(--duelo-player-rgb), 0.52);
+}
+
+.duelo-player-score > span {
+  color: rgba(231, 239, 248, 0.7);
+  font-size: 17px;
+  font-weight: 850;
+  line-height: 1.08;
+  max-width: 120px;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.duelo-player-score > em {
+  animation: dueloClaimPlus 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  color: var(--duelo-player);
+  font-size: 42px;
+  font-style: normal;
+  font-weight: 950;
+  inset: 8px 8px auto auto;
+  position: absolute;
+  text-shadow: 0 0 18px rgba(var(--duelo-player-rgb), 0.82);
+}
+
+.duelo-player-track {
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(var(--duelo-player-rgb), 0.3);
+  overflow: hidden;
+}
+
+.duelo-player-track > i {
+  background: linear-gradient(90deg, var(--duelo-player), rgba(255, 255, 255, 0.92));
+  box-shadow: 0 0 18px rgba(var(--duelo-player-rgb), 0.72);
+  display: block;
+  height: 100%;
+  transition: width 460ms cubic-bezier(0.16, 1, 0.3, 1);
+  width: calc(var(--duelo-progress) * 100%);
+}
+
+.duelo-player-card footer {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.duelo-player-card footer span {
+  color: var(--ml-muted);
+  font-size: 13px;
+}
+
+.duelo-player-card footer strong {
+  color: var(--duelo-player);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.duelo-player-card.is-leader {
+  border-color: rgba(var(--duelo-player-rgb), 0.92);
+  box-shadow:
+    0 20px 58px -34px rgba(0, 0, 0, 0.94),
+    0 0 46px -18px rgba(var(--duelo-player-rgb), 0.86),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.duelo-display.is-phase-waiting .duelo-player-card:not(.is-ready) {
+  filter: saturate(0.68) brightness(0.72);
+  opacity: 0.72;
+}
+
+.duelo-display.is-phase-waiting .duelo-player-card.is-ready,
+.duelo-display.is-phase-starting .duelo-player-card {
+  border-color: rgba(var(--duelo-player-rgb), 0.88);
+  filter: brightness(1.08) saturate(1.12);
+}
+
+.duelo-player-card.is-recent {
+  animation: dueloCardClaim 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.duelo-display.is-phase-starting .duelo-hero-copy > strong {
+  animation: dueloCountdown 700ms ease-in-out infinite alternate;
+  color: var(--ml-yellow);
+  font-size: 112px;
+  line-height: 0.72;
+  text-shadow: 0 0 36px rgba(255, 225, 118, 0.68);
+}
+
+.duelo-display.is-phase-finished .duelo-hero {
+  border-color: rgba(var(--duelo-winner-rgb), 0.72);
+  box-shadow:
+    0 0 50px -18px rgba(var(--duelo-winner-rgb), 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.duelo-display.is-phase-finished .duelo-hero-copy > span,
+.duelo-display.is-phase-finished .duelo-hero-copy > strong {
+  color: var(--duelo-winner);
+}
+
+.duelo-display.is-phase-finished .duelo-hero-copy > strong {
+  animation: dueloWinnerTitle 900ms ease-in-out infinite alternate;
+  font-size: clamp(44px, 3.25vw, 64px);
+  text-shadow: 0 0 34px rgba(var(--duelo-winner-rgb), 0.66);
+}
+
+.duelo-display.is-phase-finished .duelo-player-card:not(.is-winner) {
+  filter: grayscale(0.35) brightness(0.58);
+  opacity: 0.58;
+  transform: scale(0.985);
+}
+
+.duelo-display.is-phase-finished .duelo-player-card.is-winner {
+  animation: dueloWinnerCard 900ms ease-in-out infinite alternate;
+  border-color: rgba(var(--duelo-player-rgb), 0.98);
+  filter: brightness(1.18) saturate(1.18);
+  transform: scale(1.012);
+}
+
+.duelo-event-rail {
+  align-items: center;
+  background:
+    linear-gradient(90deg, rgba(255, 82, 104, 0.1), rgba(6, 11, 20, 0.92) 26%, rgba(6, 11, 20, 0.92) 74%, rgba(36, 217, 255, 0.1)),
+    rgba(5, 9, 17, 0.94);
+  border: 1px solid rgba(123, 160, 198, 0.28);
+  display: grid;
+  gap: 22px;
+  grid-template-columns: 170px minmax(0, 1fr) auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 14px 24px;
+}
+
+.duelo-event-rail > span,
+.duelo-event-rail > b {
+  color: var(--ml-muted);
+  font-size: 14px;
+  line-height: 1.1;
+}
+
+.duelo-event-rail > strong {
+  animation: dueloEventIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.duelo-event-rail > b {
+  color: var(--ml-cyan);
+  max-width: 280px;
+  overflow-wrap: break-word;
+  text-align: right;
+  white-space: normal;
+}
+
+@keyframes dueloClaimPlus {
+  0% { opacity: 0; transform: translateY(18px) scale(0.55); }
+  35% { opacity: 1; transform: translateY(-4px) scale(1.2); }
+  100% { opacity: 0; transform: translateY(-28px) scale(0.92); }
+}
+
+@keyframes dueloCardClaim {
+  0% { filter: brightness(1); transform: scale(1); }
+  34% { filter: brightness(1.34) saturate(1.22); transform: scale(1.018); }
+  100% { filter: brightness(1); transform: scale(1); }
+}
+
+@keyframes dueloCountdown {
+  from { filter: brightness(0.9); transform: scale(0.92); }
+  to { filter: brightness(1.2); transform: scale(1.06); }
+}
+
+@keyframes dueloWinnerTitle {
+  from { filter: brightness(0.98); transform: translateX(-2px) scale(0.99); }
+  to { filter: brightness(1.2); transform: translateX(2px) scale(1.025); }
+}
+
+@keyframes dueloWinnerCard {
+  from { box-shadow: 0 0 30px -18px rgba(var(--duelo-player-rgb), 0.7); }
+  to { box-shadow: 0 0 58px -10px rgba(var(--duelo-player-rgb), 0.94); }
+}
+
+@keyframes dueloEventIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duelo-display *,
+  .duelo-display *::before,
+  .duelo-display *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* Ping Pong turns the live deterministic game state into a coordinated motion

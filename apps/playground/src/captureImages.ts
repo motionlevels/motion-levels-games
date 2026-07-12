@@ -29,6 +29,10 @@ export async function capturePlaygroundSurfaces({
   const captures: Partial<Record<PlaygroundCaptureSurface, PlaygroundCapture>> = {};
 
   if (requested.has("display") || requested.has("combined")) {
+    // State changes can be synchronous while React commits the matching display
+    // on the next paint. Capture only after that commit is visible so automated
+    // playtests and the copy actions never serialize a half-transitioned frame.
+    await waitForPaint();
     captures.display = await captureDisplay(displayElement);
   }
   if (requested.has("boardPreview") || requested.has("combined")) {
@@ -65,7 +69,11 @@ export async function captureDisplayElement(displayElement: HTMLElement | null):
     throw new Error("Player display is not mounted.");
   }
 
-  const dataUrl = await toPng(displayElement, {
+  const previousCaptureState = displayElement.getAttribute("data-native-capture");
+  displayElement.setAttribute("data-native-capture", "true");
+  await waitForPaint();
+
+  const captureOptions = {
     cacheBust: true,
     height: nativeDisplayHeight,
     pixelRatio: 1,
@@ -76,7 +84,23 @@ export async function captureDisplayElement(displayElement: HTMLElement | null):
       width: `${nativeDisplayWidth}px`
     },
     width: nativeDisplayWidth
-  });
+  } as const;
+
+  let dataUrl: string;
+  try {
+    // Chromium occasionally omits newly composited grid children from the
+    // first foreign-object raster after a display state change. Prime that
+    // raster once, then serialize the complete native frame. This also keeps
+    // generated player-display animations free from intermittent blank cards.
+    await toPng(displayElement, captureOptions);
+    dataUrl = await toPng(displayElement, captureOptions);
+  } finally {
+    if (previousCaptureState === null) {
+      displayElement.removeAttribute("data-native-capture");
+    } else {
+      displayElement.setAttribute("data-native-capture", previousCaptureState);
+    }
+  }
 
   return {
     surface: "display",

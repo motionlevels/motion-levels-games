@@ -34,5 +34,20 @@ test("production runner rejects development-only games", () => {
     method: "init",
     params: { gameId: "hello-world", playerCount: 1 }
   }), /not production eligible/);
-  assert.deepEqual(gameCatalog.filter((game) => game.availability.production).map((game) => game.id), ["arkanoid", "ping-pong"]);
+  assert.deepEqual(gameCatalog.filter((game) => game.availability.production).map((game) => game.id), ["arkanoid", "duelo", "ping-pong"]);
+});
+
+test("production runner initializes TypeScript Duelo with its strict roster", () => {
+  const session = new RunnerSession();
+  const initialized = session.handle({
+    version: runnerProtocolVersion,
+    id: "init-duelo",
+    method: "init",
+    params: { gameId: "duelo", playerCount: 8, difficulty: "hard", seed: 137 }
+  });
+  assert.equal(initialized.snapshot.currentGame, "duelo");
+  assert.equal(initialized.snapshot.phase, "waiting");
+  assert.equal(initialized.snapshot.players.length, 8);
+  assert.equal(initialized.snapshot.requiredPlayers, 8);
+  assert.equal(initialized.frame.colors.length, 512);
 });
