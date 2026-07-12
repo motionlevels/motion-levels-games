@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { gameRegistry } from "../packages/runner/src/registry.ts";
 
 type ManifestModule = {
   manifest?: {
@@ -75,6 +76,13 @@ const gameDirs = (await readdir(gamesRoot, { withFileTypes: true }))
 assert.ok(gameDirs.length > 0, "expected at least one game under games/");
 
 const problems: string[] = [];
+const registeredGameIds = [...gameRegistry.keys()].sort();
+if (JSON.stringify(registeredGameIds) !== JSON.stringify(gameDirs)) {
+  const missing = gameDirs.filter((gameId) => !gameRegistry.has(gameId));
+  const unexpected = registeredGameIds.filter((gameId) => !gameDirs.includes(gameId));
+  if (missing.length > 0) problems.push(`production runner registry is missing: ${missing.join(", ")}`);
+  if (unexpected.length > 0) problems.push(`production runner registry has unknown games: ${unexpected.join(", ")}`);
+}
 
 for (const gameId of gameDirs) {
   const gameRoot = path.join(gamesRoot, gameId);

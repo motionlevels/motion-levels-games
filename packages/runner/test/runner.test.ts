@@ -34,7 +34,10 @@ test("production runner rejects development-only games", () => {
     method: "init",
     params: { gameId: "hello-world", playerCount: 1 }
   }), /not production eligible/);
-  assert.deepEqual(gameCatalog.filter((game) => game.availability.production).map((game) => game.id), ["arkanoid", "duelo", "ping-pong"]);
+  const productionGameIds = gameCatalog.filter((game) => game.availability.production).map((game) => game.id);
+  for (const baselineGame of ["arkanoid", "duelo", "ping-pong"]) {
+    assert.ok(productionGameIds.includes(baselineGame), `${baselineGame} must remain production eligible`);
+  }
 });
 
 test("production runner initializes TypeScript Duelo with its strict roster", () => {

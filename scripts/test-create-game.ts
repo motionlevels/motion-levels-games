@@ -67,6 +67,8 @@ assert.match(readme, /Lives, when applicable/);
 assert.match(readme, /render `LivesMeter`/);
 assert.match(readme, /Player count policy/);
 assert.match(readme, /players\.allowAny: true/);
+assert.match(readme, /packages\/runner\/src\/registry\.ts/);
+assert.match(readme, /production runner/);
 assert.match(readme, /Gameplay tuning variables/);
 assert.match(readme, /readGameConfigOption/);
 assert.match(readme, /playerFacing: false/);

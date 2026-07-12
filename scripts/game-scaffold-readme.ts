@@ -29,6 +29,9 @@ npm run typecheck --workspace @motion-levels-games/${options.gameId}
 \`\`\`
 
 Keep \`manifest.id\` exactly equal to the directory name: \`${options.gameId}\`.
+Register the finished package in \`packages/runner/src/registry.ts\`; the
+release validator requires every \`games/*\` package to appear in the
+production runner, catalog, and player-display registry.
 Keep the player-presence gate and pre-start animation when replacing the
 scaffolded gameplay. Use \`start: { mode: "immediate" }\` only when a product
 requirement explicitly calls for selection-time autoplay.

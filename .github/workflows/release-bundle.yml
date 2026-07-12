@@ -6,12 +6,53 @@ on:
       - "games-v*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  release-policy:
+    name: Validate release tag and source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      source_revision: ${{ steps.source.outputs.source_revision }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a strict version tag on the current main commit
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" =~ ^games-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          git fetch --no-tags origin main
+          source_revision="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          test "$source_revision" = "$(git rev-parse origin/main)"
+          echo "source_revision=$source_revision" >> "$GITHUB_OUTPUT"
+      - name: Require platform sync credentials before publishing
+        env:
+          PLATFORM_SYNC_TOKEN: ${{ secrets.PLATFORM_SYNC_TOKEN }}
+        run: test -n "$PLATFORM_SYNC_TOKEN"
+
+  checks:
+    name: Release quality gate
+    needs: release-policy
+    uses: ./.github/workflows/checks.yml
+
   bundle:
+    needs:
+      - release-policy
+      - checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      SOURCE_REVISION: ${{ needs.release-policy.outputs.source_revision }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,11 +65,32 @@ jobs:
       - run: npm run generate:media
       - run: npm run build:bundle
         env:
-          MOTION_LEVELS_GAMES_SOURCE_REVISION: ${{ github.sha }}
+          MOTION_LEVELS_GAMES_SOURCE_REVISION: ${{ env.SOURCE_REVISION }}
       - run: npm run verify:bundle
       - uses: softprops/action-gh-release@v2
         with:
           fail_on_unmatched_files: true
+          overwrite_files: false
+          target_commitish: ${{ env.SOURCE_REVISION }}
           files: |
-            dist/motion-levels-games-${{ github.sha }}.tgz
-            dist/motion-levels-games-${{ github.sha }}.tgz.sha256
+            dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz
+            dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz.sha256
+      - name: Notify platform of the verified release
+        env:
+          PLATFORM_SYNC_TOKEN: ${{ secrets.PLATFORM_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PLATFORM_SYNC_TOKEN"
+          payload="$(jq -n \
+            --arg ref "main" \
+            --arg release_tag "$GITHUB_REF_NAME" \
+            --arg source_revision "$SOURCE_REVISION" \
+            '{ref:$ref,inputs:{release_tag:$release_tag,source_revision:$source_revision}}')"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $PLATFORM_SYNC_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data "$payload" \
+            https://api.github.com/repos/motionlevels/motion-levels-platform/actions/workflows/sync-games-bundle.yml/dispatches

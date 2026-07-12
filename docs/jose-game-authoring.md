@@ -118,19 +118,23 @@ or an agent resumes work there, rather than after every `main` commit.
 4. Create new games with `npm run create:game -- <game-id> "Display Name"`.
 5. Keep all game code inside `games/<game-id>/`.
 6. Do not manually add game imports to `apps/playground/src/App.tsx`.
-7. Keep `manifest.id`, package name, README, tests, and fixtures in sync.
-8. Visually inspect native player-display captures for every main phase and
+7. Register every new game package once in
+   `packages/runner/src/registry.ts`; validation compares that registry with
+   `games/*` so a game cannot pass CI while missing from the production
+   runtime, catalog, or player-display bundle.
+8. Keep `manifest.id`, package name, README, tests, and fixtures in sync.
+9. Visually inspect native player-display captures for every main phase and
    representative worst-case text before calling a new game complete.
-9. Maximize primary score, round/progress, lives, and time values for venue
+10. Maximize primary score, round/progress, lives, and time values for venue
    viewing distance while keeping worst-case values inside their cards.
-10. Implement and inspect a game-win animation, plus a separate round-win
+11. Implement and inspect a game-win animation, plus a separate round-win
    animation when the game has rounds.
-11. If the game uses lives, use `LivesMeter` and inspect full, partial, and zero
+12. If the game uses lives, use `LivesMeter` and inspect full, partial, and zero
     life states.
-12. Keep `players.allowAny: true` unless player count materially changes the
+13. Keep `players.allowAny: true` unless player count materially changes the
     game; document and test the reason when setting it to `false`.
-13. Run `npm run check` before pushing.
-14. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
-   green.
-15. Commit every completed task before handing it off. Never force-push,
+14. Run `npm run check` before pushing.
+15. If CI fails, fix `dev` and push again. Do not ask Jose to merge until CI is
+    green.
+16. Commit every completed task before handing it off. Never force-push,
     rebase, amend, or otherwise rewrite history.

@@ -195,6 +195,10 @@ no database, venue hardware, Motion Go, or platform API coupling.
   round-win animation when applicable, are implemented and verified.
 - The playground discovers games from `games/*/src/index.ts`; do not add
   manual game imports to `apps/playground/src/App.tsx`.
+- The production runner and player-display bundle use the explicit
+  `packages/runner/src/registry.ts`. Register every new game package there;
+  validation requires exact coverage of `games/*` so releases cannot silently
+  omit a game that works only in the playground.
 - Prefer deterministic game logic. Any randomness should flow through the SDK
   seeded RNG helpers.
 - Keep `docs/ai-playtest-workflow.md` and `docs/playground-ai-api.md` in sync
