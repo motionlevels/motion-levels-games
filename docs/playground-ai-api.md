@@ -54,7 +54,8 @@ type PlaygroundMediaAssetKind =
   | "thumbnailSmall"
   | "thumbnail"
   | "animation"
-  | "playerDisplay";
+  | "playerDisplay"
+  | "playerDisplayAnimation";
 
 type PlaygroundMediaAsset = {
   kind: PlaygroundMediaAssetKind;
@@ -232,6 +233,8 @@ Assets:
 - `thumbnail`: high-quality landscape WebP board thumbnail, 1024x512.
 - `animation`: animated WebP board preview, 512x256.
 - `playerDisplay`: high-quality player display WebP, downscaled to 1280x720.
+- `playerDisplayAnimation`: animated player display WebP at 640x360, generated
+  from the same deterministic preview timeline as the floor animation.
 
 The board assets are rendered from deterministic TypeScript engine frames, not
 DOM screenshots. The player-display asset is browser-rendered from the reusable

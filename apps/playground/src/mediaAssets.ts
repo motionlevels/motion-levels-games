@@ -15,8 +15,14 @@ import {
 } from "@motion-levels-games/game-sdk";
 import type { PlaygroundGame } from "./gameRegistry.ts";
 import { rotateFrameClockwise, type RenderableFrame } from "./frameTransforms.ts";
+import { loadDataUrlImage } from "./imageLoading.ts";
 
-export type PlaygroundMediaAssetKind = "thumbnailSmall" | "thumbnail" | "animation" | "playerDisplay";
+export type PlaygroundMediaAssetKind =
+  | "thumbnailSmall"
+  | "thumbnail"
+  | "animation"
+  | "playerDisplay"
+  | "playerDisplayAnimation";
 
 export type PlaygroundMediaAsset = {
   kind: PlaygroundMediaAssetKind;
@@ -47,13 +53,20 @@ export type PlaygroundMediaOptions = {
 };
 
 export type PlayerDisplayAssetRenderer = (input: {
+  animationFileName: string;
   fileName: string;
-  frame: Frame;
+  frames: PlayerDisplayMediaFrame[];
   game: PlaygroundGame;
+}) => Promise<Pick<PlaygroundMediaBundle["assets"], "playerDisplay" | "playerDisplayAnimation">>;
+
+export type PlayerDisplayMediaFrame = {
+  delayMs: number;
+  frame: Frame;
   snapshot: GameEngineState["snapshot"];
-}) => Promise<PlaygroundMediaAsset>;
+};
 
 type PreviewFrame = {
+  display: PlayerDisplayMediaFrame;
   frame: RenderableFrame;
   delayMs: number;
 };
@@ -89,11 +102,11 @@ export async function generateGameMediaBundle(
   const frames = collectPreviewFrames(engine, game);
   const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
   const baseName = game.manifest.id;
-  const playerDisplay = await renderPlayerDisplay({
+  const playerDisplayAssets = await renderPlayerDisplay({
+    animationFileName: `${baseName}-player-display-animation.webp`,
     fileName: `${baseName}-player-display.webp`,
-    frame: engine.state.frame,
-    game,
-    snapshot: engine.state.snapshot
+    frames: frames.map((frame) => frame.display),
+    game
   });
 
   return {
@@ -120,7 +133,7 @@ export async function generateGameMediaBundle(
         tilePixels: thumbnailTilePixels
       }),
       animation: await framesToAnimatedWebpAsset(frames, `${baseName}-preview.webp`),
-      playerDisplay
+      ...playerDisplayAssets
     }
   };
 }
@@ -163,6 +176,11 @@ function collectPreviewFrames(engine: GameEngine, game: PlaygroundGame): Preview
   for (let index = 0; index < frameCount; index += 1) {
     const state = index === 0 ? engine.state : engine.step(frameIntervalMillis);
     frames.push({
+      display: {
+        delayMs: frameIntervalMillis,
+        frame: state.frame,
+        snapshot: state.snapshot
+      },
       frame: rotateFrameClockwise(state.frame),
       delayMs: frameIntervalMillis
     });
@@ -227,6 +245,47 @@ async function framesToAnimatedWebpAsset(frames: PreviewFrame[], fileName: strin
 
   return {
     kind: "animation",
+    width,
+    height,
+    mimeType: "image/webp",
+    fileName,
+    dataUrl: bytesToDataUrl(webpBytes, "image/webp")
+  };
+}
+
+export async function imagesToAnimatedWebpAsset(
+  frames: Array<{ dataUrl: string; delayMs: number }>,
+  fileName: string,
+  width: number,
+  height: number
+): Promise<PlaygroundMediaAsset> {
+  if (frames.length === 0) {
+    throw new Error("Cannot render a player display animation without frames.");
+  }
+
+  const encoder = GIFEncoder();
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not create player display animation canvas.");
+  }
+
+  for (const frame of frames) {
+    const image = await loadDataUrlImage(frame.dataUrl, "Could not load player display animation frame.");
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const rgba = context.getImageData(0, 0, width, height).data;
+    const palette = quantize(rgba, 256);
+    const indexed = applyPalette(rgba, palette);
+    encoder.writeFrame(indexed, width, height, { delay: frame.delayMs, palette });
+  }
+
+  encoder.finish();
+  const webpBytes = await encodeGifBytesToWebp(encoder.bytesView());
+  return {
+    kind: "playerDisplayAnimation",
     width,
     height,
     mimeType: "image/webp",

@@ -47,6 +47,7 @@ import {
   captureDisplayElement,
   capturePlaygroundSurfaces,
   copyCaptureToClipboard,
+  downscaleCaptureToPng,
   downscaleCaptureToWebp,
   waitForPaint
 } from "./captureImages.ts";
@@ -55,7 +56,13 @@ import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { eventKey, isEventStreamAtLatest } from "./eventStream.ts";
 import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
 import { GameConfigControl } from "./GameConfigControl.tsx";
-import { generateGameMediaBundle, type PlaygroundMediaAsset, type PlaygroundMediaOptions } from "./mediaAssets.ts";
+import {
+  generateGameMediaBundle,
+  imagesToAnimatedWebpAsset,
+  type PlaygroundMediaAsset,
+  type PlaygroundMediaOptions,
+  type PlayerDisplayMediaFrame
+} from "./mediaAssets.ts";
 import { PhaseIndicator } from "./PhaseIndicator.tsx";
 import { PlaygroundStatusDock, type ActiveRunSetting } from "./PlaygroundStatusDock.tsx";
 import { PlaygroundSelect } from "./PlaygroundSelect.tsx";
@@ -66,6 +73,8 @@ import { formatElapsedClock } from "./timeFormat.ts";
 
 const playerDisplayMediaWidth = 1280;
 const playerDisplayMediaHeight = 720;
+const playerDisplayAnimationWidth = 640;
+const playerDisplayAnimationHeight = 360;
 const difficultyLabels: Record<string, string> = {
   easy: "Easy",
   medium: "Medium",
@@ -593,16 +602,16 @@ export function App() {
 
   const capturePlayerDisplayAsset = useCallback(
     async ({
+      animationFileName,
       fileName,
-      frame: displayFrame,
+      frames,
       game,
-      snapshot: displaySnapshot
     }: {
+      animationFileName: string;
       fileName: string;
-      frame: Frame;
+      frames: PlayerDisplayMediaFrame[];
       game: PlaygroundGame;
-      snapshot: GameSnapshot;
-    }): Promise<PlaygroundMediaAsset> => {
+    }): Promise<{ playerDisplay: PlaygroundMediaAsset; playerDisplayAnimation: PlaygroundMediaAsset }> => {
       const host = document.createElement("div");
       host.className = "display-preview-native";
       Object.assign(host.style, {
@@ -619,19 +628,45 @@ export function App() {
       const MediaPlayerDisplay = game.PlayerDisplay;
 
       try {
-        flushSync(() => {
-          root.render(<MediaPlayerDisplay snapshot={displaySnapshot} frame={displayFrame} />);
-        });
-        await waitForPaint();
-        const capture = await captureDisplayElement(host);
-        const webp = await downscaleCaptureToWebp(capture.dataUrl, playerDisplayMediaWidth, playerDisplayMediaHeight, 0.9);
+        const animationFrames: Array<{ dataUrl: string; delayMs: number }> = [];
+        let stillCapture = "";
+        for (const [index, displayFrame] of frames.entries()) {
+          flushSync(() => {
+            root.render(<MediaPlayerDisplay snapshot={displayFrame.snapshot} frame={displayFrame.frame} />);
+          });
+          await waitForPaint();
+          const capture = await captureDisplayElement(host);
+          if (index === Math.min(4, frames.length - 1)) {
+            stillCapture = capture.dataUrl;
+          }
+          animationFrames.push({
+            dataUrl: await downscaleCaptureToPng(
+              capture.dataUrl,
+              playerDisplayAnimationWidth,
+              playerDisplayAnimationHeight
+            ),
+            delayMs: displayFrame.delayMs
+          });
+        }
+        if (!stillCapture) {
+          throw new Error("Player display media requires at least one preview frame.");
+        }
+        const webp = await downscaleCaptureToWebp(stillCapture, playerDisplayMediaWidth, playerDisplayMediaHeight, 0.9);
         return {
-          kind: "playerDisplay",
-          width: playerDisplayMediaWidth,
-          height: playerDisplayMediaHeight,
-          mimeType: "image/webp",
-          fileName,
-          dataUrl: webp
+          playerDisplay: {
+            kind: "playerDisplay",
+            width: playerDisplayMediaWidth,
+            height: playerDisplayMediaHeight,
+            mimeType: "image/webp",
+            fileName,
+            dataUrl: webp
+          },
+          playerDisplayAnimation: await imagesToAnimatedWebpAsset(
+            animationFrames,
+            animationFileName,
+            playerDisplayAnimationWidth,
+            playerDisplayAnimationHeight
+          )
         };
       } finally {
         root.unmount();

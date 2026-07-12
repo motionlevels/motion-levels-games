@@ -51,6 +51,7 @@ for (const manifest of gameCatalog.filter((game) => game.availability.production
   await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-thumbnail.webp`));
   await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-preview.webp`));
   await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-player-display.webp`));
+  await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-player-display-animation.webp`));
 }
 await cp(mediaRoot, path.join(outputRoot, "media"), { recursive: true });
 
@@ -61,7 +62,8 @@ const catalog = gameCatalog.map((manifest) => ({
     thumbnailSmall: `media/${manifest.id}/${manifest.id}-thumbnail-small.webp`,
     thumbnail: `media/${manifest.id}/${manifest.id}-thumbnail.webp`,
     animation: `media/${manifest.id}/${manifest.id}-preview.webp`,
-    playerDisplay: `media/${manifest.id}/${manifest.id}-player-display.webp`
+    playerDisplay: `media/${manifest.id}/${manifest.id}-player-display.webp`,
+    playerDisplayAnimation: `media/${manifest.id}/${manifest.id}-player-display-animation.webp`
   }
 }));
 await writeFile(path.join(outputRoot, "catalog.json"), `${JSON.stringify(catalog, null, 2)}\n`);

@@ -92,6 +92,24 @@ export async function downscaleCaptureToWebp(
   height: number,
   quality: number
 ): Promise<string> {
+  return downscaleCapture(dataUrl, width, height, "image/webp", quality);
+}
+
+export async function downscaleCaptureToPng(
+  dataUrl: string,
+  width: number,
+  height: number
+): Promise<string> {
+  return downscaleCapture(dataUrl, width, height, "image/png");
+}
+
+async function downscaleCapture(
+  dataUrl: string,
+  width: number,
+  height: number,
+  mimeType: "image/png" | "image/webp",
+  quality?: number
+): Promise<string> {
   const image = await loadDataUrlImage(dataUrl, "Could not load player display capture.");
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -104,7 +122,7 @@ export async function downscaleCaptureToWebp(
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL("image/webp", quality);
+  return canvas.toDataURL(mimeType, quality);
 }
 
 export function waitForPaint(): Promise<void> {
