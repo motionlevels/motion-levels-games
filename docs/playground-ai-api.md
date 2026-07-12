@@ -176,6 +176,12 @@ through `aria-pressed` for semantics and automation, but it has no persistent
 CSS treatment. Once the pointer leaves, all hover visuals must disappear; the
 game frame is the only persistent visual floor state.
 
+For multiplayer readiness, click one tile in each illuminated start zone in
+sequence. Each click remains logically occupied until that tile is clicked
+again, allowing one person with one mouse to initialize the maximum supported
+player count. Multiplayer `player-ready` manifests also provide a 1–2 second
+release grace for brief input transitions.
+
 ## Start Lifecycle
 
 Games normally initialize in `waiting`, not `running`. Their snapshot reports

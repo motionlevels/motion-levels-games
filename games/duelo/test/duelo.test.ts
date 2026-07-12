@@ -28,7 +28,7 @@ test("manifest exposes production Duelo with strict 2–8 player support", () =>
   assert.deepEqual(manifest.config?.difficulty?.options, ["medium", "hard"]);
   assert.equal(manifest.start.mode, "player-ready");
   assert.equal(manifest.start.countdownMillis, 3_000);
-  assert.equal(manifest.start.releaseGraceMillis, 1_000);
+  assert.equal(manifest.start.releaseGraceMillis, 2_000);
 });
 
 test("every supported player count has distinct in-bounds readiness zones", () => {
@@ -104,12 +104,12 @@ test("readiness stays live and cancels when a player leaves after grace", () => 
   const zone = game.playerReadyZones()[1];
   assert.ok(zone);
   game.release({ x: zone.minX, y: zone.minY, pressed: false, atMillis: 200 });
-  game.tick({ atMillis: 1_201 });
+  game.tick({ atMillis: 2_201 });
   assert.equal(game.snapshot().phase, "waiting");
   assert.equal(game.snapshot().readyPlayers, 2);
 
-  game.press({ x: zone.minX, y: zone.minY, pressed: true, atMillis: 1_300 });
-  game.tick({ atMillis: 4_300 });
+  game.press({ x: zone.minX, y: zone.minY, pressed: true, atMillis: 2_300 });
+  game.tick({ atMillis: 5_300 });
   assert.equal(game.snapshot().phase, "running");
 });
 

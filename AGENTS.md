@@ -96,6 +96,13 @@ no database, venue hardware, Motion Go, or platform API coupling.
   `@motion-levels-games/game-sdk`; expose `readyPlayers`, `requiredPlayers`, and
   `countdownMillis` in the snapshot. Use the shared `PlayerReadyOverlay` for
   standard solo/cooperative displays instead of creating a one-off overlay.
+- Every multiplayer `player-ready` game must be startable in the development
+  playground by one person using one mouse. Sequential clicks on the required
+  zones must work through the playground's latched occupancy model; do not
+  require simultaneous pointer contacts. Declare `releaseGraceMillis` between
+  1,000 and 2,000 milliseconds, and browser-playtest the maximum supported
+  player count through real interactive-floor clicks rather than API presses
+  alone.
 
 ## Player Count Policy
 

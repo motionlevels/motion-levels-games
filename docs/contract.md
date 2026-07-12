@@ -231,6 +231,13 @@ the display and external runners can explain the transition. Standard displays
 should render `PlayerReadyOverlay`; bespoke versus displays may provide an
 equivalent waiting/countdown treatment.
 
+Multiplayer `player-ready` manifests must declare `releaseGraceMillis` from
+1,000 through 2,000 milliseconds. In the development playground, latched floor
+occupancy must let one person click each readiness zone sequentially with one
+mouse, including at the manifest's maximum player count. Browser coverage must
+exercise those real interactive-floor clicks instead of proving initialization
+only through simultaneous playground API presses.
+
 An immediate start is deliberately noisy and must be explicit:
 
 ```ts

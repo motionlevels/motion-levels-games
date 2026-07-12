@@ -19,7 +19,8 @@ job. Keep each layer focused so failures point to the relevant contract.
   game scaffold smoke test.
 - `npm run playtest:browser`: exercises the built playground with a real
   browser, including Ping Pong initialization through the interactive floor's
-  tile seams. Run `npm run build` first.
+  tile seams and Duelo initialization at four and eight players through
+  sequential single-mouse floor clicks. Run `npm run build` first.
 - `npm run check`: the complete local gate: quality checks, all tests, build,
   and deterministic playtests.
 

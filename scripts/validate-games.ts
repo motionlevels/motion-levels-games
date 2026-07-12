@@ -154,6 +154,13 @@ for (const gameId of gameDirs) {
             problems.push(`${gameId}: manifest.start.${field} must be a positive finite number when present`);
           }
         }
+        if (Number(manifest.players?.max) > 1 &&
+          (!isFiniteNumber(manifest.start.releaseGraceMillis) ||
+            manifest.start.releaseGraceMillis < 1_000 || manifest.start.releaseGraceMillis > 2_000)) {
+          problems.push(
+            `${gameId}: multiplayer player-ready games must declare manifest.start.releaseGraceMillis from 1000 to 2000`
+          );
+        }
       }
       if (manifest.display?.entry !== "./display") {
         problems.push(`${gameId}: manifest.display.entry must be ./display`);

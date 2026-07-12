@@ -100,6 +100,12 @@ outline, glow, brightness, scale, or other tile decoration may remain; only the
 game-rendered frame may persist. Keyboard `:focus-visible` styling is allowed
 only while that tile genuinely has visible keyboard focus.
 
+For every multiplayer `player-ready` game, use the real interactive floor to
+click all readiness zones sequentially with one mouse at the maximum supported
+player count. Confirm the clicks latch, the game reaches `starting`, and the
+countdown reaches `running`. Direct `ml.press(...)` calls are useful for
+deterministic edge cases, but they do not replace this human-input regression.
+
 Generate catalog-style media when reviewing a game card or TV display:
 
 ```js

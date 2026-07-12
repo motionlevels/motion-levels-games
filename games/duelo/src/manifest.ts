@@ -49,7 +49,7 @@ export const manifest: GameManifest = {
   start: {
     mode: "player-ready",
     countdownMillis: 3_000,
-    releaseGraceMillis: 1_000
+    releaseGraceMillis: 2_000
   },
   config: {
     difficulty: {

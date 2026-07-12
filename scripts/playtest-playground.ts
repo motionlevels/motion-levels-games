@@ -150,14 +150,7 @@ async function playtestDuelo(page: Page) {
   assert.ok((waitingState.snapshot.totalTargets ?? 0) > 0);
   await captureNativeDisplay(page, "duelo-waiting");
 
-  await page.evaluate((zones) => {
-    const api = (window as BrowserPlaygroundWindow).ml;
-    if (!api) throw new Error("window.ml is not ready");
-    api.resume();
-    for (const [x, y] of zones) {
-      api.press(x, y);
-    }
-  }, dueloFourPlayerZones);
+  await clickFloorZones(page, dueloFourPlayerZones);
   const startingState = await browserState(page);
   assert.equal(startingState.snapshot.phase, "starting");
   assert.equal(startingState.snapshot.readyPlayers, 4);
@@ -173,11 +166,7 @@ async function playtestDuelo(page: Page) {
   ));
   const runningState = await browserState(page);
   assert.equal(runningState.snapshot.phase, "running");
-  await page.evaluate((zones) => {
-    const api = (window as BrowserPlaygroundWindow).ml;
-    if (!api) throw new Error("window.ml is not ready");
-    for (const [x, y] of zones) api.release(x, y);
-  }, dueloFourPlayerZones);
+  await clickFloorZones(page, dueloFourPlayerZones, 0);
 
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
@@ -242,29 +231,24 @@ async function playtestCrowdedDueloDisplay(page: Page): Promise<void> {
   });
   assert.equal((await browserState(page)).snapshot.requiredPlayers, 8);
 
-  await page.evaluate((zones) => {
-    const api = (window as BrowserPlaygroundWindow).ml;
-    if (!api) throw new Error("window.ml is not ready");
-    api.resume();
-    for (const [x, y] of zones) api.press(x, y);
-  }, dueloEightPlayerZones);
+  await clickFloorZones(page, dueloEightPlayerZones);
   assert.equal((await browserState(page)).snapshot.phase, "starting");
 
-  await page.evaluate((zones) => {
+  await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
     api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
-    for (const [x, y] of zones) api.release(x, y);
     for (let y = 0; y < 4; y += 1) {
       for (let x = 0; x < 16; x += 1) {
         api.press(x, y);
         api.release(x, y);
       }
     }
-  }, dueloEightPlayerZones);
+  });
   await page.waitForFunction(() => (
     (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running"
   ));
+  await clickFloorZones(page, dueloEightPlayerZones, 0);
   await captureNativeDisplay(page, "duelo-crowded-running");
   if (captureDirectory) await captureLongNameDueloMedia(page);
 }
@@ -299,6 +283,16 @@ async function browserState(page: Page): Promise<BrowserPlaygroundState> {
   const state = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.getState());
   assert.ok(state, "playground API must expose state");
   return state;
+}
+
+async function clickFloorZones(page: Page, zones: Array<[number, number]>, delayMillis = 180): Promise<void> {
+  const floor = page.locator(".ml-floor-interactive");
+  for (const [x, y] of zones) {
+    const tile = floor.locator(`[data-tile-x="${x}"][data-tile-y="${y}"]`);
+    await tile.click();
+    assert.equal(await tile.getAttribute("aria-pressed"), delayMillis > 0 ? "true" : "false");
+    if (delayMillis > 0) await page.waitForTimeout(delayMillis);
+  }
 }
 
 async function captureNativeDisplay(page: Page, name: string): Promise<void> {
