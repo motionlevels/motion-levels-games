@@ -63,6 +63,7 @@ import {
   type PlaygroundMediaOptions,
   type PlayerDisplayMediaFrame
 } from "./mediaAssets.ts";
+import { playgroundMediaOptionsFor } from "./mediaOptions.ts";
 import { PhaseIndicator } from "./PhaseIndicator.tsx";
 import { PlaygroundStatusDock, type ActiveRunSetting } from "./PlaygroundStatusDock.tsx";
 import { PlaygroundSelect } from "./PlaygroundSelect.tsx";
@@ -683,15 +684,17 @@ export function App() {
         throw new Error(`Unknown game: ${gameId}`);
       }
 
-      const currentGameSelected = game.manifest.id === selectedGameRef.current.manifest.id;
-      const fallbackOptions = currentGameSelected ? gameOptionsRef.current : defaultConfigOptionsFor(game);
-      return generateGameMediaBundle(game, capturePlayerDisplayAsset, {
-        difficulty: currentGameSelected ? difficultyRef.current : defaultDifficultyFor(game),
-        playerCount: currentGameSelected ? playerCountRef.current : defaultGamePlayerCount(game.manifest),
-        seed: currentGameSelected ? seedRef.current : DEFAULT_GAME_SEED,
-        ...options,
-        options: options.options ?? fallbackOptions
-      });
+      return generateGameMediaBundle(
+        game,
+        capturePlayerDisplayAsset,
+        playgroundMediaOptionsFor(game.manifest.id, {
+          gameId: selectedGameRef.current.manifest.id,
+          difficulty: difficultyRef.current,
+          playerCount: playerCountRef.current,
+          seed: seedRef.current,
+          options: gameOptionsRef.current
+        }, options)
+      );
     },
     [capturePlayerDisplayAsset]
   );
