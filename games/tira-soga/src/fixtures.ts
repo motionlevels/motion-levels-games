@@ -86,4 +86,3 @@ function startGame(game: TiraSogaGameInstance): void {
     game.release({ x: zone.minX + 2, y: zone.minY + 2, pressed: false, atMillis: 3_101 });
   }
 }
-
