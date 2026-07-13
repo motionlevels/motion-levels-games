@@ -489,18 +489,6 @@ class DueloGame implements DueloGameInstance {
       const pulse = 0.5 + 0.5 * Math.sin(this.nowMillis / 360 + x * 0.74 + y * 0.18 + owner);
       paintFrameCell(frame, x, y, dimColor(color, 58 + urgency + pulse * 24));
     }
-
-    if (this.recentClaim && this.nowMillis - this.recentClaim.atMillis < recentClaimMillis) {
-      const ownerColor = this.players[this.recentClaim.playerIndex]?.color ?? dueloPlayerPalette[0];
-      const radius = 1 + Math.floor((this.nowMillis - this.recentClaim.atMillis) / 160);
-      paintDiamondRing(frame, {
-        centerX: this.recentClaim.x,
-        centerY: this.recentClaim.y,
-        color: dimColor(ownerColor, 44),
-        radius,
-        thickness: 0.25
-      });
-    }
   }
 
   private drawVictory(frame: Frame): void {
