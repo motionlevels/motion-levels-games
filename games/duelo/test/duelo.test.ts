@@ -131,6 +131,33 @@ test("neutral, released, duplicate, and out-of-bounds inputs never score", () =>
   assert.equal(game.snapshot().score, scoreBefore + 1);
 });
 
+test("claim feedback stays on the pressed tile for its full animation", () => {
+  const config = { playerCount: 2, options: { base_fill_percent: 30 }, seed: 137 };
+  const control = createGame(config);
+  const claimed = createGame(config);
+  control.init(0);
+  claimed.init(0);
+  startGame(control);
+  startGame(claimed);
+
+  const target = findTile(claimed, 0, true);
+  assert.ok(target);
+  claimed.press({ ...target, pressed: true, atMillis: 3_200 });
+
+  for (const offset of [0, 159, 160, 319, 320, 419, 420, 699, 700]) {
+    const atMillis = 3_200 + offset;
+    control.tick({ atMillis });
+    claimed.tick({ atMillis });
+    const controlFrame = control.render();
+    const claimedFrame = claimed.render();
+    const changedTiles = claimedFrame.cells.flatMap((cell, index) => (
+      cell.color === controlFrame.cells[index]?.color ? [] : [`${cell.x},${cell.y}`]
+    ));
+
+    assert.deepEqual(changedTiles, [`${target.x},${target.y}`], `unexpected feedback at ${offset}ms`);
+  }
+});
+
 test("a unique leader appears only after progress breaks the tie", () => {
   const game = createGame({ playerCount: 4, seed: 137 });
   game.init(0);
@@ -209,9 +236,14 @@ function startGame(game: DueloGameInstance): void {
   assert.equal(game.snapshot().phase, "running");
 }
 
-function findTile(game: DueloGameInstance, owner: number): { x: number; y: number } | undefined {
-  for (let y = 0; y < FLOOR_ROWS; y += 1) {
-    for (let x = 0; x < FLOOR_COLS; x += 1) {
+function findTile(
+  game: DueloGameInstance,
+  owner: number,
+  interior = false
+): { x: number; y: number } | undefined {
+  const inset = interior ? 1 : 0;
+  for (let y = inset; y < FLOOR_ROWS - inset; y += 1) {
+    for (let x = inset; x < FLOOR_COLS - inset; x += 1) {
       if (game.targetOwner(x, y) === owner) return { x, y };
     }
   }
