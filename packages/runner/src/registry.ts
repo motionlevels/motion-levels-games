@@ -3,6 +3,7 @@ import * as duelo from "@motion-levels-games/duelo";
 import * as helloWorld from "@motion-levels-games/hello-world";
 import * as meteorDodge from "@motion-levels-games/meteor-dodge";
 import * as pingPong from "@motion-levels-games/ping-pong";
+import * as tiraSoga from "@motion-levels-games/tira-soga";
 import type { GameConfig, GameInstance, GameManifest } from "@motion-levels-games/game-sdk";
 
 export type RunnerGameModule = {
@@ -16,7 +17,8 @@ export const gameRegistry = new Map<string, RunnerGameModule>([
   [duelo.manifest.id, duelo],
   [helloWorld.manifest.id, helloWorld],
   [meteorDodge.manifest.id, meteorDodge],
-  [pingPong.manifest.id, pingPong]
+  [pingPong.manifest.id, pingPong],
+  [tiraSoga.manifest.id, tiraSoga]
 ]);
 
 export const gameCatalog = [...gameRegistry.values()]

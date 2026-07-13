@@ -15,6 +15,7 @@
     "@motion-levels-games/hello-world": "0.1.0",
     "@motion-levels-games/meteor-dodge": "0.1.0",
     "@motion-levels-games/ping-pong": "0.1.0",
+    "@motion-levels-games/tira-soga": "0.1.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
