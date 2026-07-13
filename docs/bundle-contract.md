@@ -33,13 +33,23 @@ the deterministic `.tgz` and its SHA-256 through GitHub Releases. Existing
 release assets are never overwritten.
 
 After publication, the release workflow sends the release tag and full source
-revision as inputs to the platform's `sync-games-bundle.yml` workflow dispatch.
-The consumer downloads these exact private release assets
-and independently verifies both the archive SHA-256 and the bundle's canonical
-artifact digest before updating its pin. `PLATFORM_SYNC_TOKEN` must be a
-narrowly scoped secret with Actions write access only on the platform
-repository; it does not need platform Contents write access. The release fails
-closed when it is absent.
+revision as inputs to the `sync-games-bundle.yml` workflow in both
+`motion-levels-platform` and `motion-levels-venue`. Each consumer downloads the
+exact private release assets and independently verifies both the archive
+SHA-256 and the bundle's canonical artifact digest before updating its own pin.
+
+The games repository uses separate, narrowly scoped dispatch secrets:
+
+- `PLATFORM_SYNC_TOKEN`: Actions write access only on
+  `motionlevels/motion-levels-platform`;
+- `VENUE_SYNC_TOKEN`: Actions write access only on
+  `motionlevels/motion-levels-venue`.
+
+Neither dispatch token needs Contents write access on its target repository.
+The release fails closed before publication when either secret is absent. Each
+consumer repository also provides its own `GAMES_REPO_TOKEN` with Contents read
+access to `motionlevels/motion-levels-games` so its sync workflow can download
+the private release assets.
 
 Normal CI also uploads the bundle as a revision-named workflow artifact for
 diagnostics. Workflow artifacts are not production release inputs.
