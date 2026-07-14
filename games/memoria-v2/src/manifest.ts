@@ -14,7 +14,7 @@ export const manifest: GameManifest = {
     rules: ["Memoriza la figura azul", "Reconstrúyela cuando desaparezca", "Cada nivel permite tres errores"]
   },
   players: { allowAny: true, min: 1, max: 8 },
-  start: { mode: "player-ready" },
+  start: { mode: "player-ready", releaseGraceMillis: 1_500 },
   defaultDurationMillis: 360_000,
   display: { entry: "./display" },
   preview: {
