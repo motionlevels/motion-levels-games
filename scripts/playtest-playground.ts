@@ -91,9 +91,10 @@ try {
 
     const pingPongResult = await playtestPingPong(page);
     const dueloResult = await playtestDuelo(page);
+    const patronesResult = await playtestPatrones(page);
     const saltosResult = await playtestSaltos(page);
 
-    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, saltos: saltosResult }, null, 2));
+    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, patrones: patronesResult, saltos: saltosResult }, null, 2));
   } finally {
     await browser.close();
   }
@@ -289,6 +290,67 @@ async function playtestSaltos(page: Page) {
   return {
     captures: ["waiting", "starting", "running", "finished-loss", "finished-win"],
     gameId: wonState.gameId,
+    result: "win-and-loss"
+  };
+}
+
+async function playtestPatrones(page: Page) {
+  await page.locator(".control-game select").selectOption("patrones");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "patrones" && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "patrones-waiting");
+
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await captureNativeDisplay(page, "patrones-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureNativeDisplay(page, "patrones-running");
+
+  const mediumPattern: Array<[number, number]> = [
+    [7, 8], [8, 8], [6, 10], [9, 10], [5, 12], [10, 12],
+    [6, 14], [9, 14], [7, 16], [8, 16], [7, 18], [8, 18]
+  ];
+  await page.evaluate((targets) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (const [x, y] of targets) {
+      api.press(x, y);
+      api.release(x, y);
+    }
+    api.step(450);
+  }, mediumPattern);
+  const wonState = await browserState(page);
+  assert.equal(wonState.snapshot.phase, "finished");
+  assert.equal(wonState.snapshot.success, true);
+  await captureNativeDisplay(page, "patrones-finished-win");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.reset();
+    api.resume();
+    api.press(8, 16);
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 16);
+    api.press(0, 31);
+    api.release(0, 31);
+    api.step(450);
+  });
+  const lostState = await browserState(page);
+  assert.equal(lostState.snapshot.phase, "finished");
+  assert.equal(lostState.snapshot.success, false);
+  await captureNativeDisplay(page, "patrones-finished-loss");
+
+  return {
+    captures: ["waiting", "starting", "running", "finished-win", "finished-loss"],
+    gameId: lostState.gameId,
     result: "win-and-loss"
   };
 }
