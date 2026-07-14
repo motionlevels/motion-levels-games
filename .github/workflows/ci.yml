@@ -18,3 +18,165 @@ concurrency:
 jobs:
   checks:
     uses: ./.github/workflows/checks.yml
+
+  promote-release:
+    name: Promote verified main bundle
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Plan the next immutable release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          output() {
+            echo "$1=$2" >> "$GITHUB_OUTPUT"
+          }
+
+          release_state() {
+            local release_tag="$1"
+            local status
+            status="$(curl \
+              --silent \
+              --show-error \
+              --retry 3 \
+              --retry-delay 2 \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$release_tag")"
+            case "$status" in
+              200) echo present ;;
+              404) echo absent ;;
+              *)
+                echo "Unexpected GitHub release API status for $release_tag: $status" >&2
+                return 1
+                ;;
+            esac
+          }
+
+          git fetch origin main --tags
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "A newer main commit exists; its CI run will publish the bundle."
+            output publish false
+            exit 0
+          fi
+
+          strict_tag='^games-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          existing_tag="$(git tag --points-at HEAD --sort=-v:refname | grep -E "$strict_tag" | head -n 1 || true)"
+          if [[ -n "$existing_tag" ]]; then
+            existing_release_state="$(release_state "$existing_tag")"
+            if [[ "$existing_release_state" == "present" ]]; then
+              echo "$existing_tag is already published."
+              output publish false
+              exit 0
+            fi
+
+            release_runs="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow release-bundle.yml \
+              --commit "$GITHUB_SHA" \
+              --limit 20 \
+              --json headBranch,status)"
+            active_release="$(jq \
+              --arg release_tag "$existing_tag" \
+              'any(.[]; .headBranch == $release_tag and .status != "completed")' \
+              <<< "$release_runs")"
+            if [[ "$active_release" == "true" ]]; then
+              echo "A release for $existing_tag is already active."
+              output publish false
+              exit 0
+            fi
+
+            echo "Retrying the missing or failed release for $existing_tag."
+            output publish true
+            output create_tag false
+            output release_tag "$existing_tag"
+            exit 0
+          fi
+
+          latest_tag="$(git tag --list 'games-v*' --sort=-v:refname | grep -E "$strict_tag" | head -n 1 || true)"
+          if [[ -n "$latest_tag" ]]; then
+            git merge-base --is-ancestor "$latest_tag" HEAD
+          fi
+
+          bundle_paths=(
+            apps/playground
+            games
+            packages
+            scripts
+            package.json
+            package-lock.json
+            tsconfig.json
+            tsconfig.base.json
+          )
+          latest_release_exists=false
+          if [[ -n "$latest_tag" ]]; then
+            latest_release_state="$(release_state "$latest_tag")"
+            if [[ "$latest_release_state" == "present" ]]; then
+              latest_release_exists=true
+            fi
+          fi
+          if [[ "$latest_release_exists" == "true" ]] && \
+              git diff --quiet "$latest_tag..HEAD" -- "${bundle_paths[@]}"; then
+            echo "No bundle inputs changed after $latest_tag."
+            output publish false
+            exit 0
+          fi
+
+          change="patch"
+          if [[ -z "$latest_tag" ]] || \
+              ! git diff --quiet --diff-filter=ADR "$latest_tag..HEAD" -- 'games/*/src/manifest.ts'; then
+            change="minor"
+          fi
+          release_tag="$(node scripts/next-release-tag.ts "${latest_tag:-games-v0.0.0}" "$change")"
+          if git show-ref --verify --quiet "refs/tags/$release_tag"; then
+            echo "Refusing to replace existing tag $release_tag." >&2
+            exit 1
+          fi
+
+          echo "Publishing $release_tag from $GITHUB_SHA ($change change)."
+          output publish true
+          output create_tag true
+          output release_tag "$release_tag"
+      - name: Publish the tag and start its release
+        if: steps.release.outputs.publish == 'true'
+        env:
+          CREATE_TAG: ${{ steps.release.outputs.create_tag }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$CREATE_TAG" == "true" ]]; then
+            git config user.name "Motion Levels"
+            git config user.email "noreply@motionlevels.com"
+            git tag --annotate "$RELEASE_TAG" --message "Release $RELEASE_TAG"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+          for attempt in 1 2 3; do
+            if gh workflow run release-bundle.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref "$RELEASE_TAG"; then
+              exit 0
+            fi
+            sleep "$((attempt * 5))"
+          done
+          echo "Unable to dispatch the release workflow for $RELEASE_TAG." >&2
+          exit 1

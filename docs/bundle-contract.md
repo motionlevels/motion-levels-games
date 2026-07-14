@@ -32,6 +32,18 @@ commit. The tag workflow runs the complete reusable CI suite before publishing
 the deterministic `.tgz` and its SHA-256 through GitHub Releases. Existing
 release assets are never overwritten.
 
+After CI succeeds on `main`, the promotion job compares the verified commit to
+the latest published tag. Changes to bundle inputs are tagged automatically;
+adding, removing, or renaming a game manifest advances the minor version, while
+manifest edits and other bundle changes advance the patch version. The job skips
+stale CI runs and already published commits, then explicitly dispatches the tag
+workflow because tags written with the repository's Actions token do not
+recursively start other workflows. Releases are serialized, and a completed
+bundle is not sent to consumers if a newer `main` commit changed its inputs.
+Platform and venue notification run as independent retryable jobs, so one
+consumer cannot mask or force a rebuild for a failure in the other. Manual tag
+and workflow dispatch remain available as recovery paths.
+
 After publication, the release workflow sends the release tag and full source
 revision as inputs to the `sync-games-bundle.yml` workflow in both
 `motion-levels-platform` and `motion-levels-venue`. Each consumer downloads the

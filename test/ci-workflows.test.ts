@@ -22,6 +22,25 @@ test("CI cancels stale runs and uses least-privilege permissions", () => {
   }
 });
 
+test("green main builds automatically promote one immutable release", () => {
+  assert.match(ci, /^  promote-release:/m);
+  assert.match(ci, /^    needs: checks$/m);
+  assert.match(ci, /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/);
+  assert.match(ci, /permissions:\s*\n\s+actions: write\s*\n\s+contents: write/);
+  assert.match(ci, /^permissions:\s*\n\s+contents: read/m);
+  assert.match(ci, /git fetch origin main --tags/);
+  assert.match(ci, /git rev-parse HEAD.*git rev-parse origin\/main/);
+  assert.match(ci, /git merge-base --is-ancestor "\$latest_tag" HEAD/);
+  assert.match(ci, /200\) echo present/);
+  assert.match(ci, /404\) echo absent/);
+  assert.match(ci, /Unexpected GitHub release API status/);
+  assert.match(ci, /git diff --quiet "\$latest_tag\.\.HEAD" -- "\$\{bundle_paths\[@\]\}"/);
+  assert.match(ci, /\.headBranch == \$release_tag and \.status != "completed"/);
+  assert.match(ci, /node scripts\/next-release-tag\.ts/);
+  assert.match(ci, /git tag --annotate "\$RELEASE_TAG"/);
+  assert.match(ci, /gh workflow run release-bundle\.yml[\s\S]*?--ref "\$RELEASE_TAG"/);
+});
+
 test("reusable CI separates quality, compatibility, coverage, and runtime checks", () => {
   assert.match(checks, /workflow_call:/);
   for (const job of ["quality", "compatibility-tests", "coverage-tests", "build-and-playtest"]) {
@@ -36,6 +55,7 @@ test("reusable CI separates quality, compatibility, coverage, and runtime checks
 });
 
 test("release tags pass the shared quality gate and identify current main exactly", () => {
+  assert.match(release, /workflow_dispatch:/);
   assert.match(release, /^\s{2}release-policy:/m);
   assert.match(release, /\^games-v\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\$/);
   assert.match(release, /git fetch --no-tags origin main/);
@@ -46,6 +66,14 @@ test("release tags pass the shared quality gate and identify current main exactl
   assert.match(release, /MOTION_LEVELS_GAMES_SOURCE_REVISION: \$\{\{ env\.SOURCE_REVISION \}\}/);
 });
 
+test("bundle generation has enough time for every production game", () => {
+  assert.match(
+    checks,
+    /^  build-and-playtest:[\s\S]*?timeout-minutes: 30[\s\S]*?npm run generate:media/m
+  );
+  assert.match(release, /^  bundle:[\s\S]*?timeout-minutes: 30/m);
+});
+
 test("published release assets are immutable and dispatch their exact identity to the platform", () => {
   assert.match(release, /overwrite_files: false/);
   assert.match(release, /target_commitish: \$\{\{ env\.SOURCE_REVISION \}\}/);
@@ -53,5 +81,10 @@ test("published release assets are immutable and dispatch their exact identity t
   assert.match(release, /test -n "\$PLATFORM_SYNC_TOKEN"/);
   assert.match(release, /ref:\$ref,inputs:\{release_tag:\$release_tag,source_revision:\$source_revision\}/);
   assert.match(release, /repos\/motionlevels\/motion-levels-platform\/actions\/workflows\/sync-games-bundle\.yml\/dispatches/);
+  assert.match(release, /^  notify-platform:[\s\S]*?needs:[\s\S]*?- bundle/m);
+  assert.match(release, /^  notify-venue:[\s\S]*?needs:[\s\S]*?- bundle/m);
+  assert.match(release, /--retry 3/);
+  assert.match(release, /group: games-bundle-release/);
   assert.match(release, /cancel-in-progress: false/);
+  assert.match(release, /git diff --quiet "\$SOURCE_REVISION\.\.origin\/main"/);
 });

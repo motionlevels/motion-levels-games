@@ -4,12 +4,13 @@ on:
   push:
     tags:
       - "games-v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: games-bundle-release
   cancel-in-progress: false
 
 jobs:
@@ -51,7 +52,7 @@ jobs:
       - release-policy
       - checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write
     env:
@@ -78,6 +79,32 @@ jobs:
           files: |
             dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz
             dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz.sha256
+      - name: Refuse to notify consumers from a stale bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git diff --quiet "$SOURCE_REVISION..origin/main" -- \
+              apps/playground \
+              games \
+              packages \
+              scripts \
+              package.json \
+              package-lock.json \
+              tsconfig.json \
+              tsconfig.base.json; then
+            echo "A newer main commit changes bundle inputs; its release must update consumers." >&2
+            exit 1
+          fi
+  notify-platform:
+    needs:
+      - release-policy
+      - bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SOURCE_REVISION: ${{ needs.release-policy.outputs.source_revision }}
+    steps:
       - name: Notify platform of the verified release
         env:
           PLATFORM_SYNC_TOKEN: ${{ secrets.PLATFORM_SYNC_TOKEN }}
@@ -91,12 +118,25 @@ jobs:
             --arg source_revision "$SOURCE_REVISION" \
             '{ref:$ref,inputs:{release_tag:$release_tag,source_revision:$source_revision}}')"
           curl --fail-with-body --silent --show-error \
+            --retry 3 \
+            --retry-connrefused \
+            --retry-delay 2 \
             --request POST \
             --header "Accept: application/vnd.github+json" \
             --header "Authorization: Bearer $PLATFORM_SYNC_TOKEN" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
             --data "$payload" \
             https://api.github.com/repos/motionlevels/motion-levels-platform/actions/workflows/sync-games-bundle.yml/dispatches
+
+  notify-venue:
+    needs:
+      - release-policy
+      - bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SOURCE_REVISION: ${{ needs.release-policy.outputs.source_revision }}
+    steps:
       - name: Notify venue of the verified release
         env:
           VENUE_SYNC_TOKEN: ${{ secrets.VENUE_SYNC_TOKEN }}
@@ -110,6 +150,9 @@ jobs:
             --arg source_revision "$SOURCE_REVISION" \
             '{ref:$ref,inputs:{release_tag:$release_tag,source_revision:$source_revision}}')"
           curl --fail-with-body --silent --show-error \
+            --retry 3 \
+            --retry-connrefused \
+            --retry-delay 2 \
             --request POST \
             --header "Accept: application/vnd.github+json" \
             --header "Authorization: Bearer $VENUE_SYNC_TOKEN" \
