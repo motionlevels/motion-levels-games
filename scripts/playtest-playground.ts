@@ -15,17 +15,20 @@ type BrowserPlaygroundState = {
   clockMillis: number;
   gameId: string;
   paused: boolean;
+  playerCount: number;
   snapshot: {
     countdownMillis?: number;
     currentPlatform?: { x: number; y: number };
     level?: number;
     lives?: number;
     memoryStage?: string;
+    paths?: Array<Array<{ x: number; y: number }>>;
     phase: string;
     pointFlashMillis?: number;
     readyPlayers?: number;
     remainingMillis?: number;
     requiredPlayers?: number;
+    playerProgress?: Array<{ status: string }>;
     success?: boolean;
     targetPlatform?: { x: number; y: number };
     targets?: Array<{ x: number; y: number }>;
@@ -98,12 +101,13 @@ try {
     const pingPongResult = await playtestPingPong(page);
     const pingPongV2Result = await playtestPingPongV2(page);
     const dueloResult = await playtestDuelo(page);
+    const memoryChallengeResult = await playtestMemoryChallenge(page);
     const memoriaV2Result = await playtestMemoriaV2(page);
     const patronesResult = await playtestPatrones(page);
     const saltosResult = await playtestSaltos(page);
     const lavaResult = await playtestLava(page);
 
-    console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+    console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, memoryChallenge: memoryChallengeResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
   } finally {
     await browser.close();
   }
@@ -276,6 +280,70 @@ async function playtestDuelo(page: Page) {
     gameId: restartedState.gameId,
     restartPhase: restartedState.snapshot.phase,
     winnerIndex: finishedState.snapshot.winnerIndex
+  };
+}
+
+async function playtestMemoryChallenge(page: Page) {
+  await page.locator(".control-game select").selectOption("memory-challenge");
+  await page.locator(".control-players select").selectOption("4");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "memory-challenge" && state.playerCount === 4 && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "memory-challenge-waiting");
+  await clickFloorZones(page, [[0, 0], [4, 0], [8, 0], [12, 0]]);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.waitForTimeout(250);
+  await captureNativeDisplay(page, "memory-challenge-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.memoryStage === "memorize");
+  await captureNativeDisplay(page, "memory-challenge-memorize");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.stageMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.memoryStage === "recall");
+  await captureNativeDisplay(page, "memory-challenge-recall");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    const playerPath = api.getState().snapshot.paths?.[0] ?? [];
+    const keys = new Set(playerPath.map((point) => `${point.x},${point.y}`));
+    let miss = { x: 0, y: 31 };
+    for (let y = 2; y < 32; y += 1) {
+      for (let x = 0; x < 4; x += 1) {
+        if (!keys.has(`${x},${y}`)) { miss = { x, y }; y = 32; break; }
+      }
+    }
+    api.press(miss.x, miss.y);
+    api.release(miss.x, miss.y);
+  });
+  assert.equal((await browserState(page)).snapshot.playerProgress?.[0]?.status, "failed");
+  await captureNativeDisplay(page, "memory-challenge-failed");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (const point of api.getState().snapshot.paths?.[1] ?? []) {
+      api.press(point.x, point.y);
+      api.release(point.x, point.y);
+    }
+  });
+  const finishedState = await browserState(page);
+  assert.equal(finishedState.snapshot.phase, "finished");
+  assert.equal(finishedState.snapshot.success, true);
+  await captureNativeDisplay(page, "memory-challenge-finished");
+  return {
+    captures: ["waiting", "starting", "memorize", "recall", "failed", "finished"],
+    gameId: finishedState.gameId,
+    playerCount: finishedState.playerCount,
+    result: "player-two-win"
   };
 }
 

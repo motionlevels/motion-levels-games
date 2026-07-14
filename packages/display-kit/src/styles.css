@@ -1728,6 +1728,60 @@
   }
 }
 
+.memory-challenge-display {
+  display: grid;
+  gap: 18px;
+  grid-template-rows: 190px minmax(0, 1fr) 74px;
+  min-height: 0;
+}
+
+.memory-challenge-hero {
+  align-items: stretch;
+  background: linear-gradient(110deg, rgba(0, 90, 248, 0.22), rgba(7, 12, 22, 0.96) 55%, rgba(255, 90, 20, 0.12));
+  border: 1px solid rgba(54, 217, 255, 0.34);
+  clip-path: polygon(1.3% 0, 100% 0, 98.7% 100%, 0 100%);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 250px 250px;
+  padding: 24px 30px;
+}
+
+.memory-challenge-hero > div { display: grid; align-content: center; gap: 8px; min-width: 0; }
+.memory-challenge-hero > div span,
+.memory-challenge-hero article span { color: var(--ml-cyan); font-size: 17px; font-weight: 950; letter-spacing: 0.12em; text-transform: uppercase; }
+.memory-challenge-hero > div strong { color: #fff; font-size: clamp(42px, 3.3vw, 64px); line-height: 0.98; overflow-wrap: break-word; }
+.memory-challenge-hero > div b { color: #b8c6d8; font-size: 19px; overflow-wrap: break-word; }
+.memory-challenge-hero article { align-content: center; background: rgba(3, 8, 16, 0.72); border: 1px solid rgba(111, 158, 204, 0.26); display: grid; gap: 8px; padding: 18px 22px; }
+.memory-challenge-hero article strong { color: var(--ml-amber); font-size: 58px; line-height: 1; }
+
+.memory-challenge-players { display: grid; gap: 16px; grid-template-columns: repeat(var(--memory-columns), minmax(0, 1fr)); min-height: 0; }
+.memory-challenge-player { --memory-player: #fff; --memory-player-rgb: 255,255,255; background: linear-gradient(160deg, rgba(var(--memory-player-rgb), 0.2), rgba(4, 8, 15, 0.96) 62%); border: 1px solid rgba(var(--memory-player-rgb), 0.66); box-shadow: inset 0 0 42px rgba(var(--memory-player-rgb), 0.06); display: grid; grid-template-rows: auto minmax(0, 1fr) 14px auto; min-width: 0; padding: 22px; }
+.memory-challenge-player header { align-items: center; display: grid; gap: 10px; grid-template-columns: 12px minmax(0, 1fr) auto; }
+.memory-challenge-player header i { background: var(--memory-player); border-radius: 50%; box-shadow: 0 0 18px var(--memory-player); height: 10px; width: 10px; }
+.memory-challenge-player header strong { color: #fff; font-size: clamp(22px, 1.7vw, 34px); overflow-wrap: break-word; }
+.memory-challenge-player header b { color: var(--memory-player); font-size: 14px; text-align: right; text-transform: uppercase; }
+.memory-challenge-score { align-content: center; display: grid; gap: 4px; }
+.memory-challenge-score strong { color: #fff; font-size: clamp(74px, 7vw, 128px); line-height: 0.9; text-shadow: 0 0 30px rgba(var(--memory-player-rgb), 0.55); }
+.memory-challenge-score span { color: #aab7c8; font-size: 18px; }
+.memory-challenge-track { background: rgba(255,255,255,0.08); border: 1px solid rgba(var(--memory-player-rgb), 0.26); overflow: hidden; }
+.memory-challenge-track i { background: linear-gradient(90deg, var(--memory-player), #fff); display: block; height: 100%; width: calc(var(--memory-progress) * 100%); }
+.memory-challenge-player footer { display: flex; justify-content: space-between; padding-top: 14px; color: #9eabbd; font-size: 16px; }
+.memory-challenge-player footer strong { color: var(--memory-player); font-size: 22px; }
+.memory-challenge-player.is-failed { border-color: #ff6b22; filter: saturate(0.8); }
+.memory-challenge-player.is-failed header b { color: #ff9b55; }
+.memory-challenge-player.is-winner { box-shadow: 0 0 60px rgba(var(--memory-player-rgb), 0.5), inset 0 0 50px rgba(var(--memory-player-rgb), 0.18); transform: translateY(-5px); }
+
+.memory-challenge-event { align-items: center; background: rgba(5, 12, 22, 0.9); border: 1px solid rgba(54, 217, 255, 0.28); display: grid; gap: 22px; grid-template-columns: 180px minmax(0, 1fr) auto; padding: 14px 24px; }
+.memory-challenge-event span { color: var(--ml-cyan); font-size: 15px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; }
+.memory-challenge-event strong { color: #fff; font-size: 24px; overflow-wrap: break-word; }
+.memory-challenge-event b { color: var(--ml-amber); font-size: 18px; text-align: right; }
+
+@media (prefers-reduced-motion: reduce) {
+  .memory-challenge-display *,
+  .memory-challenge-display *::before,
+  .memory-challenge-display *::after { animation: none !important; transition: none !important; }
+}
+
 .ml-solo-display {
   display: grid;
   gap: 24px;
