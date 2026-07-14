@@ -99,8 +99,9 @@ try {
     const memoriaV2Result = await playtestMemoriaV2(page);
     const patronesResult = await playtestPatrones(page);
     const saltosResult = await playtestSaltos(page);
+    const lavaResult = await playtestLava(page);
 
-    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
   } finally {
     await browser.close();
   }
@@ -356,6 +357,7 @@ async function playtestPatrones(page: Page) {
   await page.evaluate((targets) => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
+    api.resume();
     for (let attempt = 0; attempt < 20 && api.getState().snapshot.phase === "running"; attempt += 1) {
       for (const [x, y] of targets) {
         api.press(x, y);
@@ -433,7 +435,7 @@ async function playtestMemoriaV2(page: Page) {
   let finalState: BrowserPlaygroundState | undefined;
   let capturedRoundWin = false;
   for (let attempt = 0; attempt < 60 && !finalState; attempt += 1) {
-    const result = await page.evaluate(async (captureRoundWin) => {
+    const result: { captures?: Record<string, BrowserPlaygroundCapture>; state: BrowserPlaygroundState } = await page.evaluate(async (captureRoundWin) => {
       const api = (window as BrowserPlaygroundWindow).ml;
       if (!api) throw new Error("window.ml is not ready");
       let state = api.getState();
@@ -474,7 +476,7 @@ async function playtestMemoriaV2(page: Page) {
       if (result.captures) await saveBrowserCaptures(result.captures, "memoria-v2-finished-win");
     }
   }
-  assert.ok(finalState);
+  if (!finalState) throw new Error("Memoria v2 did not complete within the browser playtest guard");
   assert.equal(capturedRoundWin, true);
   assert.equal(finalState.snapshot.level, 20);
   await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
@@ -483,6 +485,70 @@ async function playtestMemoriaV2(page: Page) {
     captures: ["waiting", "starting", "memorize", "recall", "round-win", "finished-loss", "finished-win"],
     gameId: finalState.gameId,
     levelsCompleted: finalState.snapshot.level
+  };
+}
+
+async function playtestLava(page: Page) {
+  await page.locator(".control-game select").selectOption("lava");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "lava" && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "lava-waiting");
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await captureNativeDisplay(page, "lava-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 2_000);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureNativeDisplay(page, "lava-running");
+
+  for (let expectedLives = 2; expectedLives >= 0; expectedLives -= 1) {
+    await page.evaluate(() => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      api.resume();
+      api.step(1_001);
+      for (let x = 0; x < 16; x += 1) {
+        api.press(x, 31);
+        api.release(x, 31);
+      }
+    });
+    await page.waitForFunction((lives) => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.lives === lives, expectedLives);
+    if (expectedLives === 2) await captureNativeDisplay(page, "lava-damaged");
+  }
+  const lostState = await browserState(page);
+  assert.equal(lostState.snapshot.phase, "finished");
+  assert.equal(lostState.snapshot.success, false);
+  await captureNativeDisplay(page, "lava-finished-loss");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("lava");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "lava" && state.snapshot.phase === "waiting";
+  });
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
+  });
+  const wonState = await browserState(page);
+  assert.equal(wonState.snapshot.phase, "finished");
+  assert.equal(wonState.snapshot.success, true);
+  await captureNativeDisplay(page, "lava-finished-win");
+
+  return {
+    captures: ["waiting", "starting", "running", "damaged", "finished-loss", "finished-win"],
+    gameId: wonState.gameId,
+    result: "win-and-loss"
   };
 }
 
