@@ -272,6 +272,9 @@ async function playtestDuelo(page: Page) {
       }
     }
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const finishedState = await browserState(page);
   assert.equal(finishedState.snapshot.phase, "finished", JSON.stringify(finishedState.snapshot));
   assert.equal(finishedState.snapshot.success, true);
@@ -407,6 +410,9 @@ async function playtestWhackAMole(page: Page) {
     if (!api) throw new Error("window.ml is not ready");
     api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const finished = await browserState(page);
   assert.equal(finished.snapshot.phase, "finished");
   await captureNativeDisplay(page, "whack-a-mole-finished");
@@ -538,6 +544,9 @@ async function playtestSaltos(page: Page) {
     if (!api) throw new Error("window.ml is not ready");
     api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const wonState = await browserState(page);
   assert.equal(wonState.snapshot.phase, "finished");
   assert.equal(wonState.snapshot.success, true);
@@ -564,6 +573,9 @@ async function playtestSaltos(page: Page) {
     }
     throw new Error("Saltos must expose at least one lava tile");
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const lostState = await browserState(page);
   assert.equal(lostState.snapshot.phase, "finished");
   assert.equal(lostState.snapshot.success, false);
@@ -610,6 +622,9 @@ async function playtestPatrones(page: Page) {
     }
     api.step(450);
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const lostState = await browserState(page);
   assert.equal(lostState.snapshot.phase, "finished");
   assert.equal(lostState.snapshot.success, false);
@@ -643,6 +658,9 @@ async function playtestPatrones(page: Page) {
     }
     api.step(450);
   }, mediumPattern);
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const wonState = await browserState(page);
   assert.equal(wonState.snapshot.phase, "finished", JSON.stringify(wonState.snapshot));
   assert.equal(wonState.snapshot.success, true);
@@ -674,8 +692,11 @@ async function playtestMemoriaV2(page: Page) {
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    api.step(api.getState().snapshot.stageMillis ?? 0);
+    api.step((api.getState().snapshot.stageMillis ?? 0) + 100);
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.memoryStage === "recall"
+  ));
   assert.equal((await browserState(page)).snapshot.memoryStage, "recall");
   await captureNativeDisplay(page, "memoria-v2-recall");
 
@@ -696,6 +717,9 @@ async function playtestMemoriaV2(page: Page) {
     }
     api.step(450);
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const lostState = await browserState(page);
   assert.equal(lostState.snapshot.phase, "finished");
   assert.equal(lostState.snapshot.lives, 0);
@@ -804,6 +828,9 @@ async function playtestLava(page: Page) {
     await page.waitForFunction((lives) => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.lives === lives, expectedLives);
     if (expectedLives === 2) await captureNativeDisplay(page, "lava-damaged");
   }
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const lostState = await browserState(page);
   assert.equal(lostState.snapshot.phase, "finished");
   assert.equal(lostState.snapshot.success, false);
@@ -824,6 +851,9 @@ async function playtestLava(page: Page) {
     api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
     api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
   });
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished"
+  ));
   const wonState = await browserState(page);
   assert.equal(wonState.snapshot.phase, "finished");
   assert.equal(wonState.snapshot.success, true);
