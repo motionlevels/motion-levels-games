@@ -18,12 +18,17 @@ type BrowserPlaygroundState = {
   snapshot: {
     countdownMillis?: number;
     currentPlatform?: { x: number; y: number };
+    level?: number;
+    lives?: number;
+    memoryStage?: string;
     phase: string;
     readyPlayers?: number;
     remainingMillis?: number;
     requiredPlayers?: number;
     success?: boolean;
     targetPlatform?: { x: number; y: number };
+    targets?: Array<{ x: number; y: number }>;
+    stageMillis?: number;
     totalTargets?: number;
     winnerIndex?: number;
   };
@@ -91,10 +96,11 @@ try {
 
     const pingPongResult = await playtestPingPong(page);
     const dueloResult = await playtestDuelo(page);
+    const memoriaV2Result = await playtestMemoriaV2(page);
     const patronesResult = await playtestPatrones(page);
     const saltosResult = await playtestSaltos(page);
 
-    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, patrones: patronesResult, saltos: saltosResult }, null, 2));
+    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
   } finally {
     await browser.close();
   }
@@ -253,6 +259,21 @@ async function playtestSaltos(page: Page) {
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
+  });
+  const wonState = await browserState(page);
+  assert.equal(wonState.snapshot.phase, "finished");
+  assert.equal(wonState.snapshot.success, true);
+  await captureNativeDisplay(page, "saltos-finished-win");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.reset();
+    api.resume();
+    api.press(8, 4);
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 4);
     const snapshot = api.getState().snapshot;
     const platforms = [snapshot.currentPlatform, snapshot.targetPlatform].filter(Boolean) as Array<{ x: number; y: number }>;
     for (let y = 31; y >= 0; y -= 1) {
@@ -271,21 +292,6 @@ async function playtestSaltos(page: Page) {
   assert.equal(lostState.snapshot.success, false);
   await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(450));
   await captureNativeDisplay(page, "saltos-finished-loss");
-
-  await page.evaluate(() => {
-    const api = (window as BrowserPlaygroundWindow).ml;
-    if (!api) throw new Error("window.ml is not ready");
-    api.reset();
-    api.resume();
-    api.press(8, 4);
-    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
-    api.release(8, 4);
-    api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
-  });
-  const wonState = await browserState(page);
-  assert.equal(wonState.snapshot.phase, "finished");
-  assert.equal(wonState.snapshot.success, true);
-  await captureNativeDisplay(page, "saltos-finished-win");
 
   return {
     captures: ["waiting", "starting", "running", "finished-loss", "finished-win"],
@@ -317,30 +323,14 @@ async function playtestPatrones(page: Page) {
     [7, 8], [8, 8], [6, 10], [9, 10], [5, 12], [10, 12],
     [6, 14], [9, 14], [7, 16], [8, 16], [7, 18], [8, 18]
   ];
-  await page.evaluate((targets) => {
-    const api = (window as BrowserPlaygroundWindow).ml;
-    if (!api) throw new Error("window.ml is not ready");
-    for (const [x, y] of targets) {
-      api.press(x, y);
-      api.release(x, y);
-    }
-    api.step(450);
-  }, mediumPattern);
-  const wonState = await browserState(page);
-  assert.equal(wonState.snapshot.phase, "finished");
-  assert.equal(wonState.snapshot.success, true);
-  await captureNativeDisplay(page, "patrones-finished-win");
-
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    api.reset();
     api.resume();
-    api.press(8, 16);
-    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
-    api.release(8, 16);
-    api.press(0, 31);
-    api.release(0, 31);
+    for (let x = 0; x < 16; x += 1) {
+      api.press(x, 31);
+      api.release(x, 31);
+    }
     api.step(450);
   });
   const lostState = await browserState(page);
@@ -348,10 +338,151 @@ async function playtestPatrones(page: Page) {
   assert.equal(lostState.snapshot.success, false);
   await captureNativeDisplay(page, "patrones-finished-loss");
 
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("patrones");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "patrones" && state.snapshot.phase === "waiting";
+  });
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await page.evaluate((targets) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (let attempt = 0; attempt < 20 && api.getState().snapshot.phase === "running"; attempt += 1) {
+      for (const [x, y] of targets) {
+        api.press(x, y);
+        api.release(x, y);
+      }
+      api.step(20);
+    }
+    api.step(450);
+  }, mediumPattern);
+  const wonState = await browserState(page);
+  assert.equal(wonState.snapshot.phase, "finished", JSON.stringify(wonState.snapshot));
+  assert.equal(wonState.snapshot.success, true);
+  await captureNativeDisplay(page, "patrones-finished-win");
+
   return {
     captures: ["waiting", "starting", "running", "finished-win", "finished-loss"],
     gameId: lostState.gameId,
     result: "win-and-loss"
+  };
+}
+
+async function playtestMemoriaV2(page: Page) {
+  await page.locator(".control-game select").selectOption("memoria-v2");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "memoria-v2" && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "memoria-v2-waiting");
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await captureNativeDisplay(page, "memoria-v2-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await captureNativeDisplay(page, "memoria-v2-memorize");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step(api.getState().snapshot.stageMillis ?? 0);
+  });
+  assert.equal((await browserState(page)).snapshot.memoryStage, "recall");
+  await captureNativeDisplay(page, "memoria-v2-recall");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (let index = 0; index < 3; index += 1) {
+      api.press(index, 31);
+      api.release(index, 31);
+    }
+    api.step(450);
+  });
+  const lostState = await browserState(page);
+  assert.equal(lostState.snapshot.phase, "finished");
+  assert.equal(lostState.snapshot.lives, 0);
+  await captureNativeDisplay(page, "memoria-v2-finished-loss");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("memoria-v2");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "memoria-v2" && state.snapshot.phase === "waiting";
+  });
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.pause();
+  });
+  let finalState: BrowserPlaygroundState | undefined;
+  let capturedRoundWin = false;
+  for (let attempt = 0; attempt < 60 && !finalState; attempt += 1) {
+    const result = await page.evaluate(async (captureRoundWin) => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      let state = api.getState();
+      if (state.snapshot.memoryStage === "round-win") {
+        api.step(state.snapshot.stageMillis ?? 0);
+        state = api.getState();
+      }
+      if (state.snapshot.memoryStage === "memorize") {
+        api.step(state.snapshot.stageMillis ?? 0);
+        state = api.getState();
+      }
+      if (state.snapshot.memoryStage === "recall") {
+        api.resume();
+        for (const target of state.snapshot.targets ?? []) {
+          api.press(target.x, target.y);
+          api.release(target.x, target.y);
+        }
+        api.pause();
+      }
+      state = api.getState();
+      const shouldCapture = state.snapshot.phase === "finished" || (captureRoundWin && state.snapshot.memoryStage === "round-win");
+      if (shouldCapture) api.resume();
+      const captures = shouldCapture ? await api.capture(["display", "boardPhysical"]) : undefined;
+      if (shouldCapture) api.pause();
+      return {
+        captures,
+        state
+      };
+    }, !capturedRoundWin);
+    if (!capturedRoundWin && result.state.snapshot.memoryStage === "round-win") {
+      capturedRoundWin = true;
+      if (result.captures) await saveBrowserCaptures(result.captures, "memoria-v2-round-win");
+    }
+    if (result.state.snapshot.phase === "finished") {
+      finalState = result.state;
+      assert.equal(finalState.snapshot.phase, "finished", JSON.stringify(finalState.snapshot));
+      assert.equal(finalState.snapshot.success, true);
+      if (result.captures) await saveBrowserCaptures(result.captures, "memoria-v2-finished-win");
+    }
+  }
+  assert.ok(finalState);
+  assert.equal(capturedRoundWin, true);
+  assert.equal(finalState.snapshot.level, 20);
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
+
+  return {
+    captures: ["waiting", "starting", "memorize", "recall", "round-win", "finished-loss", "finished-win"],
+    gameId: finalState.gameId,
+    levelsCompleted: finalState.snapshot.level
   };
 }
 
@@ -446,16 +577,24 @@ async function captureNativeDisplay(page: Page, name: string): Promise<void> {
   assert.equal(board.height, 1024);
   assert.match(board.dataUrl, /^data:image\/png;base64,/);
 
+  await saveBrowserCaptures(captures, name);
   if (!captureDirectory) return;
-  await mkdir(captureDirectory, { recursive: true });
-  const bytes = Buffer.from(capture.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
-  await writeFile(path.join(captureDirectory, `${name}.png`), bytes);
-  const boardBytes = Buffer.from(board.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
-  await writeFile(path.join(captureDirectory, `${name}-board.png`), boardBytes);
   await page.locator(".display-preview-native").screenshot({
     animations: "disabled",
     path: path.join(captureDirectory, `${name}-preview.png`)
   });
+}
+
+async function saveBrowserCaptures(captures: Record<string, BrowserPlaygroundCapture>, name: string): Promise<void> {
+  if (!captureDirectory) return;
+  await mkdir(captureDirectory, { recursive: true });
+  const capture = captures.display;
+  const board = captures.boardPhysical;
+  assert.ok(capture && board, "display and physical board captures are required");
+  const bytes = Buffer.from(capture.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
+  await writeFile(path.join(captureDirectory, `${name}.png`), bytes);
+  const boardBytes = Buffer.from(board.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
+  await writeFile(path.join(captureDirectory, `${name}-board.png`), boardBytes);
 }
 
 async function waitForServer(url: string): Promise<void> {

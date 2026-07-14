@@ -1,6 +1,7 @@
 import * as arkanoid from "@motion-levels-games/arkanoid";
 import * as duelo from "@motion-levels-games/duelo";
 import * as helloWorld from "@motion-levels-games/hello-world";
+import * as memoriaV2 from "@motion-levels-games/memoria-v2";
 import * as meteorDodge from "@motion-levels-games/meteor-dodge";
 import * as patrones from "@motion-levels-games/patrones";
 import * as pingPong from "@motion-levels-games/ping-pong";
@@ -18,6 +19,7 @@ export const gameRegistry = new Map<string, RunnerGameModule>([
   [arkanoid.manifest.id, arkanoid],
   [duelo.manifest.id, duelo],
   [helloWorld.manifest.id, helloWorld],
+  [memoriaV2.manifest.id, memoriaV2],
   [meteorDodge.manifest.id, meteorDodge],
   [patrones.manifest.id, patrones],
   [pingPong.manifest.id, pingPong],
