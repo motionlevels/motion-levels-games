@@ -19,7 +19,12 @@ type BrowserPlaygroundState = {
   snapshot: {
     countdownMillis?: number;
     currentPlatform?: { x: number; y: number };
+    activePiece?: { cells: Array<[number, number]>; color: string; rotation: number; x: number; y: number };
+    board?: Array<Array<string | null>>;
+    guideX?: number;
+    guideY?: number;
     level?: number;
+    lines?: number;
     lives?: number;
     memoryStage?: string;
     paths?: Array<Array<{ x: number; y: number }>>;
@@ -27,6 +32,7 @@ type BrowserPlaygroundState = {
     pointFlashMillis?: number;
     readyPlayers?: number;
     remainingMillis?: number;
+    result?: string;
     requiredPlayers?: number;
     playerProgress?: Array<{ status: string }>;
     success?: boolean;
@@ -103,6 +109,8 @@ try {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
     } else if (focusedGame === "whack-a-mole") {
       console.log(JSON.stringify({ whackAMole: await playtestWhackAMole(page) }, null, 2));
+    } else if (focusedGame === "tetris") {
+      console.log(JSON.stringify({ tetris: await playtestTetris(page) }, null, 2));
     } else if (focusedGame) {
       throw new Error(`Unsupported focused browser playtest: ${focusedGame}`);
     } else {
@@ -111,12 +119,13 @@ try {
       const dueloResult = await playtestDuelo(page);
       const memoryChallengeResult = await playtestMemoryChallenge(page);
       const whackAMoleResult = await playtestWhackAMole(page);
+      const tetrisResult = await playtestTetris(page);
       const memoriaV2Result = await playtestMemoriaV2(page);
       const patronesResult = await playtestPatrones(page);
       const saltosResult = await playtestSaltos(page);
       const lavaResult = await playtestLava(page);
 
-      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
     }
   } finally {
     await browser.close();
@@ -402,6 +411,103 @@ async function playtestWhackAMole(page: Page) {
   assert.equal(finished.snapshot.phase, "finished");
   await captureNativeDisplay(page, "whack-a-mole-finished");
   return { captures: ["waiting", "starting", "running", "hit", "finished"], gameId: finished.gameId, playerCount: finished.playerCount, result: "timed-winner" };
+}
+
+async function playtestTetris(page: Page) {
+  await page.locator(".control-game select").selectOption("tetris");
+  await page.locator(".control-players select").selectOption("4");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "tetris" && state.playerCount === 4 && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "tetris-waiting");
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="29"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.waitForTimeout(250);
+  await captureNativeDisplay(page, "tetris-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.pause();
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureNativeDisplay(page, "tetris-running");
+
+  let capturedLineClear = false;
+  let finalState: BrowserPlaygroundState | undefined;
+  for (let piece = 0; piece < 300 && !finalState; piece += 1) {
+    const move = await page.evaluate(() => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      api.resume();
+      type Candidate = { rotation: number; score: number; x: number };
+      const candidates: Candidate[] = [];
+      for (let rotation = 0; rotation < 4; rotation += 1) {
+        const snapshot = api.getState().snapshot;
+        const active = snapshot.activePiece;
+        const board = snapshot.board;
+        if (!active || !board) throw new Error("Tetris browser snapshot is incomplete");
+        const width = Math.max(...active.cells.map(([x]) => x)) + 1;
+        for (let x = 0; x <= 10 - width; x += 1) {
+          let y = Math.max(0, active.y);
+          if (active.cells.some(([dx, dy]) => y + dy >= board.length || x + dx < 0 || x + dx >= 10 || board[y + dy]?.[x + dx] !== null)) continue;
+          while (!active.cells.some(([dx, dy]) => y + 1 + dy >= board.length || x + dx < 0 || x + dx >= 10 || board[y + 1 + dy]?.[x + dx] !== null)) y += 1;
+          const simulated = board.map((row) => [...row]);
+          for (const [dx, dy] of active.cells) simulated[y + dy]![x + dx] = active.color;
+          const cleared = simulated.filter((row) => row.every(Boolean)).length;
+          const remaining = simulated.filter((row) => !row.every(Boolean));
+          while (remaining.length < simulated.length) remaining.unshift(Array(10).fill(null));
+          const heights: number[] = [];
+          let holes = 0;
+          for (let column = 0; column < 10; column += 1) {
+            const first = remaining.findIndex((row) => row[column] !== null);
+            heights[column] = first < 0 ? 0 : remaining.length - first;
+            if (first >= 0) for (let row = first + 1; row < remaining.length; row += 1) if (remaining[row]![column] === null) holes += 1;
+          }
+          const bumpiness = heights.slice(1).reduce((sum, height, index) => sum + Math.abs(height - heights[index]!), 0);
+          const aggregate = heights.reduce((sum, height) => sum + height, 0);
+          candidates.push({ rotation, x, score: cleared * 10_000 - holes * 600 - aggregate * 6 - bumpiness * 10 - Math.max(...heights) * 15 });
+        }
+        api.step(200);
+        const guide = api.getState().snapshot;
+        api.press((guide.guideX ?? 8) + 1, (guide.guideY ?? 31) - 1);
+        api.release((guide.guideX ?? 8) + 1, (guide.guideY ?? 31) - 1);
+      }
+      const best = candidates.sort((a, b) => b.score - a.score)[0];
+      if (!best) throw new Error("Tetris browser autoplayer found no placement");
+      for (let turn = 0; turn < best.rotation; turn += 1) {
+        api.step(200);
+        const guide = api.getState().snapshot;
+        api.press((guide.guideX ?? 8) + 1, (guide.guideY ?? 31) - 1);
+        api.release((guide.guideX ?? 8) + 1, (guide.guideY ?? 31) - 1);
+      }
+      const active = api.getState().snapshot.activePiece;
+      if (!active) throw new Error("Tetris active piece disappeared");
+      const width = Math.max(...active.cells.map(([x]) => x)) + 1;
+      api.step(200);
+      api.press(3 + best.x + Math.floor(width / 2), 31);
+      api.release(3 + best.x + Math.floor(width / 2), 31);
+      api.pause();
+      return api.getState();
+    });
+    const state = move;
+    if (!capturedLineClear && state.snapshot.result === "line-clear") {
+      capturedLineClear = true;
+      await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
+      await captureNativeDisplay(page, "tetris-line-clear");
+      await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.pause());
+    }
+    if (state.snapshot.phase === "finished") finalState = state;
+  }
+  if (!finalState) throw new Error("Tetris did not complete within the browser playtest guard");
+  assert.equal(finalState.snapshot.result, "game-win", JSON.stringify(finalState.snapshot));
+  assert.equal(finalState.snapshot.success, true);
+  assert.equal(finalState.snapshot.lines, 10);
+  assert.equal(capturedLineClear, true);
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
+  await captureNativeDisplay(page, "tetris-finished-win");
+  return { captures: ["waiting", "starting", "running", "line-clear", "finished-win"], gameId: finalState.gameId, lines: finalState.snapshot.lines, result: "game-win" };
 }
 
 async function playtestSaltos(page: Page) {
