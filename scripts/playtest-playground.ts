@@ -65,6 +65,7 @@ const repoRoot = process.cwd();
 const port = Number(process.env.MOTION_LEVELS_GAMES_PLAYTEST_PORT || 4174);
 const baseURL = `http://127.0.0.1:${port}`;
 const captureDirectory = process.env.MOTION_LEVELS_GAMES_CAPTURE_DIR;
+const focusedGame = process.env.MOTION_LEVELS_GAMES_PLAYTEST_GAME;
 const dueloFourPlayerZones: Array<[number, number]> = [[0, 0], [12, 28], [0, 28], [12, 0]];
 const dueloEightPlayerZones: Array<[number, number]> = [
   ...dueloFourPlayerZones,
@@ -98,16 +99,25 @@ try {
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
 
-    const pingPongResult = await playtestPingPong(page);
-    const pingPongV2Result = await playtestPingPongV2(page);
-    const dueloResult = await playtestDuelo(page);
-    const memoryChallengeResult = await playtestMemoryChallenge(page);
-    const memoriaV2Result = await playtestMemoriaV2(page);
-    const patronesResult = await playtestPatrones(page);
-    const saltosResult = await playtestSaltos(page);
-    const lavaResult = await playtestLava(page);
+    if (focusedGame === "memory-challenge") {
+      console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
+    } else if (focusedGame === "whack-a-mole") {
+      console.log(JSON.stringify({ whackAMole: await playtestWhackAMole(page) }, null, 2));
+    } else if (focusedGame) {
+      throw new Error(`Unsupported focused browser playtest: ${focusedGame}`);
+    } else {
+      const pingPongResult = await playtestPingPong(page);
+      const pingPongV2Result = await playtestPingPongV2(page);
+      const dueloResult = await playtestDuelo(page);
+      const memoryChallengeResult = await playtestMemoryChallenge(page);
+      const whackAMoleResult = await playtestWhackAMole(page);
+      const memoriaV2Result = await playtestMemoriaV2(page);
+      const patronesResult = await playtestPatrones(page);
+      const saltosResult = await playtestSaltos(page);
+      const lavaResult = await playtestLava(page);
 
-    console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, memoryChallenge: memoryChallengeResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+    }
   } finally {
     await browser.close();
   }
@@ -254,7 +264,7 @@ async function playtestDuelo(page: Page) {
     }
   });
   const finishedState = await browserState(page);
-  assert.equal(finishedState.snapshot.phase, "finished");
+  assert.equal(finishedState.snapshot.phase, "finished", JSON.stringify(finishedState.snapshot));
   assert.equal(finishedState.snapshot.success, true);
   assert.ok((finishedState.snapshot.winnerIndex ?? -1) >= 0);
   await captureNativeDisplay(page, "duelo-finished-early");
@@ -330,13 +340,19 @@ async function playtestMemoryChallenge(page: Page) {
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    for (const point of api.getState().snapshot.paths?.[1] ?? []) {
-      api.press(point.x, point.y);
-      api.release(point.x, point.y);
+    for (let attempt = 0; attempt < 3 && api.getState().snapshot.phase !== "finished"; attempt += 1) {
+      if (api.getState().snapshot.playerProgress?.[1]?.status === "failed") {
+        api.press(4, 0);
+        api.release(4, 0);
+      }
+      for (const point of api.getState().snapshot.paths?.[1] ?? []) {
+        api.press(point.x, point.y);
+        api.release(point.x, point.y);
+      }
     }
   });
   const finishedState = await browserState(page);
-  assert.equal(finishedState.snapshot.phase, "finished");
+  assert.equal(finishedState.snapshot.phase, "finished", JSON.stringify(finishedState.snapshot));
   assert.equal(finishedState.snapshot.success, true);
   await captureNativeDisplay(page, "memory-challenge-finished");
   return {
@@ -345,6 +361,47 @@ async function playtestMemoryChallenge(page: Page) {
     playerCount: finishedState.playerCount,
     result: "player-two-win"
   };
+}
+
+async function playtestWhackAMole(page: Page) {
+  await page.locator(".control-game select").selectOption("whack-a-mole");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "whack-a-mole" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "whack-a-mole-waiting");
+  await clickFloorZones(page, dueloEightPlayerZones);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.waitForTimeout(250);
+  await captureNativeDisplay(page, "whack-a-mole-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  const running = await browserState(page);
+  assert.equal(running.snapshot.targets?.length, 8);
+  await captureNativeDisplay(page, "whack-a-mole-running");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (const target of (api.getState().snapshot.targets ?? []).slice(0, 4)) {
+      api.press(target.x, target.y);
+      api.release(target.x, target.y);
+    }
+  });
+  await captureNativeDisplay(page, "whack-a-mole-hit");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
+  });
+  const finished = await browserState(page);
+  assert.equal(finished.snapshot.phase, "finished");
+  await captureNativeDisplay(page, "whack-a-mole-finished");
+  return { captures: ["waiting", "starting", "running", "hit", "finished"], gameId: finished.gameId, playerCount: finished.playerCount, result: "timed-winner" };
 }
 
 async function playtestSaltos(page: Page) {

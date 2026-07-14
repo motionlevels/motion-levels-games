@@ -10,6 +10,7 @@ import * as pingPong from "@motion-levels-games/ping-pong";
 import * as pingPongV2 from "@motion-levels-games/ping-pong-v2";
 import * as saltos from "@motion-levels-games/saltos";
 import * as tiraSoga from "@motion-levels-games/tira-soga";
+import * as whackAMole from "@motion-levels-games/whack-a-mole";
 import type { GameConfig, GameInstance, GameManifest } from "@motion-levels-games/game-sdk";
 
 export type RunnerGameModule = {
@@ -30,7 +31,8 @@ export const gameRegistry = new Map<string, RunnerGameModule>([
   [pingPong.manifest.id, pingPong],
   [pingPongV2.manifest.id, pingPongV2],
   [saltos.manifest.id, saltos],
-  [tiraSoga.manifest.id, tiraSoga]
+  [tiraSoga.manifest.id, tiraSoga],
+  [whackAMole.manifest.id, whackAMole]
 ]);
 
 export const gameCatalog = [...gameRegistry.values()]
