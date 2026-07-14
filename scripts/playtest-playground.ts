@@ -17,11 +17,13 @@ type BrowserPlaygroundState = {
   paused: boolean;
   snapshot: {
     countdownMillis?: number;
+    currentPlatform?: { x: number; y: number };
     phase: string;
     readyPlayers?: number;
     remainingMillis?: number;
     requiredPlayers?: number;
     success?: boolean;
+    targetPlatform?: { x: number; y: number };
     totalTargets?: number;
     winnerIndex?: number;
   };
@@ -89,8 +91,9 @@ try {
 
     const pingPongResult = await playtestPingPong(page);
     const dueloResult = await playtestDuelo(page);
+    const saltosResult = await playtestSaltos(page);
 
-    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult }, null, 2));
+    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, saltos: saltosResult }, null, 2));
   } finally {
     await browser.close();
   }
@@ -220,6 +223,73 @@ async function playtestDuelo(page: Page) {
     gameId: restartedState.gameId,
     restartPhase: restartedState.snapshot.phase,
     winnerIndex: finishedState.snapshot.winnerIndex
+  };
+}
+
+async function playtestSaltos(page: Page) {
+  await page.locator(".control-game select").selectOption("saltos");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "saltos" && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "saltos-waiting");
+
+  const startTile = page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="4"]');
+  await startTile.click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await captureNativeDisplay(page, "saltos-starting");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  const runningState = await browserState(page);
+  assert.ok(runningState.snapshot.targetPlatform);
+  await captureNativeDisplay(page, "saltos-running");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    const snapshot = api.getState().snapshot;
+    const platforms = [snapshot.currentPlatform, snapshot.targetPlatform].filter(Boolean) as Array<{ x: number; y: number }>;
+    for (let y = 31; y >= 0; y -= 1) {
+      for (let x = 15; x >= 0; x -= 1) {
+        if (platforms.every((platform) => x < platform.x || x >= platform.x + 3 || y < platform.y || y >= platform.y + 3)) {
+          api.press(x, y);
+          api.release(x, y);
+          return;
+        }
+      }
+    }
+    throw new Error("Saltos must expose at least one lava tile");
+  });
+  const lostState = await browserState(page);
+  assert.equal(lostState.snapshot.phase, "finished");
+  assert.equal(lostState.snapshot.success, false);
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(450));
+  await captureNativeDisplay(page, "saltos-finished-loss");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.reset();
+    api.resume();
+    api.press(8, 4);
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 4);
+    api.step((api.getState().snapshot.remainingMillis ?? 0) + 100);
+  });
+  const wonState = await browserState(page);
+  assert.equal(wonState.snapshot.phase, "finished");
+  assert.equal(wonState.snapshot.success, true);
+  await captureNativeDisplay(page, "saltos-finished-win");
+
+  return {
+    captures: ["waiting", "starting", "running", "finished-loss", "finished-win"],
+    gameId: wonState.gameId,
+    result: "win-and-loss"
   };
 }
 
