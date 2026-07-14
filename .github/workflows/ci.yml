@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      actions: write
+      actions: read
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
@@ -73,42 +73,30 @@ jobs:
           }
 
           git fetch origin main --tags
-          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
-            echo "A newer main commit exists; its CI run will publish the bundle."
-            output publish false
-            exit 0
-          fi
-
           strict_tag='^games-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           existing_tag="$(git tag --points-at HEAD --sort=-v:refname | grep -E "$strict_tag" | head -n 1 || true)"
           if [[ -n "$existing_tag" ]]; then
             existing_release_state="$(release_state "$existing_tag")"
             if [[ "$existing_release_state" == "present" ]]; then
-              echo "$existing_tag is already published."
+              echo "$existing_tag is already published; consumer notifications are safe to retry."
               output publish false
-              exit 0
-            fi
-
-            release_runs="$(gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow release-bundle.yml \
-              --commit "$GITHUB_SHA" \
-              --limit 20 \
-              --json headBranch,status)"
-            active_release="$(jq \
-              --arg release_tag "$existing_tag" \
-              'any(.[]; .headBranch == $release_tag and .status != "completed")' \
-              <<< "$release_runs")"
-            if [[ "$active_release" == "true" ]]; then
-              echo "A release for $existing_tag is already active."
-              output publish false
+              output notify true
+              output release_tag "$existing_tag"
               exit 0
             fi
 
             echo "Retrying the missing or failed release for $existing_tag."
             output publish true
+            output notify true
             output create_tag false
             output release_tag "$existing_tag"
+            exit 0
+          fi
+
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "A newer main commit exists; its CI run will publish the bundle."
+            output publish false
+            output notify false
             exit 0
           fi
 
@@ -138,6 +126,7 @@ jobs:
               git diff --quiet "$latest_tag..HEAD" -- "${bundle_paths[@]}"; then
             echo "No bundle inputs changed after $latest_tag."
             output publish false
+            output notify false
             exit 0
           fi
 
@@ -154,29 +143,80 @@ jobs:
 
           echo "Publishing $release_tag from $GITHUB_SHA ($change change)."
           output publish true
+          output notify true
           output create_tag true
           output release_tag "$release_tag"
-      - name: Publish the tag and start its release
+      - name: Download the verified production bundle
+        if: steps.release.outputs.publish == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: motion-levels-games-${{ github.sha }}
+          path: dist
+      - name: Verify the artifact and publish its immutable tag
         if: steps.release.outputs.publish == 'true'
         env:
           CREATE_TAG: ${{ steps.release.outputs.create_tag }}
+          PLATFORM_SYNC_TOKEN: ${{ secrets.PLATFORM_SYNC_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          VENUE_SYNC_TOKEN: ${{ secrets.VENUE_SYNC_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
+          test -n "$PLATFORM_SYNC_TOKEN"
+          test -n "$VENUE_SYNC_TOKEN"
+          archive="motion-levels-games-${GITHUB_SHA}.tgz"
+          test -f "dist/$archive"
+          test -f "dist/$archive.sha256"
+          (cd dist && sha256sum --check "$archive.sha256")
           if [[ "$CREATE_TAG" == "true" ]]; then
+            git fetch --no-tags origin main
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
             git config user.name "Motion Levels"
             git config user.email "noreply@motionlevels.com"
             git tag --annotate "$RELEASE_TAG" --message "Release $RELEASE_TAG"
             git push origin "refs/tags/$RELEASE_TAG"
           fi
-          for attempt in 1 2 3; do
-            if gh workflow run release-bundle.yml \
-              --repo "$GITHUB_REPOSITORY" \
-              --ref "$RELEASE_TAG"; then
-              exit 0
-            fi
-            sleep "$((attempt * 5))"
-          done
-          echo "Unable to dispatch the release workflow for $RELEASE_TAG." >&2
-          exit 1
+      - name: Publish the verified release assets
+        if: steps.release.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          name: ${{ steps.release.outputs.release_tag }}
+          overwrite_files: false
+          tag_name: ${{ steps.release.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            dist/motion-levels-games-${{ github.sha }}.tgz
+            dist/motion-levels-games-${{ github.sha }}.tgz.sha256
+      - name: Notify platform and venue consumers
+        if: steps.release.outputs.notify == 'true'
+        env:
+          PLATFORM_SYNC_TOKEN: ${{ secrets.PLATFORM_SYNC_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          VENUE_SYNC_TOKEN: ${{ secrets.VENUE_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PLATFORM_SYNC_TOKEN"
+          test -n "$VENUE_SYNC_TOKEN"
+          payload="$(jq -n \
+            --arg ref "main" \
+            --arg release_tag "$RELEASE_TAG" \
+            --arg source_revision "$GITHUB_SHA" \
+            '{ref:$ref,inputs:{release_tag:$release_tag,source_revision:$source_revision}}')"
+          dispatch() {
+            local repository="$1"
+            local token="$2"
+            curl --fail-with-body --silent --show-error \
+              --retry 3 \
+              --retry-connrefused \
+              --retry-delay 2 \
+              --request POST \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $token" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --data "$payload" \
+              "$GITHUB_API_URL/repos/$repository/actions/workflows/sync-games-bundle.yml/dispatches"
+          }
+          dispatch motionlevels/motion-levels-platform "$PLATFORM_SYNC_TOKEN"
+          dispatch motionlevels/motion-levels-venue "$VENUE_SYNC_TOKEN"

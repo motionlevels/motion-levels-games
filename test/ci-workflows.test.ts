@@ -26,7 +26,7 @@ test("green main builds automatically promote one immutable release", () => {
   assert.match(ci, /^  promote-release:/m);
   assert.match(ci, /^    needs: checks$/m);
   assert.match(ci, /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/);
-  assert.match(ci, /permissions:\s*\n\s+actions: write\s*\n\s+contents: write/);
+  assert.match(ci, /permissions:\s*\n\s+actions: read\s*\n\s+contents: write/);
   assert.match(ci, /^permissions:\s*\n\s+contents: read/m);
   assert.match(ci, /git fetch origin main --tags/);
   assert.match(ci, /git rev-parse HEAD.*git rev-parse origin\/main/);
@@ -35,10 +35,16 @@ test("green main builds automatically promote one immutable release", () => {
   assert.match(ci, /404\) echo absent/);
   assert.match(ci, /Unexpected GitHub release API status/);
   assert.match(ci, /git diff --quiet "\$latest_tag\.\.HEAD" -- "\$\{bundle_paths\[@\]\}"/);
-  assert.match(ci, /\.headBranch == \$release_tag and \.status != "completed"/);
   assert.match(ci, /node scripts\/next-release-tag\.ts/);
+  assert.match(ci, /actions\/download-artifact@v4/);
+  assert.match(ci, /name: motion-levels-games-\$\{\{ github\.sha \}\}/);
   assert.match(ci, /git tag --annotate "\$RELEASE_TAG"/);
-  assert.match(ci, /gh workflow run release-bundle\.yml[\s\S]*?--ref "\$RELEASE_TAG"/);
+  assert.match(ci, /softprops\/action-gh-release@v2/);
+  assert.match(ci, /tag_name: \$\{\{ steps\.release\.outputs\.release_tag \}\}/);
+  assert.match(ci, /target_commitish: \$\{\{ github\.sha \}\}/);
+  assert.match(ci, /steps\.release\.outputs\.notify == 'true'/);
+  assert.match(ci, /repos\/\$repository\/actions\/workflows\/sync-games-bundle\.yml\/dispatches/);
+  assert.doesNotMatch(ci, /gh workflow run release-bundle\.yml/);
 });
 
 test("reusable CI separates quality, compatibility, coverage, and runtime checks", () => {
