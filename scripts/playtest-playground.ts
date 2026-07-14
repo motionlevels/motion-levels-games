@@ -23,6 +23,7 @@ type BrowserPlaygroundState = {
     board?: Array<Array<string | null>>;
     guideX?: number;
     guideY?: number;
+    lastEventCue?: string;
     level?: number;
     lines?: number;
     lives?: number;
@@ -331,8 +332,9 @@ async function playtestMemoryChallenge(page: Page) {
   });
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.memoryStage === "recall");
   await captureNativeDisplay(page, "memory-challenge-recall");
+  await preparePlaygroundInput(page);
 
-  await page.evaluate(() => {
+  const failedState = await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
     const playerPath = api.getState().snapshot.paths?.[0] ?? [];
@@ -345,11 +347,14 @@ async function playtestMemoryChallenge(page: Page) {
     }
     api.press(miss.x, miss.y);
     api.release(miss.x, miss.y);
+    return api.getState();
   });
-  assert.equal((await browserState(page)).snapshot.playerProgress?.[0]?.status, "failed");
+  assert.equal(failedState.snapshot.playerProgress?.[0]?.status, "failed", JSON.stringify(failedState));
+  assert.equal(failedState.snapshot.lastEventCue, "damage");
   await captureNativeDisplay(page, "memory-challenge-failed");
+  await preparePlaygroundInput(page);
 
-  await page.evaluate(() => {
+  const finishedState = await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
     for (let attempt = 0; attempt < 3 && api.getState().snapshot.phase !== "finished"; attempt += 1) {
@@ -362,8 +367,8 @@ async function playtestMemoryChallenge(page: Page) {
         api.release(point.x, point.y);
       }
     }
+    return api.getState();
   });
-  const finishedState = await browserState(page);
   assert.equal(finishedState.snapshot.phase, "finished", JSON.stringify(finishedState.snapshot));
   assert.equal(finishedState.snapshot.success, true);
   await captureNativeDisplay(page, "memory-challenge-finished");
@@ -926,6 +931,13 @@ async function browserState(page: Page): Promise<BrowserPlaygroundState> {
   const state = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.getState());
   assert.ok(state, "playground API must expose state");
   return state;
+}
+
+async function preparePlaygroundInput(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().paused === false);
 }
 
 async function clickFloorZones(page: Page, zones: Array<[number, number]>, delayMillis = 180): Promise<void> {
