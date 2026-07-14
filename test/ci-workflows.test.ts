@@ -63,7 +63,7 @@ test("release tags pass the shared quality gate and identify current main exactl
   assert.match(release, /test "\$source_revision" = "\$\(git rev-parse origin\/main\)"/);
   assert.match(release, /^\s{2}checks:[\s\S]*?uses: \.\/\.github\/workflows\/checks\.yml/m);
   assert.match(release, /^\s{2}bundle:[\s\S]*?needs:[\s\S]*?- release-policy[\s\S]*?- checks/m);
-  assert.match(release, /MOTION_LEVELS_GAMES_SOURCE_REVISION: \$\{\{ env\.SOURCE_REVISION \}\}/);
+  assert.match(checks, /MOTION_LEVELS_GAMES_SOURCE_REVISION: \$\{\{ github\.sha \}\}/);
 });
 
 test("bundle generation has enough time for every production game", () => {
@@ -71,7 +71,15 @@ test("bundle generation has enough time for every production game", () => {
     checks,
     /^  build-and-playtest:[\s\S]*?timeout-minutes: 30[\s\S]*?npm run generate:media/m
   );
-  assert.match(release, /^  bundle:[\s\S]*?timeout-minutes: 30/m);
+});
+
+test("release reuses the exact bundle that passed the quality gate", () => {
+  const releaseBundle = release.match(/^  bundle:[\s\S]*?(?=^  notify-platform:)/m)?.[0] || "";
+  assert.match(releaseBundle, /timeout-minutes: 10/);
+  assert.match(releaseBundle, /actions\/download-artifact@v4/);
+  assert.match(releaseBundle, /name: motion-levels-games-\$\{\{ env\.SOURCE_REVISION \}\}/);
+  assert.match(releaseBundle, /sha256sum --check "\$archive\.sha256"/);
+  assert.doesNotMatch(releaseBundle, /npm run generate:media|npm run build:bundle/);
 });
 
 test("published release assets are immutable and dispatch their exact identity to the platform", () => {

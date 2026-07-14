@@ -52,25 +52,27 @@ jobs:
       - release-policy
       - checks
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: write
     env:
       SOURCE_REVISION: ${{ needs.release-policy.outputs.source_revision }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Download the bundle produced by the release quality gate
+        uses: actions/download-artifact@v4
         with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run generate:media
-      - run: npm run build:bundle
-        env:
-          MOTION_LEVELS_GAMES_SOURCE_REVISION: ${{ env.SOURCE_REVISION }}
-      - run: npm run verify:bundle
+          name: motion-levels-games-${{ env.SOURCE_REVISION }}
+          path: dist
+      - name: Verify the downloaded release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="motion-levels-games-${SOURCE_REVISION}.tgz"
+          test -f "dist/$archive"
+          test -f "dist/$archive.sha256"
+          cd dist
+          sha256sum --check "$archive.sha256"
       - uses: softprops/action-gh-release@v2
         with:
           fail_on_unmatched_files: true
