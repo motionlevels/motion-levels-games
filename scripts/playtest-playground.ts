@@ -22,6 +22,7 @@ type BrowserPlaygroundState = {
     lives?: number;
     memoryStage?: string;
     phase: string;
+    pointFlashMillis?: number;
     readyPlayers?: number;
     remainingMillis?: number;
     requiredPlayers?: number;
@@ -95,13 +96,14 @@ try {
     await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
 
     const pingPongResult = await playtestPingPong(page);
+    const pingPongV2Result = await playtestPingPongV2(page);
     const dueloResult = await playtestDuelo(page);
     const memoriaV2Result = await playtestMemoriaV2(page);
     const patronesResult = await playtestPatrones(page);
     const saltosResult = await playtestSaltos(page);
     const lavaResult = await playtestLava(page);
 
-    console.log(JSON.stringify({ pingPong: pingPongResult, duelo: dueloResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+    console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
   } finally {
     await browser.close();
   }
@@ -144,6 +146,49 @@ async function playtestPingPong(page: Page) {
     phase: runningState.snapshot.phase,
     readyPlayers: runningState.snapshot.readyPlayers,
     seamX
+  };
+}
+
+async function playtestPingPongV2(page: Page) {
+  await page.locator(".control-game select").selectOption("ping-pong-v2");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "ping-pong-v2" && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "ping-pong-v2-waiting");
+  await clickFloorZones(page, [[7, 3], [7, 28]]);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.waitForTimeout(350);
+  await captureNativeDisplay(page, "ping-pong-v2-starting");
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(2_100));
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureNativeDisplay(page, "ping-pong-v2-running");
+  const runningState = await browserState(page);
+  assert.equal(runningState.snapshot.readyPlayers, 2);
+  assert.equal(runningState.snapshot.requiredPlayers, 2);
+
+  let capturedRoundWin = false;
+  let finishedState: BrowserPlaygroundState | undefined;
+  for (let attempt = 0; attempt < 400 && !finishedState; attempt += 1) {
+    await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(250));
+    const state = await browserState(page);
+    if (!capturedRoundWin && (state.snapshot.pointFlashMillis ?? 0) > 0) {
+      capturedRoundWin = true;
+      await page.waitForTimeout(350);
+      await captureNativeDisplay(page, "ping-pong-v2-round-win");
+    }
+    if (state.snapshot.phase === "finished") {
+      finishedState = state;
+      await captureNativeDisplay(page, "ping-pong-v2-finished");
+    }
+  }
+
+  assert.equal(capturedRoundWin, true, "Ping Pong v2 must expose its round-win feedback");
+  assert.ok(finishedState, "Ping Pong v2 must finish within the browser playtest guard");
+  return {
+    captures: ["waiting", "starting", "running", "round-win", "finished"],
+    gameId: finishedState.gameId,
+    phase: finishedState.snapshot.phase
   };
 }
 
@@ -406,9 +451,17 @@ async function playtestMemoriaV2(page: Page) {
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    for (let index = 0; index < 3; index += 1) {
-      api.press(index, 31);
-      api.release(index, 31);
+    const targets = api.getState().snapshot.targets ?? [];
+    const targetKeys = new Set(targets.map((target) => `${target.x},${target.y}`));
+    const misses: Array<{ x: number; y: number }> = [];
+    for (let y = 0; y < 32 && misses.length < 3; y += 1) {
+      for (let x = 0; x < 16 && misses.length < 3; x += 1) {
+        if (!targetKeys.has(`${x},${y}`)) misses.push({ x, y });
+      }
+    }
+    for (const miss of misses) {
+      api.press(miss.x, miss.y);
+      api.release(miss.x, miss.y);
     }
     api.step(450);
   });

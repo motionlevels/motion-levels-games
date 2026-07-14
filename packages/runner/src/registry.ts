@@ -6,6 +6,7 @@ import * as memoriaV2 from "@motion-levels-games/memoria-v2";
 import * as meteorDodge from "@motion-levels-games/meteor-dodge";
 import * as patrones from "@motion-levels-games/patrones";
 import * as pingPong from "@motion-levels-games/ping-pong";
+import * as pingPongV2 from "@motion-levels-games/ping-pong-v2";
 import * as saltos from "@motion-levels-games/saltos";
 import * as tiraSoga from "@motion-levels-games/tira-soga";
 import type { GameConfig, GameInstance, GameManifest } from "@motion-levels-games/game-sdk";
@@ -25,6 +26,7 @@ export const gameRegistry = new Map<string, RunnerGameModule>([
   [meteorDodge.manifest.id, meteorDodge],
   [patrones.manifest.id, patrones],
   [pingPong.manifest.id, pingPong],
+  [pingPongV2.manifest.id, pingPongV2],
   [saltos.manifest.id, saltos],
   [tiraSoga.manifest.id, tiraSoga]
 ]);
