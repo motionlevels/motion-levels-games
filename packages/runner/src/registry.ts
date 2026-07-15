@@ -1,4 +1,5 @@
 import * as arkanoid from "@motion-levels-games/arkanoid";
+import * as cruceGalactico from "@motion-levels-games/cruce-galactico";
 import * as duelo from "@motion-levels-games/duelo";
 import * as helloWorld from "@motion-levels-games/hello-world";
 import * as lava from "@motion-levels-games/lava";
@@ -22,6 +23,7 @@ export type RunnerGameModule = {
 
 export const gameRegistry = new Map<string, RunnerGameModule>([
   [arkanoid.manifest.id, arkanoid],
+  [cruceGalactico.manifest.id, cruceGalactico],
   [duelo.manifest.id, duelo],
   [helloWorld.manifest.id, helloWorld],
   [lava.manifest.id, lava],

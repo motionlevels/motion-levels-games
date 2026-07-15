@@ -23,6 +23,8 @@ type BrowserPlaygroundState = {
     board?: Array<Array<string | null>>;
     guideX?: number;
     guideY?: number;
+    hazards?: Array<{ x: number; y: number; width: number; height: number }>;
+    checkpoint?: number;
     lastEventCue?: string;
     level?: number;
     lines?: number;
@@ -108,6 +110,8 @@ try {
 
     if (focusedGame === "memory-challenge") {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
+    } else if (focusedGame === "cruce-galactico") {
+      console.log(JSON.stringify({ cruceGalactico: await playtestCruceGalactico(page) }, null, 2));
     } else if (focusedGame === "whack-a-mole") {
       console.log(JSON.stringify({ whackAMole: await playtestWhackAMole(page) }, null, 2));
     } else if (focusedGame === "tetris") {
@@ -170,6 +174,78 @@ async function playtestPingPong(page: Page) {
     phase: runningState.snapshot.phase,
     readyPlayers: runningState.snapshot.readyPlayers,
     seamX
+  };
+}
+
+async function playtestCruceGalactico(page: Page) {
+  await page.locator(".control-game select").selectOption("cruce-galactico");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "cruce-galactico" && state.snapshot.phase === "waiting";
+  });
+  await captureNativeDisplay(page, "cruce-galactico-waiting");
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="30"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await captureNativeDisplay(page, "cruce-galactico-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 30);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureNativeDisplay(page, "cruce-galactico-running");
+
+  for (let expectedLives = 2; expectedLives >= 0; expectedLives -= 1) {
+    await page.evaluate((lives) => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      if (lives < 2) api.step(1_600);
+      const hazard = api.getState().snapshot.hazards?.find((candidate) => candidate.x >= 0);
+      if (!hazard) throw new Error("Cruce Galáctico has no visible hazard");
+      api.press(hazard.x, hazard.y);
+      api.step(20);
+      api.release(hazard.x, hazard.y);
+    }, expectedLives);
+    await page.waitForFunction((lives) => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.lives === lives, expectedLives);
+    if (expectedLives === 2) {
+      await page.waitForTimeout(500);
+      await captureNativeDisplay(page, "cruce-galactico-damaged");
+    }
+  }
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished");
+  assert.equal((await browserState(page)).snapshot.success, false);
+  await captureNativeDisplay(page, "cruce-galactico-finished-loss");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("cruce-galactico");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "waiting");
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="30"]').click();
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    for (const y of [22, 15, 8, 1]) {
+      api.press(8, y);
+      api.release(8, y);
+    }
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished");
+  const won = await browserState(page);
+  assert.equal(won.snapshot.success, true);
+  assert.equal(won.snapshot.checkpoint, 4);
+  await page.waitForTimeout(500);
+  await page.evaluate(async () => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    await api.capture(["display", "boardPhysical"]);
+  });
+  await captureNativeDisplay(page, "cruce-galactico-finished-win");
+  return {
+    captures: ["waiting", "starting", "running", "damaged", "finished-loss", "finished-win"],
+    gameId: won.gameId,
+    checkpoint: won.snapshot.checkpoint
   };
 }
 
