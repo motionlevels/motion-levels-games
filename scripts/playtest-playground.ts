@@ -37,7 +37,10 @@ type BrowserPlaygroundState = {
     remainingMillis?: number;
     result?: string;
     requiredPlayers?: number;
-    playerProgress?: Array<{ status: string }>;
+    playerProgress?: Array<{ status?: string; alive?: boolean; roundWins?: number }>;
+    startPositions?: Array<{ x: number; y: number }>;
+    roundWinnerIndex?: number;
+    gameWinnerIndex?: number;
     success?: boolean;
     targetPlatform?: { x: number; y: number };
     targets?: Array<{ x: number; y: number }>;
@@ -112,6 +115,8 @@ try {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
     } else if (focusedGame === "cruce-galactico") {
       console.log(JSON.stringify({ cruceGalactico: await playtestCruceGalactico(page) }, null, 2));
+    } else if (focusedGame === "estela") {
+      console.log(JSON.stringify({ estela: await playtestEstela(page) }, null, 2));
     } else if (focusedGame === "whack-a-mole") {
       console.log(JSON.stringify({ whackAMole: await playtestWhackAMole(page) }, null, 2));
     } else if (focusedGame === "tetris") {
@@ -247,6 +252,87 @@ async function playtestCruceGalactico(page: Page) {
     gameId: won.gameId,
     checkpoint: won.snapshot.checkpoint
   };
+}
+
+async function playtestEstela(page: Page) {
+  await page.locator(".control-game select").selectOption("estela");
+  await page.locator(".control-players select").selectOption("2");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "estela" && state.playerCount === 2 && state.snapshot.phase === "waiting";
+  });
+  await page.waitForTimeout(350);
+  await captureStableNativeDisplay(page, "estela-waiting");
+  await clickFloorZones(page, [[2, 2], [13, 29]]);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  await page.waitForTimeout(350);
+  await captureStableNativeDisplay(page, "estela-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await page.waitForTimeout(350);
+  await captureStableNativeDisplay(page, "estela-running");
+
+  await eliminateEstelaPlayerZero(page);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "round-win");
+  const firstRound = await browserState(page);
+  assert.equal(firstRound.snapshot.roundWinnerIndex, 1);
+  await page.waitForTimeout(400);
+  await captureStableNativeDisplay(page, "estela-round-win");
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(1_850));
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await eliminateEstelaPlayerZero(page);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "round-win");
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(1_850));
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished");
+  const finished = await browserState(page);
+  assert.equal(finished.snapshot.gameWinnerIndex, 1);
+  assert.equal(finished.snapshot.playerProgress?.[1]?.roundWins, 2);
+  await page.waitForTimeout(500);
+  await captureStableNativeDisplay(page, "estela-finished");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("estela");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "estela" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  const maxState = await browserState(page);
+  const maxZones = maxState.snapshot.startPositions?.map(({ x, y }) => [x, y] as [number, number]);
+  assert.equal(maxZones?.length, 8);
+  await clickFloorZones(page, maxZones ?? []);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  assert.equal((await browserState(page)).snapshot.readyPlayers, 8);
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await page.waitForTimeout(400);
+  await captureStableNativeDisplay(page, "estela-running-8");
+  return {
+    captures: ["waiting", "starting", "running", "round-win", "finished", "running-8"],
+    gameId: finished.gameId,
+    maxPlayersReady: 8,
+    winnerIndex: finished.snapshot.gameWinnerIndex
+  };
+}
+
+async function eliminateEstelaPlayerZero(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.press(3, 2);
+    api.release(3, 2);
+    api.press(2, 2);
+    api.release(2, 2);
+  });
 }
 
 async function playtestPingPongV2(page: Page) {
@@ -1051,6 +1137,41 @@ async function captureNativeDisplay(page: Page, name: string): Promise<void> {
     animations: "disabled",
     path: path.join(captureDirectory, `${name}-preview.png`)
   });
+}
+
+async function captureStableNativeDisplay(page: Page, name: string): Promise<void> {
+  await page.evaluate(async () => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    await api.capture(["display", "boardPhysical"]);
+  });
+  await captureNativeDisplay(page, name);
+  if (!captureDirectory) return;
+  const nativeDisplay = page.locator(".display-preview-native");
+  const previousStyle = await nativeDisplay.getAttribute("style");
+  await nativeDisplay.evaluate((element) => {
+    Object.assign((element as HTMLElement).style, {
+      left: "0",
+      position: "fixed",
+      top: "0",
+      transform: "none",
+      zIndex: "2147483647"
+    });
+  });
+  try {
+    const box = await nativeDisplay.boundingBox();
+    assert.equal(Math.round(box?.width ?? 0), 1_920);
+    assert.equal(Math.round(box?.height ?? 0), 1_080);
+    await nativeDisplay.screenshot({
+      animations: "disabled",
+      path: path.join(captureDirectory, `${name}-visual.png`)
+    });
+  } finally {
+    await nativeDisplay.evaluate((element, style) => {
+      if (style === null) element.removeAttribute("style");
+      else element.setAttribute("style", style);
+    }, previousStyle);
+  }
 }
 
 async function saveBrowserCaptures(captures: Record<string, BrowserPlaygroundCapture>, name: string): Promise<void> {
