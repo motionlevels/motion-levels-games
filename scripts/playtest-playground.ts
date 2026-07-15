@@ -26,10 +26,19 @@ type BrowserPlaygroundState = {
     hazards?: Array<{ x: number; y: number; width: number; height: number }>;
     checkpoint?: number;
     lastEventCue?: string;
+    accuracy?: number;
+    combo?: number;
+    energy?: number;
+    hitZones?: number[];
     level?: number;
     lines?: number;
     lives?: number;
     memoryStage?: string;
+    noteCount?: number;
+    noteIndex?: number;
+    noteKind?: "tap" | "chord" | "hold";
+    noteProgress?: number;
+    noteZones?: number[];
     paths?: Array<Array<{ x: number; y: number }>>;
     phase: string;
     pointFlashMillis?: number;
@@ -117,6 +126,8 @@ try {
       console.log(JSON.stringify({ cruceGalactico: await playtestCruceGalactico(page) }, null, 2));
     } else if (focusedGame === "estela") {
       console.log(JSON.stringify({ estela: await playtestEstela(page) }, null, 2));
+    } else if (focusedGame === "pulso") {
+      console.log(JSON.stringify({ pulso: await playtestPulso(page) }, null, 2));
     } else if (focusedGame === "whack-a-mole") {
       console.log(JSON.stringify({ whackAMole: await playtestWhackAMole(page) }, null, 2));
     } else if (focusedGame === "tetris") {
@@ -333,6 +344,120 @@ async function eliminateEstelaPlayerZero(page: Page): Promise<void> {
     api.press(2, 2);
     api.release(2, 2);
   });
+}
+
+async function playtestPulso(page: Page) {
+  await page.locator(".control-game select").selectOption("pulso");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "pulso" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await page.waitForTimeout(300);
+  await captureStableNativeDisplay(page, "pulso-waiting");
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  const starting = await browserState(page);
+  assert.equal(starting.snapshot.readyPlayers, 1);
+  assert.equal(starting.snapshot.requiredPlayers, 1);
+  await captureStableNativeDisplay(page, "pulso-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 16);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureStableNativeDisplay(page, "pulso-running");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step(2_000);
+    api.step(2_000);
+  });
+  const damaged = await browserState(page);
+  assert.ok((damaged.snapshot.energy ?? 100) < 64);
+  assert.equal(damaged.snapshot.phase, "running");
+  await captureStableNativeDisplay(page, "pulso-missed");
+  for (let attempt = 0; attempt < 8 && (await browserState(page)).snapshot.phase !== "finished"; attempt += 1) {
+    await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(2_000));
+  }
+  const failed = await browserState(page);
+  assert.equal(failed.snapshot.phase, "finished");
+  assert.equal(failed.snapshot.success, false);
+  assert.equal(failed.snapshot.energy, 0);
+  await captureStableNativeDisplay(page, "pulso-finished-loss");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("pulso");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "pulso" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 16);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+
+  const padCenters: Array<[number, number]> = [[3, 7], [12, 7], [3, 23], [12, 23]];
+  let capturedHold = false;
+  for (let guard = 0; guard < 30; guard += 1) {
+    const state = await browserState(page);
+    if (state.snapshot.phase === "finished") break;
+    for (let wait = 0; wait < 40 && ((await browserState(page)).snapshot.noteProgress ?? 0) < 0.99; wait += 1) {
+      await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(50));
+    }
+    const note = await browserState(page);
+    const zones = note.snapshot.noteZones ?? [];
+    assert.ok(zones.length > 0, `Pulso note ${note.snapshot.noteIndex} must expose its floor zones`);
+    await page.evaluate(({ centers, activeZones }) => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      for (const zone of activeZones) {
+        const [x, y] = centers[zone]!;
+        api.press(x, y);
+      }
+    }, { activeZones: zones, centers: padCenters });
+    if (note.snapshot.noteKind === "hold") {
+      if (!capturedHold) {
+        capturedHold = true;
+        await captureStableNativeDisplay(page, "pulso-hold");
+      }
+      const afterHoldCapture = await browserState(page);
+      if (afterHoldCapture.snapshot.noteIndex === note.snapshot.noteIndex) {
+        await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(1_000));
+      }
+    }
+    await page.evaluate(({ centers, activeZones }) => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      for (const zone of activeZones) {
+        const [x, y] = centers[zone]!;
+        api.release(x, y);
+      }
+    }, { activeZones: zones, centers: padCenters });
+  }
+  const won = await browserState(page);
+  assert.equal(capturedHold, true, "Pulso must browser-play a hold note");
+  assert.equal(won.snapshot.phase, "finished", JSON.stringify(won.snapshot));
+  assert.equal(won.snapshot.success, true);
+  assert.equal(won.snapshot.noteIndex, won.snapshot.noteCount);
+  assert.ok((won.snapshot.accuracy ?? 0) >= 90, "Pulso browser run must finish with at least 90% accuracy");
+  await captureStableNativeDisplay(page, "pulso-finished-win");
+  return {
+    accuracy: won.snapshot.accuracy,
+    captures: ["waiting", "starting", "running", "missed", "finished-loss", "hold", "finished-win"],
+    gameId: won.gameId,
+    maxPlayersConfigured: 8,
+    notesCompleted: won.snapshot.noteIndex
+  };
 }
 
 async function playtestPingPongV2(page: Page) {
@@ -1140,38 +1265,39 @@ async function captureNativeDisplay(page: Page, name: string): Promise<void> {
 }
 
 async function captureStableNativeDisplay(page: Page, name: string): Promise<void> {
+  if (captureDirectory) {
+    const nativeDisplay = page.locator(".display-preview-native");
+    const previousStyle = await nativeDisplay.getAttribute("style");
+    await nativeDisplay.evaluate((element) => {
+      Object.assign((element as HTMLElement).style, {
+        left: "0",
+        position: "fixed",
+        top: "0",
+        transform: "none",
+        zIndex: "2147483647"
+      });
+    });
+    try {
+      const box = await nativeDisplay.boundingBox();
+      assert.equal(Math.round(box?.width ?? 0), 1_920);
+      assert.equal(Math.round(box?.height ?? 0), 1_080);
+      await nativeDisplay.screenshot({
+        animations: "disabled",
+        path: path.join(captureDirectory, `${name}-visual.png`)
+      });
+    } finally {
+      await nativeDisplay.evaluate((element, style) => {
+        if (style === null) element.removeAttribute("style");
+        else element.setAttribute("style", style);
+      }, previousStyle);
+    }
+  }
   await page.evaluate(async () => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
     await api.capture(["display", "boardPhysical"]);
   });
   await captureNativeDisplay(page, name);
-  if (!captureDirectory) return;
-  const nativeDisplay = page.locator(".display-preview-native");
-  const previousStyle = await nativeDisplay.getAttribute("style");
-  await nativeDisplay.evaluate((element) => {
-    Object.assign((element as HTMLElement).style, {
-      left: "0",
-      position: "fixed",
-      top: "0",
-      transform: "none",
-      zIndex: "2147483647"
-    });
-  });
-  try {
-    const box = await nativeDisplay.boundingBox();
-    assert.equal(Math.round(box?.width ?? 0), 1_920);
-    assert.equal(Math.round(box?.height ?? 0), 1_080);
-    await nativeDisplay.screenshot({
-      animations: "disabled",
-      path: path.join(captureDirectory, `${name}-visual.png`)
-    });
-  } finally {
-    await nativeDisplay.evaluate((element, style) => {
-      if (style === null) element.removeAttribute("style");
-      else element.setAttribute("style", style);
-    }, previousStyle);
-  }
 }
 
 async function saveBrowserCaptures(captures: Record<string, BrowserPlaygroundCapture>, name: string): Promise<void> {
