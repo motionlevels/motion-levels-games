@@ -23,7 +23,7 @@ jobs:
     name: Promote verified main bundle
     needs: checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 5
     permissions:
       actions: read

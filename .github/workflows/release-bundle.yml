@@ -16,7 +16,7 @@ concurrency:
 jobs:
   release-policy:
     name: Validate release tag and source
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 5
     outputs:
       source_revision: ${{ steps.source.outputs.source_revision }}
@@ -51,7 +51,7 @@ jobs:
     needs:
       - release-policy
       - checks
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     permissions:
       contents: write
@@ -102,7 +102,7 @@ jobs:
     needs:
       - release-policy
       - bundle
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 5
     env:
       SOURCE_REVISION: ${{ needs.release-policy.outputs.source_revision }}
@@ -134,7 +134,7 @@ jobs:
     needs:
       - release-policy
       - bundle
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 5
     env:
       SOURCE_REVISION: ${{ needs.release-policy.outputs.source_revision }}

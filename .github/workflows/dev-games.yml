@@ -17,7 +17,7 @@ jobs:
   branch-policy:
     name: Ensure dev includes main
     if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
