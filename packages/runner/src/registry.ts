@@ -1,7 +1,9 @@
 import * as arkanoid from "@motion-levels-games/arkanoid";
 import * as cruceGalactico from "@motion-levels-games/cruce-galactico";
 import * as duelo from "@motion-levels-games/duelo";
+import * as equilibrio from "@motion-levels-games/equilibrio";
 import * as estela from "@motion-levels-games/estela";
+import * as guardianes from "@motion-levels-games/guardianes";
 import * as helloWorld from "@motion-levels-games/hello-world";
 import * as lava from "@motion-levels-games/lava";
 import * as memoryChallenge from "@motion-levels-games/memory-challenge";
@@ -27,7 +29,9 @@ export const gameRegistry = new Map<string, RunnerGameModule>([
   [arkanoid.manifest.id, arkanoid],
   [cruceGalactico.manifest.id, cruceGalactico],
   [duelo.manifest.id, duelo],
+  [equilibrio.manifest.id, equilibrio],
   [estela.manifest.id, estela],
+  [guardianes.manifest.id, guardianes],
   [helloWorld.manifest.id, helloWorld],
   [lava.manifest.id, lava],
   [memoryChallenge.manifest.id, memoryChallenge],

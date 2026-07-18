@@ -29,10 +29,16 @@ type BrowserPlaygroundState = {
     accuracy?: number;
     combo?: number;
     energy?: number;
+    blockedThreats?: number;
+    challengeCount?: number;
+    challengeIndex?: number;
+    holdMillis?: number;
+    holdTargetMillis?: number;
     hitZones?: number[];
     level?: number;
     lines?: number;
     lives?: number;
+    maxLives?: number;
     memoryStage?: string;
     noteCount?: number;
     noteIndex?: number;
@@ -51,11 +57,16 @@ type BrowserPlaygroundState = {
     roundWinnerIndex?: number;
     gameWinnerIndex?: number;
     success?: boolean;
+    stability?: number;
     targetPlatform?: { x: number; y: number };
     targets?: Array<{ x: number; y: number }>;
     stageMillis?: number;
     totalTargets?: number;
     winnerIndex?: number;
+    shieldLanes?: number[];
+    threatCount?: number;
+    threatIndex?: number;
+    threats?: Array<{ lane: number; millisRemaining: number; progress: number }>;
   };
 };
 
@@ -124,8 +135,12 @@ try {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
     } else if (focusedGame === "cruce-galactico") {
       console.log(JSON.stringify({ cruceGalactico: await playtestCruceGalactico(page) }, null, 2));
+    } else if (focusedGame === "equilibrio") {
+      console.log(JSON.stringify({ equilibrio: await playtestEquilibrio(page) }, null, 2));
     } else if (focusedGame === "estela") {
       console.log(JSON.stringify({ estela: await playtestEstela(page) }, null, 2));
+    } else if (focusedGame === "guardianes") {
+      console.log(JSON.stringify({ guardianes: await playtestGuardianes(page) }, null, 2));
     } else if (focusedGame === "pulso") {
       console.log(JSON.stringify({ pulso: await playtestPulso(page) }, null, 2));
     } else if (focusedGame === "whack-a-mole") {
@@ -145,8 +160,10 @@ try {
       const patronesResult = await playtestPatrones(page);
       const saltosResult = await playtestSaltos(page);
       const lavaResult = await playtestLava(page);
+      const equilibrioResult = await playtestEquilibrio(page);
+      const guardianesResult = await playtestGuardianes(page);
 
-      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, equilibrio: equilibrioResult, guardianes: guardianesResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
     }
   } finally {
     await browser.close();
@@ -344,6 +361,206 @@ async function eliminateEstelaPlayerZero(page: Page): Promise<void> {
     api.press(2, 2);
     api.release(2, 2);
   });
+}
+
+async function playtestEquilibrio(page: Page) {
+  await page.locator(".control-game select").selectOption("equilibrio");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "equilibrio" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await page.waitForTimeout(300);
+  await captureStableNativeDisplay(page, "equilibrio-waiting");
+  await clickFloorZones(page, [[4, 16], [11, 16]]);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  const starting = await browserState(page);
+  assert.equal(starting.snapshot.readyPlayers, 2);
+  assert.equal(starting.snapshot.requiredPlayers, 2);
+  await captureStableNativeDisplay(page, "equilibrio-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(4, 16);
+    api.release(11, 16);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureStableNativeDisplay(page, "equilibrio-running");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (let x = 7; x <= 15 && api.getState().snapshot.phase === "running"; x += 1) api.press(x, 10);
+  });
+  const failed = await browserState(page);
+  assert.equal(failed.snapshot.phase, "finished");
+  assert.equal(failed.snapshot.success, false);
+  assert.equal(failed.snapshot.stability, 0);
+  await captureStableNativeDisplay(page, "equilibrio-finished-loss");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("equilibrio");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "equilibrio" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await clickFloorZones(page, [[4, 16], [11, 16]]);
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(4, 16);
+    api.release(11, 16);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+
+  const pads: Array<[[number, number], [number, number]]> = [
+    [[3, 6], [12, 6]],
+    [[4, 14], [10, 14]],
+    [[3, 24], [12, 24]],
+    [[5, 7], [9, 24]],
+    [[2, 29], [13, 2]]
+  ];
+  let capturedHolding = false;
+  let capturedRoundWin = false;
+  for (let guard = 0; guard < 12; guard += 1) {
+    const before = await browserState(page);
+    if (before.snapshot.phase === "finished") break;
+    const [left, right] = pads[before.snapshot.challengeIndex ?? 0]!;
+    await page.evaluate(([leftPad, rightPad]) => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      api.release(...leftPad);
+      api.release(...rightPad);
+      api.press(...leftPad);
+      api.press(...rightPad);
+      api.step(Math.round((api.getState().snapshot.holdTargetMillis ?? 1_600) / 2));
+    }, [left, right] as const);
+    if (!capturedHolding) {
+      capturedHolding = true;
+      await captureStableNativeDisplay(page, "equilibrio-holding");
+    }
+    await page.evaluate(() => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      api.step((api.getState().snapshot.holdTargetMillis ?? 1_600) + 100);
+    });
+    const state = await browserState(page);
+    if (state.snapshot.phase === "round-win") {
+      if (!capturedRoundWin) {
+        capturedRoundWin = true;
+        await page.waitForTimeout(250);
+        await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.pause());
+        await page.waitForTimeout(100);
+        await captureStableNativeDisplay(page, "equilibrio-round-win");
+        await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
+      }
+      await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(3_020));
+    }
+  }
+  const won = await browserState(page);
+  assert.equal(capturedHolding, true);
+  assert.equal(capturedRoundWin, true);
+  assert.equal(won.snapshot.phase, "finished", JSON.stringify(won.snapshot));
+  assert.equal(won.snapshot.success, true);
+  assert.equal(won.snapshot.challengeIndex, 4);
+  await captureStableNativeDisplay(page, "equilibrio-finished-win");
+  return {
+    captures: ["waiting", "starting", "running", "holding", "round-win", "finished-loss", "finished-win"],
+    challengesCompleted: 5,
+    gameId: won.gameId,
+    maxPlayersConfigured: 8
+  };
+}
+
+async function playtestGuardianes(page: Page) {
+  await page.locator(".control-game select").selectOption("guardianes");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "guardianes" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await page.waitForTimeout(300);
+  await captureStableNativeDisplay(page, "guardianes-waiting");
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  const starting = await browserState(page);
+  assert.equal(starting.snapshot.readyPlayers, 1);
+  assert.equal(starting.snapshot.requiredPlayers, 1);
+  await captureStableNativeDisplay(page, "guardianes-starting");
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 16);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureStableNativeDisplay(page, "guardianes-running");
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(4_300));
+  const damaged = await browserState(page);
+  assert.equal(damaged.snapshot.lives, 3);
+  await captureStableNativeDisplay(page, "guardianes-damaged");
+  for (let guard = 0; guard < 5 && (await browserState(page)).snapshot.phase !== "finished"; guard += 1) {
+    await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(1_750));
+  }
+  const failed = await browserState(page);
+  assert.equal(failed.snapshot.phase, "finished");
+  assert.equal(failed.snapshot.lives, 0);
+  assert.equal(failed.snapshot.success, false);
+  await captureStableNativeDisplay(page, "guardianes-finished-loss");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("guardianes");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "guardianes" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    api.release(8, 16);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+
+  const shieldCenters: Array<[number, number]> = [[1, 28], [5, 28], [9, 28], [13, 28]];
+  let capturedShield = false;
+  for (let guard = 0; guard < 20; guard += 1) {
+    const current = await browserState(page);
+    if (current.snapshot.phase === "finished") break;
+    for (let wait = 0; wait < 50 && ((await browserState(page)).snapshot.threats?.length ?? 0) === 0; wait += 1) {
+      await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(100));
+    }
+    const threat = (await browserState(page)).snapshot.threats?.[0];
+    assert.ok(threat, "Guardianes must expose the next visible threat");
+    const center = shieldCenters[threat.lane]!;
+    await page.evaluate(([x, y]) => (window as BrowserPlaygroundWindow).ml?.press(x, y), center);
+    if (!capturedShield) {
+      capturedShield = true;
+      await captureStableNativeDisplay(page, "guardianes-shield-active");
+    }
+    await page.evaluate((millis) => (window as BrowserPlaygroundWindow).ml?.step(millis), threat.millisRemaining);
+    await page.evaluate(([x, y]) => (window as BrowserPlaygroundWindow).ml?.release(x, y), center);
+  }
+  const won = await browserState(page);
+  assert.equal(capturedShield, true);
+  assert.equal(won.snapshot.phase, "finished", JSON.stringify(won.snapshot));
+  assert.equal(won.snapshot.success, true);
+  assert.equal(won.snapshot.blockedThreats, won.snapshot.threatCount);
+  assert.equal(won.snapshot.lives, 4);
+  await captureStableNativeDisplay(page, "guardianes-finished-win");
+  return {
+    blockedThreats: won.snapshot.blockedThreats,
+    captures: ["waiting", "starting", "running", "damaged", "shield-active", "finished-loss", "finished-win"],
+    gameId: won.gameId,
+    maxPlayersConfigured: 8
+  };
 }
 
 async function playtestPulso(page: Page) {
