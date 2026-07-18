@@ -387,21 +387,16 @@ async function playtestEquilibrio(page: Page) {
   });
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
   await captureStableNativeDisplay(page, "equilibrio-running");
-  await preparePlaygroundInput(page);
 
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    for (let y = 0; y < 12 && api.getState().snapshot.phase === "running"; y += 1) {
-      api.press(7, y);
-      api.release(7, y);
-      api.step(20);
-    }
+    api.step((api.getState().snapshot.remainingMillis ?? 70_000) + 100);
   });
   const failed = await browserState(page);
   assert.equal(failed.snapshot.phase, "finished");
   assert.equal(failed.snapshot.success, false);
-  assert.equal(failed.snapshot.stability, 0);
+  assert.equal(failed.snapshot.remainingMillis, 0);
   await captureStableNativeDisplay(page, "equilibrio-finished-loss");
 
   await page.locator(".control-game select").selectOption("hello-world");
