@@ -393,6 +393,7 @@ async function playtestEquilibrio(page: Page) {
     if (!api) throw new Error("window.ml is not ready");
     api.step((api.getState().snapshot.remainingMillis ?? 70_000) + 100);
   });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished");
   const failed = await browserState(page);
   assert.equal(failed.snapshot.phase, "finished");
   assert.equal(failed.snapshot.success, false);
