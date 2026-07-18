@@ -387,11 +387,16 @@ async function playtestEquilibrio(page: Page) {
   });
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
   await captureStableNativeDisplay(page, "equilibrio-running");
+  await preparePlaygroundInput(page);
 
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    for (let x = 7; x <= 15 && api.getState().snapshot.phase === "running"; x += 1) api.press(x, 10);
+    for (let y = 0; y < 12 && api.getState().snapshot.phase === "running"; y += 1) {
+      api.press(7, y);
+      api.release(7, y);
+      api.step(20);
+    }
   });
   const failed = await browserState(page);
   assert.equal(failed.snapshot.phase, "finished");
