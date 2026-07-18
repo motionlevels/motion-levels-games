@@ -1023,7 +1023,7 @@ async function playtestTetris(page: Page) {
   if (!finalState) throw new Error("Tetris did not complete within the browser playtest guard");
   assert.equal(finalState.snapshot.result, "game-win", JSON.stringify(finalState.snapshot));
   assert.equal(finalState.snapshot.success, true);
-  assert.equal(finalState.snapshot.lines, 10);
+  assert.ok((finalState.snapshot.lines ?? 0) >= 10, "Tetris must meet or exceed its ten-line win target");
   assert.equal(capturedLineClear, true);
   await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
   await captureNativeDisplay(page, "tetris-finished-win");
