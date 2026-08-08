@@ -500,7 +500,15 @@ async function playtestGuardianes(page: Page) {
   });
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
   await captureStableNativeDisplay(page, "guardianes-running");
-  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(4_300));
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.pause());
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().paused === true);
+  // Advance to the first resolved threat rather than assuming that the
+  // ready-to-running transition consumed an exact number of browser frames.
+  // Yielding between steps lets React publish each engine snapshot, while the
+  // paused real-time loop keeps the result independent of CI runner speed.
+  for (let guard = 0; guard < 30 && (await browserState(page)).snapshot.lives === 4; guard += 1) {
+    await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(250));
+  }
   const damaged = await browserState(page);
   assert.equal(damaged.snapshot.lives, 3);
   await captureStableNativeDisplay(page, "guardianes-damaged");
@@ -512,6 +520,7 @@ async function playtestGuardianes(page: Page) {
   assert.equal(failed.snapshot.lives, 0);
   assert.equal(failed.snapshot.success, false);
   await captureStableNativeDisplay(page, "guardianes-finished-loss");
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
 
   await page.locator(".control-game select").selectOption("hello-world");
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
