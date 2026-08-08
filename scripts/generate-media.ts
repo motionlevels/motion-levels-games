@@ -22,41 +22,32 @@ server.stderr.on("data", (chunk) => process.stderr.write(chunk));
 
 try {
   await waitForServer(baseURL);
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
-    await page.goto(baseURL, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
-
-    for (const manifest of gameCatalog) {
-      const media = await page.evaluate(async (gameId) => {
-        const api = (window as unknown as { ml?: { media(id: string): Promise<unknown> } }).ml;
-        if (!api) throw new Error("playground API is not ready");
-        return api.media(gameId);
-      }, manifest.id) as MediaBundle;
-      const gameDir = path.join(outputRoot, manifest.id);
-      await mkdir(gameDir, { recursive: true });
-      const assets: Record<string, unknown> = {};
-      for (const asset of Object.values(media.assets)) {
-        const contents = dataUrlBytes(asset.dataUrl);
-        await writeFile(path.join(gameDir, asset.fileName), contents);
-        assets[asset.kind] = {
-          file: asset.fileName,
-          width: asset.width,
-          height: asset.height,
-          mimeType: asset.mimeType,
-          bytes: contents.length,
-          sha256: createHash("sha256").update(contents).digest("hex")
-        };
-      }
-      await writeFile(path.join(gameDir, "metadata.json"), `${JSON.stringify({
-        gameId: manifest.id,
-        scenario: manifest.preview,
-        assets
-      }, null, 2)}\n`);
+  for (const [index, manifest] of gameCatalog.entries()) {
+    console.log(`Generating media ${index + 1}/${gameCatalog.length}: ${manifest.id}`);
+    // Chromium retains large canvas and encoded animation allocations after a
+    // page closes. A fresh process per game bounds peak memory on the shared
+    // CI runner and makes every game's render environment independent.
+    const media = await generateGameMedia(manifest.id);
+    const gameDir = path.join(outputRoot, manifest.id);
+    await mkdir(gameDir, { recursive: true });
+    const assets: Record<string, unknown> = {};
+    for (const asset of Object.values(media.assets)) {
+      const contents = dataUrlBytes(asset.dataUrl);
+      await writeFile(path.join(gameDir, asset.fileName), contents);
+      assets[asset.kind] = {
+        file: asset.fileName,
+        width: asset.width,
+        height: asset.height,
+        mimeType: asset.mimeType,
+        bytes: contents.length,
+        sha256: createHash("sha256").update(contents).digest("hex")
+      };
     }
-  } finally {
-    await browser.close();
+    await writeFile(path.join(gameDir, "metadata.json"), `${JSON.stringify({
+      gameId: manifest.id,
+      scenario: manifest.preview,
+      assets
+    }, null, 2)}\n`);
   }
 } finally {
   server.kill("SIGTERM");
@@ -74,6 +65,22 @@ type MediaAsset = {
 };
 
 type MediaBundle = { assets: Record<string, MediaAsset> };
+
+async function generateGameMedia(gameId: string): Promise<MediaBundle> {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
+    await page.goto(baseURL, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
+    return await page.evaluate(async (id) => {
+      const api = (window as unknown as { ml?: { media(gameId: string): Promise<unknown> } }).ml;
+      if (!api) throw new Error("playground API is not ready");
+      return api.media(id);
+    }, gameId) as MediaBundle;
+  } finally {
+    await browser.close();
+  }
+}
 
 function dataUrlBytes(dataUrl: string): Buffer {
   const separator = dataUrl.indexOf(",");
