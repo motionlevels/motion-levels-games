@@ -14,6 +14,7 @@ import * as pingPong from "@motion-levels-games/ping-pong";
 import * as pingPongV2 from "@motion-levels-games/ping-pong-v2";
 import * as pulso from "@motion-levels-games/pulso";
 import * as saltos from "@motion-levels-games/saltos";
+import * as sueloSeguro from "@motion-levels-games/suelo-seguro";
 import * as tiraSoga from "@motion-levels-games/tira-soga";
 import * as tetris from "@motion-levels-games/tetris";
 import * as whackAMole from "@motion-levels-games/whack-a-mole";
@@ -42,6 +43,7 @@ export const gameRegistry = new Map<string, RunnerGameModule>([
   [pingPongV2.manifest.id, pingPongV2],
   [pulso.manifest.id, pulso],
   [saltos.manifest.id, saltos],
+  [sueloSeguro.manifest.id, sueloSeguro],
   [tetris.manifest.id, tetris],
   [tiraSoga.manifest.id, tiraSoga],
   [whackAMole.manifest.id, whackAMole]

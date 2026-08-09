@@ -30,6 +30,8 @@ type BrowserPlaygroundState = {
     combo?: number;
     energy?: number;
     blockedThreats?: number;
+    activePlayerIndex?: number;
+    completedTransfers?: number;
     challengeCount?: number;
     challengeIndex?: number;
     holdMillis?: number;
@@ -59,6 +61,9 @@ type BrowserPlaygroundState = {
     success?: boolean;
     stability?: number;
     targetPlatform?: { x: number; y: number };
+    turnDurationMillis?: number;
+    turnRemainingMillis?: number;
+    requiredTransfers?: number;
     targets?: Array<{ x: number; y: number }>;
     stageMillis?: number;
     totalTargets?: number;
@@ -141,6 +146,8 @@ try {
       console.log(JSON.stringify({ estela: await playtestEstela(page) }, null, 2));
     } else if (focusedGame === "guardianes") {
       console.log(JSON.stringify({ guardianes: await playtestGuardianes(page) }, null, 2));
+    } else if (focusedGame === "suelo-seguro") {
+      console.log(JSON.stringify({ sueloSeguro: await playtestSueloSeguro(page) }, null, 2));
     } else if (focusedGame === "pulso") {
       console.log(JSON.stringify({ pulso: await playtestPulso(page) }, null, 2));
     } else if (focusedGame === "whack-a-mole") {
@@ -162,8 +169,9 @@ try {
       const lavaResult = await playtestLava(page);
       const equilibrioResult = await playtestEquilibrio(page);
       const guardianesResult = await playtestGuardianes(page);
+      const sueloSeguroResult = await playtestSueloSeguro(page);
 
-      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, equilibrio: equilibrioResult, guardianes: guardianesResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, equilibrio: equilibrioResult, guardianes: guardianesResult, sueloSeguro: sueloSeguroResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
     }
   } finally {
     await browser.close();
@@ -568,6 +576,121 @@ async function playtestGuardianes(page: Page) {
   return {
     blockedThreats: won.snapshot.blockedThreats,
     captures: ["waiting", "starting", "running", "damaged", "shield-active", "finished-loss", "finished-win"],
+    gameId: won.gameId,
+    maxPlayersConfigured: 8
+  };
+}
+
+async function playtestSueloSeguro(page: Page) {
+  const maxPlayerZones: Array<[number, number]> = [
+    [1, 1], [7, 1], [13, 1], [13, 10], [13, 29], [7, 29], [1, 29], [1, 20]
+  ];
+
+  await page.locator(".control-game select").selectOption("suelo-seguro");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "suelo-seguro" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await captureStableNativeDisplay(page, "suelo-seguro-waiting");
+  await clickFloorZones(page, maxPlayerZones);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  const starting = await browserState(page);
+  assert.equal(starting.snapshot.readyPlayers, 8);
+  assert.equal(starting.snapshot.requiredPlayers, 8);
+  await captureStableNativeDisplay(page, "suelo-seguro-starting");
+  await page.evaluate((zones) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    for (const [x, y] of zones) api.release(x, y);
+  }, maxPlayerZones);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureStableNativeDisplay(page, "suelo-seguro-running-full-lives");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    const target = api.getState().snapshot.targetPlatform;
+    if (!target) throw new Error("Suelo Seguro has no target platform");
+    api.press(target.x, target.y);
+    api.release(target.x, target.y);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "round-win");
+  await captureStableNativeDisplay(page, "suelo-seguro-round-win");
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(1_420));
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.turnRemainingMillis ?? 4_800) + 20);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "turn-fail");
+  const damaged = await browserState(page);
+  assert.equal(damaged.snapshot.lives, 3);
+  await captureStableNativeDisplay(page, "suelo-seguro-damaged");
+
+  for (let guard = 0; guard < 8 && (await browserState(page)).snapshot.phase !== "finished"; guard += 1) {
+    const state = await browserState(page);
+    await page.evaluate((phase) => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      if (phase === "turn-fail") api.step(1_220);
+      else api.step((api.getState().snapshot.turnRemainingMillis ?? 4_800) + 20);
+    }, state.snapshot.phase);
+  }
+  const lost = await browserState(page);
+  assert.equal(lost.snapshot.phase, "finished");
+  assert.equal(lost.snapshot.lives, 0);
+  assert.equal(lost.snapshot.success, false);
+  await captureStableNativeDisplay(page, "suelo-seguro-finished-loss");
+
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
+  await page.locator(".control-game select").selectOption("suelo-seguro");
+  await page.locator(".control-players select").selectOption("8");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "suelo-seguro" && state.playerCount === 8 && state.snapshot.phase === "waiting";
+  });
+  await clickFloorZones(page, maxPlayerZones);
+  await page.evaluate((zones) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    for (const [x, y] of zones) api.release(x, y);
+  }, maxPlayerZones);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    (window as BrowserPlaygroundWindow).ml?.resume();
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().paused === false);
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (let guard = 0; guard < 40 && api.getState().snapshot.phase !== "finished"; guard += 1) {
+      const current = api.getState().snapshot;
+      if (current.phase === "round-win") {
+        api.step(1_420);
+        continue;
+      }
+      const target = current.targetPlatform;
+      if (!target) throw new Error(`Suelo Seguro has no relay target in ${current.phase}`);
+      api.press(target.x, target.y);
+      api.release(target.x, target.y);
+    }
+  });
+  const won = await browserState(page);
+  assert.equal(won.snapshot.phase, "finished", JSON.stringify(won.snapshot));
+  assert.equal(won.snapshot.success, true);
+  assert.equal(won.snapshot.completedTransfers, won.snapshot.requiredTransfers);
+  await captureStableNativeDisplay(page, "suelo-seguro-finished-win");
+  return {
+    captures: ["waiting", "starting", "running-full-lives", "round-win", "damaged", "finished-loss", "finished-win"],
+    completedTransfers: won.snapshot.completedTransfers,
     gameId: won.gameId,
     maxPlayersConfigured: 8
   };
