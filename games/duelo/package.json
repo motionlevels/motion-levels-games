@@ -5,6 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./agent-harness": "./src/agent-harness.ts",
+    "./agents": "./src/agents.ts",
+    "./demonstration": "./src/demonstration.ts",
+    "./replay": "./src/replay.ts",
+    "./session-controller": "./src/session-controller.ts",
     "./fixtures": "./src/fixtures.ts",
     "./manifest": "./src/manifest.ts"
   },
@@ -14,8 +19,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@motion-levels-games/agent-runtime": "0.1.0",
     "@motion-levels-games/display-kit": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
+    "@motion-levels-games/replay-runtime": "0.1.0",
     "react": "^19.2.7"
   },
   "devDependencies": {

@@ -93,6 +93,7 @@ export type DueloSnapshot = GameSnapshot & {
 export type DueloGameInstance = Omit<GameInstance, "snapshot"> & {
   playerReadyZones(): PlayerReadyZone[];
   snapshot(): DueloSnapshot;
+  targetClaimed(x: number, y: number): boolean;
   targetOwner(x: number, y: number): number;
 };
 
@@ -300,6 +301,10 @@ class DueloGame implements DueloGameInstance {
 
   targetOwner(x: number, y: number): number {
     return inFloorBounds(x, y) ? this.owners[y * FLOOR_COLS + x] ?? -1 : -1;
+  }
+
+  targetClaimed(x: number, y: number): boolean {
+    return inFloorBounds(x, y) && this.claimed[y * FLOOR_COLS + x] === 1;
   }
 
   private resetGame(nowMillis: number): void {

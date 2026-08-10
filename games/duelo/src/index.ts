@@ -1,4 +1,8 @@
 export { PlayerDisplay } from "./display.tsx";
+// Product/browser entrypoint. Headless harnesses and agent internals stay on
+// their explicit package subpaths; the semantic session adapter is the only
+// AI boundary consumed by Jugar 3D.
+export * from "./session-controller.ts";
 export {
   createGame,
   dueloPlayerPalette,

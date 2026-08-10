@@ -24,7 +24,7 @@ product/privacy surface that owns collection:
 Do not record video, audio, names, account identifiers, free-form text,
 precise wall-clock time, or raw device identifiers in the replay format.
 
-## Required anonymisation
+## Required privacy transformation
 
 Before a replay leaves its short-lived operational boundary:
 
@@ -37,13 +37,19 @@ Before a replay leaves its short-lived operational boundary:
 7. store the policy version and destructive retention deadline beside the
    dataset, outside the public replay itself.
 
-`anonymizeReplay()` enforces items 1–3 for a deliberately destructive
-trajectory export. It removes periodic snapshots, state-derived checksums,
-header initial state, arbitrary action payloads, and event messages; header
-configuration is dropped except for explicitly reviewed scalar keys. The
-result is suitable for aggregate trajectory analysis but is intentionally not
-a playable replay. The owning service remains responsible for cohort/privacy
-review and retention.
+Despite its compatibility name, `anonymizeReplay()` performs deterministic
+dataset-local **pseudonymisation**, not complete anonymisation: its aliases are
+stable within one salt and are not a cryptographic identity boundary. It
+enforces only items 1–3 for a deliberately destructive trajectory export. It
+removes periodic snapshots, state-derived checksums, header initial state,
+arbitrary frame action payloads, and event messages; header configuration is
+dropped except for explicitly reviewed scalar keys. Agent sample actions and
+allow-listed state values remain game-defined data and require schema review.
+
+The helper's output is not independently suitable for release or human-data
+analysis. The owning service must still apply items 4–7, review every retained
+field, enforce small-cohort protections and retention, and complete the
+collection gate above. The result is intentionally not a playable replay.
 
 ## Allowed repository fixtures
 

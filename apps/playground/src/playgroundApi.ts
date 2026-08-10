@@ -1,5 +1,5 @@
 import type { Frame, GameConfigOptions, GameDifficulty, GameEvent, GameSnapshot } from "@motion-levels-games/game-sdk";
-import type { CharacterQualityTier } from "@motion-levels-games/character-runtime";
+import type { JugarStageDiagnostics, JugarStageQuality } from "@motion-levels-games/jugar-3d/react";
 import type { PlaygroundAgentProfile } from "./gameRegistry.ts";
 import type { RenderableFrame } from "./frameTransforms.ts";
 import type { PlaygroundMediaBundle, PlaygroundMediaOptions } from "./mediaAssets.ts";
@@ -41,7 +41,7 @@ export type AgentLabState = {
   recording: boolean;
   agentCount: number;
   profile: PlaygroundAgentProfile;
-  qualityTier: CharacterQualityTier;
+  qualityTier: JugarStageQuality;
   speed: number;
   replaySpeed: number;
   replayEndTick: number;
@@ -51,17 +51,7 @@ export type AgentLabState = {
   checksum: string;
   debug: Required<AgentLabDebugOptions>;
   metrics?: Readonly<Record<string, number | boolean>>;
-  performance?: Readonly<{
-    samples: number;
-    averageFrameMillis: number;
-    p95FrameMillis: number;
-    worstFrameMillis: number;
-    maxDrawCalls: number;
-    maxTriangles: number;
-    maxTextureMegabytes: number;
-    withinBudget: boolean;
-    violations: readonly string[];
-  }>;
+  performance?: JugarStageDiagnostics;
 };
 
 export type AgentLabApi = {
@@ -73,7 +63,7 @@ export type AgentLabApi = {
   reset(options?: { newSeed?: boolean }): void;
   setAgentCount(count: number): void;
   setProfile(profile: PlaygroundAgentProfile): void;
-  setQualityTier(tier: CharacterQualityTier): void;
+  setQualityTier(tier: JugarStageQuality): void;
   setSpeed(speed: number): void;
   selectAgent(agentId?: string): void;
   setDebug(options: AgentLabDebugOptions): void;

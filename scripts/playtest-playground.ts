@@ -3,9 +3,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { chromium, type Page } from "playwright";
-import { characterQualityProfiles } from "../packages/character-runtime/src/index.ts";
 import {
-  AGENT_LAB_VISUAL_THRESHOLDS,
+  JUGAR_3D_VISUAL_THRESHOLDS,
   evaluateVisualRegression
 } from "./lib/visual-regression.ts";
 
@@ -14,6 +13,49 @@ type BrowserPlaygroundCapture = {
   height: number;
   surface: string;
   width: number;
+};
+
+type BrowserJugarPerformance = {
+  schemaVersion: 1;
+  qualityTier: "venue-high" | "desktop-medium" | "mobile-low" | "capture";
+  samples: number;
+  latest: {
+    frameMillis: number;
+    drawCalls: number;
+    triangles: number;
+    geometries: number;
+    textures: number;
+    programs: number;
+    framebufferMemoryProxyMegabytes: number;
+    gpuMemoryProxyMegabytes: number;
+  };
+  p95FrameMillis: number;
+  maxDrawCalls: number;
+  maxTriangles: number;
+  maxGeometries: number;
+  maxTextures: number;
+  maxPrograms: number;
+  maxGpuMemoryProxyMegabytes: number;
+  budget: {
+    minimumSamples: number;
+    maxP95FrameMillis: number;
+    maxSoftwareP95FrameMillis: number;
+    maxDrawCalls: number;
+    maxTriangles: number;
+    maxGeometries: number;
+    maxTextures: number;
+    maxPrograms: number;
+    maxGpuMemoryProxyMegabytes: number;
+  };
+  budgetReady: boolean;
+  structuralWithinBudget: boolean;
+  timingWithinBudget: boolean;
+  softwareTimingWithinBudget: boolean;
+  timingBudgetWaived: boolean;
+  withinBudget: boolean;
+  violations: string[];
+  environment?: { vendor: string; renderer: string; softwareRenderer: boolean };
+  caveats: string[];
 };
 
 type BrowserPlaygroundState = {
@@ -99,14 +141,7 @@ type BrowserPlaygroundWindow = Window & {
         checksum: string;
         metrics?: Record<string, number | boolean>;
         paused: boolean;
-        performance?: {
-          p95FrameMillis: number;
-          maxDrawCalls: number;
-          maxTriangles: number;
-          maxTextureMegabytes: number;
-          withinBudget: boolean;
-          violations: string[];
-        };
+        performance?: BrowserJugarPerformance;
         replayEndTick: number;
         replayMode: boolean;
         seed: number;
@@ -154,17 +189,15 @@ const port = Number(process.env.MOTION_LEVELS_GAMES_PLAYTEST_PORT || 4174);
 const baseURL = `http://127.0.0.1:${port}`;
 const captureDirectory = process.env.MOTION_LEVELS_GAMES_CAPTURE_DIR;
 const focusedGame = process.env.MOTION_LEVELS_GAMES_PLAYTEST_GAME;
-const updateAgentLabVisualBaselines = process.env.MOTION_LEVELS_GAMES_UPDATE_VISUAL_BASELINES === "1";
-const agentLabVisualBaselineDirectory = path.join(repoRoot, "test", "visual-baselines", "agent-lab");
-const agentLabVisualBaselineNames = new Set([
-  "cruce-agent-lab-replay-countdown-tick-75",
-  "cruce-agent-lab-replay-launch-tick-125",
-  "cruce-agent-lab-replay-hazard-response-tick-217",
-  "cruce-agent-lab-replay-checkpoint-one-tick-347",
-  "cruce-agent-lab-replay-late-run-tick-920",
-  "cruce-agent-lab-replay-victory-tick-1125",
-  "cruce-agent-lab-damage",
-  "cruce-agent-lab-ten-agent-stress"
+const updateJugarVisualBaselines = process.env.MOTION_LEVELS_GAMES_UPDATE_VISUAL_BASELINES === "1";
+// Capture permits 250 ms software-WebGL frames and needs 45 retained samples
+// after the Stage warmup. Fifteen seconds is therefore the theoretical sample
+// horizon with no allowance for shader warmup, report cadence, or catalog GC.
+const jugarPerformanceReadinessTimeoutMillis = 30_000;
+const jugarVisualBaselineDirectory = path.join(repoRoot, "test", "visual-baselines", "jugar-3d");
+const jugarVisualBaselineNames = new Set([
+  "duelo-jugar-live-victory",
+  "duelo-jugar-replay-opening-tick-100"
 ]);
 const dueloFourPlayerZones: Array<[number, number]> = [[0, 0], [12, 28], [0, 28], [12, 0]];
 const dueloEightPlayerZones: Array<[number, number]> = [
@@ -202,10 +235,14 @@ try {
     if (focusedGame === "memory-challenge") {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
     } else if (focusedGame === "cruce-galactico") {
+      console.log(JSON.stringify({ cruceGalactico: await playtestCruceGalactico(page) }, null, 2));
+    } else if (focusedGame === "duelo") {
       console.log(JSON.stringify({
-        cruceAgentLab: await playtestCruceAgentLab(page),
-        cruceGalactico: await playtestCruceGalactico(page)
+        duelo: await playtestDuelo(page),
+        dueloJugar3d: await playtestDueloJugar3d(page)
       }, null, 2));
+    } else if (focusedGame === "duelo-jugar-3d") {
+      console.log(JSON.stringify({ dueloJugar3d: await playtestDueloJugar3d(page) }, null, 2));
     } else if (focusedGame === "equilibrio") {
       console.log(JSON.stringify({ equilibrio: await playtestEquilibrio(page) }, null, 2));
     } else if (focusedGame === "estela") {
@@ -236,9 +273,9 @@ try {
       const equilibrioResult = await playtestEquilibrio(page);
       const guardianesResult = await playtestGuardianes(page);
       const sueloSeguroResult = await playtestSueloSeguro(page);
-      const cruceAgentLabResult = await playtestCruceAgentLab(page);
+      const dueloJugar3dResult = await playtestDueloJugar3d(page);
 
-      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, equilibrio: equilibrioResult, guardianes: guardianesResult, sueloSeguro: sueloSeguroResult, cruceAgentLab: cruceAgentLabResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, dueloJugar3d: dueloJugar3dResult, equilibrio: equilibrioResult, guardianes: guardianesResult, sueloSeguro: sueloSeguroResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
     }
   } finally {
     await browser.close();
@@ -361,172 +398,223 @@ async function playtestCruceGalactico(page: Page) {
   };
 }
 
-async function playtestCruceAgentLab(page: Page) {
-  await page.locator(".control-game select").selectOption("cruce-galactico");
+async function playtestDueloJugar3d(page: Page) {
+  await page.setViewportSize({ width: 1_920, height: 1_080 });
+  await page.locator(".control-game select").selectOption("duelo");
+  await page.locator(".control-players select").selectOption("8");
   await page.waitForFunction(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
-    return api?.getState().gameId === "cruce-galactico" && api.agentLab?.getState().available === true;
+    return api?.getState().gameId === "duelo"
+      && api.getState().playerCount === 8
+      && api.agentLab?.getState().available === true;
   });
-  await page.evaluate(() => {
-    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
-    lab.setActive(true);
-  });
-  await page.locator(".agent-lab-canvas").waitFor({ state: "visible" });
+  const agentSurfaceButton = page.getByRole("button", { name: "Agents 3D" });
+  await agentSurfaceButton.waitFor({ state: "visible" });
+  assert.equal(await agentSurfaceButton.isEnabled(), true, "Duelo must expose its product Jugar controller");
+  await agentSurfaceButton.click();
+  await page.locator(".jugar-agent-surface canvas").waitFor({ state: "visible" });
+  const desktopPerformance = await assertJugarPerformanceBudget(page, "desktop-medium");
 
   await page.evaluate(() => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
     lab.pause();
-    lab.setAgentCount(3);
-    lab.setProfile("expert");
-    lab.setQualityTier("capture");
+    lab.setProfile("mixed");
     lab.setSpeed(1);
-    lab.setDebug({ paths: true, reservations: true, targets: true });
+    lab.setDebug({ paths: true, targets: true });
     lab.reset();
-    for (let batch = 0; batch < 40 && lab.getState().metrics?.completed !== true; batch += 1) {
+    lab.startRecording();
+    lab.step(5);
+  });
+  const steppedState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  assert.equal(steppedState?.paused, true, "explicit steps must preserve pause");
+  assert.equal(steppedState?.tick, 5, "five fixed Jugar ticks must advance exactly five frames");
+
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
+    for (let batch = 0; batch < 70 && lab.getState().metrics?.completed !== true; batch += 1) {
       lab.step(50);
     }
-    lab.selectAgent("cruce-agent-01");
+    lab.selectAgent("0");
   });
   const liveState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
-  assert.ok(liveState, "Agent Lab state must be available");
-  assert.equal(liveState.agentCount, 3);
+  assert.ok(liveState, "Jugar 3D agent state must be available");
+  assert.equal(liveState.agentCount, 8);
   assert.equal(liveState.metrics?.completed, true);
-  assert.ok(liveState.tick > 0 && liveState.tick <= 2_000);
+  assert.ok(liveState.tick > 0 && liveState.tick <= 3_505);
   assert.match(liveState.checksum, /^[0-9a-f]{8}$/);
   assert.equal(liveState.paused, true);
-  const liveCapture = await captureAgentLab(page, "cruce-agent-lab-live-victory");
+  await prepareNativeJugarCapture(page);
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
+    // Start capture-tier sampling only after the intentionally synchronous
+    // developer fast-forward and native resize. Neither blocking operation is
+    // representative of a rendered frame.
+    lab.setQualityTier("capture");
+  });
+  const capturePerformance = await assertJugarPerformanceBudget(page, "capture", true);
+  const liveCapture = await captureJugar3d(page, "duelo-jugar-live-victory");
 
   const replayExport = await page.evaluate(() => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
     lab.stopRecording();
     const serialized = lab.exportReplay();
     lab.replay.enter();
-    lab.replay.seek(75);
+    lab.replay.seek(100);
     return serialized;
   });
   const parsedReplay = JSON.parse(replayExport) as { frames?: unknown[]; header?: { gameId?: string; tickRate?: number } };
-  assert.equal(parsedReplay.header?.gameId, "cruce-galactico");
+  assert.equal(parsedReplay.header?.gameId, "duelo");
   assert.equal(parsedReplay.header?.tickRate, 50);
-  assert.ok((parsedReplay.frames?.length ?? 0) > 1_125);
+  assert.ok((parsedReplay.frames?.length ?? 0) > 100);
 
-  const replayCaptures: BrowserPlaygroundCapture[] = [];
-  for (const [tick, label] of [
-    [75, "countdown"],
-    [125, "launch"],
-    [217, "hazard-response"],
-    [347, "checkpoint-one"],
-    [920, "late-run"],
-    [1_125, "victory"]
-  ] as const) {
-    await page.evaluate((replayTick) => {
-      const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-      if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
-      lab.replay.seek(replayTick);
-    }, tick);
-    const replayStateAtTick = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
-    assert.equal(replayStateAtTick?.tick, tick);
-    replayCaptures.push(await captureAgentLab(page, `cruce-agent-lab-replay-${label}-tick-${tick}`));
-  }
-  const replayCapture = replayCaptures[0];
-  assert.ok(replayCapture, "the fixed replay must produce its idle capture");
+  const replayStateAtOpening = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  assert.equal(replayStateAtOpening?.tick, 100);
+  await waitForJugarFrame(page);
+  const replayCapture = await captureJugar3d(page, "duelo-jugar-replay-opening-tick-100");
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
+    lab.replay.seek(100);
+  });
+  await waitForJugarFrame(page);
   const repeatCapture = await page.evaluate(async () => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
-    lab.replay.seek(75);
-    return lab.capture();
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
+    return lab.capture({ width: 1_920, height: 1_080 });
   });
   assert.equal(repeatCapture.dataUrl, replayCapture.dataUrl, "fixed replay seek must render an identical PNG");
-  const replayState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
-  assert.equal(replayState?.replayMode, true);
-  assert.equal(replayState?.tick, 75);
-
-  await page.locator(".control-difficulty select").selectOption("expert");
-  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().difficulty === "expert");
-  await page.evaluate(() => {
+  const steppedReplayTick = await page.evaluate(() => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
+    lab.step(5);
+    const steppedTick = lab.getState().tick;
+    lab.replay.setSpeed(2);
+    lab.replay.play();
+    return steppedTick;
+  });
+  await page.waitForTimeout(500);
+  const playedReplayTick = await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
+    lab.replay.pause();
+    return lab.getState().tick;
+  });
+  assert.equal(steppedReplayTick, 105, "replay single-step must consume retained frames");
+  assert.ok(playedReplayTick > steppedReplayTick, "replay play must advance its retained-frame cursor");
+
+  const restored = await page.evaluate((terminalTick) => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
+    lab.replay.seek(terminalTick);
     lab.replay.exit();
-    lab.setAgentCount(10);
-    lab.setProfile("helper");
-    lab.setQualityTier("capture");
-    lab.reset();
-    lab.pause();
-    for (let batch = 0; batch < 80 && Number(lab.getState().metrics?.damage ?? 0) === 0; batch += 1) {
-      lab.step(25);
-    }
-  });
-  const damageState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
-  assert.equal(damageState?.agentCount, 10);
-  assert.ok(Number(damageState?.metrics?.damage ?? 0) > 0, "expert/helper fixture must reach a real damage state");
-  const damageCapture = await captureAgentLab(page, "cruce-agent-lab-damage");
+    return lab.getState();
+  }, liveState.tick);
+  assert.equal(restored.replayMode, false);
+  assert.equal(restored.tick, liveState.tick, "replay exit must restore the parked live Jugar session");
+  assert.equal(restored.checksum, liveState.checksum);
 
-  await page.locator(".control-difficulty select").selectOption("medium");
-  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().difficulty === "medium");
-  await page.evaluate(() => {
-    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
-    lab.setAgentCount(10);
-    lab.setProfile("expert");
-    lab.setQualityTier("desktop-medium");
-    lab.reset();
-    lab.pause();
-    for (let batch = 0; batch < 40 && lab.getState().metrics?.completed !== true; batch += 1) {
-      lab.step(50);
-    }
-  });
-  const stressState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
-  assert.equal(stressState?.agentCount, 10);
-  assert.ok((stressState?.tick ?? 0) > 0 && (stressState?.tick ?? 0) <= 2_000);
-  assert.equal(stressState?.metrics?.completed, true);
-  assert.equal(stressState?.metrics?.deadlocks, 0);
-  assert.ok(
-    Number(stressState?.metrics?.routeDiversity ?? 0) >= 0.8,
-    `ten-agent route diversity is too low: ${String(stressState?.metrics?.routeDiversity)}`
-  );
-  assert.ok(stressState?.performance, "10-agent stress run must report renderer performance");
-  const performance = stressState.performance;
-  const desktopBudget = characterQualityProfiles["desktop-medium"];
-  assert.ok(performance.maxDrawCalls <= (
-    desktopBudget.maxDrawCallsPerCharacter * stressState.agentCount
-    + desktopBudget.fixedSceneDrawCallAllowance
-  ), `draw calls exceed desktop budget: ${performance.maxDrawCalls}`);
-  assert.ok(
-    performance.maxTriangles <= desktopBudget.maxTrianglesPerCharacter * stressState.agentCount,
-    `triangles exceed desktop budget: ${performance.maxTriangles}`
-  );
-  assert.ok(
-    performance.maxTextureMegabytes <= desktopBudget.maxTextureMegabytes,
-    `textures exceed desktop budget: ${performance.maxTextureMegabytes} MB`
-  );
-  assert.deepEqual(
-    performance.violations.filter((violation) => violation !== "frame-time"),
-    [],
-    `structural renderer budget violations: ${performance.violations.join(", ")}`
-  );
-  const stressCapture = await captureAgentLab(page, "cruce-agent-lab-ten-agent-stress");
-
-  await page.evaluate(() => {
-    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
-    lab.setActive(false);
-  });
+  await restoreJugarCaptureLayout(page);
+  await page.getByRole("button", { name: "Floor", exact: true }).click();
   await page.locator(".ml-floor-interactive").waitFor({ state: "visible" });
 
   return {
-    captures: [
-      liveCapture.surface,
-      ...replayCaptures.map((capture) => capture.surface),
-      damageCapture.surface,
-      stressCapture.surface
-    ],
+    captures: [liveCapture.surface, replayCapture.surface],
     deterministicReplayPng: true,
     liveChecksum: liveState.checksum,
-    replayTick: replayState?.tick,
-    stress: stressState?.metrics,
-    performance: stressState?.performance
+    replayTick: replayStateAtOpening?.tick,
+    terminalTick: liveState.tick,
+    winner: liveState.metrics?.score,
+    performance: {
+      desktop: performanceSummary(desktopPerformance),
+      capture: performanceSummary(capturePerformance)
+    }
+  };
+}
+
+async function assertJugarPerformanceBudget(
+  page: Page,
+  qualityTier: BrowserJugarPerformance["qualityTier"],
+  requireNativeFramebuffer = false
+): Promise<BrowserJugarPerformance> {
+  try {
+    await page.waitForFunction(({ nativeFramebuffer, tier }) => {
+      const performance = (window as BrowserPlaygroundWindow).ml?.agentLab?.getState().performance;
+      return performance?.qualityTier === tier
+        && performance.budgetReady
+        && performance.withinBudget
+        && (!nativeFramebuffer || performance.latest.framebufferMemoryProxyMegabytes >= 15);
+    }, { nativeFramebuffer: requireNativeFramebuffer, tier: qualityTier }, {
+      timeout: jugarPerformanceReadinessTimeoutMillis
+    });
+  } catch (cause) {
+    const diagnostic = await page.evaluate(() => {
+      const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+      const canvas = document.querySelector<HTMLCanvasElement>(".jugar-agent-surface canvas");
+      return {
+        canvas: canvas ? { clientHeight: canvas.clientHeight, clientWidth: canvas.clientWidth, height: canvas.height, width: canvas.width } : undefined,
+        state: lab?.getState()
+      };
+    });
+    throw new Error(
+      `${qualityTier} Jugar diagnostics did not become ready: ${JSON.stringify(diagnostic)}`,
+      { cause }
+    );
+  }
+  const performance = await page.evaluate(() =>
+    (window as BrowserPlaygroundWindow).ml?.agentLab?.getState().performance
+  );
+  assert.ok(performance, `${qualityTier} Jugar diagnostics must be published`);
+  assert.equal(performance.schemaVersion, 1);
+  assert.equal(performance.qualityTier, qualityTier);
+  assert.ok(performance.samples >= performance.budget.minimumSamples);
+  assert.ok(performance.latest.drawCalls > 0, "Jugar diagnostics must report real renderer draw calls");
+  assert.ok(performance.latest.triangles > 0, "Jugar diagnostics must report real renderer triangles");
+  assert.ok(performance.latest.geometries > 0, "Jugar diagnostics must report live GPU geometry count");
+  assert.ok(performance.latest.gpuMemoryProxyMegabytes > 0, "Jugar diagnostics must report its GPU memory proxy");
+  assert.equal(
+    performance.structuralWithinBudget,
+    true,
+    `${qualityTier} structural budget failed: ${JSON.stringify(performance)}`
+  );
+  assert.equal(
+    performance.withinBudget,
+    true,
+    `${qualityTier} complete budget failed: ${JSON.stringify(performance)}`
+  );
+  const structuralViolations = performance.violations.filter((violation) => violation !== "frame-time");
+  assert.deepEqual(structuralViolations, []);
+  assert.ok(performance.caveats.some((entry) => entry.includes("requestAnimationFrame")));
+  assert.ok(performance.caveats.some((entry) => entry.includes("lower-bound proxy")));
+  if (performance.environment?.softwareRenderer) {
+    assert.equal(
+      performance.softwareTimingWithinBudget,
+      true,
+      `${qualityTier} software-CI timing ceiling failed: ${JSON.stringify(performance)}`
+    );
+    assert.ok(performance.caveats.some((entry) => entry.includes("not venue-hardware certification")));
+  } else {
+    assert.deepEqual(performance.violations, []);
+  }
+  return performance;
+}
+
+function performanceSummary(performance: BrowserJugarPerformance) {
+  return {
+    qualityTier: performance.qualityTier,
+    samples: performance.samples,
+    p95FrameMillis: performance.p95FrameMillis,
+    maxDrawCalls: performance.maxDrawCalls,
+    maxTriangles: performance.maxTriangles,
+    maxGeometries: performance.maxGeometries,
+    maxTextures: performance.maxTextures,
+    maxPrograms: performance.maxPrograms,
+    maxGpuMemoryProxyMegabytes: performance.maxGpuMemoryProxyMegabytes,
+    environment: performance.environment,
+    caveats: performance.caveats
   };
 }
 
@@ -1861,10 +1949,57 @@ async function captureNativeDisplay(page: Page, name: string): Promise<void> {
   });
 }
 
-async function captureAgentLab(page: Page, name: string): Promise<BrowserPlaygroundCapture> {
+async function prepareNativeJugarCapture(page: Page): Promise<void> {
+  await page.locator(".jugar-agent-surface").evaluate((element) => {
+    Object.assign((element as HTMLElement).style, {
+      borderRadius: "0",
+      height: "1080px",
+      left: "0",
+      position: "fixed",
+      top: "0",
+      width: "1920px",
+      zIndex: "2147483646"
+    });
+    const viewport = element.querySelector<HTMLElement>(".agent-lab-viewport");
+    if (viewport) viewport.style.borderBottomWidth = "0";
+  });
+  await page.waitForTimeout(500);
+  const dimensions = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(".jugar-agent-surface canvas");
+    const bounds = canvas?.getBoundingClientRect();
+    return {
+      bufferWidth: canvas?.width ?? 0,
+      bufferHeight: canvas?.height ?? 0,
+      cssWidth: bounds?.width ?? 0,
+      cssHeight: bounds?.height ?? 0,
+      devicePixelRatio: window.devicePixelRatio
+    };
+  });
+  assert.ok(
+    dimensions.bufferWidth >= 1_920 && dimensions.bufferHeight >= 1_080,
+    `Jugar capture buffer must be at least 1920x1080; received ${JSON.stringify(dimensions)}`
+  );
+  await page.waitForTimeout(100);
+}
+
+async function waitForJugarFrame(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+}
+
+async function restoreJugarCaptureLayout(page: Page): Promise<void> {
+  await page.locator(".jugar-agent-surface").evaluate((element) => {
+    element.removeAttribute("style");
+    element.querySelector(".agent-lab-viewport")?.removeAttribute("style");
+  });
+  await page.waitForTimeout(100);
+}
+
+async function captureJugar3d(page: Page, name: string): Promise<BrowserPlaygroundCapture> {
   const capture = await page.evaluate(async () => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
-    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
     return lab.capture({ width: 1_920, height: 1_080 });
   });
   assert.equal(capture.surface, "agents3d");
@@ -1876,20 +2011,20 @@ async function captureAgentLab(page: Page, name: string): Promise<BrowserPlaygro
     const bytes = Buffer.from(capture.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
     await writeFile(path.join(captureDirectory, `${name}.png`), bytes);
   }
-  await verifyAgentLabVisualBaseline(page, capture, name);
+  await verifyJugarVisualBaseline(page, capture, name);
   return capture;
 }
 
-async function verifyAgentLabVisualBaseline(
+async function verifyJugarVisualBaseline(
   page: Page,
   capture: BrowserPlaygroundCapture,
   name: string
 ): Promise<void> {
-  if (!agentLabVisualBaselineNames.has(name)) return;
+  if (!jugarVisualBaselineNames.has(name)) return;
   const currentBytes = Buffer.from(capture.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
-  const baselinePath = path.join(agentLabVisualBaselineDirectory, `${name}.png`);
-  if (updateAgentLabVisualBaselines) {
-    await mkdir(agentLabVisualBaselineDirectory, { recursive: true });
+  const baselinePath = path.join(jugarVisualBaselineDirectory, `${name}.png`);
+  if (updateJugarVisualBaselines) {
+    await mkdir(jugarVisualBaselineDirectory, { recursive: true });
     await writeFile(baselinePath, currentBytes);
     return;
   }
@@ -1899,7 +2034,7 @@ async function verifyAgentLabVisualBaseline(
     baselineBytes = await readFile(baselinePath);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Missing Agent Lab visual baseline ${baselinePath}: ${reason}`, { cause: error });
+    throw new Error(`Missing Jugar 3D visual baseline ${baselinePath}: ${reason}`, { cause: error });
   }
   const baselineDataUrl = `data:image/png;base64,${baselineBytes.toString("base64")}`;
   const stats = await page.evaluate(async ({ baseline, current }) => {
@@ -1971,7 +2106,7 @@ async function verifyAgentLabVisualBaseline(
   assert.equal(stats.baselineHeight, 1_080, `${name} baseline height`);
   assert.equal(stats.currentWidth, stats.baselineWidth, `${name} capture width must match baseline`);
   assert.equal(stats.currentHeight, stats.baselineHeight, `${name} capture height must match baseline`);
-  const evaluation = evaluateVisualRegression(stats, AGENT_LAB_VISUAL_THRESHOLDS);
+  const evaluation = evaluateVisualRegression(stats, JUGAR_3D_VISUAL_THRESHOLDS);
   assert.equal(
     evaluation.passed,
     true,

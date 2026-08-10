@@ -15,7 +15,7 @@ export type VisualRegressionEvaluation = Readonly<{
   failures: readonly string[];
 }>;
 
-export const AGENT_LAB_VISUAL_THRESHOLDS: VisualRegressionThresholds = Object.freeze({
+export const JUGAR_3D_VISUAL_THRESHOLDS: VisualRegressionThresholds = Object.freeze({
   // Captures are compared after deterministic 8x downsampling with a
   // per-pixel RGB threshold. This tolerates GPU edge rasterisation while
   // still failing missing agents, black floors, wrong cameras, and bad poses.
@@ -25,7 +25,7 @@ export const AGENT_LAB_VISUAL_THRESHOLDS: VisualRegressionThresholds = Object.fr
 
 export function evaluateVisualRegression(
   stats: VisualDiffStats,
-  thresholds: VisualRegressionThresholds = AGENT_LAB_VISUAL_THRESHOLDS
+  thresholds: VisualRegressionThresholds = JUGAR_3D_VISUAL_THRESHOLDS
 ): VisualRegressionEvaluation {
   assertNonNegativeInteger(stats.differentPixels, "differentPixels");
   if (!Number.isInteger(stats.totalPixels) || stats.totalPixels <= 0) {

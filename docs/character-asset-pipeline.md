@@ -44,10 +44,14 @@ The runtime declares 29 locomotion, action, social, and feedback states:
 - social/feedback: point, wave, small/large/team celebration,
   disappointment, fear, confusion, and restrained taunt.
 
-The initial Motion Athlete implementation produces these on the canonical
-procedural rig. Imported motion may replace an individual state only after it
-is retargeted, cleaned, named, and validated against the same graph. One good
-state per contract is preferred to unreviewed clip variants.
+`character-runtime` defines and tests this deterministic vocabulary and graph,
+but the former prototype Motion Athlete renderer has been removed in favour of
+the shared deployed Jugar 3D Stage. The current product Stage exposes its
+smaller Robot/Sahur movement, jump, celebration, and defeat pose set; it does
+not claim 29 authored or visibly distinct clips. A future canonical athlete
+asset may implement this vocabulary only after every state is retargeted,
+cleaned, named, visually reviewed, and validated against the same graph. One
+good state per contract is preferred to unreviewed clip variants.
 
 ## Animation graph rules
 

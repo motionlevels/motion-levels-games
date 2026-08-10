@@ -7,16 +7,18 @@ import {
   PlayerDisplay,
   checkpointTarget,
   createGame,
-  damagedSnapshot,
-  finishedFrame,
-  finishedSnapshot,
   gameWinAnimationMillis,
   manifest,
-  runningFrame,
-  runningSnapshot,
   startingLives,
   type GalacticCrossingGameInstance
 } from "../src/index.ts";
+import {
+  damagedSnapshot,
+  finishedFrame,
+  finishedSnapshot,
+  runningFrame,
+  runningSnapshot
+} from "../src/fixtures.ts";
 
 test("manifest exposes the production Any-player crossing game", () => {
   assert.equal(manifest.id, "cruce-galactico");

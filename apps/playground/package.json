@@ -11,16 +11,19 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@motion-levels-games/character-runtime": "0.1.0",
     "@motion-levels-games/display-kit": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
-    "@motion-levels-games/three-renderer": "0.1.0",
+    "@motion-levels-games/jugar-3d": "0.1.0",
+    "@motion-levels-games/replay-runtime": "0.1.0",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
     "@vitejs/plugin-react": "^6.0.2",
     "gifenc": "^1.0.3",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.24.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "three": "^0.184.0",
     "vite": "^8.0.16",
     "webp-encoder": "^2.1.2"
   },

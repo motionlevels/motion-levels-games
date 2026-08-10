@@ -122,34 +122,38 @@ type PlaygroundApi = {
 };
 ```
 
-## Deterministic 3D Agent Lab
+## Deterministic Jugar 3D Agent Surface
 
-Cruce Galáctico exports the first optional deterministic agent harness. Select
-that game, activate the 3D surface, and drive it through the same global API:
+The `Floor / Agents 3D` switch is always present in the standard top bar.
+`Agents 3D` is enabled only when the selected game exports a product
+`createSessionController`; Duelo is the first supported game. The surface uses
+the shared `@motion-levels-games/jugar-3d` `GameSession` and `Stage` extracted
+from the deployed Jugar experience. It does not create a second game engine or
+a parallel raw Three.js renderer.
 
 ```js
 const lab = ml.agentLab;
 lab.setActive(true);
-lab.setAgentCount(10);
-lab.setProfile("expert");
+lab.setAgentCount(8);
+lab.setProfile("mixed");
 lab.setQualityTier("capture");
 lab.pause();
 lab.reset();
 lab.step(125);
 
-console.log(lab.getState()); // seed, tick, checksum, metrics, debug, performance
-const capture = await lab.capture(); // deterministic 1920x1080 PNG by default
+console.log(lab.getState()); // seed, tick, checksum, metrics and debug state
+const capture = await lab.capture(); // the real WebGL drawing-buffer size
 
 lab.stopRecording();
 const replayJson = lab.exportReplay();
 lab.replay.enter();
-lab.replay.seek(75);
+lab.replay.seek(100);
 lab.replay.setSpeed(0.5);
 lab.replay.play();
 ```
 
-The optional surface reports `available: false` for games without a harness.
-Its full browser contract is:
+For unsupported games the same top-bar control is visible but disabled, and
+the optional API reports `available: false`. Its browser contract remains:
 
 ```ts
 type AgentLabApi = {
@@ -172,24 +176,14 @@ type AgentLabApi = {
     checksum: string;
     debug: { paths: boolean; reservations: boolean; targets: boolean };
     metrics?: Record<string, number | boolean>;
-    performance?: {
-      samples: number;
-      averageFrameMillis: number;
-      p95FrameMillis: number;
-      worstFrameMillis: number;
-      maxDrawCalls: number;
-      maxTriangles: number;
-      maxTextureMegabytes: number;
-      withinBudget: boolean;
-      violations: readonly string[];
-    };
+    performance?: JugarStageDiagnostics;
   };
   setActive(active: boolean): void;
   play(): void;
   pause(): void;
   step(ticks?: number): void;
   reset(options?: { newSeed?: boolean }): void;
-  setAgentCount(count: number): void; // clamped to 1..10
+  setAgentCount(count: number): void; // normalized by the selected manifest
   setProfile(profile: string): void;
   setQualityTier(tier: string): void;
   setSpeed(speed: number): void; // 0.25..4
@@ -215,25 +209,48 @@ type AgentLabApi = {
 };
 ```
 
-Agent Lab `step()` counts fixed 20 ms ticks, unlike the root `ml.step()` which
-accepts milliseconds. The lab's autonomous actions still enter the real game
-as timestamped floor press/release operations. Three.js consumes only the
-authoritative frame and agent presentation snapshots; disabling, seeking, or
-disposing the renderer cannot change the recorded checksum or outcome.
+`performance` is the shared `@motion-levels-games/jugar-3d` diagnostic schema,
+not a playground-only summary. It includes bounded sample count, latest and
+rolling frame milliseconds, renderer-total calls/triangles, live
+geometry/texture/program counts, texture and total GPU-memory proxies, the
+selected tier's executable thresholds, renderer identity, readiness,
+structural/timing results, and violations. Wait for `budgetReady` before
+asserting `withinBudget`.
 
-While recording, Agent Lab retains every exact `PlaygroundAgentHarnessFrame` in
-memory. A batched `step(n)` advances authority as `n` consecutive one-tick
-steps, records every resulting frame, and renders only the final frame. Replay
-enter, seek, play, and single-step select those retained frames; they never
-construct a new harness or ask the current AI implementation to regenerate the
-run. Exiting replay restores the parked live harness at the point where live
-execution stopped.
+The hardware p95 frame target remains visible when the browser uses
+SwiftShader. A separate, explicit `maxSoftwareP95FrameMillis` keeps headless CI
+as a timing regression gate without labelling it venue certification. The
+`caveats` array documents that rAF interval is not a GPU timer and that memory
+is a lower-bound proxy. Structural calls, triangles and resource thresholds
+are never waived; venue-high alone may waive a software-renderer hardware-time
+miss while continuing to report the `frame-time` observation.
 
-The exact presentation trajectory is intentionally page-local. `exportReplay()`
-remains the portable input/action/checksum artifact, but it does not contain the
-full Agent Lab presentation and debug frames and therefore cannot reproduce
-that exact 3D trajectory after a reload or in another browser by itself. There
-is currently no Agent Lab replay-import API.
+`agentLab.step()` counts fixed 20 ms Jugar ticks, unlike root `ml.step()`, which
+accepts milliseconds. Product controller actions are applied by that same
+session as authoritative avatar movement and timestamped floor press/release
+input. The controller never creates or advances an engine. Path and target
+overlays come from the controller action, and the Agent selector makes its
+explanation reachable without reading intent from floor colours.
+
+While recording, the surface retains every exact `SessionTrajectoryFrame` in
+memory. `step(n)` advances authority as `n` consecutive one-tick steps and
+records each result while React presents only the final one. Replay enter,
+seek, play, and single-step present those retained frames without regenerating
+AI. Replay exit restores the parked live `GameSession` exactly where it
+stopped. Character animation is sampled from the recorded presentation clock,
+so repeatedly seeking one tick does not accumulate rAF-dependent pose state.
+
+`exportReplay()` uses the canonical `@motion-levels-games/replay-runtime`
+envelope for diagnostic metadata, controller actions, state samples and
+checksums. It does not include the authoritative floor press/release stream,
+so the JSON cannot reproduce game authority or exact camera/character
+presentation after reload; there is currently no trajectory import API.
+Duelo's separate tooling subpath records real inputs when a portable,
+headlessly verifiable replay is required.
+
+`capture()` reads the existing WebGL drawing buffer. Omitted dimensions retain
+its native size; explicit dimensions may downscale it. Requests larger than the
+real buffer throw instead of labelling an upscaled image as native.
 
 ## Coordinates
 

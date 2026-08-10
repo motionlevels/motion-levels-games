@@ -74,49 +74,58 @@ independent of booking size. Use a strict count only with a documented gameplay
 dependency, and verify that Any mode still waits for the physical players the
 current board requires.
 
-For Cruce Galáctico agent/character work, activate its optional deterministic
-3D surface and keep the seed, tick and checksum with every capture:
+For product agent/character work, select Duelo and activate the shared Jugar 3D
+surface. Keep its seed, tick and checksum with every capture:
 
 ```js
 const lab = ml.agentLab;
 lab.setActive(true);
-lab.setAgentCount(10);
-lab.setProfile("expert");
+lab.setAgentCount(8);
+lab.setProfile("mixed");
 lab.setQualityTier("capture");
 lab.pause();
 lab.reset();
 lab.step(125);
 const state = lab.getState();
-const image = await lab.capture(); // 1920x1080 PNG
+const image = await lab.capture(); // actual WebGL drawing-buffer size
 
 lab.stopRecording();
 lab.replay.enter();
-lab.replay.seek(75);
+lab.replay.seek(100);
 const replayImage = await lab.capture();
 ```
 
-Agent Lab steps are 20 ms fixed ticks. Exercise same/new seed, one and ten
-agents, every quality tier, local and host pause, single-step, replay
-play/pause/seek/speed, agent selection, path/reservation/target overlays,
-record/export, and a native capture. Repeating the same replay seek must retain
-the checksum and image. Inspect the explanation, target, utility, replan/stuck
-counters and renderer budget report; never infer bot decisions from floor
-colours or animation. Return to Floor mode and confirm normal player input and
-the game-owned player display remain unchanged.
+Wait for `state.performance?.budgetReady` before judging a quality tier. Assert
+both `structuralWithinBudget` and `withinBudget`, retain the measured calls,
+triangles, resource counts, memory proxy, renderer identity, and caveats with
+the capture. On SwiftShader, compare against the explicit software-CI p95
+ceiling and state clearly that the result is regression evidence rather than
+venue-hardware certification; never omit the still-reported hardware timing
+miss. Structural overages are failures in every environment.
 
-Agent Lab recording retains every exact harness presentation frame in the
-current page. Batched `step(n)` calls still advance authority one tick at a time
-and record all intermediate frames, while rendering only the batch's final
-frame. Replay enter, seek, play, and single-step consume that retained
-trajectory without constructing a harness or regenerating decisions with the
-currently loaded AI; replay exit restores the parked live harness.
+Agent-surface steps are 20 ms fixed ticks. Exercise same/new seed, Duelo's 2–8
+player range, every quality tier, local and host pause, single-step, replay
+play/pause/seek/speed, agent selection, path/target overlays, record/export,
+and an honest native capture. Repeating the same replay seek must retain the
+checksum and image. Inspect the selected controller explanation and route;
+never infer decisions from floor colours or animation. Return to Floor mode
+and confirm normal player input and the game-owned display are unchanged.
+
+The surface records exact shared `GameSession` presentation frames in the
+current page. Batched `step(n)` calls advance authority one fixed tick at a time
+and retain all intermediate frames while presenting only the final frame.
+Replay consumes that trajectory without constructing another engine or
+regenerating decisions; exit restores the parked live session.
 
 Treat this exact presentation trajectory as browser-memory evidence, not as a
-portable file format. `exportReplay()` carries portable inputs, actions, and
-checksums, but not the full Agent Lab 3D/debug frame sequence, and there is no
-Agent Lab import API. Keep captures in the same page session when exact visual
-replay matters; after reload, validate the portable replay through the headless
-replay tooling instead.
+portable file format. `exportReplay()` uses the `replay-runtime` envelope for
+diagnostic metadata, controller actions, state samples and checksums, but it
+does not contain the authoritative floor press/release stream or the full
+Jugar 3D frame sequence. It therefore cannot reproduce authority or exact
+presentation after reload, and there is no trajectory import API. Keep
+captures in the same page session when exact visual replay matters. For a
+portable, headlessly verifiable Duelo replay, record and verify the real input
+stream through `@motion-levels-games/duelo/replay` instead.
 
 Paused games reject player input. For deterministic playtests, call `resume()`,
 send `press`, `release`, or `tap` synchronously, and call `pause()` again before

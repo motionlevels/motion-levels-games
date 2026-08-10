@@ -198,8 +198,8 @@ test("the standard top bar owns surface selection at every layout", () => {
   );
   assert.match(
     appSource,
-    /aria-pressed=\{agentLabActive\}[\s\S]*?disabled=\{selectedGame\.createAgentHarness === undefined\}/,
-    "Agents 3D must remain visible and disabled when a game has no harness"
+    /aria-pressed=\{agentLabActive\}[\s\S]*?disabled=\{selectedGame\.createSessionController === undefined\}/,
+    "Agents 3D must remain visible and disabled when a game has no product controller"
   );
   assert.match(
     styleSource,

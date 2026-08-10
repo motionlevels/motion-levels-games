@@ -1,161 +1,145 @@
-# Deterministic agents, replay, and 3D character architecture
+# Product agents, replay, and Jugar 3D architecture
 
 Status: implementation baseline, 2026-08-10.
 
-This document re-baselines the 3D-character and AI plan against the canonical
-`motionlevels/motion-levels-games` repository. It is the ownership contract for
-the first vertical slice and supersedes assumptions from older Motion Go or
-`motion-levels-first` code.
+This is the ownership contract for deterministic product agents and 3D game
+presentation. Duelo is the first product vertical slice. Cruce Galáctico
+remains a useful engineering regression harness, but it is not the production
+3D reference and it does not own a second browser session.
 
-## Decisions
+## Non-negotiable boundaries
 
-1. `GameInstance` remains authoritative for rules, collisions, scoring,
-   hazards, objectives, lives, and results.
-2. Humans, bots, scripts, and replay all reach a game through timestamped
-   floor press/release input. A brain cannot call rule functions directly.
-3. Replayable simulation uses integer fixed ticks. Existing millisecond runner
-   protocol input remains supported at the adapter boundary.
-4. Every stochastic decision uses the SDK seeded RNG or a stable child stream
-   derived from game seed and agent ID. Ambient `Math.random()` is forbidden
-   in replayable logic.
-5. Agent observations/actions/snapshots are versioned and their structured
-   nested data is defensively copied and recursively frozen. Runtime snapshots
-   include scheduler deadlines, queued force-replan state, and the complete
-   stuck-detector sample window for exact continuation. Three.js consumes
-   `AgentSnapshot`; it never infers intent, collision, or outcome from pixels.
-6. Checksums cover canonical game state, agent state, and authoritative floor
-   frames. They exclude React state, camera, post-processing, GLB pose, and
-   other presentation-only data.
-7. Cruce Galáctico is the reference slice. It has ordered objectives,
-   deterministic moving hazard rectangles, shared lives, timeout, and explicit
-   win/failure outcomes without touching the unrelated Suelo Seguro work.
+1. `GameInstance` owns rules, collisions, scoring, objectives and results.
+2. `@motion-levels-games/jugar-3d` owns the sole production 3D `GameSession`,
+   fixed-step clock, continuous avatars and canonical R3F Stage extracted from
+   the deployed platform `/jugar` implementation.
+3. A product controller consumes an observation supplied by that session and
+   returns an action. It never creates, resets or advances a game engine.
+4. `GameSession` applies movement and translates avatar occupancy into the same
+   timestamped floor press/release input that a human produces.
+5. Replayable decisions use the game seed or stable derived streams. Ambient
+   randomness and wall/rAF time do not enter authority.
+6. `@motion-levels-games/replay-runtime` is the only portable replay schema and
+   checksum owner. Jugar may retain exact presentation frames in memory for
+   same-page visual seek without inventing another file format.
+7. Rendering is presentation-only. Disabling the Stage, seeking a retained
+   frame, or changing character quality cannot change a game checksum.
 
 ```text
-manifest + game definition
-          |
-          v
-GameInstance / 50 Hz fixed-tick harness <--- human, bot, replay, script input
-          |                       |
-          | snapshots/events      | checksums + replay frames
-          v                       v
-  agent observation adapter    replay-runtime
-          |
-          v
- agent-runtime brain -> validated abstract action -> floor input adapter
-          |
-          v
- AgentSnapshot ----------------> character-runtime -> Three.js renderer
+game module
+  ├─ createGame(config) ───────────────┐
+  ├─ PlayerDisplay                     │
+  └─ createSessionController?          │
+                                       v
+                           Jugar 3D GameSession (one engine, 50 Hz)
+                              │                 │
+                 observation │                 │ state/frame/events
+                              v                 v
+                    product controller     canonical R3F Stage + TV
+                              │                 │
+               action + semantic path          └─ retained presentation frame
+                              │
+                              └─ avatar movement ──> floor press/release
 ```
 
-## Current canonical state flow
+## Shared package ownership
 
-- `packages/game-sdk` owns framework-neutral `GameManifest`, `GameInstance`,
-  `GameSnapshot`, floor frames, ready gates, the nominal 50 Hz engine, and the
-  seeded RNG.
-- `apps/playground/src/gameRegistry.ts` discovers `games/*/src/index.ts` with
-  `import.meta.glob`. `App.tsx` creates the real game engine, advances it with
-  a frame accumulator, and renders the game-owned `PlayerDisplay` and floor.
-- `apps/playground/src/mediaAssets.ts` applies each manifest's deterministic
-  preview inputs to the same engine and captures the canonical floor and TV
-  surfaces.
-- `packages/runner` uses the explicit production registry and JSONL protocol.
-  It normalizes config, dispatches floor inputs/ticks, and emits the same
-  snapshot/frame plus the game-owned display bundle.
-- Venue Go code verifies the pinned bundle revision/digest and supervises the
-  Node runner. It forwards input and time; it does not need a third rule
-  implementation for canonical TypeScript games.
+- `packages/game-sdk` owns framework-neutral manifests, game instances, floor
+  frames, snapshots, events, engine cadence and seeded RNG.
+- `packages/agent-runtime` owns reusable deterministic planning/behavior
+  contracts. Games choose which semantics they expose to it.
+- `packages/replay-runtime` owns versioned replay JSON, checksums, recorder,
+  player, seek cursor, anonymisation and headless verification.
+- `packages/character-runtime` remains the framework-neutral character/rig and
+  quality vocabulary for consumers that need it.
+- `packages/jugar-3d` owns extracted production React/R3F presentation and the
+  browser session that connects product controllers to real game authority.
+- `apps/playground` wraps that shared package with additive developer controls;
+  it does not own another renderer, game engine or bot policy.
 
-The SDK engine's `tickTo()` accepts arbitrary absolute milliseconds and calls
-one game tick. The new replay/headless harness owns fixed integer cadence
-without silently changing the existing runner protocol.
+The Jugar package peer-depends on the host's React, React DOM, Three, R3F and
+Drei versions so platform and website do not load duplicate Three contexts. It
+has no bundler-specific `process.env` access. Host-only analytics, model URLs,
+game entries and capture/debug options are injected.
 
-## Existing preview drift
+## Product controller seam
 
-The platform `/games/play` and website `/jugar` previews compile canonical
-vendored games, but their local `core/session.ts`, `core/avatar.ts`, and
-`core/bots.ts` add a second continuous-avatar simulation. Bots currently inspect
-rendered floor colours and use `Math.random()`. Game outcomes still pass through
-canonical floor input, but bot intention, movement, and 3D position are not
-deterministic or portable.
+A supported game exports `createSessionController`. Jugar constructs one
+controller per automated avatar with the same session seed and profile; a
+game-level director may then derive stable per-player streams and coordinate a
+team. Every tick supplies:
 
-Platform and website each carry 25 minigame source files; 19 are byte-identical,
-including session, bots, avatar movement, the Three.js arena/floor/TV, and both
-characters. Those files should consume the canonical runtime packages (or move
-to one shared preview package) rather than evolve independently.
+- tick, authoritative milliseconds and fixed delta;
+- the supplied live `GameInstance`, frame and snapshot;
+- immutable self/avatar presentation state.
 
-## Rule duplication inventory
+The returned action may include a target, an ordered semantic path and an
+explanation. Jugar follows waypoints continuously at configured bot speed and
+does not apply the human arrival-easing curve at every AI target. Human click
+movement retains its original easing.
 
-Generated and immutable copies are expected:
+Duelo's controller/director derives remaining targets from renderer-neutral
+game semantics such as `targetClaimed`; it never samples rendered floor
+colours. Its rival-aware route survives the Jugar boundary through
+`action.path`. Deterministic product tests run the real shared session to a
+single valid terminal winner for player counts 2–8.
 
-- `platform/app/vendor/motion-levels-games` is generated from the pinned games
-  revision and must not be edited.
-- `game-bundles/motion-levels-games/<revision>` is an immutable release bundle.
+Jugar retains its pre-game ready-zone choreography because it represents the
+physical player handshake, not running gameplay policy. Games without an
+explicit product controller use a clearly labelled seeded compatibility
+controller for legacy Jugar companion roaming. That fallback goes through the
+same controller observation/action map; there is no parallel running-bot path.
+The playground `Agents 3D` surface remains disabled for those unsupported
+games.
 
-Actual compatibility debt remains in the venue runtime, which still registers
-native/Motion Go implementations overlapping ten canonical games: Duelo, Lava,
-Memoria v2, Memory Challenge, Patrones, both Ping Pong versions, Saltos,
-Tetris, and Whack-a-Mole. New agent/replay logic belongs only in canonical
-TypeScript. Native versions remain rollback paths until parity evidence permits
-retirement.
+## Replay and presentation
 
-## Asset audit and canonical rig
+`GameSession` advances only complete fixed ticks. rAF partitions do not change
+authority, pausing re-anchors the accumulator so resume cannot catch up wall
+time, and explicit developer steps work while paused.
 
-The only third-party 3D binary found is Tung Tung Tung Sahur:
+During recording the playground retains each exact `SessionTrajectoryFrame`:
+engine state, avatars, debug route/explanation, tick, presentation clock and
+checksum. Batched stepping records every authority tick but renders only the
+last. Replay seek swaps presentation state while parking live authority; exit
+restores the live avatars/session exactly.
 
-- 269,968-byte processed GLB, SHA-256
-  `0107681fe307b9b8200abbfbf711659c6e837c8293f833b3c7fbdc5438fb9d92`;
-- one 1,436-triangle skinned mesh, one material, three embedded 512 px WebP
-  textures, one 31-joint Mixamo skin;
-- one 1.033-second clip, `Armature|walk`;
-- KAG3D, Sketchfab source, CC-BY-4.0, commercial use permitted with credit.
+Character jump, idle, victory and locomotion phases sample
+`session.presentationMillis`. Locomotion has no render-history phase/blend
+accumulator, so repeated seeks to one recorded tick produce the same pose.
+`exportReplay()` uses a `replay-runtime` diagnostic envelope; it does not
+contain the authoritative input stream. The larger visual trajectory is
+intentionally page-local and is not a second portable schema. Portable Duelo
+authority verification is owned by the game-specific `/replay` tooling
+subpath, which records the real press/release inputs.
 
-Sahur is an audited interim asset, not the canonical skeleton: one walk clip
-cannot cover reactions, jumps, interaction, or celebration. The canonical
-`motion-athlete-v1` procedural humanoid uses a documented A-pose, +Y up, +Z
-forward, metre scale, and 20 required bones. Explorer, Runner, Trickster, and
-Guardian share it and differ only in silhouette attachments and palette.
+## Canonical Stage and assets
 
-`packages/character-runtime` owns the rig vocabulary, minimum animation
-library, interruption/cross-fade graph, in-place interpolation, procedural
-head-look/body-lean/blink/emotion signals, quality tiers, performance sampler,
-GLB inspector, asset budgets, and the audited Sahur copy/attribution.
+The shared Stage preserves the deployed Jugar camera, arena, LED floor, TV,
+Robot and Sahur composition. Sahur remains a credited interim GLB; the Robot
+is the dependable procedural/default asset. Capture, coarse-pointer and fit
+debug behavior are explicit props rather than environment-global branches.
+Every host owns one Canvas/session and disposes through normal React/R3F
+lifecycle.
 
-## Runtime packages
+The playground keeps `Floor / Agents 3D` in the standard top bar at all widths.
+The switch is always visible, disabled when the selected game has no product
+controller, and the active agent surface uses the remaining viewport height.
+Path/target overlays and a selected-agent explanation are additive controls on
+the same Stage.
 
-- `@motion-levels-games/agent-runtime`: contracts, seeded brains, profiles,
-  dynamic-cost grid/A*, reservations, explanations, replanning, game-family
-  policies, and legacy patrol adaptation.
-- `@motion-levels-games/replay-runtime`: canonical JSON/checksums, fixed-tick
-  headless execution, input/event/snapshot recording, playback/pause/seek/
-  speed, golden verification, ghost tracks, and anonymisation.
-- `@motion-levels-games/character-runtime`: presentation-only character state,
-  rig/clip/asset validation, animation signalling, interpolation, quality, and
-  instrumentation.
-- The playground integration owns developer controls and the disposable
-  Three.js scene. Cruce owns its observation/input adapter because checkpoint
-  and hazard semantics are game-specific.
+## Acceptance evidence
 
-## Acceptance boundary
+- identical seed and different rAF partitions yield identical state;
+- pause/resume has no catch-up and explicit steps are exact;
+- restart/dispose rebuild controllers once and preserve a single game engine;
+- Duelo controller paths become in-bounds floor input through that engine;
+- real Duelo Jugar sessions terminate deterministically for 2–8 players;
+- repeated replay seeks retain checksum, avatar state and character pose;
+- capture never claims a resolution larger than the real drawing buffer;
+- switching back to Floor restores the normal player display/input surface;
+- browser captures and reviewed visual baselines use the shared Duelo Stage.
 
-- Rendering enabled or disabled cannot change a game result.
-- A seed plus action stream must reproduce the same checksum sequence.
-- Bot actions must become the same press/release operations as human input.
-- The renderer receives positions, facing, action, intention, target, and
-  emotion as snapshots; it contains no rule/collision functions.
-- Reference bots reserve objectives, avoid predicted hazards, and recover from
-  blocked/expired routes.
-- `ReplayPlayer.seek()` returns the nearest validated periodic snapshot and the
-  ordered input frames needed by consumers with a state-restoration contract.
-  Cruce currently replays recorded authoritative inputs from tick zero because
-  `GameInstance` has no hydration API; it does not regenerate historical game
-  outcomes from pixels or current brain actions, and seeking cannot change the
-  final authoritative checksum.
-- Headless batches run without WebGL and report completion, duration, score,
-  collisions, deadlocks, replans, and route diversity.
-- Ten-character work is a renderer/headless stress case. Cruce's booking
-  maximum remains four until a separate product decision changes its player
-  semantics.
-
-The executable batch thresholds, stored baseline comparison, CI matrix, and
-visual-capture contract are documented in `docs/agent-quality-gates.md` and run
-through `npm run benchmark:agents`.
+Cruce headless runs continue to exercise generic agent-runtime behavior and
+stress metrics. They are engineering coverage only and must not be confused
+with the Duelo product-session gate.

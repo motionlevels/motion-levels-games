@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  AGENT_LAB_VISUAL_THRESHOLDS,
+  JUGAR_3D_VISUAL_THRESHOLDS,
   evaluateVisualRegression
 } from "../scripts/lib/visual-regression.ts";
 
@@ -35,7 +35,7 @@ test("visual regression tolerance rejects invalid measurements", () => {
   assert.throws(
     () => evaluateVisualRegression(
       { differentPixels: 0, totalPixels: 1, meanChannelDelta: 0 },
-      { ...AGENT_LAB_VISUAL_THRESHOLDS, maxDifferentPixelRatio: 2 }
+      { ...JUGAR_3D_VISUAL_THRESHOLDS, maxDifferentPixelRatio: 2 }
     ),
     /between zero and one/
   );

@@ -267,6 +267,13 @@ export type ReplayAnonymizeOptions = {
   retainConfigKeys?: readonly string[];
 };
 
+/**
+ * Produces a destructive, dataset-local pseudonymised trajectory export.
+ *
+ * The compatibility name does not imply complete anonymisation. Callers must
+ * still review retained sample fields and apply the collection, cohort,
+ * retention, and access controls in docs/replay-and-agent-data-policy.md.
+ */
 export function anonymizeReplay<TAction extends ReplayJsonValue>(
   replay: GameReplay<TAction>,
   options: ReplayAnonymizeOptions

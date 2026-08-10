@@ -3,29 +3,35 @@ import test from "node:test";
 import {
   CRUCE_AGENT_TICK_RATE,
   CRUCE_AGENT_SIMULATION_VERSION,
-  CURATED_CRUCE_GHOST,
-  CURATED_CRUCE_GOLDEN_CHECKSUM,
   checkpointObjectives,
-  compareCruceSolverMetrics,
   createCruceAgentHarness,
-  createCuratedCruceDemonstrationReplay,
-  cruceGhostTrack,
-  cruceReplayFinalChecksum,
-  manifest,
   observationHazards,
   predictedHazardCost,
-  regressionIdentity,
   routeDiversityFromSignatures,
+  type CruceAgentEmotion,
+  type CruceRenderableAgent,
+} from "../src/agents.ts";
+import {
+  CURATED_CRUCE_GHOST,
+  CURATED_CRUCE_GOLDEN_CHECKSUM,
+  createCuratedCruceDemonstrationReplay
+} from "../src/agent-fixtures.ts";
+import {
+  compareCruceSolverMetrics,
+  regressionIdentity,
   runCruceHeadless,
   runCruceHeadlessBatch,
-  verifyCruceAgentReplay,
-  verifyCruceReplaySeek,
-  type CruceAgentEmotion,
   type CruceRegressionIdentity,
-  type CruceRenderableAgent,
   type CruceRunIdentity,
   type CruceSolverMetrics
-} from "../src/index.ts";
+} from "../src/headless.ts";
+import { manifest } from "../src/manifest.ts";
+import {
+  cruceGhostTrack,
+  cruceReplayFinalChecksum,
+  verifyCruceAgentReplay,
+  verifyCruceReplaySeek
+} from "../src/replay.ts";
 
 const deterministicOptions = {
   seed: 424_242,

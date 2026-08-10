@@ -1,0 +1,975 @@
+/*
+ * Styles for the browser game lab. Everything is scoped under .mlg so it
+ * cannot collide with the platform UI. The picker stays inside the platform;
+ * a running game deliberately takes over the viewport.
+ */
+
+@keyframes mlg-tile-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.9); }
+}
+
+@keyframes mlg-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes mlg-rise-in {
+  from { opacity: 0; transform: translate(-50%, 18px); }
+}
+
+@keyframes mlg-loading-tile {
+  0%, 100% { opacity: 0.14; transform: scale(0.86); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+.mlg {
+  --mlg-bg: var(--editor-bg, #0d1117);
+  --mlg-panel: var(--editor-panel, #111821);
+  --mlg-panel-2: var(--editor-panel-2, #141a22);
+  --mlg-line: var(--editor-line, rgba(255, 255, 255, 0.08));
+  --mlg-line-strong: var(--editor-line-strong, rgba(255, 255, 255, 0.14));
+  --mlg-text: var(--editor-text, #f0f3f6);
+  --mlg-muted: var(--editor-muted-2, #9aa4b2);
+  --mlg-blue: var(--brand-blue, #2563eb);
+  --mlg-blue-ink: var(--brand-blue-ink, #dbeafe);
+  --mlg-cyan: var(--cyan, #22d3ee);
+  --mlg-green: var(--green, #34d399);
+  --mlg-red: var(--red, #fb7185);
+  --mlg-amber: var(--amber, #fbbf24);
+
+  color: var(--mlg-text);
+
+  & *,
+  & *::before,
+  & *::after {
+    box-sizing: border-box;
+  }
+
+  & button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  & button:focus-visible,
+  & a:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--mlg-blue) 72%, white);
+    outline-offset: 2px;
+  }
+}
+
+/* Framed stage for the loading and play screens. */
+.mlg-frame {
+  position: relative;
+  height: clamp(34rem, 82vh, 60rem);
+  overflow: hidden;
+  border: 1px solid var(--mlg-line);
+  border-radius: var(--ui-radius-panel, 14px);
+  background: var(--mlg-bg);
+}
+
+/*
+ * Game mode: once a game is chosen it owns the viewport. The page behind is
+ * scroll-locked by MinigameApp; the exit button or Escape leaves. dvh keeps
+ * mobile browser chrome from eating the bottom of the stage.
+ */
+.mlg-gamemode {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--mlg-bg);
+}
+
+.mlg {
+  /* ---------- picker ---------- */
+
+  & .picker {
+    padding: clamp(16px, 2vw, 22px);
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-panel, 14px);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--mlg-blue) 6%, transparent), transparent 36%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+      var(--mlg-panel);
+    box-shadow: var(--ui-surface-topline, inset 0 1px 0 rgba(255, 255, 255, 0.03));
+  }
+
+  & .picker-header {
+    margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  & .picker-label {
+    margin: 0;
+    color: var(--mlg-text);
+    font-size: 0.9rem;
+    font-weight: 740;
+    letter-spacing: 0;
+  }
+
+  & .picker-hint {
+    margin: 4px 0 0;
+    color: var(--mlg-muted);
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+
+  & .picker-label::before {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 8px;
+    border-radius: 2px;
+    background: var(--mlg-blue);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--mlg-blue) 55%, transparent);
+  }
+
+  & .character-trigger {
+    flex-shrink: 0;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-tight, 6px);
+    background: var(--mlg-panel-2);
+    color: var(--mlg-muted);
+    font-size: 0.72rem;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+
+  & .character-trigger svg {
+    width: 15px;
+    height: 15px;
+    color: var(--mlg-blue-ink);
+  }
+
+  & .character-trigger strong {
+    color: var(--mlg-text);
+    font-weight: 700;
+  }
+
+  & .character-trigger:hover,
+  & .character-trigger:focus-visible {
+    border-color: var(--mlg-line-strong);
+    background: color-mix(in srgb, var(--mlg-panel-2) 84%, var(--mlg-blue) 16%);
+    color: var(--mlg-text);
+  }
+
+  & .picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  & .picker-grid > li {
+    min-width: 0;
+  }
+
+  & .game-card {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    width: 100%;
+    height: 100%;
+    min-height: 126px;
+    padding: 14px 15px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-inner, 8px);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent),
+      var(--mlg-panel-2);
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent, var(--mlg-blue)) 70%, transparent);
+    text-align: left;
+    transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  & .game-card:hover,
+  & .game-card:focus-visible {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent, var(--mlg-blue)) 42%, var(--mlg-line-strong));
+    background: color-mix(in srgb, var(--mlg-panel-2) 92%, var(--accent, var(--mlg-blue)) 8%);
+    box-shadow:
+      inset 3px 0 0 var(--accent, var(--mlg-blue)),
+      0 14px 26px -22px color-mix(in srgb, var(--accent, var(--mlg-blue)) 65%, transparent);
+  }
+
+  & .game-card-glow {
+    position: absolute;
+    inset: -60% -38% auto auto;
+    width: 58%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 14%, transparent), transparent 68%);
+    pointer-events: none;
+  }
+
+  & .game-card-topline {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  & .game-card-arrow {
+    width: 14px;
+    height: 14px;
+    color: var(--mlg-muted);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.16s ease, transform 0.16s ease, color 0.16s ease;
+  }
+
+  & .game-card:hover .game-card-arrow,
+  & .game-card:focus-visible .game-card-arrow {
+    color: var(--accent, var(--mlg-blue-ink));
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  & .game-card-category {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent, var(--mlg-blue-ink));
+    font-size: 0.64rem;
+    font-weight: 760;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+  }
+
+  & .game-card-category em {
+    font-style: normal;
+    padding: 1px 7px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-tight, 6px);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--mlg-muted);
+  }
+
+  & .game-card-title {
+    position: relative;
+    z-index: 1;
+    margin-top: 3px;
+    color: var(--mlg-text);
+    font-size: 0.98rem;
+    font-weight: 760;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+  }
+
+  & .game-card-mode {
+    position: relative;
+    z-index: 1;
+    color: var(--mlg-muted);
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+
+  & .game-card-meta {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px 12px;
+    margin-top: auto;
+    padding-top: 8px;
+    color: var(--mlg-muted);
+    font-size: 0.67rem;
+    font-weight: 650;
+  }
+
+  & .game-card-meta > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  & .game-card-meta svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* ---------- dialogs ---------- */
+
+  & .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(3, 7, 12, 0.76);
+    backdrop-filter: blur(8px);
+    animation: mlg-fade-in 0.18s ease;
+  }
+
+  & .dialog {
+    position: relative;
+    z-index: 1;
+    isolation: isolate;
+    width: min(580px, 100%);
+    max-height: min(86vh, 720px);
+    overflow: auto;
+    padding: 22px;
+    border: 1px solid color-mix(in srgb, var(--accent, var(--mlg-blue)) 26%, var(--mlg-line-strong));
+    border-radius: var(--ui-radius-panel, 14px);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--accent, var(--mlg-blue)) 7%, transparent), transparent 40%),
+      var(--mlg-panel);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+  }
+
+  & .dialog-backdrop-dismiss {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: transparent;
+    cursor: default;
+  }
+
+  & .dialog::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: -1;
+    width: 3px;
+    border-radius: var(--ui-radius-panel, 14px) 0 0 var(--ui-radius-panel, 14px);
+    background: var(--accent, var(--mlg-blue));
+  }
+
+  & .dialog-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  & .dialog-head h2 {
+    margin: 7px 0 6px;
+    color: var(--mlg-text);
+    font-size: 1.5rem;
+    font-weight: 760;
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+  }
+
+  & .dialog-head p {
+    margin: 0;
+    max-width: 46ch;
+    color: var(--mlg-muted);
+    font-size: 0.86rem;
+    line-height: 1.55;
+  }
+
+  & .dialog-close {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-tight, 6px);
+    background: var(--mlg-panel-2);
+    color: var(--mlg-muted);
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+
+  & .dialog-close svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  & .dialog-close:hover {
+    color: var(--mlg-text);
+    border-color: var(--mlg-line-strong);
+    background: var(--editor-raised, #18202a);
+  }
+
+  & .dialog-rules {
+    margin: 18px 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 7px;
+  }
+
+  & .dialog-rules li {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    padding: 9px 11px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-inner, 8px);
+    background: var(--mlg-panel-2);
+    color: var(--mlg-text);
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  & .dialog-rules li svg {
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+    color: var(--accent, var(--mlg-blue-ink));
+  }
+
+  & .dialog-options {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  & .dialog-options label > span {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--mlg-muted);
+    font-size: 0.68rem;
+    font-weight: 720;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  & .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  & .chip {
+    min-width: 42px;
+    padding: 7px 12px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-tight, 6px);
+    background: var(--mlg-panel-2);
+    color: var(--mlg-muted);
+    font-size: 0.78rem;
+    font-weight: 680;
+    transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+  }
+
+  & .chip.is-active {
+    border-color: color-mix(in srgb, var(--mlg-blue) 52%, var(--mlg-line));
+    background: color-mix(in srgb, var(--mlg-panel-2) 78%, var(--mlg-blue) 22%);
+    color: var(--mlg-blue-ink);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mlg-blue) 18%, transparent);
+  }
+
+  & .chip:not(.is-active):hover {
+    border-color: var(--mlg-line-strong);
+    color: var(--mlg-text);
+  }
+
+  & .play-button {
+    width: 100%;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid color-mix(in srgb, var(--mlg-blue) 68%, white 8%);
+    border-radius: var(--ui-radius-control, 10px);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent),
+      var(--mlg-blue);
+    color: var(--mlg-blue-ink);
+    font-size: 0.88rem;
+    font-weight: 760;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  & .play-button svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+  }
+
+  & .play-button:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 24px -18px color-mix(in srgb, var(--mlg-blue) 85%, transparent);
+  }
+
+  /* ---------- character picker ---------- */
+
+  & .character-dialog {
+    --accent: var(--mlg-blue);
+  }
+
+  & .character-list {
+    display: grid;
+    gap: 10px;
+    margin: 18px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  & .character-option {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    padding: 12px 14px;
+    text-align: left;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-inner, 8px);
+    background: var(--mlg-panel-2);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  & .character-option:hover {
+    border-color: var(--mlg-line-strong);
+  }
+
+  & .character-option.is-active {
+    border-color: color-mix(in srgb, var(--mlg-blue) 55%, var(--mlg-line));
+    background: color-mix(in srgb, var(--mlg-panel-2) 82%, var(--mlg-blue) 18%);
+  }
+
+  & .character-option__title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  & .character-option__title svg {
+    width: 16px;
+    height: 16px;
+    color: var(--mlg-blue-ink);
+  }
+
+  & .character-option strong {
+    color: var(--mlg-text);
+    font-size: 0.92rem;
+    font-weight: 740;
+  }
+
+  & .character-option span {
+    color: var(--mlg-muted);
+    font-size: 0.8rem;
+  }
+
+  & .character-credit {
+    display: block;
+    margin-top: 2px;
+    padding: 0 14px;
+    color: color-mix(in srgb, var(--mlg-muted) 74%, transparent);
+    font-size: 0.68rem;
+  }
+
+  & .character-credit a {
+    color: inherit;
+  }
+
+  /* ---------- play screen ---------- */
+
+  & .play-screen {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  & .play-screen canvas {
+    display: block;
+  }
+
+  & .hud {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 12px;
+  }
+
+  & .hud-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  & .hud-left {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* One slim row — a stacked banner here just covers the TV. */
+  & .hud-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 38px;
+    padding: 6px 14px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-inner, 8px);
+    background: color-mix(in srgb, var(--mlg-bg) 78%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    backdrop-filter: blur(10px);
+  }
+
+  & .hud-status strong {
+    color: var(--mlg-text);
+    font-size: 0.8rem;
+    font-weight: 740;
+    white-space: nowrap;
+  }
+
+  & .hud-status span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    color: var(--mlg-muted);
+  }
+
+  & .hud-color-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    box-shadow: 0 0 8px currentColor;
+  }
+
+  & .hud-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  & .hud-clock {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 11px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-inner, 8px);
+    background: color-mix(in srgb, var(--mlg-bg) 78%, transparent);
+    color: var(--mlg-text);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+    font-weight: 740;
+    backdrop-filter: blur(10px);
+  }
+
+  & .hud-button {
+    pointer-events: auto;
+    min-width: 36px;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-inner, 8px);
+    background: color-mix(in srgb, var(--mlg-bg) 78%, transparent);
+    color: var(--mlg-text);
+    backdrop-filter: blur(10px);
+    font-size: 0.78rem;
+    font-weight: 680;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  & .hud-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  & .hud-button:hover {
+    border-color: color-mix(in srgb, var(--mlg-blue) 52%, var(--mlg-line));
+    background: color-mix(in srgb, var(--mlg-bg) 72%, var(--mlg-blue) 28%);
+  }
+
+  & .hud-bottom {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  & .hud-help {
+    margin: 0;
+    max-width: 30rem;
+    font-size: 0.78rem;
+    color: var(--mlg-muted);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  }
+
+  & .jump-button {
+    pointer-events: auto;
+    min-width: 96px;
+    min-height: 56px;
+    border: 1px solid color-mix(in srgb, var(--mlg-blue) 62%, transparent);
+    border-radius: var(--ui-radius-control, 10px);
+    background: color-mix(in srgb, var(--mlg-blue) 20%, transparent);
+    color: var(--mlg-blue-ink);
+    font-size: 0.9rem;
+    font-weight: 760;
+    backdrop-filter: blur(8px);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.12s ease, transform 0.12s ease;
+  }
+
+  & .jump-button:active {
+    background: color-mix(in srgb, var(--mlg-blue) 42%, transparent);
+    transform: scale(0.96);
+  }
+
+  /* Mouse players jump with space; the button only exists for touch. */
+  @media (hover: hover) and (pointer: fine) {
+    & .jump-button {
+      display: none;
+    }
+  }
+
+  /* Touch: the jump button spans the full width so either thumb reaches it,
+     and blur effects go — they cause repaint flicker on mobile GPUs. */
+  @media (pointer: coarse) {
+    & .hud-bottom {
+      display: block;
+    }
+
+    & .jump-button {
+      width: 100%;
+      min-height: 64px;
+    }
+
+    & .hud-status,
+    & .hud-button,
+    & .hud-clock,
+    & .jump-button {
+      backdrop-filter: none;
+      background: color-mix(in srgb, var(--mlg-bg) 88%, transparent);
+    }
+
+    & .jump-button {
+      background: color-mix(in srgb, var(--mlg-bg) 74%, var(--mlg-blue) 26%);
+    }
+  }
+
+  /* Keeps the TV's CSS3D layer composited so it does not flicker when the
+     camera or the display content updates. */
+  & .mlg-tv-screen,
+  & .mlg-tv-screen > div {
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+
+  & .finish-panel {
+    position: absolute;
+    left: 50%;
+    bottom: clamp(72px, 14vh, 130px);
+    transform: translateX(-50%);
+    pointer-events: auto;
+    display: grid;
+    gap: 8px;
+    justify-items: center;
+    width: min(400px, calc(100% - 32px));
+    padding: 20px 24px;
+    border: 1px solid color-mix(in srgb, var(--accent, var(--mlg-blue)) 40%, var(--mlg-line));
+    border-radius: var(--ui-radius-panel, 14px);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--accent, var(--mlg-blue)) 8%, transparent), transparent 42%),
+      color-mix(in srgb, var(--mlg-panel) 90%, transparent);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    animation: mlg-rise-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+
+  & .finish-panel strong {
+    color: var(--mlg-text);
+    font-size: 1.35rem;
+    font-weight: 760;
+    letter-spacing: -0.02em;
+  }
+
+  & .finish-panel > span {
+    color: var(--mlg-muted);
+    font-size: 0.86rem;
+    text-align: center;
+  }
+
+  & .finish-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+  }
+
+  & .finish-actions .play-button {
+    width: auto;
+    padding: 11px 22px;
+  }
+
+  /* ---------- loading ---------- */
+
+  & .loading-screen {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 18px;
+    background: var(--mlg-bg);
+  }
+
+  & .loading-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    width: 74px;
+    height: 74px;
+  }
+
+  & .loading-tiles i {
+    border-radius: 4px;
+    background: var(--mlg-blue);
+    opacity: 0.18;
+    animation: mlg-loading-tile 1.35s ease-in-out infinite;
+  }
+
+  & .loading-tiles i:nth-child(1) { animation-delay: 0s; background: var(--mlg-green); }
+  & .loading-tiles i:nth-child(2) { animation-delay: 0.12s; }
+  & .loading-tiles i:nth-child(3) { animation-delay: 0.24s; background: var(--mlg-red); }
+  & .loading-tiles i:nth-child(4) { animation-delay: 0.36s; }
+  & .loading-tiles i:nth-child(5) { animation-delay: 0.48s; background: var(--mlg-amber); }
+  & .loading-tiles i:nth-child(6) { animation-delay: 0.6s; }
+  & .loading-tiles i:nth-child(7) { animation-delay: 0.72s; background: var(--mlg-cyan); }
+  & .loading-tiles i:nth-child(8) { animation-delay: 0.84s; }
+  & .loading-tiles i:nth-child(9) { animation-delay: 0.96s; background: var(--mlg-green); }
+
+  & .loading-screen p {
+    margin: 0;
+    color: var(--mlg-muted);
+    font-weight: 600;
+  }
+
+  /* ---------- responsive ---------- */
+
+  @media (max-width: 720px) {
+    & .picker {
+      padding: 14px;
+    }
+
+    & .picker-header {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    & .character-trigger {
+      max-width: 100%;
+    }
+
+    & .picker-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    & .game-card {
+      min-height: 122px;
+      padding: 12px;
+    }
+
+    & .dialog-backdrop {
+      padding: 10px;
+    }
+
+    & .dialog {
+      max-height: calc(100dvh - 20px);
+      padding: 18px;
+    }
+
+    & .hud-left {
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    & .hud-status {
+      min-height: 0;
+      padding: 5px 10px;
+    }
+
+    & .hud-status strong {
+      font-size: 0.78rem;
+    }
+
+    & .hud-status span {
+      font-size: 0.68rem;
+    }
+
+    & .hud-help {
+      display: none;
+    }
+
+    & .hud-bottom {
+      justify-content: flex-end;
+    }
+  }
+
+  @media (max-width: 430px) {
+    & .picker-grid {
+      grid-template-columns: 1fr;
+    }
+
+    & .game-card {
+      min-height: 116px;
+    }
+
+    & .character-trigger span {
+      display: none;
+    }
+
+    & .hud {
+      padding: 8px;
+    }
+
+    & .hud-status {
+      max-width: calc(100vw - 90px);
+      flex-wrap: wrap;
+      gap: 2px 8px;
+    }
+
+    & .hud-status span {
+      width: 100%;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mlg .game-card,
+  .mlg .game-card-arrow,
+  .mlg .play-button,
+  .mlg .finish-panel,
+  .mlg .dialog-backdrop {
+    animation: none;
+    transition: none;
+  }
+}

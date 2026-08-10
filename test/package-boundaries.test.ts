@@ -14,8 +14,7 @@ const gamePackages = new Set([
 ]);
 const playgroundPackages = new Set([
   ...gamePackages,
-  "@motion-levels-games/character-runtime",
-  "@motion-levels-games/three-renderer"
+  "@motion-levels-games/jugar-3d"
 ]);
 
 test("workspace source imports respect package ownership", async () => {
@@ -27,8 +26,12 @@ test("workspace source imports respect package ownership", async () => {
     { directory: "packages/replay-runtime/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
     { directory: "packages/character-runtime/src", allowed: new Set<string>() },
     {
-      directory: "packages/three-renderer/src",
-      allowed: new Set(["@motion-levels-games/character-runtime", "@motion-levels-games/game-sdk"])
+      directory: "packages/jugar-3d/src",
+      allowed: new Set([
+        "@motion-levels-games/display-kit",
+        "@motion-levels-games/game-sdk",
+        "@motion-levels-games/replay-runtime"
+      ])
     },
     { directory: "apps/playground/src", allowed: playgroundPackages },
     ...await gameSourceRoots()

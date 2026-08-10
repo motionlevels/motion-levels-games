@@ -58,10 +58,12 @@ import { eventKey, isEventStreamAtLatest } from "./eventStream.ts";
 import {
   defaultGame,
   playgroundGames,
-  type PlaygroundAgentHarnessFrame,
   type PlaygroundGame
 } from "./gameRegistry.ts";
-import { AgentLab, type AgentLabController } from "./AgentLab.tsx";
+import {
+  JugarAgentSurface,
+  type JugarAgentSurfaceController
+} from "./JugarAgentSurface.tsx";
 import { GameConfigControl } from "./GameConfigControl.tsx";
 import {
   generateGameMediaBundle,
@@ -128,7 +130,7 @@ export function App() {
   );
   const [surfaceMode, setSurfaceMode] = useState<"floor" | "agents">("floor");
   const surfaceModeRef = useRef<"floor" | "agents">("floor");
-  const agentLabControllerRef = useRef<AgentLabController | null>(null);
+  const agentLabControllerRef = useRef<JugarAgentSurfaceController | null>(null);
   const [agentLabState, setAgentLabState] = useState<AgentLabState | undefined>(undefined);
   const [seed, setSeed] = useState(DEFAULT_GAME_SEED);
   const [playerCount, setPlayerCount] = useState(defaultGamePlayerCount(initialGame.manifest));
@@ -137,7 +139,7 @@ export function App() {
   const [manuallyPaused, setManuallyPaused] = useState(false);
   const [pauseLocks, setPauseLocks] = useState<PauseLockSet>(() => new Set());
   const paused = isPlaygroundPaused(manuallyPaused, pauseLocks);
-  const agentLabActive = surfaceMode === "agents" && selectedGame.createAgentHarness !== undefined;
+  const agentLabActive = surfaceMode === "agents" && selectedGame.createSessionController !== undefined;
   const started = useMemo(
     () => {
       const startedGame = createStartedGame(
@@ -524,7 +526,7 @@ export function App() {
   );
 
   const changeSurfaceMode = useCallback((nextMode: "floor" | "agents") => {
-    if (nextMode === "agents" && selectedGameRef.current.createAgentHarness === undefined) {
+    if (nextMode === "agents" && selectedGameRef.current.createSessionController === undefined) {
       return;
     }
     if (nextMode === surfaceModeRef.current) return;
@@ -780,21 +782,21 @@ export function App() {
     [syncEngineState]
   );
 
-  const handleAgentLabController = useCallback((controller: AgentLabController | null) => {
+  const handleAgentLabController = useCallback((controller: JugarAgentSurfaceController | null) => {
     agentLabControllerRef.current = controller;
     setAgentLabState(controller?.getState());
   }, []);
 
-  const handleAgentLabFrame = useCallback((nextFrame: PlaygroundAgentHarnessFrame, nextEngine: GameEngine) => {
+  const handleAgentLabFrame = useCallback((nextState: GameEngineState, nextEngine: GameEngine) => {
     engineRef.current = nextEngine;
-    syncEngineState(nextFrame.state);
+    syncEngineState(nextState);
     setAgentLabState(agentLabControllerRef.current?.getState());
   }, [syncEngineState]);
 
   const agentLabApi = useMemo<AgentLabApi>(() => {
     const controller = () => {
       const current = agentLabControllerRef.current;
-      if (!current) throw new Error("Agent Lab is not active for the selected game");
+      if (!current) throw new Error("Agents 3D is not active for the selected game");
       return current;
     };
     return {
@@ -803,7 +805,7 @@ export function App() {
         return current
           ? { ...current.getState(), available: true, active: surfaceModeRef.current === "agents" }
           : inactiveAgentLabState(
-            selectedGameRef.current.createAgentHarness !== undefined,
+            selectedGameRef.current.createSessionController !== undefined,
             surfaceModeRef.current === "agents",
             seedRef.current
           );
@@ -1018,7 +1020,7 @@ export function App() {
   const frameNumber = frameMillis > 0 ? Math.round(engineRef.current.clockMillis / frameMillis) : 0;
   const debugStats: [string, ReactNode][] = [
     ["Game", selectedGame.manifest.label],
-    ["Surface", agentLabActive ? "Agent Lab" : "Floor"],
+    ["Surface", agentLabActive ? "Jugar 3D" : "Floor"],
     ["Phase", snapshot.phase],
     ["Clock", formatElapsedClock(engineRef.current.clockMillis)],
     ["FPS", engineRef.current.fps],
@@ -1198,9 +1200,9 @@ export function App() {
                 </button>
                 <button
                   aria-pressed={agentLabActive}
-                  disabled={selectedGame.createAgentHarness === undefined}
+                  disabled={selectedGame.createSessionController === undefined}
                   onClick={() => changeSurfaceMode("agents")}
-                  title={selectedGame.createAgentHarness ? "3D agents" : "3D agents are not available for this game yet"}
+                  title={selectedGame.createSessionController ? "3D agents" : "3D agents are not available for this game yet"}
                   type="button"
                 >
                   <Bot size={14} aria-hidden="true" /> Agents 3D
@@ -1394,14 +1396,18 @@ export function App() {
 
         <article className={`panel floor-panel agent-surface-panel ${agentLabActive ? "is-agent-lab" : ""}`}>
           <div className="agent-surface-stage">
-            {agentLabActive && selectedGame.createAgentHarness ? (
-              <AgentLab
-                createHarness={selectedGame.createAgentHarness}
+            {agentLabActive && selectedGame.createSessionController ? (
+              <JugarAgentSurface
                 difficulty={difficulty}
+                durationMillis={selectedGame.manifest.defaultDurationMillis}
+                game={selectedGame}
+                gameOptions={gameOptions}
                 hostPaused={paused}
                 onController={handleAgentLabController}
-                onFrame={handleAgentLabFrame}
+                onPlayerCountChange={changePlayerCount}
+                onState={handleAgentLabFrame}
                 onSeedChange={changeSeed}
+                playerCount={playerCount}
                 seed={seed}
               />
             ) : (

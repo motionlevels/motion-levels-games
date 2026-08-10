@@ -20,9 +20,13 @@ job. Keep each layer focused so failures point to the relevant contract.
 - `npm run playtest:browser`: exercises the built playground with a real
   browser, including Ping Pong initialization through the interactive floor's
   tile seams and Duelo initialization at four and eight players through
-  sequential single-mouse floor clicks. The Cruce Agent Lab portion also
-  compares representative native 1920×1080 frames with the checked-in visual
-  baselines. Run `npm run build` first.
+  sequential single-mouse floor clicks. The Duelo Jugar 3D portion additionally
+  verifies the product controller in the shared `GameSession`, exact retained
+  replay seek/restore, and representative native 1920×1080 frames against the
+  checked-in visual baselines. It also waits for and enforces the shared
+  desktop-medium and capture performance budgets: structural renderer totals
+  always hard-fail, while SwiftShader uses its separately published timing
+  ceiling and emits the non-certification caveat. Run `npm run build` first.
 - `npm run check`: the complete local gate: quality checks, all tests, build,
   and deterministic playtests.
 
@@ -37,12 +41,12 @@ games may depend only on shared packages, and the playground discovers games
 without importing individual game packages. Avoid line-count gates and broad
 snapshots; extract cohesive ownership and test its public behavior instead.
 
-## Agent Lab visual baselines
+## Jugar 3D visual baselines
 
-`test/visual-baselines/agent-lab` owns fixed-camera PNGs for countdown,
-launch, hazard response, checkpoint progress, late running, real damage,
-victory, and ten-agent stress. The browser gate decodes both images, downsizes
-them to 240×135, and compares RGB values with the reviewed tolerance in
+`test/visual-baselines/jugar-3d` owns reviewed Duelo opening-replay and terminal
+victory captures from the canonical shared Stage. The browser gate requires a
+real 1920×1080 drawing buffer, decodes both images, downsizes them to 240×135,
+and compares RGB values with the reviewed tolerance in
 `scripts/lib/visual-regression.ts`. Downsampling and a small channel threshold
 absorb GPU edge-rasterisation differences; missing characters, a black floor,
 wrong cameras, large pose changes, and layout regressions still fail CI with
@@ -52,7 +56,7 @@ Update baselines only after opening and reviewing every native capture:
 
 ```sh
 npm run build
-MOTION_LEVELS_GAMES_PLAYTEST_GAME=cruce-galactico \
+MOTION_LEVELS_GAMES_PLAYTEST_GAME=duelo \
 MOTION_LEVELS_GAMES_UPDATE_VISUAL_BASELINES=1 \
 npm run playtest:browser
 ```
