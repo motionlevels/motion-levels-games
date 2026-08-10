@@ -583,7 +583,7 @@ async function playtestGuardianes(page: Page) {
 
 async function playtestSueloSeguro(page: Page) {
   const maxPlayerZones: Array<[number, number]> = [
-    [1, 1], [7, 1], [13, 1], [13, 10], [13, 29], [7, 29], [1, 29], [1, 20]
+    [0, 0], [7, 0], [14, 0], [14, 15], [14, 30], [7, 30], [0, 30], [0, 15]
   ];
 
   await page.locator(".control-game select").selectOption("suelo-seguro");
@@ -608,28 +608,34 @@ async function playtestSueloSeguro(page: Page) {
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
   await captureStableNativeDisplay(page, "suelo-seguro-running-full-lives");
 
-  await page.evaluate(() => {
+  await page.evaluate((zones) => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
+    api.reset();
+    api.resume();
+    for (const [x, y] of zones) api.press(x, y);
+    api.step((api.getState().snapshot.countdownMillis ?? 0) + 100);
+    for (const [x, y] of zones) api.release(x, y);
+    api.step(1_250);
     const target = api.getState().snapshot.targetPlatform;
     if (!target) throw new Error("Suelo Seguro has no target platform");
     api.press(target.x, target.y);
     api.release(target.x, target.y);
-  });
+  }, maxPlayerZones);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "round-win");
-  await captureStableNativeDisplay(page, "suelo-seguro-round-win");
-  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(1_420));
-  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
-
+  await captureNativeDisplay(page, "suelo-seguro-round-win");
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    api.step((api.getState().snapshot.turnRemainingMillis ?? 4_800) + 20);
+    if (api.getState().snapshot.phase === "round-win") api.step(1_420);
+    if (api.getState().snapshot.phase === "running") {
+      api.step((api.getState().snapshot.turnRemainingMillis ?? 4_800) + 20);
+    }
   });
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "turn-fail");
   const damaged = await browserState(page);
   assert.equal(damaged.snapshot.lives, 3);
-  await captureStableNativeDisplay(page, "suelo-seguro-damaged");
+  await captureNativeDisplay(page, "suelo-seguro-damaged");
 
   for (let guard = 0; guard < 8 && (await browserState(page)).snapshot.phase !== "finished"; guard += 1) {
     const state = await browserState(page);
@@ -644,7 +650,7 @@ async function playtestSueloSeguro(page: Page) {
   assert.equal(lost.snapshot.phase, "finished");
   assert.equal(lost.snapshot.lives, 0);
   assert.equal(lost.snapshot.success, false);
-  await captureStableNativeDisplay(page, "suelo-seguro-finished-loss");
+  await captureNativeDisplay(page, "suelo-seguro-finished-loss");
 
   await page.locator(".control-game select").selectOption("hello-world");
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
@@ -677,6 +683,7 @@ async function playtestSueloSeguro(page: Page) {
         api.step(1_420);
         continue;
       }
+      api.step(900);
       const target = current.targetPlatform;
       if (!target) throw new Error(`Suelo Seguro has no relay target in ${current.phase}`);
       api.press(target.x, target.y);
@@ -687,7 +694,7 @@ async function playtestSueloSeguro(page: Page) {
   assert.equal(won.snapshot.phase, "finished", JSON.stringify(won.snapshot));
   assert.equal(won.snapshot.success, true);
   assert.equal(won.snapshot.completedTransfers, won.snapshot.requiredTransfers);
-  await captureStableNativeDisplay(page, "suelo-seguro-finished-win");
+  await captureNativeDisplay(page, "suelo-seguro-finished-win");
   return {
     captures: ["waiting", "starting", "running-full-lives", "round-win", "damaged", "finished-loss", "finished-win"],
     completedTransfers: won.snapshot.completedTransfers,
