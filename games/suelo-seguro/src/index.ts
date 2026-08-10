@@ -5,6 +5,8 @@ export {
   sueloSeguroDepartureGraceMillis,
   sueloSeguroDifficultyProfile,
   sueloSeguroGameResultMillis,
+  sueloSeguroHazardOrigin,
+  sueloSeguroHazardSize,
   sueloSeguroPlatformAnchors,
   sueloSeguroPlatformSize,
   sueloSeguroRequiredTransfers,

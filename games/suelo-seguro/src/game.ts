@@ -29,6 +29,7 @@ import { paintDiamondRing, paintDiamondWave } from "@motion-levels-games/game-sd
 import { manifest } from "./manifest.ts";
 
 export const sueloSeguroPlatformSize = 2;
+export const sueloSeguroHazardSize = 8;
 export const sueloSeguroRoundWinMillis = 1_400;
 export const sueloSeguroTurnFailMillis = 1_200;
 export const sueloSeguroGameResultMillis = 5_000;
@@ -47,23 +48,20 @@ export type VisibleSafePlatform = SafePlatform & {
 };
 
 export type SueloSeguroDifficultyProfile = {
-  hazardPeriod: number;
   hazardStepMillis: number;
-  hazardWidth: number;
   lives: number;
   turnMillis: number;
 };
 
 const difficultyProfiles: Record<string, SueloSeguroDifficultyProfile> = {
-  easy: { hazardPeriod: 12, hazardStepMillis: 380, hazardWidth: 1, lives: 5, turnMillis: 5_400 },
-  medium: { hazardPeriod: 11, hazardStepMillis: 310, hazardWidth: 2, lives: 4, turnMillis: 4_800 },
-  hard: { hazardPeriod: 10, hazardStepMillis: 250, hazardWidth: 2, lives: 3, turnMillis: 4_200 },
-  expert: { hazardPeriod: 9, hazardStepMillis: 190, hazardWidth: 2, lives: 2, turnMillis: 3_600 }
+  easy: { hazardStepMillis: 380, lives: 5, turnMillis: 5_400 },
+  medium: { hazardStepMillis: 310, lives: 4, turnMillis: 4_800 },
+  hard: { hazardStepMillis: 250, lives: 3, turnMillis: 4_200 },
+  expert: { hazardStepMillis: 190, lives: 2, turnMillis: 3_600 }
 };
 
 const backgroundColor: HexColor = "#05080b";
 const dangerColor: HexColor = "#ff183d";
-const dangerEdgeColor: HexColor = "#8f0925";
 const playerColors = [
   "#35d7ff",
   "#ff3bd7",
@@ -76,33 +74,58 @@ const playerColors = [
 ] as const satisfies readonly HexColor[];
 
 const perimeterStarts: readonly SafePlatform[] = [
-  { x: 1, y: 1 },
-  { x: 7, y: 1 },
-  { x: 13, y: 1 },
-  { x: 13, y: 10 },
-  { x: 13, y: 29 },
-  { x: 7, y: 29 },
-  { x: 1, y: 29 },
-  { x: 1, y: 20 }
+  { x: 0, y: 0 },
+  { x: 7, y: 0 },
+  { x: 14, y: 0 },
+  { x: 14, y: 15 },
+  { x: 14, y: 30 },
+  { x: 7, y: 30 },
+  { x: 0, y: 30 },
+  { x: 0, y: 15 }
 ] as const;
 
-export const sueloSeguroPlatformAnchors: readonly SafePlatform[] = [1, 7, 13, 19, 25, 29].flatMap((y) =>
-  [1, 5, 9, 13].map((x) => ({ x, y }))
-);
+const horizontalPlatformXs = [0, 3, 6, 9, 12, 14] as const;
+const verticalPlatformYs = [3, 6, 9, 12, 15, 18, 21, 24, 27] as const;
+
+export const sueloSeguroPlatformAnchors: readonly SafePlatform[] = [
+  ...horizontalPlatformXs.map((x) => ({ x, y: 0 })),
+  ...verticalPlatformYs.map((y) => ({ x: FLOOR_COLS - sueloSeguroPlatformSize, y })),
+  ...[...horizontalPlatformXs].reverse().map((x) => ({ x, y: FLOOR_ROWS - sueloSeguroPlatformSize })),
+  ...[...verticalPlatformYs].reverse().map((y) => ({ x: 0, y }))
+];
+
+const hazardMaxX = FLOOR_COLS - sueloSeguroHazardSize;
+const hazardMaxY = FLOOR_ROWS - sueloSeguroHazardSize;
+const sueloSeguroHazardOrbit: readonly SafePlatform[] = [
+  ...Array.from({ length: hazardMaxX + 1 }, (_, x) => ({ x, y: 0 })),
+  ...Array.from({ length: hazardMaxY }, (_, index) => ({ x: hazardMaxX, y: index + 1 })),
+  ...Array.from({ length: hazardMaxX }, (_, index) => ({ x: hazardMaxX - index - 1, y: hazardMaxY })),
+  ...Array.from({ length: hazardMaxY - 1 }, (_, index) => ({ x: 0, y: hazardMaxY - index - 1 }))
+];
+
+const floorPerimeter: readonly SafePlatform[] = [
+  ...Array.from({ length: FLOOR_COLS }, (_, x) => ({ x, y: 0 })),
+  ...Array.from({ length: FLOOR_ROWS - 1 }, (_, index) => ({ x: FLOOR_COLS - 1, y: index + 1 })),
+  ...Array.from({ length: FLOOR_COLS - 1 }, (_, index) => ({ x: FLOOR_COLS - index - 2, y: FLOOR_ROWS - 1 })),
+  ...Array.from({ length: FLOOR_ROWS - 2 }, (_, index) => ({ x: 0, y: FLOOR_ROWS - index - 2 }))
+];
 
 type SueloSeguroPhase = GamePhase | "round-win" | "turn-fail";
 
 export type SueloSeguroSnapshot = GameSnapshot & {
   activePlayerIndex: number;
   activePlayerLabel: string;
+  bestTransferMillis: number | null;
   completedTransfers: number;
   failedTurns: number;
   hazardStep: number;
+  lastTransferMillis: number | null;
   maxLives: number;
   platforms: VisibleSafePlatform[];
   requiredTransfers: number;
   stage: "waiting" | "moving" | "round-win" | "turn-fail" | "game-win" | "game-fail";
   targetPlatform: VisibleSafePlatform | null;
+  teamTransferMillis: number;
   turnDurationMillis: number;
   turnRemainingMillis: number;
 };
@@ -126,12 +149,17 @@ export function sueloSeguroStartingPlatforms(playerCount: number): SafePlatform[
   });
 }
 
+export function sueloSeguroHazardOrigin(step: number): SafePlatform {
+  return { ...sueloSeguroHazardOrbit[positiveModulo(step, sueloSeguroHazardOrbit.length)]! };
+}
+
 export function createGame(config: GameConfig): SueloSeguroGameInstance {
   return new SueloSeguroGame(config);
 }
 
 class SueloSeguroGame implements SueloSeguroGameInstance {
   private activePlayerIndex = 0;
+  private bestTransferMillis: number | null = null;
   private completedTransfers = 0;
   private config: NormalizedGameConfig;
   private failedTurns = 0;
@@ -139,6 +167,7 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
   private heldTiles = new Set<string>();
   private lastDamageAtMillis = Number.NEGATIVE_INFINITY;
   private lastEvent: GameEvent = gameEvent("none", "Busca tu plataforma", 0);
+  private lastTransferMillis: number | null = null;
   private lives = 0;
   private nowMillis = 0;
   private phase: SueloSeguroPhase = "ready";
@@ -151,6 +180,7 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
   private startedAtMillis = 0;
   private success = false;
   private targetPlatform: SafePlatform | null = null;
+  private teamTransferMillis = 0;
   private turnDeadlineMillis = 0;
   private turnStartedAtMillis = 0;
 
@@ -268,7 +298,7 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
       phase: this.phase,
       playerCount: this.config.playerCount,
       players: this.players,
-      score: this.completedTransfers,
+      score: this.teamTransferMillis,
       lives: this.lives,
       maxLives: profile.lives,
       elapsedMillis: this.elapsedMillis(),
@@ -282,13 +312,16 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
       requiredPlayers: ready.requiredPlayers,
       activePlayerIndex: this.activePlayerIndex,
       activePlayerLabel: active?.label ?? "Jugador 1",
+      bestTransferMillis: this.bestTransferMillis,
       completedTransfers: this.completedTransfers,
       failedTurns: this.failedTurns,
       hazardStep: this.hazardStep(this.nowMillis),
+      lastTransferMillis: this.lastTransferMillis,
       platforms: visiblePlatforms,
       requiredTransfers: sueloSeguroRequiredTransfers(this.config.playerCount),
       stage: this.stage(),
       targetPlatform: visiblePlatforms.find((platform) => platform.target) ?? null,
+      teamTransferMillis: this.teamTransferMillis,
       turnDurationMillis: profile.turnMillis,
       turnRemainingMillis: this.phase === "running" ? Math.max(0, this.turnDeadlineMillis - this.nowMillis) : 0
     };
@@ -328,19 +361,25 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
 
   private completeTransfer(atMillis: number): GameEvent[] {
     if (!this.targetPlatform || this.phase !== "running") return [];
+    const transferMillis = Math.max(0, atMillis - this.turnStartedAtMillis);
     this.platforms[this.activePlayerIndex] = { ...this.targetPlatform };
     this.targetPlatform = null;
     this.completedTransfers += 1;
-    this.playerScores[this.activePlayerIndex] = (this.playerScores[this.activePlayerIndex] ?? 0) + 1;
+    this.lastTransferMillis = transferMillis;
+    this.bestTransferMillis = this.bestTransferMillis === null
+      ? transferMillis
+      : Math.min(this.bestTransferMillis, transferMillis);
+    this.teamTransferMillis += transferMillis;
+    this.playerScores[this.activePlayerIndex] = (this.playerScores[this.activePlayerIndex] ?? 0) + transferMillis;
     this.updatePlayers();
 
     if (this.completedTransfers >= sueloSeguroRequiredTransfers(this.config.playerCount)) {
-      return this.finish(true, "Todos los relevos completados", atMillis);
+      return this.finish(true, `Todos los relevos en ${formatTransferTime(this.teamTransferMillis)}`, atMillis);
     }
     this.phase = "round-win";
     this.resultAtMillis = atMillis;
     const active = this.players[this.activePlayerIndex];
-    this.lastEvent = gameEvent("round-win", `${active?.label ?? "Jugador"} está a salvo`, atMillis);
+    this.lastEvent = gameEvent("round-win", `${active?.label ?? "Jugador"} llegó en ${formatTransferTime(transferMillis)}`, atMillis);
     return [this.lastEvent];
   }
 
@@ -382,26 +421,45 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
     const origin = this.platforms[this.activePlayerIndex]!;
     const occupied = this.platforms.filter((_platform, index) => index !== this.activePlayerIndex);
     const candidates = sueloSeguroPlatformAnchors.filter((candidate) =>
-      !occupied.some((platform) => overlaps(platform, candidate)) &&
+      !samePlatform(origin, candidate) &&
+      !occupied.some((platform) => touchesOrAdjacent(platform, candidate)) &&
       manhattan(origin, candidate) >= 8
     );
     const fallback = sueloSeguroPlatformAnchors.filter((candidate) =>
-      !occupied.some((platform) => overlaps(platform, candidate)) && !samePlatform(origin, candidate)
+      !samePlatform(origin, candidate) &&
+      !occupied.some((platform) => touchesOrAdjacent(platform, candidate))
     );
     const pool = candidates.length > 0 ? candidates : fallback;
-    return { ...(pool[this.rng.int(pool.length)] ?? origin) };
+    const selected = pool[this.rng.int(pool.length)];
+    if (!selected) throw new Error("Suelo Seguro could not place a separated perimeter platform");
+    return { ...selected };
   }
 
   private paintWaiting(frame: Frame): void {
-    const step = Math.floor(this.nowMillis / (this.phase === "starting" ? 120 : 220));
+    const step = Math.floor(this.nowMillis / (this.phase === "starting" ? 100 : 150));
     for (let y = 0; y < FLOOR_ROWS; y += 1) {
       for (let x = 0; x < FLOOR_COLS; x += 1) {
-        if (positiveModulo(x + Math.floor(y / 2) - step, 13) === 0) paintFrameCell(frame, x, y, "#3a0a17");
+        if (positiveModulo(x * 7 + y * 3 + step, 47) === 0) paintFrameCell(frame, x, y, "#0a2630");
       }
     }
+    floorPerimeter.forEach((cell, index) => {
+      const trail = positiveModulo(index - step, 23);
+      if (trail === 0) paintFrameCell(frame, cell.x, cell.y, this.phase === "starting" ? "#ffe176" : "#7feaff");
+      else if (trail === 1 || trail === 22) paintFrameCell(frame, cell.x, cell.y, "#164a5a");
+    });
     this.platforms.forEach((platform, index) => {
-      const color = this.readyGate.zoneReady(index, this.nowMillis) ? "#ffffff" : this.players[index]?.color ?? playerColors[index]!;
+      const ready = this.readyGate.zoneReady(index, this.nowMillis);
+      const color = ready ? "#ffffff" : this.players[index]?.color ?? playerColors[index]!;
       fillFrameRect(frame, platform.x, platform.y, sueloSeguroPlatformSize, sueloSeguroPlatformSize, color);
+      if (!ready) {
+        const shimmer = positiveModulo(step + index, sueloSeguroPlatformSize * sueloSeguroPlatformSize);
+        paintFrameCell(
+          frame,
+          platform.x + shimmer % sueloSeguroPlatformSize,
+          platform.y + Math.floor(shimmer / sueloSeguroPlatformSize),
+          "#ffffff"
+        );
+      }
     });
     paintDiamondRing(frame, {
       centerX: 7.5,
@@ -412,14 +470,8 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
   }
 
   private paintHazard(frame: Frame): void {
-    const profile = this.profile();
-    const step = this.hazardStep(this.nowMillis);
-    for (let y = 0; y < FLOOR_ROWS; y += 1) {
-      for (let x = 0; x < FLOOR_COLS; x += 1) {
-        const phase = positiveModulo(x + Math.floor(y / 2) - step, profile.hazardPeriod);
-        if (phase < profile.hazardWidth) paintFrameCell(frame, x, y, phase === 0 ? dangerColor : dangerEdgeColor);
-      }
-    }
+    const origin = sueloSeguroHazardOrigin(this.hazardStep(this.nowMillis));
+    fillFrameRect(frame, origin.x, origin.y, sueloSeguroHazardSize, sueloSeguroHazardSize, dangerColor);
   }
 
   private paintPlatform(frame: Frame, platform: VisibleSafePlatform): void {
@@ -476,9 +528,8 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
 
   private isDangerousContact(x: number, y: number, atMillis: number): boolean {
     if (this.visiblePlatforms().some((platform) => insidePlatform(x, y, platform))) return false;
-    const profile = this.profile();
-    const phase = positiveModulo(x + Math.floor(y / 2) - this.hazardStep(atMillis), profile.hazardPeriod);
-    return phase < profile.hazardWidth;
+    const origin = sueloSeguroHazardOrigin(this.hazardStep(atMillis));
+    return x >= origin.x && x < origin.x + sueloSeguroHazardSize && y >= origin.y && y < origin.y + sueloSeguroHazardSize;
   }
 
   private hazardStep(atMillis: number): number {
@@ -518,11 +569,13 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
 
   private resetState(nowMillis: number): void {
     this.activePlayerIndex = 0;
+    this.bestTransferMillis = null;
     this.completedTransfers = 0;
     this.failedTurns = 0;
     this.finishedAtMillis = null;
     this.heldTiles.clear();
     this.lastDamageAtMillis = Number.NEGATIVE_INFINITY;
+    this.lastTransferMillis = null;
     this.lives = this.profile().lives;
     this.nowMillis = nowMillis;
     this.phase = "waiting";
@@ -534,6 +587,7 @@ class SueloSeguroGame implements SueloSeguroGameInstance {
     this.startedAtMillis = nowMillis;
     this.success = false;
     this.targetPlatform = null;
+    this.teamTransferMillis = 0;
     this.turnDeadlineMillis = 0;
     this.turnStartedAtMillis = 0;
     this.updatePlayers();
@@ -559,8 +613,11 @@ function insidePlatform(x: number, y: number, platform: SafePlatform): boolean {
   return x >= platform.x && x < platform.x + sueloSeguroPlatformSize && y >= platform.y && y < platform.y + sueloSeguroPlatformSize;
 }
 
-function overlaps(left: SafePlatform, right: SafePlatform): boolean {
-  return left.x < right.x + sueloSeguroPlatformSize && left.x + sueloSeguroPlatformSize > right.x && left.y < right.y + sueloSeguroPlatformSize && left.y + sueloSeguroPlatformSize > right.y;
+function touchesOrAdjacent(left: SafePlatform, right: SafePlatform): boolean {
+  return left.x <= right.x + sueloSeguroPlatformSize &&
+    left.x + sueloSeguroPlatformSize >= right.x &&
+    left.y <= right.y + sueloSeguroPlatformSize &&
+    left.y + sueloSeguroPlatformSize >= right.y;
 }
 
 function samePlatform(left: SafePlatform, right: SafePlatform): boolean {
@@ -569,6 +626,10 @@ function samePlatform(left: SafePlatform, right: SafePlatform): boolean {
 
 function manhattan(left: SafePlatform, right: SafePlatform): number {
   return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+}
+
+function formatTransferTime(millis: number): string {
+  return `${(Math.max(0, millis) / 1_000).toFixed(2).replace(".", ",")} s`;
 }
 
 function positiveModulo(value: number, divisor: number): number {

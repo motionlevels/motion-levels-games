@@ -3,19 +3,19 @@ import type { GameManifest } from "@motion-levels-games/game-sdk";
 export const manifest: GameManifest = {
   id: "suelo-seguro",
   label: "Suelo Seguro",
-  description: "Cada jugador protege una plataforma de 2×2, se desplaza por turnos y esquiva un patrón rojo en movimiento.",
+  description: "El equipo enlaza refugios de 2×2 en el perímetro, comparte vidas y compite por completar los relevos en el menor tiempo.",
   availability: { development: true, production: true },
   catalog: {
     category: "team",
     color: "#5fff9e",
     durationLabel: "90s",
-    modeLabel: "Cooperativo por turnos",
+    modeLabel: "Relevos cooperativos",
     audioLabel: "Efectos",
     rules: [
-      "Cada jugador empieza sobre su plataforma de 2×2",
-      "Cuando desaparezca tu plataforma, busca la nueva de tu color",
-      "Muévete antes de que termine el turno",
-      "No pises el patrón rojo en movimiento"
+      "Cada jugador empieza en un refugio de 2×2 del perímetro",
+      "Los refugios aparecen separados y siempre en el borde",
+      "El tiempo de cada relevo se suma al equipo: menos es mejor",
+      "Evitad el bloque rojo de 8×8; las vidas son compartidas"
     ]
   },
   players: {
@@ -39,12 +39,11 @@ export const manifest: GameManifest = {
     playerCount: 4,
     difficulty: "medium",
     actions: [
-      { atMillis: 100, type: "press", x: 1, y: 1 },
-      { atMillis: 180, type: "press", x: 13, y: 1 },
-      { atMillis: 260, type: "press", x: 13, y: 29 },
-      { atMillis: 340, type: "press", x: 1, y: 29 },
-      { atMillis: 2_450, type: "release", x: 1, y: 1 },
-      { atMillis: 2_500, type: "press", x: 5, y: 19 }
+      { atMillis: 100, type: "press", x: 0, y: 0 },
+      { atMillis: 180, type: "press", x: 14, y: 0 },
+      { atMillis: 260, type: "press", x: 14, y: 30 },
+      { atMillis: 340, type: "press", x: 0, y: 30 },
+      { atMillis: 2_450, type: "release", x: 0, y: 0 }
     ],
     captureStartMillis: 2_700,
     frameCount: 30,
