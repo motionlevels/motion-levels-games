@@ -36,7 +36,8 @@ test("status dock renders newest events first with consistent timestamps", () =>
 });
 
 test("event stream helpers own stable identity and follow threshold", () => {
-  assert.equal(eventKey(events[0]), "4823:score:Punto para azul");
+  assert.equal(eventKey(events[0], 0), "4823:score:Punto para azul:0");
+  assert.notEqual(eventKey(events[0], 0), eventKey(events[0], 1));
   assert.equal(isEventStreamAtLatest(0), true);
   assert.equal(isEventStreamAtLatest(1), true);
   assert.equal(isEventStreamAtLatest(1.01), false);

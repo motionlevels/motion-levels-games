@@ -18,11 +18,15 @@
     "test:coverage:sdk": "tsx --test --experimental-test-coverage --test-coverage-include='packages/game-sdk/src/**' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=80 packages/game-sdk/test/*.test.ts",
     "test:coverage:display": "tsx --test --experimental-test-coverage --test-coverage-include='packages/display-kit/src/**' --test-coverage-lines=75 --test-coverage-functions=60 --test-coverage-branches=70 packages/display-kit/test/*.test.ts",
     "test:coverage:games": "tsx --test --experimental-test-coverage --test-coverage-include='games/*/src/**' --test-coverage-lines=85 --test-coverage-functions=80 --test-coverage-branches=80 games/*/test/*.test.ts",
-    "test:coverage": "npm run test:coverage:sdk && npm run test:coverage:display && npm run test:coverage:games",
+    "test:coverage:runtimes": "tsx --test --experimental-test-coverage --test-coverage-include='packages/agent-runtime/src/**' --test-coverage-include='packages/replay-runtime/src/**' --test-coverage-include='packages/character-runtime/src/**' --test-coverage-include='packages/agent-analytics/src/**' --test-coverage-include='packages/three-renderer/src/**' --test-coverage-lines=90 --test-coverage-functions=80 --test-coverage-branches=65 packages/agent-runtime/test/*.test.ts packages/replay-runtime/test/*.test.ts packages/character-runtime/test/*.test.ts packages/agent-analytics/test/*.test.ts packages/three-renderer/test/*.test.ts",
+    "test:coverage": "npm run test:coverage:sdk && npm run test:coverage:display && npm run test:coverage:games && npm run test:coverage:runtimes",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspaces --if-present",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
     "validate:games": "tsx scripts/validate-games.ts",
+    "validate:characters": "tsx scripts/validate-character-assets.ts",
+    "optimize:character-asset": "tsx scripts/optimize-character-asset.ts",
+    "benchmark:agents": "tsx scripts/benchmark-cruce-agents.ts",
     "create:game": "tsx scripts/create-game.ts",
     "test:scaffold": "tsx scripts/test-create-game.ts",
     "playtest": "tsx scripts/playtest-games.ts",
@@ -30,9 +34,15 @@
     "generate:media": "tsx scripts/generate-media.ts",
     "build:bundle": "tsx scripts/build-bundle.ts",
     "verify:bundle": "tsx scripts/verify-bundle.ts",
-    "check": "npm run lint && npm run validate:games && npm run typecheck && npm run test:all && npm run build && npm run playtest"
+    "check": "npm run lint && npm run validate:games && npm run validate:characters && npm run benchmark:agents && npm run typecheck && npm run test:all && npm run build && npm run playtest"
+  },
+  "overrides": {
+    "@gltf-transform/cli": {
+      "sharp": "0.35.3"
+    }
   },
   "devDependencies": {
+    "@gltf-transform/cli": "4.4.2",
     "@types/node": "^25.0.2",
     "esbuild": "^0.27.3",
     "oxlint": "^1.73.0",

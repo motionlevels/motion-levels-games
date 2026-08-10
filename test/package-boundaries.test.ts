@@ -5,16 +5,32 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const repositoryRoot = new URL("../", import.meta.url);
-const sharedPackages = new Set([
+const gamePackages = new Set([
+  "@motion-levels-games/agent-analytics",
+  "@motion-levels-games/agent-runtime",
   "@motion-levels-games/display-kit",
-  "@motion-levels-games/game-sdk"
+  "@motion-levels-games/game-sdk",
+  "@motion-levels-games/replay-runtime"
+]);
+const playgroundPackages = new Set([
+  ...gamePackages,
+  "@motion-levels-games/character-runtime",
+  "@motion-levels-games/three-renderer"
 ]);
 
 test("workspace source imports respect package ownership", async () => {
   const sourceRoots = [
     { directory: "packages/game-sdk/src", allowed: new Set<string>() },
     { directory: "packages/display-kit/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
-    { directory: "apps/playground/src", allowed: sharedPackages },
+    { directory: "packages/agent-runtime/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
+    { directory: "packages/agent-analytics/src", allowed: new Set(["@motion-levels-games/replay-runtime"]) },
+    { directory: "packages/replay-runtime/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
+    { directory: "packages/character-runtime/src", allowed: new Set<string>() },
+    {
+      directory: "packages/three-renderer/src",
+      allowed: new Set(["@motion-levels-games/character-runtime", "@motion-levels-games/game-sdk"])
+    },
+    { directory: "apps/playground/src", allowed: playgroundPackages },
     ...await gameSourceRoots()
   ];
 
@@ -38,7 +54,7 @@ async function gameSourceRoots() {
     .filter((entry) => entry.isDirectory())
     .map((entry) => ({
       directory: `games/${entry.name}/src`,
-      allowed: sharedPackages
+      allowed: gamePackages
     }));
 }
 

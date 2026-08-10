@@ -20,7 +20,9 @@ job. Keep each layer focused so failures point to the relevant contract.
 - `npm run playtest:browser`: exercises the built playground with a real
   browser, including Ping Pong initialization through the interactive floor's
   tile seams and Duelo initialization at four and eight players through
-  sequential single-mouse floor clicks. Run `npm run build` first.
+  sequential single-mouse floor clicks. The Cruce Agent Lab portion also
+  compares representative native 1920×1080 frames with the checked-in visual
+  baselines. Run `npm run build` first.
 - `npm run check`: the complete local gate: quality checks, all tests, build,
   and deterministic playtests.
 
@@ -34,6 +36,31 @@ the SDK stays framework-agnostic, the display kit may depend only on the SDK,
 games may depend only on shared packages, and the playground discovers games
 without importing individual game packages. Avoid line-count gates and broad
 snapshots; extract cohesive ownership and test its public behavior instead.
+
+## Agent Lab visual baselines
+
+`test/visual-baselines/agent-lab` owns fixed-camera PNGs for countdown,
+launch, hazard response, checkpoint progress, late running, real damage,
+victory, and ten-agent stress. The browser gate decodes both images, downsizes
+them to 240×135, and compares RGB values with the reviewed tolerance in
+`scripts/lib/visual-regression.ts`. Downsampling and a small channel threshold
+absorb GPU edge-rasterisation differences; missing characters, a black floor,
+wrong cameras, large pose changes, and layout regressions still fail CI with
+the expected and actual ratios.
+
+Update baselines only after opening and reviewing every native capture:
+
+```sh
+npm run build
+MOTION_LEVELS_GAMES_PLAYTEST_GAME=cruce-galactico \
+MOTION_LEVELS_GAMES_UPDATE_VISUAL_BASELINES=1 \
+npm run playtest:browser
+```
+
+Never update baselines merely to make a failure green. An intentional visual
+change must include the new PNGs and a short rationale in the implementation
+note or pull request. `test/visual-regression.test.ts` proves both the accepted
+rasterisation-drift path and the structural-failure alert path.
 
 ## Coverage Floors
 

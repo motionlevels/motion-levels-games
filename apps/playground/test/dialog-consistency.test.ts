@@ -157,7 +157,7 @@ test("header selectors keep stable field widths across selected values", () => {
 
   assert.match(
     styleSource,
-    /@container display-panel \(max-width: 660px\)[\s\S]*?\.playground-controls label\s*\{[^}]*width:\s*100%;/s,
+    /@media \(max-width: 760px\)[\s\S]*?\.playground-controls label\s*\{[^}]*width:\s*100%;/s,
     "narrow layouts must still let fields fill their responsive grid cells"
   );
 });
@@ -175,18 +175,51 @@ test("narrow playground headers use an explicit responsive grid", () => {
   }
   assert.match(
     styleSource,
-    /@container display-panel \(max-width: 660px\)[\s\S]*?grid-template-areas:[\s\S]*?"title title"[\s\S]*?"game players"[\s\S]*?"difficulty seed"[\s\S]*?"game-actions surface-actions"/,
-    "narrow headers must use the intentional four-row layout"
+    /@media \(max-width: 760px\)[\s\S]*?grid-template-areas:[\s\S]*?"title title title title"[\s\S]*?"game players difficulty seed"[\s\S]*?"game-actions surface-actions surface-actions surface-actions"/,
+    "narrow headers must use the intentional compact three-row layout"
   );
   assert.match(
     styleSource,
-    /@container display-panel \(max-width: 660px\)[\s\S]*?\.playground-controls\s*\{[^}]*display:\s*contents;/,
+    /@media \(max-width: 760px\)[\s\S]*?\.playground-controls\s*\{[^}]*display:\s*contents;/,
     "narrow controls must participate in the header grid"
   );
   assert.match(
     styleSource,
-    /@container display-panel \(max-width: 660px\) and \(max-height: 650px\)[\s\S]*?height:\s*min\([\s\S]*?100cqh - var\(--pg-narrow-header-height\)[\s\S]*?100cqw \* 9 \/ 16/,
-    "short narrow previews must fit both the remaining height and their true aspect-ratio width"
+    /@container display-panel \(max-width: 660px\) and \(max-height: 650px\)[\s\S]*?height:\s*min\(100cqh, calc\(100cqw \* 9 \/ 16\)\)/,
+    "short narrow previews must fit their panel now that the header owns a separate row"
+  );
+});
+
+test("the standard top bar owns surface selection at every layout", () => {
+  assert.match(
+    appSource,
+    /<header className="playground-header">[\s\S]*?className="surface-mode-toggle"[\s\S]*?<\/header>[\s\S]*?<section className="playground-grid">/,
+    "surface selection must stay in the shared header instead of either stage panel"
+  );
+  assert.match(
+    appSource,
+    /aria-pressed=\{agentLabActive\}[\s\S]*?disabled=\{selectedGame\.createAgentHarness === undefined\}/,
+    "Agents 3D must remain visible and disabled when a game has no harness"
+  );
+  assert.match(
+    styleSource,
+    /@media \(orientation: portrait\) and \(max-width: 1200px\)[\s\S]*?\.status-dock\s*\{[^}]*grid-column:\s*1 \/ -1;/,
+    "portrait diagnostics must span the workbench instead of overloading one narrow column"
+  );
+  assert.match(
+    styleSource,
+    /@media \(orientation: landscape\) and \(min-width: 1201px\)[\s\S]*?\.floor-panel\s*\{[^}]*grid-row:\s*1 \/ -1;/,
+    "wide landscape must preserve the physical floor's full viewport height"
+  );
+  assert.match(
+    styleSource,
+    /@media \(max-width: 760px\)[\s\S]*?\.floor-panel,[\s\S]*?grid-row:\s*1;[\s\S]*?\.display-preview-box,[\s\S]*?grid-row:\s*2;[\s\S]*?\.status-dock,[\s\S]*?grid-row:\s*3;/,
+    "narrow layouts must keep the floor, display, and diagnostics in an explicit non-overlapping order"
+  );
+  assert.match(
+    styleSource,
+    /\.floor-panel:not\(\.is-agent-lab\)\s*\{[^}]*height:\s*min\(calc\(\(100vw - \(2 \* var\(--stage-pad\)\)\) \* 2\), 720px\);/,
+    "the narrow physical-floor grid row must reserve its rendered 16x32 height"
   );
 });
 

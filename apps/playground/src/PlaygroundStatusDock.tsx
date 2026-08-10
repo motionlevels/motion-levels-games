@@ -92,8 +92,8 @@ export function PlaygroundStatusDock({
           ref={eventStreamRef}
         >
           {events.length > 0 ? (
-            events.map((event) => (
-              <li key={eventKey(event)}>
+            events.map((event, index) => (
+              <li key={eventKey(event, index)}>
                 <time dateTime={`PT${Math.max(0, event.atMillis) / 1000}S`}>
                   {formatElapsedClock(event.atMillis)}
                 </time>

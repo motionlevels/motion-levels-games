@@ -11,8 +11,10 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@motion-levels-games/character-runtime": "0.1.0",
     "@motion-levels-games/display-kit": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
+    "@motion-levels-games/three-renderer": "0.1.0",
     "@vitejs/plugin-react": "^6.0.2",
     "gifenc": "^1.0.3",
     "html-to-image": "^1.11.13",

@@ -1,0 +1,20 @@
+{
+  "name": "@motion-levels-games/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./arcade": "./src/arcade.ts",
+    "./chase": "./src/chase.ts",
+    "./grid": "./src/grid.ts",
+    "./memory": "./src/memory.ts",
+    "./safe-zone": "./src/safe-zone.ts",
+    "./team": "./src/team.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

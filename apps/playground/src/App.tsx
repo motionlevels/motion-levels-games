@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   Bug,
+  Bot,
   Check,
   Copy,
   Dices,
@@ -54,7 +55,13 @@ import {
 import motionLevelsLogo from "./assets/motion-levels-icon.webp";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { eventKey, isEventStreamAtLatest } from "./eventStream.ts";
-import { defaultGame, playgroundGames, type PlaygroundGame } from "./gameRegistry.ts";
+import {
+  defaultGame,
+  playgroundGames,
+  type PlaygroundAgentHarnessFrame,
+  type PlaygroundGame
+} from "./gameRegistry.ts";
+import { AgentLab, type AgentLabController } from "./AgentLab.tsx";
 import { GameConfigControl } from "./GameConfigControl.tsx";
 import {
   generateGameMediaBundle,
@@ -68,7 +75,14 @@ import { PhaseIndicator } from "./PhaseIndicator.tsx";
 import { PlaygroundStatusDock, type ActiveRunSetting } from "./PlaygroundStatusDock.tsx";
 import { PlaygroundSelect } from "./PlaygroundSelect.tsx";
 import { isPlaygroundPaused, updatePauseLocks, type PauseLockSet } from "./pausePolicy.ts";
-import { installPlaygroundApi, type PlaygroundApi, type PlaygroundCaptureSurface, type PlaygroundPointSpace } from "./playgroundApi.ts";
+import {
+  installPlaygroundApi,
+  type AgentLabApi,
+  type AgentLabState,
+  type PlaygroundApi,
+  type PlaygroundCaptureSurface,
+  type PlaygroundPointSpace
+} from "./playgroundApi.ts";
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 
@@ -112,6 +126,10 @@ export function App() {
     () => playgroundGames.find((game) => game.manifest.id === selectedGameId) ?? defaultGame,
     [selectedGameId]
   );
+  const [surfaceMode, setSurfaceMode] = useState<"floor" | "agents">("floor");
+  const surfaceModeRef = useRef<"floor" | "agents">("floor");
+  const agentLabControllerRef = useRef<AgentLabController | null>(null);
+  const [agentLabState, setAgentLabState] = useState<AgentLabState | undefined>(undefined);
   const [seed, setSeed] = useState(DEFAULT_GAME_SEED);
   const [playerCount, setPlayerCount] = useState(defaultGamePlayerCount(initialGame.manifest));
   const [difficulty, setDifficulty] = useState<GameDifficulty>(() => defaultDifficultyFor(initialGame));
@@ -119,6 +137,7 @@ export function App() {
   const [manuallyPaused, setManuallyPaused] = useState(false);
   const [pauseLocks, setPauseLocks] = useState<PauseLockSet>(() => new Set());
   const paused = isPlaygroundPaused(manuallyPaused, pauseLocks);
+  const agentLabActive = surfaceMode === "agents" && selectedGame.createAgentHarness !== undefined;
   const started = useMemo(
     () => {
       const startedGame = createStartedGame(
@@ -182,6 +201,10 @@ export function App() {
   useEffect(() => {
     selectedGameRef.current = selectedGame;
   }, [selectedGame]);
+
+  useEffect(() => {
+    surfaceModeRef.current = surfaceMode;
+  }, [surfaceMode]);
 
   useEffect(() => {
     seedRef.current = seed;
@@ -485,7 +508,11 @@ export function App() {
       playerCountRef.current = nextPlayerCount;
       difficultyRef.current = nextDifficulty;
       gameOptionsRef.current = nextOptions;
+      surfaceModeRef.current = "floor";
+      agentLabControllerRef.current = null;
       setSelectedGameId(nextGame.manifest.id);
+      setSurfaceMode("floor");
+      setAgentLabState(undefined);
       storeSelectedGameId(nextGame.manifest.id);
       setSeed(nextSeed);
       setPlayerCount(nextPlayerCount);
@@ -496,8 +523,29 @@ export function App() {
     [restart]
   );
 
+  const changeSurfaceMode = useCallback((nextMode: "floor" | "agents") => {
+    if (nextMode === "agents" && selectedGameRef.current.createAgentHarness === undefined) {
+      return;
+    }
+    if (nextMode === surfaceModeRef.current) return;
+    releaseActivePlayerInputs();
+    surfaceModeRef.current = nextMode;
+    setSurfaceMode(nextMode);
+    if (nextMode === "floor") {
+      agentLabControllerRef.current = null;
+      setAgentLabState(undefined);
+      restart(
+        seedRef.current,
+        playerCountRef.current,
+        selectedGameRef.current,
+        difficultyRef.current,
+        gameOptionsRef.current
+      );
+    }
+  }, [releaseActivePlayerInputs, restart]);
+
   useEffect(() => {
-    if (paused) {
+    if (paused || agentLabActive) {
       return undefined;
     }
 
@@ -543,11 +591,14 @@ export function App() {
 
     frameId = window.requestAnimationFrame(runFrame);
     return () => window.cancelAnimationFrame(frameId);
-  }, [paused, syncEngineState]);
+  }, [agentLabActive, paused, syncEngineState]);
 
   const handleTilePress = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
       if (pausedRef.current) {
+        return;
+      }
+      if (surfaceModeRef.current === "agents") {
         return;
       }
 
@@ -561,6 +612,9 @@ export function App() {
   const handleTileRelease = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
       if (pausedRef.current) {
+        return;
+      }
+      if (surfaceModeRef.current === "agents") {
         return;
       }
 
@@ -715,18 +769,79 @@ export function App() {
 
   const stepGame = useCallback(
     (millis = DEFAULT_ENGINE_FRAME_MILLIS) => {
+      if (surfaceModeRef.current === "agents" && agentLabControllerRef.current) {
+        const ticks = Math.max(1, Math.round(millis / DEFAULT_ENGINE_FRAME_MILLIS));
+        agentLabControllerRef.current.step(ticks);
+        return;
+      }
       const stepMillis = Number.isFinite(millis) ? Math.max(0, millis) : DEFAULT_ENGINE_FRAME_MILLIS;
       syncEngineState(engineRef.current.step(stepMillis));
     },
     [syncEngineState]
   );
 
+  const handleAgentLabController = useCallback((controller: AgentLabController | null) => {
+    agentLabControllerRef.current = controller;
+    setAgentLabState(controller?.getState());
+  }, []);
+
+  const handleAgentLabFrame = useCallback((nextFrame: PlaygroundAgentHarnessFrame, nextEngine: GameEngine) => {
+    engineRef.current = nextEngine;
+    syncEngineState(nextFrame.state);
+    setAgentLabState(agentLabControllerRef.current?.getState());
+  }, [syncEngineState]);
+
+  const agentLabApi = useMemo<AgentLabApi>(() => {
+    const controller = () => {
+      const current = agentLabControllerRef.current;
+      if (!current) throw new Error("Agent Lab is not active for the selected game");
+      return current;
+    };
+    return {
+      getState: () => {
+        const current = agentLabControllerRef.current;
+        return current
+          ? { ...current.getState(), available: true, active: surfaceModeRef.current === "agents" }
+          : inactiveAgentLabState(
+            selectedGameRef.current.createAgentHarness !== undefined,
+            surfaceModeRef.current === "agents",
+            seedRef.current
+          );
+      },
+      setActive: (active) => changeSurfaceMode(active ? "agents" : "floor"),
+      play: () => controller().play(),
+      pause: () => controller().pause(),
+      step: (ticks) => controller().step(ticks),
+      reset: (options) => controller().reset(options),
+      setAgentCount: (count) => controller().setAgentCount(count),
+      setProfile: (profile) => controller().setProfile(profile),
+      setQualityTier: (tier) => controller().setQualityTier(tier),
+      setSpeed: (nextSpeed) => controller().setSpeed(nextSpeed),
+      selectAgent: (agentId) => controller().selectAgent(agentId),
+      setDebug: (options) => controller().setDebug(options),
+      startRecording: () => controller().startRecording(),
+      stopRecording: () => controller().stopRecording(),
+      exportReplay: () => controller().exportReplay(),
+      replay: {
+        enter: () => controller().replay.enter(),
+        exit: () => controller().replay.exit(),
+        play: () => controller().replay.play(),
+        pause: () => controller().replay.pause(),
+        seek: (tick) => controller().replay.seek(tick),
+        setSpeed: (nextSpeed) => controller().replay.setSpeed(nextSpeed)
+      },
+      capture: (options) => controller().capture(options)
+    };
+  }, [changeSurfaceMode]);
+
   const api = useMemo<PlaygroundApi>(
     () => ({
       getState: () => ({
         gameId: selectedGameRef.current.manifest.id,
         status: snapshotRef.current.phase,
-        paused: pausedRef.current,
+        paused: pausedRef.current || (
+          surfaceModeRef.current === "agents" && (agentLabControllerRef.current?.getState().paused ?? false)
+        ),
         rotatedBoard: false,
         snapshot: snapshotRef.current,
         frame: frameRef.current,
@@ -742,13 +857,19 @@ export function App() {
       }),
       pause: () => setManuallyPausedState(true),
       resume: () => setManuallyPausedState(false),
-      reset: () => restart(
-        seedRef.current,
-        playerCountRef.current,
-        selectedGameRef.current,
-        difficultyRef.current,
-        gameOptionsRef.current
-      ),
+      reset: () => {
+        if (surfaceModeRef.current === "agents" && agentLabControllerRef.current) {
+          agentLabControllerRef.current.reset();
+          return;
+        }
+        restart(
+          seedRef.current,
+          playerCountRef.current,
+          selectedGameRef.current,
+          difficultyRef.current,
+          gameOptionsRef.current
+        );
+      },
       step: stepGame,
       press: (x, y, options) => handleTilePress(x, y, options?.space ?? "physical"),
       release: (x, y, options) => handleTileRelease(x, y, options?.space ?? "physical"),
@@ -766,9 +887,10 @@ export function App() {
         const { capture } = await copySurface(surface);
         return capture;
       },
-      media: generateMedia
+      media: generateMedia,
+      agentLab: agentLabApi
     }),
-    [captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, previewFrameFor, restart, setManuallyPausedState, stepGame]
+    [agentLabApi, captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, previewFrameFor, restart, setManuallyPausedState, stepGame]
   );
 
   useEffect(() => installPlaygroundApi(api), [api]);
@@ -890,11 +1012,13 @@ export function App() {
     fullscreenFallback ? "is-fullscreen-fallback" : ""
   ].filter(Boolean).join(" ");
   const latestEvent = events[0];
-  const displayedPhase = paused ? "paused" : snapshot.phase;
+  const effectivePresentationPaused = paused || (agentLabActive && (agentLabState?.paused ?? false));
+  const displayedPhase = effectivePresentationPaused ? "paused" : snapshot.phase;
   const frameMillis = engineRef.current.frameMillis;
   const frameNumber = frameMillis > 0 ? Math.round(engineRef.current.clockMillis / frameMillis) : 0;
   const debugStats: [string, ReactNode][] = [
     ["Game", selectedGame.manifest.label],
+    ["Surface", agentLabActive ? "Agent Lab" : "Floor"],
     ["Phase", snapshot.phase],
     ["Clock", formatElapsedClock(engineRef.current.clockMillis)],
     ["FPS", engineRef.current.fps],
@@ -928,9 +1052,7 @@ export function App() {
       ref={shellRef}
       style={workbenchStyle}
     >
-      <section className="playground-grid">
-        <article className="display-panel">
-          <header className="playground-header">
+      <header className="playground-header">
             <div className="playground-title">
               <div className="playground-title-row">
                 <img
@@ -1016,7 +1138,13 @@ export function App() {
                 <button
                   aria-label="Restart"
                   className="icon-button"
-                  onClick={() => restart()}
+                  onClick={() => {
+                    if (agentLabActive && agentLabControllerRef.current) {
+                      agentLabControllerRef.current.reset();
+                    } else {
+                      restart();
+                    }
+                  }}
                   title="Restart"
                   type="button"
                 >
@@ -1058,7 +1186,26 @@ export function App() {
               </div>
             </div>
 
-            <div className="surface-toolbar" role="group" aria-label="Debug and capture actions">
+            <div className="surface-toolbar" role="group" aria-label="Surface, debug, and capture actions">
+              <nav className="surface-mode-toggle" aria-label="Simulation surface">
+                <button
+                  aria-pressed={!agentLabActive}
+                  onClick={() => changeSurfaceMode("floor")}
+                  title="Interactive floor"
+                  type="button"
+                >
+                  <LayoutGrid size={14} aria-hidden="true" /> Floor
+                </button>
+                <button
+                  aria-pressed={agentLabActive}
+                  disabled={selectedGame.createAgentHarness === undefined}
+                  onClick={() => changeSurfaceMode("agents")}
+                  title={selectedGame.createAgentHarness ? "3D agents" : "3D agents are not available for this game yet"}
+                  type="button"
+                >
+                  <Bot size={14} aria-hidden="true" /> Agents 3D
+                </button>
+              </nav>
               <section className={`debug-panel ${debugOpen ? "is-open" : ""}`} ref={debugRef}>
                 <button
                   aria-controls="debug-popover"
@@ -1124,8 +1271,8 @@ export function App() {
                         <strong>{events.length}</strong>
                       </div>
                       <ol>
-                        {events.map((event) => (
-                          <li key={eventKey(event)}>
+                        {events.map((event, index) => (
+                          <li key={eventKey(event, index)}>
                             <code>{formatElapsedClock(event.atMillis)}</code>
                             <span>{event.cue}</span>
                             <strong>{event.message}</strong>
@@ -1215,7 +1362,10 @@ export function App() {
                 </div>
               </div>
             ) : null}
-          </header>
+      </header>
+
+      <section className="playground-grid">
+        <article className="display-panel">
 
           <div className="display-preview-box" ref={displayPreviewRef}>
             <div className="display-preview-native" ref={displayNativeRef}>
@@ -1242,15 +1392,29 @@ export function App() {
           />
         </article>
 
-        <article className="panel floor-panel">
-          <FloorPreview
-            className="playground-floor-preview"
-            frame={frame}
-            interactive={!paused}
-            inputResetKey={inputResetSequence}
-            onTilePress={(x, y) => handleTilePress(x, y, "preview")}
-            onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}
-          />
+        <article className={`panel floor-panel agent-surface-panel ${agentLabActive ? "is-agent-lab" : ""}`}>
+          <div className="agent-surface-stage">
+            {agentLabActive && selectedGame.createAgentHarness ? (
+              <AgentLab
+                createHarness={selectedGame.createAgentHarness}
+                difficulty={difficulty}
+                hostPaused={paused}
+                onController={handleAgentLabController}
+                onFrame={handleAgentLabFrame}
+                onSeedChange={changeSeed}
+                seed={seed}
+              />
+            ) : (
+              <FloorPreview
+                className="playground-floor-preview"
+                frame={frame}
+                interactive={!paused}
+                inputResetKey={inputResetSequence}
+                onTilePress={(x, y) => handleTilePress(x, y, "preview")}
+                onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}
+              />
+            )}
+          </div>
         </article>
       </section>
       <div
@@ -1318,6 +1482,27 @@ function pointToPhysicalTile(x: number, y: number, _space: PlaygroundPointSpace)
 
 function randomSeed(): number {
   return MIN_GAME_SEED + Math.floor(Math.random() * (MAX_GAME_SEED - MIN_GAME_SEED + 1));
+}
+
+function inactiveAgentLabState(available: boolean, active: boolean, seed: number): AgentLabState {
+  return {
+    available,
+    active,
+    paused: true,
+    replayMode: false,
+    replayPaused: true,
+    recording: false,
+    agentCount: 0,
+    profile: "mixed",
+    qualityTier: "desktop-medium",
+    speed: 1,
+    replaySpeed: 1,
+    replayEndTick: 0,
+    seed,
+    tick: 0,
+    checksum: "unavailable",
+    debug: { paths: false, reservations: false, targets: false }
+  };
 }
 
 // Re-keys on each value change so the CSS highlight animation replays, giving

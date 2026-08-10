@@ -1,4 +1,6 @@
 import type { Frame, GameConfigOptions, GameDifficulty, GameEvent, GameSnapshot } from "@motion-levels-games/game-sdk";
+import type { CharacterQualityTier } from "@motion-levels-games/character-runtime";
+import type { PlaygroundAgentProfile } from "./gameRegistry.ts";
 import type { RenderableFrame } from "./frameTransforms.ts";
 import type { PlaygroundMediaBundle, PlaygroundMediaOptions } from "./mediaAssets.ts";
 
@@ -15,6 +17,78 @@ export type PlaygroundCapture = {
   width: number;
   height: number;
   dataUrl: string;
+};
+
+export type AgentLabCapture = {
+  surface: "agents3d";
+  width: number;
+  height: number;
+  dataUrl: string;
+};
+
+export type AgentLabDebugOptions = {
+  paths?: boolean;
+  reservations?: boolean;
+  targets?: boolean;
+};
+
+export type AgentLabState = {
+  available: boolean;
+  active: boolean;
+  paused: boolean;
+  replayMode: boolean;
+  replayPaused: boolean;
+  recording: boolean;
+  agentCount: number;
+  profile: PlaygroundAgentProfile;
+  qualityTier: CharacterQualityTier;
+  speed: number;
+  replaySpeed: number;
+  replayEndTick: number;
+  selectedAgentId?: string;
+  seed: number;
+  tick: number;
+  checksum: string;
+  debug: Required<AgentLabDebugOptions>;
+  metrics?: Readonly<Record<string, number | boolean>>;
+  performance?: Readonly<{
+    samples: number;
+    averageFrameMillis: number;
+    p95FrameMillis: number;
+    worstFrameMillis: number;
+    maxDrawCalls: number;
+    maxTriangles: number;
+    maxTextureMegabytes: number;
+    withinBudget: boolean;
+    violations: readonly string[];
+  }>;
+};
+
+export type AgentLabApi = {
+  getState(): AgentLabState;
+  setActive(active: boolean): void;
+  play(): void;
+  pause(): void;
+  step(ticks?: number): void;
+  reset(options?: { newSeed?: boolean }): void;
+  setAgentCount(count: number): void;
+  setProfile(profile: PlaygroundAgentProfile): void;
+  setQualityTier(tier: CharacterQualityTier): void;
+  setSpeed(speed: number): void;
+  selectAgent(agentId?: string): void;
+  setDebug(options: AgentLabDebugOptions): void;
+  startRecording(): void;
+  stopRecording(): void;
+  exportReplay(): string;
+  replay: {
+    enter(): void;
+    exit(): void;
+    play(): void;
+    pause(): void;
+    seek(tick: number): void;
+    setSpeed(speed: number): void;
+  };
+  capture(options?: { width?: number; height?: number }): Promise<AgentLabCapture>;
 };
 
 export type PlaygroundState = {
@@ -47,6 +121,8 @@ export type PlaygroundApi = {
   capture(surfaces?: PlaygroundCaptureSurface[]): Promise<Record<PlaygroundCaptureSurface, PlaygroundCapture>>;
   copy(surface: PlaygroundCaptureSurface): Promise<PlaygroundCapture>;
   media(gameId?: string, options?: PlaygroundMediaOptions): Promise<PlaygroundMediaBundle>;
+  /** Present in current playgrounds; optional in the type for older embedded clients. */
+  agentLab?: AgentLabApi;
 };
 
 declare global {

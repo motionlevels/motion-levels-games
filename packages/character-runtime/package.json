@@ -1,0 +1,16 @@
+{
+  "name": "@motion-levels-games/character-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": ["src", "assets", "ATTRIBUTIONS.md", "README.md"],
+  "exports": {
+    ".": "./src/index.ts",
+    "./assets/*": "./assets/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

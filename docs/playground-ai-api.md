@@ -117,8 +117,123 @@ type PlaygroundApi = {
       playerCount?: number;
     }
   ): Promise<PlaygroundMediaBundle>;
+
+  agentLab?: AgentLabApi;
 };
 ```
+
+## Deterministic 3D Agent Lab
+
+Cruce Galáctico exports the first optional deterministic agent harness. Select
+that game, activate the 3D surface, and drive it through the same global API:
+
+```js
+const lab = ml.agentLab;
+lab.setActive(true);
+lab.setAgentCount(10);
+lab.setProfile("expert");
+lab.setQualityTier("capture");
+lab.pause();
+lab.reset();
+lab.step(125);
+
+console.log(lab.getState()); // seed, tick, checksum, metrics, debug, performance
+const capture = await lab.capture(); // deterministic 1920x1080 PNG by default
+
+lab.stopRecording();
+const replayJson = lab.exportReplay();
+lab.replay.enter();
+lab.replay.seek(75);
+lab.replay.setSpeed(0.5);
+lab.replay.play();
+```
+
+The optional surface reports `available: false` for games without a harness.
+Its full browser contract is:
+
+```ts
+type AgentLabApi = {
+  getState(): {
+    available: boolean;
+    active: boolean;
+    paused: boolean;
+    replayMode: boolean;
+    replayPaused: boolean;
+    recording: boolean;
+    agentCount: number;
+    profile: "mixed" | "cautious" | "balanced" | "bold" | "helper" | "explorer" | "expert";
+    qualityTier: "venue-high" | "desktop-medium" | "mobile-low" | "capture";
+    speed: number;
+    replaySpeed: number;
+    replayEndTick: number;
+    selectedAgentId?: string;
+    seed: number;
+    tick: number;
+    checksum: string;
+    debug: { paths: boolean; reservations: boolean; targets: boolean };
+    metrics?: Record<string, number | boolean>;
+    performance?: {
+      samples: number;
+      averageFrameMillis: number;
+      p95FrameMillis: number;
+      worstFrameMillis: number;
+      maxDrawCalls: number;
+      maxTriangles: number;
+      maxTextureMegabytes: number;
+      withinBudget: boolean;
+      violations: readonly string[];
+    };
+  };
+  setActive(active: boolean): void;
+  play(): void;
+  pause(): void;
+  step(ticks?: number): void;
+  reset(options?: { newSeed?: boolean }): void;
+  setAgentCount(count: number): void; // clamped to 1..10
+  setProfile(profile: string): void;
+  setQualityTier(tier: string): void;
+  setSpeed(speed: number): void; // 0.25..4
+  selectAgent(agentId?: string): void;
+  setDebug(options: { paths?: boolean; reservations?: boolean; targets?: boolean }): void;
+  startRecording(): void;
+  stopRecording(): void;
+  exportReplay(): string;
+  replay: {
+    enter(): void;
+    exit(): void;
+    play(): void;
+    pause(): void;
+    seek(tick: number): void;
+    setSpeed(speed: number): void;
+  };
+  capture(options?: { width?: number; height?: number }): Promise<{
+    surface: "agents3d";
+    width: number;
+    height: number;
+    dataUrl: string;
+  }>;
+};
+```
+
+Agent Lab `step()` counts fixed 20 ms ticks, unlike the root `ml.step()` which
+accepts milliseconds. The lab's autonomous actions still enter the real game
+as timestamped floor press/release operations. Three.js consumes only the
+authoritative frame and agent presentation snapshots; disabling, seeking, or
+disposing the renderer cannot change the recorded checksum or outcome.
+
+While recording, Agent Lab retains every exact `PlaygroundAgentHarnessFrame` in
+memory. A batched `step(n)` advances authority as `n` consecutive one-tick
+steps, records every resulting frame, and renders only the final frame. Replay
+enter, seek, play, and single-step select those retained frames; they never
+construct a new harness or ask the current AI implementation to regenerate the
+run. Exiting replay restores the parked live harness at the point where live
+execution stopped.
+
+The exact presentation trajectory is intentionally page-local. `exportReplay()`
+remains the portable input/action/checksum artifact, but it does not contain the
+full Agent Lab presentation and debug frames and therefore cannot reproduce
+that exact 3D trajectory after a reload or in another browser by itself. There
+is currently no Agent Lab replay-import API.
 
 ## Coordinates
 

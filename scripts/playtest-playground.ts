@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { chromium, type Page } from "playwright";
+import { characterQualityProfiles } from "../packages/character-runtime/src/index.ts";
+import {
+  AGENT_LAB_VISUAL_THRESHOLDS,
+  evaluateVisualRegression
+} from "./lib/visual-regression.ts";
 
 type BrowserPlaygroundCapture = {
   dataUrl: string;
@@ -13,6 +18,7 @@ type BrowserPlaygroundCapture = {
 
 type BrowserPlaygroundState = {
   clockMillis: number;
+  difficulty: "easy" | "medium" | "hard" | "expert";
   gameId: string;
   paused: boolean;
   playerCount: number;
@@ -83,6 +89,51 @@ type BrowserPlaygroundMediaAsset = {
 
 type BrowserPlaygroundWindow = Window & {
   ml?: {
+    agentLab?: {
+      capture(options?: { width?: number; height?: number }): Promise<BrowserPlaygroundCapture>;
+      exportReplay(): string;
+      getState(): {
+        active: boolean;
+        agentCount: number;
+        available: boolean;
+        checksum: string;
+        metrics?: Record<string, number | boolean>;
+        paused: boolean;
+        performance?: {
+          p95FrameMillis: number;
+          maxDrawCalls: number;
+          maxTriangles: number;
+          maxTextureMegabytes: number;
+          withinBudget: boolean;
+          violations: string[];
+        };
+        replayEndTick: number;
+        replayMode: boolean;
+        seed: number;
+        tick: number;
+      };
+      pause(): void;
+      play(): void;
+      reset(options?: { newSeed?: boolean }): void;
+      selectAgent(agentId?: string): void;
+      setActive(active: boolean): void;
+      setAgentCount(count: number): void;
+      setDebug(options: { paths?: boolean; reservations?: boolean; targets?: boolean }): void;
+      setProfile(profile: "mixed" | "cautious" | "balanced" | "bold" | "helper" | "explorer" | "expert"): void;
+      setQualityTier(tier: "venue-high" | "desktop-medium" | "mobile-low" | "capture"): void;
+      setSpeed(speed: number): void;
+      startRecording(): void;
+      step(ticks?: number): void;
+      stopRecording(): void;
+      replay: {
+        enter(): void;
+        exit(): void;
+        pause(): void;
+        play(): void;
+        seek(tick: number): void;
+        setSpeed(speed: number): void;
+      };
+    };
     capture(surfaces: string[]): Promise<Record<string, BrowserPlaygroundCapture>>;
     getState(): BrowserPlaygroundState;
     media(gameId: string, options: {
@@ -103,6 +154,18 @@ const port = Number(process.env.MOTION_LEVELS_GAMES_PLAYTEST_PORT || 4174);
 const baseURL = `http://127.0.0.1:${port}`;
 const captureDirectory = process.env.MOTION_LEVELS_GAMES_CAPTURE_DIR;
 const focusedGame = process.env.MOTION_LEVELS_GAMES_PLAYTEST_GAME;
+const updateAgentLabVisualBaselines = process.env.MOTION_LEVELS_GAMES_UPDATE_VISUAL_BASELINES === "1";
+const agentLabVisualBaselineDirectory = path.join(repoRoot, "test", "visual-baselines", "agent-lab");
+const agentLabVisualBaselineNames = new Set([
+  "cruce-agent-lab-replay-countdown-tick-75",
+  "cruce-agent-lab-replay-launch-tick-125",
+  "cruce-agent-lab-replay-hazard-response-tick-217",
+  "cruce-agent-lab-replay-checkpoint-one-tick-347",
+  "cruce-agent-lab-replay-late-run-tick-920",
+  "cruce-agent-lab-replay-victory-tick-1125",
+  "cruce-agent-lab-damage",
+  "cruce-agent-lab-ten-agent-stress"
+]);
 const dueloFourPlayerZones: Array<[number, number]> = [[0, 0], [12, 28], [0, 28], [12, 0]];
 const dueloEightPlayerZones: Array<[number, number]> = [
   ...dueloFourPlayerZones,
@@ -139,7 +202,10 @@ try {
     if (focusedGame === "memory-challenge") {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
     } else if (focusedGame === "cruce-galactico") {
-      console.log(JSON.stringify({ cruceGalactico: await playtestCruceGalactico(page) }, null, 2));
+      console.log(JSON.stringify({
+        cruceAgentLab: await playtestCruceAgentLab(page),
+        cruceGalactico: await playtestCruceGalactico(page)
+      }, null, 2));
     } else if (focusedGame === "equilibrio") {
       console.log(JSON.stringify({ equilibrio: await playtestEquilibrio(page) }, null, 2));
     } else if (focusedGame === "estela") {
@@ -170,8 +236,9 @@ try {
       const equilibrioResult = await playtestEquilibrio(page);
       const guardianesResult = await playtestGuardianes(page);
       const sueloSeguroResult = await playtestSueloSeguro(page);
+      const cruceAgentLabResult = await playtestCruceAgentLab(page);
 
-      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, equilibrio: equilibrioResult, guardianes: guardianesResult, sueloSeguro: sueloSeguroResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, equilibrio: equilibrioResult, guardianes: guardianesResult, sueloSeguro: sueloSeguroResult, cruceAgentLab: cruceAgentLabResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
     }
   } finally {
     await browser.close();
@@ -242,11 +309,15 @@ async function playtestCruceGalactico(page: Page) {
       const api = (window as BrowserPlaygroundWindow).ml;
       if (!api) throw new Error("window.ml is not ready");
       if (lives < 2) api.step(1_600);
-      const hazard = api.getState().snapshot.hazards?.find((candidate) => candidate.x >= 0);
+      const hazard = api.getState().snapshot.hazards?.find(
+        (candidate) => candidate.x >= 0 && candidate.x + candidate.width <= 16
+      );
       if (!hazard) throw new Error("Cruce Galáctico has no visible hazard");
-      api.press(hazard.x, hazard.y);
+      const x = hazard.x + Math.floor(hazard.width / 2);
+      const y = hazard.y + Math.floor(hazard.height / 2);
+      api.press(x, y);
       api.step(20);
-      api.release(hazard.x, hazard.y);
+      api.release(x, y);
     }, expectedLives);
     await page.waitForFunction((lives) => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.lives === lives, expectedLives);
     if (expectedLives === 2) {
@@ -287,6 +358,175 @@ async function playtestCruceGalactico(page: Page) {
     captures: ["waiting", "starting", "running", "damaged", "finished-loss", "finished-win"],
     gameId: won.gameId,
     checkpoint: won.snapshot.checkpoint
+  };
+}
+
+async function playtestCruceAgentLab(page: Page) {
+  await page.locator(".control-game select").selectOption("cruce-galactico");
+  await page.waitForFunction(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    return api?.getState().gameId === "cruce-galactico" && api.agentLab?.getState().available === true;
+  });
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    lab.setActive(true);
+  });
+  await page.locator(".agent-lab-canvas").waitFor({ state: "visible" });
+
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    lab.pause();
+    lab.setAgentCount(3);
+    lab.setProfile("expert");
+    lab.setQualityTier("capture");
+    lab.setSpeed(1);
+    lab.setDebug({ paths: true, reservations: true, targets: true });
+    lab.reset();
+    for (let batch = 0; batch < 40 && lab.getState().metrics?.completed !== true; batch += 1) {
+      lab.step(50);
+    }
+    lab.selectAgent("cruce-agent-01");
+  });
+  const liveState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  assert.ok(liveState, "Agent Lab state must be available");
+  assert.equal(liveState.agentCount, 3);
+  assert.equal(liveState.metrics?.completed, true);
+  assert.ok(liveState.tick > 0 && liveState.tick <= 2_000);
+  assert.match(liveState.checksum, /^[0-9a-f]{8}$/);
+  assert.equal(liveState.paused, true);
+  const liveCapture = await captureAgentLab(page, "cruce-agent-lab-live-victory");
+
+  const replayExport = await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    lab.stopRecording();
+    const serialized = lab.exportReplay();
+    lab.replay.enter();
+    lab.replay.seek(75);
+    return serialized;
+  });
+  const parsedReplay = JSON.parse(replayExport) as { frames?: unknown[]; header?: { gameId?: string; tickRate?: number } };
+  assert.equal(parsedReplay.header?.gameId, "cruce-galactico");
+  assert.equal(parsedReplay.header?.tickRate, 50);
+  assert.ok((parsedReplay.frames?.length ?? 0) > 1_125);
+
+  const replayCaptures: BrowserPlaygroundCapture[] = [];
+  for (const [tick, label] of [
+    [75, "countdown"],
+    [125, "launch"],
+    [217, "hazard-response"],
+    [347, "checkpoint-one"],
+    [920, "late-run"],
+    [1_125, "victory"]
+  ] as const) {
+    await page.evaluate((replayTick) => {
+      const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+      if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+      lab.replay.seek(replayTick);
+    }, tick);
+    const replayStateAtTick = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+    assert.equal(replayStateAtTick?.tick, tick);
+    replayCaptures.push(await captureAgentLab(page, `cruce-agent-lab-replay-${label}-tick-${tick}`));
+  }
+  const replayCapture = replayCaptures[0];
+  assert.ok(replayCapture, "the fixed replay must produce its idle capture");
+  const repeatCapture = await page.evaluate(async () => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    lab.replay.seek(75);
+    return lab.capture();
+  });
+  assert.equal(repeatCapture.dataUrl, replayCapture.dataUrl, "fixed replay seek must render an identical PNG");
+  const replayState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  assert.equal(replayState?.replayMode, true);
+  assert.equal(replayState?.tick, 75);
+
+  await page.locator(".control-difficulty select").selectOption("expert");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().difficulty === "expert");
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    lab.replay.exit();
+    lab.setAgentCount(10);
+    lab.setProfile("helper");
+    lab.setQualityTier("capture");
+    lab.reset();
+    lab.pause();
+    for (let batch = 0; batch < 80 && Number(lab.getState().metrics?.damage ?? 0) === 0; batch += 1) {
+      lab.step(25);
+    }
+  });
+  const damageState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  assert.equal(damageState?.agentCount, 10);
+  assert.ok(Number(damageState?.metrics?.damage ?? 0) > 0, "expert/helper fixture must reach a real damage state");
+  const damageCapture = await captureAgentLab(page, "cruce-agent-lab-damage");
+
+  await page.locator(".control-difficulty select").selectOption("medium");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().difficulty === "medium");
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    lab.setAgentCount(10);
+    lab.setProfile("expert");
+    lab.setQualityTier("desktop-medium");
+    lab.reset();
+    lab.pause();
+    for (let batch = 0; batch < 40 && lab.getState().metrics?.completed !== true; batch += 1) {
+      lab.step(50);
+    }
+  });
+  const stressState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  assert.equal(stressState?.agentCount, 10);
+  assert.ok((stressState?.tick ?? 0) > 0 && (stressState?.tick ?? 0) <= 2_000);
+  assert.equal(stressState?.metrics?.completed, true);
+  assert.equal(stressState?.metrics?.deadlocks, 0);
+  assert.ok(
+    Number(stressState?.metrics?.routeDiversity ?? 0) >= 0.8,
+    `ten-agent route diversity is too low: ${String(stressState?.metrics?.routeDiversity)}`
+  );
+  assert.ok(stressState?.performance, "10-agent stress run must report renderer performance");
+  const performance = stressState.performance;
+  const desktopBudget = characterQualityProfiles["desktop-medium"];
+  assert.ok(performance.maxDrawCalls <= (
+    desktopBudget.maxDrawCallsPerCharacter * stressState.agentCount
+    + desktopBudget.fixedSceneDrawCallAllowance
+  ), `draw calls exceed desktop budget: ${performance.maxDrawCalls}`);
+  assert.ok(
+    performance.maxTriangles <= desktopBudget.maxTrianglesPerCharacter * stressState.agentCount,
+    `triangles exceed desktop budget: ${performance.maxTriangles}`
+  );
+  assert.ok(
+    performance.maxTextureMegabytes <= desktopBudget.maxTextureMegabytes,
+    `textures exceed desktop budget: ${performance.maxTextureMegabytes} MB`
+  );
+  assert.deepEqual(
+    performance.violations.filter((violation) => violation !== "frame-time"),
+    [],
+    `structural renderer budget violations: ${performance.violations.join(", ")}`
+  );
+  const stressCapture = await captureAgentLab(page, "cruce-agent-lab-ten-agent-stress");
+
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    lab.setActive(false);
+  });
+  await page.locator(".ml-floor-interactive").waitFor({ state: "visible" });
+
+  return {
+    captures: [
+      liveCapture.surface,
+      ...replayCaptures.map((capture) => capture.surface),
+      damageCapture.surface,
+      stressCapture.surface
+    ],
+    deterministicReplayPng: true,
+    liveChecksum: liveState.checksum,
+    replayTick: replayState?.tick,
+    stress: stressState?.metrics,
+    performance: stressState?.performance
   };
 }
 
@@ -1612,6 +1852,124 @@ async function captureNativeDisplay(page: Page, name: string): Promise<void> {
     animations: "disabled",
     path: path.join(captureDirectory, `${name}-preview.png`)
   });
+}
+
+async function captureAgentLab(page: Page, name: string): Promise<BrowserPlaygroundCapture> {
+  const capture = await page.evaluate(async () => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Cruce Agent Lab API is unavailable");
+    return lab.capture({ width: 1_920, height: 1_080 });
+  });
+  assert.equal(capture.surface, "agents3d");
+  assert.equal(capture.width, 1_920);
+  assert.equal(capture.height, 1_080);
+  assert.match(capture.dataUrl, /^data:image\/png;base64,/);
+  if (captureDirectory) {
+    await mkdir(captureDirectory, { recursive: true });
+    const bytes = Buffer.from(capture.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
+    await writeFile(path.join(captureDirectory, `${name}.png`), bytes);
+  }
+  await verifyAgentLabVisualBaseline(page, capture, name);
+  return capture;
+}
+
+async function verifyAgentLabVisualBaseline(
+  page: Page,
+  capture: BrowserPlaygroundCapture,
+  name: string
+): Promise<void> {
+  if (!agentLabVisualBaselineNames.has(name)) return;
+  const currentBytes = Buffer.from(capture.dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
+  const baselinePath = path.join(agentLabVisualBaselineDirectory, `${name}.png`);
+  if (updateAgentLabVisualBaselines) {
+    await mkdir(agentLabVisualBaselineDirectory, { recursive: true });
+    await writeFile(baselinePath, currentBytes);
+    return;
+  }
+
+  let baselineBytes: Buffer;
+  try {
+    baselineBytes = await readFile(baselinePath);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Missing Agent Lab visual baseline ${baselinePath}: ${reason}`, { cause: error });
+  }
+  const baselineDataUrl = `data:image/png;base64,${baselineBytes.toString("base64")}`;
+  const stats = await page.evaluate(async ({ baseline, current }) => {
+    const baselineImage = new Image();
+    const currentImage = new Image();
+    await Promise.all([
+      new Promise<void>((resolve, reject) => {
+        baselineImage.addEventListener("load", () => resolve(), { once: true });
+        baselineImage.addEventListener(
+          "error",
+          () => reject(new Error("Could not decode visual-regression baseline PNG")),
+          { once: true }
+        );
+        baselineImage.src = baseline;
+      }),
+      new Promise<void>((resolve, reject) => {
+        currentImage.addEventListener("load", () => resolve(), { once: true });
+        currentImage.addEventListener(
+          "error",
+          () => reject(new Error("Could not decode visual-regression capture PNG")),
+          { once: true }
+        );
+        currentImage.src = current;
+      })
+    ]);
+    const sampleWidth = 240;
+    const sampleHeight = 135;
+    const baselineCanvas = document.createElement("canvas");
+    baselineCanvas.width = sampleWidth;
+    baselineCanvas.height = sampleHeight;
+    const baselineContext = baselineCanvas.getContext("2d", { willReadFrequently: true });
+    if (!baselineContext) throw new Error("Visual-regression baseline canvas is unavailable");
+    baselineContext.imageSmoothingEnabled = true;
+    baselineContext.imageSmoothingQuality = "high";
+    baselineContext.drawImage(baselineImage, 0, 0, sampleWidth, sampleHeight);
+    const baselinePixels = baselineContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
+
+    const currentCanvas = document.createElement("canvas");
+    currentCanvas.width = sampleWidth;
+    currentCanvas.height = sampleHeight;
+    const currentContext = currentCanvas.getContext("2d", { willReadFrequently: true });
+    if (!currentContext) throw new Error("Visual-regression capture canvas is unavailable");
+    currentContext.imageSmoothingEnabled = true;
+    currentContext.imageSmoothingQuality = "high";
+    currentContext.drawImage(currentImage, 0, 0, sampleWidth, sampleHeight);
+    const currentPixels = currentContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
+    let differentPixels = 0;
+    let totalChannelDelta = 0;
+    for (let offset = 0; offset < baselinePixels.length; offset += 4) {
+      const red = Math.abs((baselinePixels[offset] ?? 0) - (currentPixels[offset] ?? 0));
+      const green = Math.abs((baselinePixels[offset + 1] ?? 0) - (currentPixels[offset + 1] ?? 0));
+      const blue = Math.abs((baselinePixels[offset + 2] ?? 0) - (currentPixels[offset + 2] ?? 0));
+      totalChannelDelta += red + green + blue;
+      if (Math.max(red, green, blue) > 28) differentPixels += 1;
+    }
+    const totalPixels = sampleWidth * sampleHeight;
+    return {
+      baselineWidth: baselineImage.naturalWidth,
+      baselineHeight: baselineImage.naturalHeight,
+      currentWidth: currentImage.naturalWidth,
+      currentHeight: currentImage.naturalHeight,
+      differentPixels,
+      totalPixels,
+      meanChannelDelta: totalChannelDelta / (totalPixels * 3)
+    };
+  }, { baseline: baselineDataUrl, current: capture.dataUrl });
+
+  assert.equal(stats.baselineWidth, 1_920, `${name} baseline width`);
+  assert.equal(stats.baselineHeight, 1_080, `${name} baseline height`);
+  assert.equal(stats.currentWidth, stats.baselineWidth, `${name} capture width must match baseline`);
+  assert.equal(stats.currentHeight, stats.baselineHeight, `${name} capture height must match baseline`);
+  const evaluation = evaluateVisualRegression(stats, AGENT_LAB_VISUAL_THRESHOLDS);
+  assert.equal(
+    evaluation.passed,
+    true,
+    `${name} visual regression: ${evaluation.failures.join("; ")}`
+  );
 }
 
 async function captureStableNativeDisplay(page: Page, name: string): Promise<void> {

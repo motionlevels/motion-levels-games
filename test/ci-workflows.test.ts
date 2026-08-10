@@ -56,6 +56,8 @@ test("reusable CI separates quality, compatibility, coverage, and runtime checks
   assert.match(checks, /node-version: 24/);
   assert.match(checks, /run: npm run test:coverage/);
   assert.match(checks, /run: npm run test:contracts/);
+  assert.match(checks, /run: npm run validate:characters/);
+  assert.match(checks, /run: npm run benchmark:agents/);
   assert.match(checks, /run: npm run playtest/);
   assert.equal((checks.match(/timeout-minutes:/g) ?? []).length, 4, "every reusable job needs a timeout");
 });

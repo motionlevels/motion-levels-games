@@ -1,5 +1,12 @@
 import { createGame, type GalacticCrossingGameInstance } from "./game.ts";
 
+export {
+  CURATED_CRUCE_DEMONSTRATION_OPTIONS,
+  CURATED_CRUCE_GHOST,
+  CURATED_CRUCE_GOLDEN_CHECKSUM,
+  createCuratedCruceDemonstrationReplay
+} from "./agent-fixtures.ts";
+
 const runningGame = createGame({ playerCount: 1, difficulty: "medium", seed: 137 });
 export const initEvents = runningGame.init(0);
 start(runningGame);

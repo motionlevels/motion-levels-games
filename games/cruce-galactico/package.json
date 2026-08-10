@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./agents": "./src/agents.ts",
     "./fixtures": "./src/fixtures.ts",
+    "./headless": "./src/headless.ts",
+    "./replay": "./src/replay.ts",
     "./manifest": "./src/manifest.ts"
   },
   "scripts": {
@@ -14,8 +17,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@motion-levels-games/agent-runtime": "0.1.0",
     "@motion-levels-games/display-kit": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
+    "@motion-levels-games/replay-runtime": "0.1.0",
     "react": "^19.2.7"
   },
   "devDependencies": {

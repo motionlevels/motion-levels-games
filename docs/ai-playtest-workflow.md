@@ -74,6 +74,50 @@ independent of booking size. Use a strict count only with a documented gameplay
 dependency, and verify that Any mode still waits for the physical players the
 current board requires.
 
+For Cruce Galáctico agent/character work, activate its optional deterministic
+3D surface and keep the seed, tick and checksum with every capture:
+
+```js
+const lab = ml.agentLab;
+lab.setActive(true);
+lab.setAgentCount(10);
+lab.setProfile("expert");
+lab.setQualityTier("capture");
+lab.pause();
+lab.reset();
+lab.step(125);
+const state = lab.getState();
+const image = await lab.capture(); // 1920x1080 PNG
+
+lab.stopRecording();
+lab.replay.enter();
+lab.replay.seek(75);
+const replayImage = await lab.capture();
+```
+
+Agent Lab steps are 20 ms fixed ticks. Exercise same/new seed, one and ten
+agents, every quality tier, local and host pause, single-step, replay
+play/pause/seek/speed, agent selection, path/reservation/target overlays,
+record/export, and a native capture. Repeating the same replay seek must retain
+the checksum and image. Inspect the explanation, target, utility, replan/stuck
+counters and renderer budget report; never infer bot decisions from floor
+colours or animation. Return to Floor mode and confirm normal player input and
+the game-owned player display remain unchanged.
+
+Agent Lab recording retains every exact harness presentation frame in the
+current page. Batched `step(n)` calls still advance authority one tick at a time
+and record all intermediate frames, while rendering only the batch's final
+frame. Replay enter, seek, play, and single-step consume that retained
+trajectory without constructing a harness or regenerating decisions with the
+currently loaded AI; replay exit restores the parked live harness.
+
+Treat this exact presentation trajectory as browser-memory evidence, not as a
+portable file format. `exportReplay()` carries portable inputs, actions, and
+checksums, but not the full Agent Lab 3D/debug frame sequence, and there is no
+Agent Lab import API. Keep captures in the same page session when exact visual
+replay matters; after reload, validate the portable replay through the headless
+replay tooling instead.
+
 Paused games reject player input. For deterministic playtests, call `resume()`,
 send `press`, `release`, or `tap` synchronously, and call `pause()` again before
 advancing with `step()`. Never expect an input sent while paused to be queued or

@@ -20,6 +20,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run validate:games
+      - run: npm run validate:characters
+      - run: npm run benchmark:agents
       - run: npm run typecheck
 
   compatibility-tests:
