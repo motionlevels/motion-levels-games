@@ -30,10 +30,14 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        working-directory: source
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: source
           ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
@@ -151,7 +155,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: motion-levels-games-${{ github.sha }}
-          path: dist
+          path: source/dist
       - name: Verify the artifact and publish its immutable tag
         if: steps.release.outputs.publish == 'true'
         env:
@@ -186,8 +190,8 @@ jobs:
           tag_name: ${{ steps.release.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
           files: |
-            dist/motion-levels-games-${{ github.sha }}.tgz
-            dist/motion-levels-games-${{ github.sha }}.tgz.sha256
+            source/dist/motion-levels-games-${{ github.sha }}.tgz
+            source/dist/motion-levels-games-${{ github.sha }}.tgz.sha256
       - name: Notify platform and venue consumers
         if: steps.release.outputs.notify == 'true'
         env:
