@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace apps/playground",
+    "dev:experience": "tsx scripts/dev-player-experience.ts",
     "build": "npm run build --workspaces --if-present",
     "check:fast": "npm run lint && npm run typecheck",
     "test": "npm run test --workspaces --if-present",

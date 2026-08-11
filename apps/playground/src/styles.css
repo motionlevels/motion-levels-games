@@ -411,6 +411,12 @@ select {
   width: 31px;
 }
 
+.playground-controls .journey-return {
+  gap: 5px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
 .surface-toolbar .icon-button,
 .capture-actions .icon-button {
   min-width: 0;
