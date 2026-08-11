@@ -505,7 +505,14 @@ async function playtestDueloJugar3d(page: Page) {
     lab.replay.play();
     return steppedTick;
   });
-  await page.waitForTimeout(500);
+  await page.waitForFunction(
+    (tick) => {
+      const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+      return (lab?.getState().tick ?? 0) > tick;
+    },
+    steppedReplayTick,
+    { timeout: 10_000 }
+  );
   const playedReplayTick = await page.evaluate(() => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
     if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");

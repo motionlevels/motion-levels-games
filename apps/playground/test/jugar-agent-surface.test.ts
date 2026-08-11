@@ -66,6 +66,7 @@ test("focused Duelo browser acceptance enforces desktop and capture budgets", as
   assert.match(source, /Jugar diagnostics did not become ready/u);
   assert.match(source, /height: "1080px",[\s\S]*?width: "1920px"/u);
   assert.match(source, /canvas\?\.width[\s\S]*?>= 1_920[\s\S]*?canvas\?\.height[\s\S]*?>= 1_080/u);
+  assert.match(source, /waitForFunction\([\s\S]*?getState\(\)\.tick[\s\S]*?> tick[\s\S]*?timeout: 10_000/u);
   assert.doesNotMatch(source, /timeout: 15_000/u);
   assert.match(
     source,
