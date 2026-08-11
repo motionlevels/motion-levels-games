@@ -90,14 +90,19 @@ export type SelectGameRequest = {
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const localPortPattern = /^\d{2,5}$/u;
 
-function developmentMode(): boolean {
-  return import.meta.env?.DEV === true;
+function integratedExperienceMode(): boolean {
+  return import.meta.env?.DEV === true || import.meta.env?.VITE_HOSTED_PLAYER_EXPERIENCE === "true";
 }
 
-function embeddedInPlayground(menuLocation: Location | undefined, development: boolean): boolean {
-  if (!development || !menuLocation) return false;
+function embeddedInPlayground(menuLocation: Location | undefined, integratedExperience: boolean): boolean {
+  if (!integratedExperience || !menuLocation) return false;
   const params = new URLSearchParams(menuLocation.search || "");
   return params.get("embed") === "playground";
+}
+
+function embeddedPlaygroundURL(menuLocation: Location): URL {
+  const playgroundPath = (menuLocation.pathname || "/player-menu/").replace(/player-menu\/?$/u, "");
+  return new URL(playgroundPath || "/", menuLocation.origin);
 }
 
 function configuredLocalPlaygroundPort(): string | undefined {
@@ -107,14 +112,13 @@ function configuredLocalPlaygroundPort(): string | undefined {
 export function localPlaygroundEnabled(
   playgroundPort: string | undefined = undefined,
   menuLocation = typeof window === "undefined" ? undefined : window.location,
-  development = developmentMode(),
+  integratedExperience = integratedExperienceMode(),
 ): boolean {
-  const embedded = embeddedInPlayground(menuLocation, development);
+  const embedded = embeddedInPlayground(menuLocation, integratedExperience);
   const resolvedPort = playgroundPort ?? configuredLocalPlaygroundPort();
   return Boolean(
     menuLocation
-    && loopbackHosts.has(menuLocation.hostname)
-    && (embedded || (resolvedPort && localPortPattern.test(resolvedPort))),
+    && (embedded || (loopbackHosts.has(menuLocation.hostname) && resolvedPort && localPortPattern.test(resolvedPort))),
   );
 }
 
@@ -122,11 +126,11 @@ export function localPlaygroundLaunchURL(
   request: SelectGameRequest,
   playgroundPort: string | undefined = undefined,
   menuLocation = typeof window === "undefined" ? undefined : window.location,
-  development = developmentMode(),
+  integratedExperience = integratedExperienceMode(),
 ): string | undefined {
-  const embedded = embeddedInPlayground(menuLocation, development);
+  const embedded = embeddedInPlayground(menuLocation, integratedExperience);
   const resolvedPort = playgroundPort ?? configuredLocalPlaygroundPort();
-  if (!localPlaygroundEnabled(resolvedPort, menuLocation, development) || !menuLocation) {
+  if (!localPlaygroundEnabled(resolvedPort, menuLocation, integratedExperience) || !menuLocation) {
     return undefined;
   }
   const runtimeID = request.engineGame?.startsWith("motion-levels-games:")
@@ -135,7 +139,7 @@ export function localPlaygroundLaunchURL(
       ? request.game.slice("motion-levels-games:".length)
       : request.game;
   const target = embedded
-    ? new URL("/", menuLocation.origin)
+    ? embeddedPlaygroundURL(menuLocation)
     : new URL(`http://${menuLocation.hostname}:${resolvedPort}/`);
   target.searchParams.set("journey", "1");
   target.searchParams.set("game", runtimeID);
@@ -145,7 +149,7 @@ export function localPlaygroundLaunchURL(
     target.searchParams.set("options", JSON.stringify(request.config));
   }
   const returnTarget = embedded
-    ? new URL("/", menuLocation.origin)
+    ? embeddedPlaygroundURL(menuLocation)
     : new URL(`${menuLocation.protocol}//${menuLocation.host}/`);
   if (embedded) returnTarget.searchParams.set("screen", "menu");
   target.searchParams.set("return", returnTarget.toString());

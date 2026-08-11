@@ -5,6 +5,10 @@ export function initials(value: string): string {
   return value.trim().slice(0, 1).toUpperCase() || "?";
 }
 
+export function publicAssetURL(fileName: string): string {
+  return `${import.meta.env?.BASE_URL || "/"}${fileName.replace(/^\/+/, "")}`;
+}
+
 export function randomUUID(): string {
   const randomUUIDFn = globalThis.crypto?.randomUUID;
   if (typeof randomUUIDFn === "function") return randomUUIDFn.call(globalThis.crypto);

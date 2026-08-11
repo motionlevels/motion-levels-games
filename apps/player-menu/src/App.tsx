@@ -27,7 +27,7 @@ import { ArrowLeftIcon, BackspaceIcon, BoltIcon, CheckIcon, CloseIcon, GamepadIc
 import { FloorPreview } from "./FloorPreview";
 import { LiveFloorView } from "./LiveFloorView";
 import { floorAnimations, type FloorAnim, type RGB } from "./floor";
-import { hexToColor, hexToRGB, randomUUID } from "./utils";
+import { hexToColor, hexToRGB, publicAssetURL, randomUUID } from "./utils";
 import { avatarLabel, firstAvailableColor, gameRosterIssue, playerLabel, rosterSnapshot, statusPlayersForDisplay, type Player, type RosterIssue } from "./roster";
 import {
   catalogPreviewMediaSrcs,
@@ -5078,7 +5078,7 @@ function Preview({
         <FloorPreview anim={anim} orientation="landscape" />
       ) : (
         <div className="preview-logo-fallback" aria-hidden="true">
-          <img src="/motion-levels-icon.webp" alt="" />
+          <img src={publicAssetURL("motion-levels-icon.webp")} alt="" />
         </div>
       )}
     </div>

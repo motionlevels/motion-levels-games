@@ -17,7 +17,11 @@ const loopbackPlayground = {
 } as Location;
 
 test("the full local experience serves the menu from the playground origin", () => {
-  const target = localPlayerMenuUrl(loopbackPlayground, true);
+  const target = localPlayerMenuUrl(loopbackPlayground, {
+    basePath: "/",
+    enabled: true,
+    loopbackOnly: true,
+  });
 
   const url = new URL(target!);
   assert.equal(url.origin, "http://127.0.0.1:4104");
@@ -36,9 +40,32 @@ test("player menu preview stays loopback-only", () => {
   assert.equal(localPlayerMenuUrl({
     hostname: "venue.example.com",
     href: "https://venue.example.com/",
+    origin: "https://venue.example.com",
     port: "443",
     protocol: "https:",
-  } as Location, true), undefined);
+  } as Location, {
+    basePath: "/",
+    enabled: true,
+    loopbackOnly: true,
+  }), undefined);
+});
+
+test("the hosted experience keeps its menu under the platform route", () => {
+  const target = localPlayerMenuUrl({
+    hostname: "platform.motionlevels.obis.dev",
+    href: "https://platform.motionlevels.obis.dev/games/play/",
+    origin: "https://platform.motionlevels.obis.dev",
+    port: "443",
+    protocol: "https:",
+  } as Location, {
+    basePath: "/games/play/",
+    enabled: true,
+    loopbackOnly: false,
+  });
+
+  const url = new URL(target!);
+  assert.equal(url.origin, "https://platform.motionlevels.obis.dev");
+  assert.equal(url.pathname, "/games/play/player-menu/");
 });
 
 test("screen query restores the selected playground preview", () => {

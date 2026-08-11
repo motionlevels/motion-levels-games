@@ -236,7 +236,9 @@ controller connectivity, hardware output, and deployment remain venue-owned.
   `manifest.aliases`. Registries and validators must reject canonical-ID or
   alias collisions. Legacy products without `manifest.slug` keep their
   existing string ID until they receive an explicit identity migration.
-- `apps/playground` is for local development only.
+- `apps/playground` owns both the local development server and the static
+  hosted player-experience artifact. Infrastructure and authentication remain
+  consumer-owned; the release bundle declares only its entry and base path.
 
 ## Jose Dev Branch
 

@@ -15,6 +15,8 @@ The bundle contains:
 - `display/display.js`: the revision-matched browser player-display registry;
 - `menu/`: the revision-matched static player menu, including its production
   entry point declared as `playerMenu.entry`;
+- `playground/`: the complete hosted menu-to-display playground, built for the
+  canonical `/games/play/` path and declared as `playground.entry`;
 - `media/<game>/`: small/full thumbnails, animated WebP previews,
   player-display captures, and generation metadata.
 

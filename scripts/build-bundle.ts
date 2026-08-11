@@ -22,6 +22,24 @@ await mkdir(path.join(outputRoot, "runtime"), { recursive: true });
 await mkdir(path.join(outputRoot, "display"), { recursive: true });
 await stat(path.join(repoRoot, "apps/player-menu/dist/index.html"));
 await cp(path.join(repoRoot, "apps/player-menu/dist"), path.join(outputRoot, "menu"), { recursive: true });
+execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
+  "run",
+  "build",
+  "--workspace",
+  "@motion-levels-games/playground",
+], {
+  cwd: repoRoot,
+  env: {
+    ...process.env,
+    MOTION_LEVELS_BUILD_REVISION: sourceRevision,
+    VITE_HOSTED_PLAYER_EXPERIENCE: "true",
+    VITE_PLAYGROUND_BASE: "/games/play/",
+    VITE_POSTHOG_ENABLED: "false",
+  },
+  stdio: "inherit",
+});
+await stat(path.join(repoRoot, "apps/playground/dist/index.html"));
+await cp(path.join(repoRoot, "apps/playground/dist"), path.join(outputRoot, "playground"), { recursive: true });
 
 await build({
   entryPoints: [path.join(repoRoot, "packages/runner/src/runner.ts")],
@@ -83,6 +101,7 @@ const manifest = {
   runtime: { entry: "runtime/runner.mjs", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
   playerDisplay: { entry: "display/display.js", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
   playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
+  playground: { entry: "playground/index.html", basePath: "/games/play/" },
   catalog: "catalog.json",
   files
 };

@@ -1,4 +1,5 @@
 import { allDifficultyIDs, type DifficultyID } from "./difficulties";
+import { publicAssetURL } from "./utils";
 
 export type { DifficultyID } from "./difficulties";
 
@@ -175,6 +176,6 @@ export const games: GameCard[] = [
     description: "Modo reposo que rota entre animaciones destacadas.",
     rules: ["Rota automáticamente.", "Usa animaciones destacadas.", "Se puede cambiar en cualquier momento."],
     engineGame: "salvapantallas",
-    thumbnailSrc: "/motion-levels-icon.webp",
+    thumbnailSrc: publicAssetURL("motion-levels-icon.webp"),
   },
 ];

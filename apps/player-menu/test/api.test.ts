@@ -51,6 +51,7 @@ describe("kiosk API requests", () => {
       hostname: "127.0.0.1",
       host: "127.0.0.1:4104",
       origin: "http://127.0.0.1:4104",
+      pathname: "/player-menu/",
       protocol: "http:",
       search: "?embed=playground",
     } as Location, true);
@@ -58,6 +59,25 @@ describe("kiosk API requests", () => {
     const url = new URL(target!);
     assert.equal(url.origin, "http://127.0.0.1:4104");
     assert.equal(url.searchParams.get("return"), "http://127.0.0.1:4104/?screen=menu");
+  });
+
+  it("returns a hosted menu launch to the canonical platform playground path", () => {
+    const target = localPlaygroundLaunchURL({
+      game: "motion-levels-games:ping-pong",
+      playerCount: 2,
+      difficulty: "hard",
+    }, undefined, {
+      hostname: "platform.motionlevels.obis.dev",
+      host: "platform.motionlevels.obis.dev",
+      origin: "https://platform.motionlevels.obis.dev",
+      pathname: "/games/play/player-menu/",
+      protocol: "https:",
+      search: "?embed=playground",
+    } as Location, true);
+
+    const url = new URL(target!);
+    assert.equal(url.pathname, "/games/play/");
+    assert.equal(url.searchParams.get("return"), "https://platform.motionlevels.obis.dev/games/play/?screen=menu");
   });
 
   it("ignores embedded playground parameters outside development", () => {
@@ -68,6 +88,7 @@ describe("kiosk API requests", () => {
       hostname: "127.0.0.1",
       host: "127.0.0.1:4104",
       origin: "http://127.0.0.1:4104",
+      pathname: "/player-menu/",
       protocol: "http:",
       search: "?embed=playground",
     } as Location, false), undefined);

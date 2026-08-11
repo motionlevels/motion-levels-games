@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_VENUE_ID?: string;
   readonly VITE_UNLOCK_LEVELS?: string;
   readonly VITE_DEV_SETTINGS_PIN?: string;
+  readonly VITE_HOSTED_PLAYER_EXPERIENCE?: string;
 }
 
 interface ImportMeta {

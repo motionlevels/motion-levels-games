@@ -12,8 +12,10 @@ const playerMenuRoot = path.resolve(playgroundRoot, "../player-menu");
 const webpEncoderWasmPath = path.resolve(playgroundRoot, "../../node_modules/webp-encoder/lib/assets/a.out.wasm");
 const menuBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse --short HEAD") || "dev";
 const menuBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
+const playgroundBase = process.env.VITE_PLAYGROUND_BASE || "/";
 
 export default defineConfig({
+  base: playgroundBase,
   publicDir: path.resolve(playerMenuRoot, "public"),
   define: {
     __MENU_BUILD_REVISION__: JSON.stringify(menuBuildRevision),
