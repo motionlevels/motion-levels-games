@@ -190,10 +190,10 @@ const baseURL = `http://127.0.0.1:${port}`;
 const captureDirectory = process.env.MOTION_LEVELS_GAMES_CAPTURE_DIR;
 const focusedGame = process.env.MOTION_LEVELS_GAMES_PLAYTEST_GAME;
 const updateJugarVisualBaselines = process.env.MOTION_LEVELS_GAMES_UPDATE_VISUAL_BASELINES === "1";
-// Capture permits 250 ms software-WebGL frames and needs 45 retained samples
-// after the Stage warmup. Fifteen seconds is therefore the theoretical sample
-// horizon with no allowance for shader warmup, report cadence, or catalog GC.
-const jugarPerformanceReadinessTimeoutMillis = 30_000;
+// Capture permits 525 ms software-WebGL frames and needs 45 retained samples
+// after the 15-frame Stage warmup. That is a 31.5-second theoretical sampling
+// horizon, so the gate allows 60 seconds for report cadence and catalog GC.
+const jugarPerformanceReadinessTimeoutMillis = 60_000;
 const jugarVisualBaselineDirectory = path.join(repoRoot, "test", "visual-baselines", "jugar-3d");
 const jugarVisualBaselineNames = new Set([
   "duelo-jugar-live-victory",

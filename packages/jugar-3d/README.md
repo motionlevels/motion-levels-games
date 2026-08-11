@@ -46,15 +46,23 @@ avatars:
 | Tier | Samples | Hardware p95 | Software-CI p95 | Calls | Triangles | Geometries | Textures | Programs | GPU proxy |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `mobile-low` | 45 | 34 ms | 175 ms | 170 | 33,000 | 168 | 4 | 9 | 20 MB |
-| `desktop-medium` | 60 | 25 ms | 175 ms | 170 | 33,000 | 168 | 4 | 9 | 24 MB |
+| `desktop-medium` | 60 | 25 ms | 275 ms | 170 | 33,000 | 168 | 4 | 9 | 24 MB |
 | `venue-high` | 60 | 18.5 ms | 175 ms | 170 | 33,000 | 168 | 4 | 9 | 36 MB |
-| `capture` | 45 | 40 ms | 250 ms | 170 | 33,000 | 168 | 4 | 9 | 36 MB |
+| `capture` | 45 | 40 ms | 525 ms | 170 | 33,000 | 168 | 4 | 9 | 36 MB |
 
 Frame time is the browser's `requestAnimationFrame` interval, not a GPU timer.
 The software ceiling keeps SwiftShader/headless CI useful as a regression gate
-without presenting it as venue-hardware certification. Venue-high never fails
-solely because identified software WebGL missed a hardware timing target; its
-structural limits are still enforced. The memory proxy sums discoverable scene
-geometry and texture bytes, one color/depth drawing buffer, and the configured
-directional shadow map. It is a lower bound and excludes driver padding,
-shader binaries, multisample resolve buffers, and compositor memory.
+without presenting it as venue-hardware certification. On 2026-08-10 the
+self-hosted runner's complete 120-sample desktop window measured 238 ms p95;
+the 275 ms ceiling preserves about 15% regression headroom. The local native
+capture/desktop p95 ratio was 1.90, predicting about 452 ms on that runner, so
+the 525 ms capture ceiling preserves comparable headroom. Mobile and venue
+software ceilings remain at 175 ms. Hardware targets remain 25 ms for desktop
+and 40 ms for capture, and a hardware miss stays visible as a `frame-time`
+violation plus the non-certification caveat even when software CI passes.
+Venue-high never fails solely because identified software WebGL missed a
+hardware timing target; every structural limit is still enforced. The memory
+proxy sums discoverable scene geometry and texture bytes, one color/depth
+drawing buffer, and the configured directional shadow map. It is a lower bound
+and excludes driver padding, shader binaries, multisample resolve buffers, and
+compositor memory.

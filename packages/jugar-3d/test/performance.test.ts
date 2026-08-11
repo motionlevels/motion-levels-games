@@ -20,7 +20,7 @@ test("quality tiers expose explicit complete-scene budgets", () => {
   assert.deepEqual(jugarStageQualityBudgets["desktop-medium"], {
     minimumSamples: 60,
     maxP95FrameMillis: 25,
-    maxSoftwareP95FrameMillis: 175,
+    maxSoftwareP95FrameMillis: 275,
     maxDrawCalls: 170,
     maxTriangles: 33_000,
     maxGeometries: 168,
@@ -36,6 +36,11 @@ test("quality tiers expose explicit complete-scene budgets", () => {
     jugarStageQualityBudgets.capture.maxP95FrameMillis
       > jugarStageQualityBudgets["venue-high"].maxP95FrameMillis
   );
+  assert.equal(jugarStageQualityBudgets["mobile-low"].maxSoftwareP95FrameMillis, 175);
+  assert.equal(jugarStageQualityBudgets["venue-high"].maxSoftwareP95FrameMillis, 175);
+  assert.equal(jugarStageQualityBudgets.capture.maxSoftwareP95FrameMillis, 525);
+  assert.equal(jugarStageQualityBudgets.capture.maxP95FrameMillis, 40);
+  assert.equal(jugarStageQualityBudgets.capture.maxDrawCalls, 170);
 });
 
 test("the performance monitor is bounded and evaluates every structural channel", () => {
