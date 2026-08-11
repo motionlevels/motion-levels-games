@@ -2,8 +2,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { Component, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 import { PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
 import type { Frame, GameSnapshot } from "@motion-levels-games/game-sdk";
+import { displayRegistry } from "./displayRegistry.ts";
 import { reportDisplayError } from "./displayError.ts";
-import { gameRegistry } from "./registry.ts";
 
 declare const MOTION_LEVELS_GAMES_REVISION: string;
 declare const MOTION_LEVELS_GAMES_DISPLAY_CSS: string;
@@ -16,41 +16,28 @@ type DisplayInput = {
   onError?: (reason: unknown) => void;
 };
 
-type DisplayErrorBoundaryProps = {
-  children: ReactNode;
-  onError?: (reason: unknown) => void;
-};
-
-class DisplayErrorBoundary extends Component<DisplayErrorBoundaryProps, { failed: boolean }> {
+class DisplayErrorBoundary extends Component<
+  { children: ReactNode; onError?: (reason: unknown) => void },
+  { failed: boolean }
+> {
   override state = { failed: false };
-
-  static getDerivedStateFromError(): { failed: boolean } {
-    return { failed: true };
-  }
-
-  override componentDidCatch(error: unknown, _info: ErrorInfo): void {
-    reportDisplayError(this.props.onError, error);
-  }
-
-  override render(): ReactNode {
-    return this.state.failed ? null : this.props.children;
-  }
+  static getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
+  override componentDidCatch(error: unknown, _info: ErrorInfo): void { reportDisplayError(this.props.onError, error); }
+  override render(): ReactNode { return this.state.failed ? null : this.props.children; }
 }
 
-type MountedDisplay = { root: Root; input: DisplayInput };
-const mounted = new WeakMap<Element, MountedDisplay>();
+const mounted = new WeakMap<Element, Root>();
 
 function render(element: Element, input: DisplayInput): void {
-  const module = gameRegistry.get(input.gameId);
-  if (!module?.PlayerDisplay) throw new Error(`no player display registered for ${input.gameId}`);
-  let entry = mounted.get(element);
-  if (!entry) {
-    entry = { root: createRoot(element), input };
-    mounted.set(element, entry);
+  const module = displayRegistry.get(input.gameId);
+  if (!module) throw new Error(`no player display registered for ${input.gameId}`);
+  let root = mounted.get(element);
+  if (!root) {
+    root = createRoot(element);
+    mounted.set(element, root);
   }
-  entry.input = input;
   const PlayerDisplay = module.PlayerDisplay as ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>;
-  entry.root.render(
+  root.render(
     <DisplayErrorBoundary key={input.gameId} onError={input.onError}>
       <PlayerDisplayRuntimeProvider paused={input.paused === true}>
         <PlayerDisplay snapshot={input.snapshot} frame={input.frame} />
@@ -60,19 +47,16 @@ function render(element: Element, input: DisplayInput): void {
 }
 
 function unmount(element: Element): void {
-  mounted.get(element)?.root.unmount();
+  mounted.get(element)?.unmount();
   mounted.delete(element);
 }
 
-function installStyles(): void {
-  if (document.getElementById("motion-levels-games-display-styles")) return;
+if (!document.getElementById("motion-levels-games-display-styles")) {
   const style = document.createElement("style");
   style.id = "motion-levels-games-display-styles";
   style.textContent = MOTION_LEVELS_GAMES_DISPLAY_CSS;
   document.head.append(style);
 }
-
-installStyles();
 
 window.MotionLevelsGamesDisplay = {
   revision: MOTION_LEVELS_GAMES_REVISION,

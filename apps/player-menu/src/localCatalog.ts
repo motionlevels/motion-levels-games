@@ -1,8 +1,20 @@
 import type { GameManifest } from "@motion-levels-games/game-sdk";
 import type { PlatformGameCatalogEntry } from "./contracts";
+import { isSupportedRuntimeSourceFromProducts } from "./runtimeSourcePolicy.ts";
 
 type ManifestModule = { manifest: GameManifest };
+declare const MOTION_LEVELS_GAMES_SOURCE_REVISION: string;
 const manifestModules = import.meta.glob<ManifestModule>("../../../games/*/src/manifest.ts", { eager: true });
+const publishedLevelProductIds = new Set(
+  Object.values(manifestModules)
+    .map((module) => module.manifest)
+    .filter((manifest) => manifest.availability.production && manifest.tags?.includes("published-levels"))
+    .map((manifest) => manifest.id.toLowerCase()),
+);
+
+export function isSupportedRuntimeSource(sourceKind: string | undefined, sourceGameId: string | undefined): boolean {
+  return isSupportedRuntimeSourceFromProducts(sourceKind, sourceGameId, publishedLevelProductIds);
+}
 
 export function localPlayerExperienceCatalog(): PlatformGameCatalogEntry[] {
   return Object.values(manifestModules)
@@ -42,11 +54,12 @@ function localCatalogEntry(manifest: GameManifest, index: number): PlatformGameC
     difficulties: [...difficulties],
     default_music_ref: "",
     default_music_volume: 1,
-    source_kind: "motion-levels-games",
-    source_contract_version: 1,
+    source_kind: "motion_levels_games",
+    source_revision: MOTION_LEVELS_GAMES_SOURCE_REVISION,
+    source_contract_version: 2,
     source_game_id: manifest.id,
     source_available: true,
     code_editable: true,
-    game_source: { schema: "motion-levels-games-v1", config: manifest.config },
+    game_source: { schema: "motion-levels-games-v2", config: manifest.config },
   };
 }

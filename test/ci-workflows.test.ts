@@ -35,6 +35,9 @@ test("green main builds automatically promote one immutable release", () => {
   assert.match(ci, /404\) echo absent/);
   assert.match(ci, /Unexpected GitHub release API status/);
   assert.match(ci, /git diff --quiet "\$latest_tag\.\.HEAD" -- "\$\{bundle_paths\[@\]\}"/);
+  assert.match(ci, /apps\/player-menu/);
+  assert.match(ci, /apps\/venue-runtime/);
+  assert.match(ci, /latest_major < 2/);
   assert.match(ci, /node scripts\/next-release-tag\.ts/);
   assert.match(ci, /actions\/download-artifact@v4/);
   assert.match(ci, /name: motion-levels-games-\$\{\{ github\.sha \}\}/);
@@ -94,6 +97,7 @@ test("release tags pass the shared quality gate and identify current main exactl
   assert.match(release, /\^games-v\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\$/);
   assert.match(release, /git fetch --no-tags origin main/);
   assert.match(release, /git rev-list -n 1 "\$GITHUB_REF_NAME"/);
+  assert.match(release, /BASH_REMATCH\[1\] >= 2/);
   assert.match(release, /test "\$source_revision" = "\$\(git rev-parse origin\/main\)"/);
   assert.match(release, /^\s{2}checks:[\s\S]*?uses: \.\/\.github\/workflows\/checks\.yml/m);
   assert.match(release, /^\s{2}bundle:[\s\S]*?needs:[\s\S]*?- release-policy[\s\S]*?- checks/m);
@@ -118,6 +122,8 @@ test("release reuses the exact bundle that passed the quality gate", () => {
   assert.match(releaseBundle, /actions\/download-artifact@v4/);
   assert.match(releaseBundle, /name: motion-levels-games-\$\{\{ env\.SOURCE_REVISION \}\}/);
   assert.match(releaseBundle, /sha256sum --check "\$archive\.sha256"/);
+  assert.match(releaseBundle, /apps\/player-menu/);
+  assert.match(releaseBundle, /apps\/venue-runtime/);
   assert.doesNotMatch(releaseBundle, /npm run generate:media|npm run build:bundle/);
 });
 

@@ -78,7 +78,7 @@ export function createPublishedLevelContent(input: PublishedLevelContentInput): 
 /** Validates a cloned GameConfig.content document at the game boundary. */
 export function parsePublishedLevelContent(
   value: GameContent | undefined,
-  expectedGameId: string,
+  expectedGameId?: string,
   aliases: readonly string[] = []
 ): PublishedLevelContent {
   if (!value || value.schema !== PUBLISHED_LEVEL_CONTENT_SCHEMA) {
@@ -87,9 +87,9 @@ export function parsePublishedLevelContent(
   if (typeof value.contentRevision !== "string") {
     throw new Error("content.contentRevision must be supplied by the content boundary");
   }
-  const canonicalExpectedGameId = requiredStableId(expectedGameId, "expectedGameId");
   const contentGameId = requiredStableId(value.gameId, "content.gameId");
-  if (contentGameId !== canonicalExpectedGameId) {
+  const canonicalExpectedGameId = expectedGameId ? requiredStableId(expectedGameId, "expectedGameId") : "";
+  if (canonicalExpectedGameId && contentGameId !== canonicalExpectedGameId) {
     throw new Error(`Published level content is for ${contentGameId}, expected ${canonicalExpectedGameId}`);
   }
   // Kept for source compatibility with hosts that passed release-time aliases.

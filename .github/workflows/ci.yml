@@ -106,7 +106,9 @@ jobs:
           fi
 
           bundle_paths=(
+            apps/player-menu
             apps/playground
+            apps/venue-runtime
             games
             packages
             scripts
@@ -131,7 +133,11 @@ jobs:
           fi
 
           change="patch"
-          if [[ -z "$latest_tag" ]] || \
+          latest_major="${latest_tag#games-v}"
+          latest_major="${latest_major%%.*}"
+          if [[ -z "$latest_tag" ]] || (( latest_major < 2 )); then
+            change="major"
+          elif \
               ! git diff --quiet --diff-filter=ADR "$latest_tag..HEAD" -- 'games/*/src/manifest.ts'; then
             change="minor"
           fi

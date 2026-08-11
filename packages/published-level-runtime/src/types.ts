@@ -156,6 +156,8 @@ export type PublishedLevelGameInstance = Omit<GameInstance, "snapshot"> & Readon
 export type PublishedLevelProduct = Readonly<{
   manifest: GameManifest;
   fallbackContent: PublishedLevelContent;
+  /** Platform-authored products accept the host-validated canonical catalog game id. */
+  contentIdentity?: "manifest" | "platform";
 }>;
 
 export type PublishedLevelContentInput = Readonly<{

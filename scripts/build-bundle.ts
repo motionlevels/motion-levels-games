@@ -5,8 +5,9 @@ import path from "node:path";
 import { build } from "esbuild";
 import { c as createTar } from "tar";
 import { DEFAULT_ENGINE_FPS } from "../packages/game-sdk/src/index.ts";
-import { runnerProtocolVersion } from "../packages/runner/src/protocol.ts";
-import { gameCatalog } from "../packages/runner/src/registry.ts";
+import { controllerProtocolVersion } from "../apps/venue-runtime/src/controllerProtocol.ts";
+import { venueApiProtocolVersion } from "../apps/venue-runtime/src/apiProtocol.ts";
+import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
 import { playerMenuAdapterProtocolVersion } from "../apps/player-menu/src/protocol.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 
@@ -18,14 +19,14 @@ const mediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path
 const displayCSS = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
 
 await rm(outputRoot, { recursive: true, force: true });
-await mkdir(path.join(outputRoot, "runtime"), { recursive: true });
+await mkdir(path.join(outputRoot, "venue"), { recursive: true });
 await mkdir(path.join(outputRoot, "display"), { recursive: true });
 await stat(path.join(repoRoot, "apps/player-menu/dist/index.html"));
 await cp(path.join(repoRoot, "apps/player-menu/dist"), path.join(outputRoot, "menu"), { recursive: true });
 
 await build({
-  entryPoints: [path.join(repoRoot, "packages/runner/src/runner.ts")],
-  outfile: path.join(outputRoot, "runtime/runner.mjs"),
+  entryPoints: [path.join(repoRoot, "apps/venue-runtime/src/main.ts")],
+  outfile: path.join(outputRoot, "venue/runtime.mjs"),
   bundle: true,
   format: "esm",
   platform: "node",
@@ -35,7 +36,7 @@ await build({
   legalComments: "none"
 });
 await build({
-  entryPoints: [path.join(repoRoot, "packages/runner/src/display.tsx")],
+  entryPoints: [path.join(repoRoot, "packages/runtime/src/display.tsx")],
   outfile: path.join(outputRoot, "display/display.js"),
   bundle: true,
   format: "iife",
@@ -74,13 +75,17 @@ await writeFile(path.join(outputRoot, "catalog.json"), `${JSON.stringify(catalog
 const files = await bundleFiles(outputRoot);
 const artifactDigest = bundleContentDigest(files);
 const manifest = {
-  schema: "motion-levels-games-bundle-v1",
-  contractVersion: 1,
-  runnerProtocolVersion,
+  schema: "motion-levels-games-bundle-v2",
+  contractVersion: 2,
   sourceRevision,
   sdkFps: DEFAULT_ENGINE_FPS,
   artifactDigest,
-  runtime: { entry: "runtime/runner.mjs", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
+  venueRuntime: {
+    entry: "venue/runtime.mjs",
+    apiProtocolVersion: venueApiProtocolVersion,
+    controllerProtocolVersion,
+    games: catalog.filter((game) => game.availability.production).map((game) => game.id)
+  },
   playerDisplay: { entry: "display/display.js", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
   playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
   catalog: "catalog.json",

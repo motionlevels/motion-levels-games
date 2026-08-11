@@ -1,0 +1,18 @@
+{
+  "name": "@motion-levels-games/venue-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@motion-levels-games/game-sdk": "0.1.0",
+    "@motion-levels-games/runtime": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.2"
+  }
+}

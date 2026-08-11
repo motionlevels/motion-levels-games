@@ -3,6 +3,10 @@ import test from "node:test";
 
 import { nextReleaseTag } from "../scripts/next-release-tag.ts";
 
+test("major releases advance the bundle contract and reset lower versions", () => {
+  assert.equal(nextReleaseTag("games-v1.9.0", "major"), "games-v2.0.0");
+});
+
 test("minor releases advance the catalog version and reset the patch", () => {
   assert.equal(nextReleaseTag("games-v1.3.7", "minor"), "games-v1.4.0");
 });
@@ -26,7 +30,7 @@ test("release tags and change types are strict", () => {
   assert.throws(() => nextReleaseTag("games-v1.3.0-rc.1", "patch"), /Invalid games release tag/);
   assert.throws(() => nextReleaseTag("games-v1.3.0+build", "patch"), /Invalid games release tag/);
   assert.throws(
-    () => nextReleaseTag("games-v1.3.0", "major" as "patch"),
+    () => nextReleaseTag("games-v1.3.0", "breaking" as "patch"),
     /Unsupported release change/
   );
 });

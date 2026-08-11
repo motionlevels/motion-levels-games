@@ -53,11 +53,6 @@ export function friendlyRequestError(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export type AnimationPreview = {
-  level: string;
-  frames: Array<{ pixels: string }>;
-};
-
 export type SelectGameRequest = {
   game: string;
   engineGame?: string;
@@ -256,12 +251,6 @@ export async function fetchGameCatalog(): Promise<PlatformGameCatalogEntry[]> {
   if (!baseURL) return [];
   const payload = await requestJSON<{ games?: PlatformGameCatalogEntry[] }>(`${baseURL}/api/game-catalog`, { cache: "no-store" });
   return Array.isArray(payload.games) ? payload.games : [];
-}
-
-export async function fetchAnimationPreview(level: string, frames = 16, revision?: string): Promise<AnimationPreview> {
-  const params = new URLSearchParams({ level, frames: String(frames) });
-  if (revision) params.set("revision", revision);
-  return requestJSON<AnimationPreview>(`${engineBaseURL()}/api/animation-preview?${params.toString()}`);
 }
 
 export async function selectGame(request: SelectGameRequest): Promise<EngineStatus> {

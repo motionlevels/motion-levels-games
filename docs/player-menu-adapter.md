@@ -12,10 +12,13 @@ route, or port `4102` on the current host. Protocol v1 uses:
 - `GET /api/status` for authoritative game and session status;
 - `POST /api/select` to launch a catalog selection;
 - `POST /api/control` for pause, resume, restart, exit, narration, and mute;
-- `GET /api/animation-preview` for native preview frames;
-- `GET`/`PUT /api/menu-state` for mirrored kiosk recovery state;
+- `GET /api/health`, `/api/display`, and `/api/display/events` for venue and
+  player-display health/state;
+- `GET`/`PUT /api/menu-state` and `GET /api/menu-state/events` for mirrored
+  kiosk recovery state;
 - `POST /api/venue-session` and `POST /api/menu-event` as best-effort
-  operational recording.
+  operational events;
+- `GET`/`POST /api/display-client` for player-display health reports.
 
 The platform catalog remains a read-only input at `GET /api/game-catalog`.
 The menu resolves it from `VITE_PLATFORM_URL`, the active platform/gateway
@@ -31,8 +34,9 @@ the player menu.
 ## Ownership and compatibility
 
 The games release owns the complete browse-to-results UI, catalog projection,
-roster/configuration flow, analytics policy, and menu tests. The venue owns the
-implementations behind these endpoints and the physical kiosk shell.
+roster/configuration flow, analytics policy, menu tests, and the TypeScript
+implementation behind these endpoints. The venue owns the supervisor,
+gateway, controller process, and physical kiosk shell.
 
 Additive response fields do not require a protocol bump. Removing or changing
 a field, endpoint, action, URL-resolution rule, or binary-frame meaning does.
