@@ -87,7 +87,12 @@ test("release tags pass the shared quality gate and identify current main exactl
 test("bundle generation has enough time for every production game", () => {
   assert.match(
     checks,
-    /^  build-and-playtest:[\s\S]*?timeout-minutes: 30[\s\S]*?npm run generate:media/m
+    /^  browser-playtest:[\s\S]*?timeout-minutes: 30[\s\S]*?npm run playtest:browser[\s\S]*?npm run generate:media[\s\S]*?npm run build:bundle/m
+  );
+  assert.doesNotMatch(
+    checks.match(/^  build-and-playtest:[\s\S]*?(?=^  browser-playtest:)/m)?.[0] || "",
+    /playwright|generate:media|build:bundle/,
+    "host-only build job must not depend on browser libraries",
   );
 });
 
