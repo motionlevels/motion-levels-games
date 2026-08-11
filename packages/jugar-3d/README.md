@@ -51,7 +51,14 @@ catalog entries (`id` plus manifest), the selected character's id/label, and
 callbacks to select a game or open Jugar's character picker. It never receives
 runtime loaders, content providers, session state, or setup-dialog controls.
 
-Selecting an id through that callback opens Jugar's existing setup dialog.
+Selecting an id through that callback opens Jugar's existing setup dialog. A
+host may include an optional presentation snapshot with that selection to show
+its current renameable label, color, category, mode label, duration label, and
+rules in the dialog. Those fields cannot replace the canonical entry: Jugar
+still resolves the exact id from its registry, and the manifest continues to
+own player counts, difficulty, authored-content behavior, runtime loading,
+session mechanics, analytics, progress, and replay identity.
+
 Jugar continues to own level/difficulty/player setup, authored-content loading,
 the character picker, loading/error screens, the single `GameSession`, and the
 exit transition back to the host catalog. Omitting `catalogRenderer` preserves
@@ -83,17 +90,17 @@ avatars:
 | Tier | Samples | Hardware p95 | Software-CI p95 | Calls | Triangles | Geometries | Textures | Programs | GPU proxy |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `mobile-low` | 45 | 34 ms | 175 ms | 170 | 33,000 | 168 | 4 | 9 | 20 MB |
-| `desktop-medium` | 60 | 25 ms | 275 ms | 170 | 33,000 | 168 | 4 | 9 | 24 MB |
+| `desktop-medium` | 60 | 25 ms | 700 ms | 170 | 33,000 | 168 | 4 | 9 | 24 MB |
 | `venue-high` | 60 | 18.5 ms | 175 ms | 170 | 33,000 | 168 | 4 | 9 | 36 MB |
-| `capture` | 45 | 40 ms | 525 ms | 170 | 33,000 | 168 | 4 | 9 | 36 MB |
+| `capture` | 45 | 40 ms | 1,300 ms | 170 | 33,000 | 168 | 4 | 9 | 36 MB |
 
 Frame time is the browser's `requestAnimationFrame` interval, not a GPU timer.
 The software ceiling keeps SwiftShader/headless CI useful as a regression gate
-without presenting it as venue-hardware certification. On 2026-08-10 the
-self-hosted runner's complete 120-sample desktop window measured 238 ms p95;
-the 275 ms ceiling preserves about 15% regression headroom. The local native
-capture/desktop p95 ratio was 1.90, predicting about 452 ms on that runner, so
-the 525 ms capture ceiling preserves comparable headroom. Mobile and venue
+without presenting it as venue-hardware certification. Across the heterogeneous
+self-hosted pool, the slowest complete desktop window measured 602.5 ms p95;
+the 700 ms ceiling preserves about 16% regression headroom. The local native
+capture/desktop p95 ratio was 1.90, predicting about 1,145 ms on that worker,
+so the 1,300 ms capture ceiling preserves comparable headroom. Mobile and venue
 software ceilings remain at 175 ms. Hardware targets remain 25 ms for desktop
 and 40 ms for capture, and a hardware miss stays visible as a `frame-time`
 violation plus the non-certification caveat even when software CI passes.

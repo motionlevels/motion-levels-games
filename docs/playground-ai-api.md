@@ -218,8 +218,9 @@ structural/timing results, and violations. Wait for `budgetReady` before
 asserting `withinBudget`.
 
 The hardware p95 frame target remains visible when the browser uses
-SwiftShader. A separate, explicit `maxSoftwareP95FrameMillis` keeps headless CI
-as a timing regression gate without labelling it venue certification. The
+SwiftShader. A separate, explicit `maxSoftwareP95FrameMillis` keeps the
+heterogeneous self-hosted software-renderer pool useful as a timing regression
+gate without labelling it venue certification. The
 `caveats` array documents that rAF interval is not a GPU timer and that memory
 is a lower-bound proxy. Structural calls, triangles and resource thresholds
 are never waived; venue-high alone may waive a software-renderer hardware-time
