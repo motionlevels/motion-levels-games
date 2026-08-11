@@ -5,7 +5,8 @@ import {
   gameDifficultyOptions,
   gamePlayerCountOptions,
   normalizeGameDifficulty,
-  type GameDifficulty
+  type GameDifficulty,
+  type GameManifest
 } from "@motion-levels-games/game-sdk";
 import {
   ArrowRight,
@@ -16,10 +17,16 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { soundBank } from "../audio/sfx.ts";
 import { findCharacter } from "../characters/catalog.ts";
+import type {
+  JugarCatalogEntry,
+  JugarCatalogPresentation,
+  JugarCatalogRenderer,
+  JugarCatalogRenderProps
+} from "../catalog.ts";
 import type { GameEntry, GameLevelChoice } from "../contracts.ts";
 import type { SessionOptions } from "../core/session.ts";
 import { CharacterPicker } from "./CharacterPicker.tsx";
@@ -29,7 +36,13 @@ type Props = {
   onPlay: (game: GameEntry, options: SessionOptions) => void;
   characterId: string;
   onCharacterChange: (id: string) => void;
+  catalogRenderer?: JugarCatalogRenderer;
 };
+
+export type JugarCatalogSelection = Readonly<{
+  entry: GameEntry;
+  presentation?: JugarCatalogPresentation;
+}>;
 
 const categoryLabels: Record<string, string> = {
   individual: "Individual",
@@ -45,17 +58,125 @@ const difficultyLabels: Record<string, string> = {
   expert: "Experta"
 };
 
-export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: Props) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function GamePicker({
+  entries,
+  onPlay,
+  characterId,
+  onCharacterChange,
+  catalogRenderer
+}: Props) {
+  const [selection, setSelection] = useState<JugarCatalogSelection | null>(null);
   const [characterOpen, setCharacterOpen] = useState(false);
 
   const selected = useMemo(
-    () => entries.find((game) => game.manifest.id === selectedId) ?? null,
-    [entries, selectedId]
+    () => selection === null
+      ? null
+      : resolveCatalogSelection(entries, selection.entry.manifest.id, selection.presentation),
+    [entries, selection]
   );
+
+  const catalogEntries = useMemo(() => projectCatalogEntries(entries), [entries]);
+  const character = useMemo(() => ({
+    id: characterId,
+    label: findCharacter(characterId).label
+  }), [characterId]);
+  const handleSelect = useCallback((id: string, presentation?: JugarCatalogPresentation) => {
+    const nextSelection = resolveCatalogSelection(entries, id, presentation);
+    if (!nextSelection) return;
+    soundBank.unlock();
+    soundBank.ui();
+    setSelection(nextSelection);
+  }, [entries]);
+  const handleOpenCharacterPicker = useCallback(() => {
+    soundBank.unlock();
+    soundBank.ui();
+    setCharacterOpen(true);
+  }, []);
+
+  return (
+    <GamePickerFrame
+      catalogEntries={catalogEntries}
+      catalogRenderer={catalogRenderer}
+      character={character}
+      characterOpen={characterOpen}
+      onCharacterChange={onCharacterChange}
+      onCloseCharacter={() => setCharacterOpen(false)}
+      onCloseGame={() => setSelection(null)}
+      onOpenCharacterPicker={handleOpenCharacterPicker}
+      onPlay={onPlay}
+      onSelect={handleSelect}
+      selected={selected}
+    />
+  );
+}
+
+type GamePickerFrameProps = Readonly<{
+  catalogEntries: readonly JugarCatalogEntry[];
+  catalogRenderer?: JugarCatalogRenderer;
+  character: JugarCatalogRenderProps["character"];
+  characterOpen: boolean;
+  onCharacterChange(id: string): void;
+  onCloseCharacter(): void;
+  onCloseGame(): void;
+  onOpenCharacterPicker(): void;
+  onPlay: Props["onPlay"];
+  onSelect(id: string, presentation?: JugarCatalogPresentation): void;
+  selected: JugarCatalogSelection | null;
+}>;
+
+/** Internal controlled composition exported only for focused package tests. */
+export function GamePickerFrame({
+  catalogEntries,
+  catalogRenderer,
+  character,
+  characterOpen,
+  onCharacterChange,
+  onCloseCharacter,
+  onCloseGame,
+  onOpenCharacterPicker,
+  onPlay,
+  onSelect,
+  selected
+}: GamePickerFrameProps) {
+  const CatalogRenderer = catalogRenderer ?? DefaultCatalogRenderer;
 
   return (
     <div className="picker">
+      <CatalogRenderer
+        character={character}
+        entries={catalogEntries}
+        onOpenCharacterPicker={onOpenCharacterPicker}
+        onSelect={onSelect}
+      />
+
+      {selected ? (
+        <GameDialog
+          game={selected.entry}
+          onClose={onCloseGame}
+          onPlay={onPlay}
+          presentation={selected.presentation}
+        />
+      ) : null}
+
+      {characterOpen ? (
+        <CharacterPicker
+          characterId={character.id}
+          onClose={onCloseCharacter}
+          onSelect={onCharacterChange}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DefaultCatalogRenderer({
+  entries,
+  character,
+  onOpenCharacterPicker,
+  onSelect
+}: JugarCatalogRenderProps) {
+  return (
+    <>
       <header className="picker-header">
         <div>
           <p className="picker-label">Juegos disponibles</p>
@@ -66,33 +187,24 @@ export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: 
 
         <button
           className="character-trigger"
-          onClick={() => {
-            soundBank.unlock();
-            soundBank.ui();
-            setCharacterOpen(true);
-          }}
+          onClick={onOpenCharacterPicker}
           title="Cambiar personaje"
           type="button"
         >
           <CircleUserRound aria-hidden="true" />
           <span>Personaje</span>
-          <strong>{findCharacter(characterId).label}</strong>
+          <strong>{character.label}</strong>
         </button>
       </header>
 
       <ul className="picker-grid">
-        {entries.map((game) => {
-          const { manifest } = game;
+        {entries.map(({ id, manifest }) => {
           const accent = manifest.catalog.color;
           return (
-            <li key={manifest.id}>
+            <li key={id}>
               <button
                 className="game-card"
-                onClick={() => {
-                  soundBank.unlock();
-                  soundBank.ui();
-                  setSelectedId(manifest.id);
-                }}
+                onClick={() => onSelect(id)}
                 style={{ "--accent": accent } as React.CSSProperties}
                 type="button"
               >
@@ -107,7 +219,7 @@ export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: 
                 <strong className="game-card-title">{manifest.label}</strong>
                 <span className="game-card-mode">{manifest.catalog.modeLabel}</span>
                 <span className="game-card-meta">
-                  <span><UsersRound aria-hidden="true" />{playersLabel(game)}</span>
+                  <span><UsersRound aria-hidden="true" />{playersLabel(manifest)}</span>
                   <span><Clock3 aria-hidden="true" />{manifest.catalog.durationLabel}</span>
                 </span>
               </button>
@@ -115,37 +227,24 @@ export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: 
           );
         })}
       </ul>
-
-      {selected ? (
-        <GameDialog
-          game={selected}
-          onClose={() => setSelectedId(null)}
-          onPlay={onPlay}
-        />
-      ) : null}
-
-      {characterOpen ? (
-        <CharacterPicker
-          characterId={characterId}
-          onClose={() => setCharacterOpen(false)}
-          onSelect={onCharacterChange}
-        />
-      ) : null}
-    </div>
+    </>
   );
 }
 
 function GameDialog({
   game,
   onClose,
-  onPlay
+  onPlay,
+  presentation
 }: {
   game: GameEntry;
   onClose: () => void;
   onPlay: Props["onPlay"];
+  presentation?: JugarCatalogPresentation;
 }) {
   const { manifest } = game;
-  const accent = manifest.catalog.color;
+  const catalog = resolveGameDialogPresentation(manifest, presentation);
+  const accent = catalog.color;
   const difficulties = gameDifficultyOptions(manifest);
   const playerCounts = gamePlayerCountOptions(manifest).filter((count) => count > 0);
 
@@ -211,10 +310,10 @@ function GameDialog({
         <header className="dialog-head">
           <div>
             <span className="game-card-category">
-              {categoryLabels[manifest.catalog.category] ?? manifest.catalog.category}
+              {categoryLabels[catalog.category] ?? catalog.category}
             </span>
-            <h2 id="game-dialog-title">{manifest.label}</h2>
-            <p>{manifest.catalog.modeLabel}. Ajusta las opciones de la partida antes de comenzar.</p>
+            <h2 id="game-dialog-title">{catalog.label}</h2>
+            <p>{catalog.modeLabel} · {catalog.durationLabel}. Ajusta las opciones de la partida antes de comenzar.</p>
           </div>
           <button aria-label="Cerrar" className="dialog-close" onClick={onClose} type="button">
             <X aria-hidden="true" />
@@ -222,8 +321,8 @@ function GameDialog({
         </header>
 
         <ul className="dialog-rules">
-          {manifest.catalog.rules.map((rule) => (
-            <li key={rule}><Check aria-hidden="true" />{rule}</li>
+          {catalog.rules.map((rule, index) => (
+            <li key={`${index}-${rule}`}><Check aria-hidden="true" />{rule}</li>
           ))}
         </ul>
 
@@ -347,10 +446,78 @@ function GameDialog({
   );
 }
 
-function playersLabel(game: GameEntry): string {
-  const { min, max } = game.manifest.players;
+function playersLabel(manifest: GameManifest): string {
+  const { min, max } = manifest.players;
   if (min === max) {
     return min === 1 ? "1 jugador" : `${min} jugadores`;
   }
   return `${min}–${max} jugadores`;
+}
+
+export function projectCatalogEntries(entries: readonly GameEntry[]): readonly JugarCatalogEntry[] {
+  return entries.map(({ manifest }) => ({ id: manifest.id, manifest }));
+}
+
+export function resolveCatalogSelection(
+  entries: readonly GameEntry[],
+  id: string,
+  presentation?: JugarCatalogPresentation
+): JugarCatalogSelection | null {
+  const entry = entries.find((candidate) => candidate.manifest.id === id);
+  if (!entry) return null;
+  const snapshot = snapshotCatalogPresentation(presentation);
+  return {
+    entry,
+    ...(snapshot ? { presentation: snapshot } : {})
+  };
+}
+
+type ResolvedGameDialogPresentation = Readonly<{
+  label: string;
+  color: string;
+  category: string;
+  modeLabel: string;
+  durationLabel: string;
+  rules: readonly string[];
+}>;
+
+export function resolveGameDialogPresentation(
+  manifest: GameManifest,
+  presentation?: JugarCatalogPresentation
+): ResolvedGameDialogPresentation {
+  const snapshot = snapshotCatalogPresentation(presentation);
+  return {
+    label: snapshot?.label ?? manifest.label,
+    color: snapshot?.color ?? manifest.catalog.color,
+    category: snapshot?.category ?? manifest.catalog.category,
+    modeLabel: snapshot?.modeLabel ?? manifest.catalog.modeLabel,
+    durationLabel: snapshot?.durationLabel ?? manifest.catalog.durationLabel,
+    rules: snapshot?.rules ?? manifest.catalog.rules
+  };
+}
+
+function snapshotCatalogPresentation(
+  presentation?: JugarCatalogPresentation
+): JugarCatalogPresentation | undefined {
+  if (!presentation) return undefined;
+  const label = cleanPresentationText(presentation.label);
+  const color = cleanPresentationText(presentation.color);
+  const category = cleanPresentationText(presentation.category);
+  const modeLabel = cleanPresentationText(presentation.modeLabel);
+  const durationLabel = cleanPresentationText(presentation.durationLabel);
+  const rules = presentation.rules?.map((rule) => rule.trim()).filter(Boolean);
+  const snapshot: JugarCatalogPresentation = {
+    ...(label ? { label } : {}),
+    ...(color ? { color } : {}),
+    ...(category ? { category } : {}),
+    ...(modeLabel ? { modeLabel } : {}),
+    ...(durationLabel ? { durationLabel } : {}),
+    ...(rules ? { rules } : {})
+  };
+  return Object.keys(snapshot).length > 0 ? snapshot : undefined;
+}
+
+function cleanPresentationText(value: string | undefined): string | undefined {
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : undefined;
 }

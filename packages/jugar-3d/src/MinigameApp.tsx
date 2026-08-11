@@ -4,6 +4,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
 import type { GameSnapshot } from "@motion-levels-games/game-sdk";
 
 import { useCharacterChoice } from "./characters/useCharacterChoice.ts";
+import type { JugarCatalogRenderer } from "./catalog.ts";
 import type {
   GameEntry,
   JugarRunFinished,
@@ -32,6 +33,8 @@ type Screen =
  */
 export type Jugar3DAppProps = Readonly<{
   entries: readonly GameEntry[];
+  /** Optional host catalog UI. Jugar still owns selection, setup and play. */
+  catalogRenderer?: JugarCatalogRenderer;
   sahurModelUrl?: string;
   captureFrames?: boolean;
   exposeDebug?: boolean;
@@ -41,6 +44,7 @@ export type Jugar3DAppProps = Readonly<{
 
 export function Jugar3DApp({
   entries,
+  catalogRenderer,
   sahurModelUrl = "/models/tung-tung-tung-sahur.glb",
   captureFrames = false,
   exposeDebug = false,
@@ -130,6 +134,7 @@ export function Jugar3DApp({
     return (
       <div className="mlg">
         <GamePicker
+          catalogRenderer={catalogRenderer}
           characterId={characterId}
           entries={entries}
           onCharacterChange={setCharacterId}

@@ -191,10 +191,10 @@ const baseURL = `http://127.0.0.1:${port}`;
 const captureDirectory = process.env.MOTION_LEVELS_GAMES_CAPTURE_DIR;
 const focusedGame = process.env.MOTION_LEVELS_GAMES_PLAYTEST_GAME;
 const updateJugarVisualBaselines = process.env.MOTION_LEVELS_GAMES_UPDATE_VISUAL_BASELINES === "1";
-// Capture permits 525 ms software-WebGL frames and needs 45 retained samples
-// after the 15-frame Stage warmup. That is a 31.5-second theoretical sampling
-// horizon, so the gate allows 60 seconds for report cadence and catalog GC.
-const jugarPerformanceReadinessTimeoutMillis = 60_000;
+// Capture permits 1,300 ms software-WebGL frames and needs 45 retained samples
+// after the 15-frame Stage warmup. That is a 78-second theoretical sampling
+// horizon, so the gate allows 120 seconds for report cadence and catalog GC.
+const jugarPerformanceReadinessTimeoutMillis = 120_000;
 const jugarVisualBaselineDirectory = path.join(repoRoot, "test", "visual-baselines", "jugar-3d");
 const jugarVisualBaselineNames = new Set([
   "duelo-jugar-live-victory",
@@ -505,7 +505,14 @@ async function playtestDueloJugar3d(page: Page) {
     lab.replay.play();
     return steppedTick;
   });
-  await page.waitForTimeout(500);
+  await page.waitForFunction(
+    (tick) => {
+      const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+      return (lab?.getState().tick ?? 0) > tick;
+    },
+    steppedReplayTick,
+    { timeout: 10_000 }
+  );
   const playedReplayTick = await page.evaluate(() => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
     if (!lab) throw new Error("Duelo Jugar 3D API is unavailable");
@@ -2108,9 +2115,18 @@ async function prepareNativeJugarCapture(page: Page): Promise<void> {
       zIndex: "2147483646"
     });
     const viewport = element.querySelector<HTMLElement>(".agent-lab-viewport");
-    if (viewport) viewport.style.borderBottomWidth = "0";
+    if (viewport) {
+      Object.assign(viewport.style, {
+        borderBottomWidth: "0",
+        height: "1080px",
+        width: "1920px"
+      });
+    }
   });
-  await page.waitForTimeout(500);
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(".jugar-agent-surface canvas");
+    return (canvas?.width ?? 0) >= 1_920 && (canvas?.height ?? 0) >= 1_080;
+  }, undefined, { timeout: 10_000 });
   const dimensions = await page.evaluate(() => {
     const canvas = document.querySelector<HTMLCanvasElement>(".jugar-agent-surface canvas");
     const bounds = canvas?.getBoundingClientRect();
