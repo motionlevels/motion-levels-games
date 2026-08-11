@@ -4,19 +4,27 @@ import test from "node:test";
 import { localPlayerMenuUrl, readPrimaryScreen } from "../src/playerMenuEmbed.ts";
 
 const previewSource = readFileSync(new URL("../src/PlayerMenuPreview.tsx", import.meta.url), "utf8");
+const devExperienceSource = readFileSync(new URL("../../../scripts/dev-player-experience.ts", import.meta.url), "utf8");
+
+const loopbackPlayground = {
+  hostname: "127.0.0.1",
+  port: "5174",
+  protocol: "http:",
+} as Location;
 
 test("local player menu preview targets the fixed kiosk viewport", () => {
-  const target = localPlayerMenuUrl({
-    hostname: "127.0.0.1",
-    port: "5174",
-    protocol: "http:",
-  } as Location, "4103");
+  const target = localPlayerMenuUrl(loopbackPlayground, "4103");
 
   const url = new URL(target!);
   assert.equal(url.origin, "http://127.0.0.1:4103");
   assert.equal(url.searchParams.get("embed"), "playground");
   assert.equal(url.searchParams.get("kioskViewport"), "1920x1080");
   assert.equal(url.searchParams.get("playgroundPort"), "5174");
+});
+
+test("standalone playground does not advertise an unavailable player menu", () => {
+  assert.equal(localPlayerMenuUrl(loopbackPlayground), undefined);
+  assert.match(devExperienceSource, /VITE_LOCAL_PLAYER_MENU_PORT:\s*"4103"/u);
 });
 
 test("player menu preview stays loopback-only", () => {

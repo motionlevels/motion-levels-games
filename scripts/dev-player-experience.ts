@@ -4,7 +4,10 @@ const children: ChildProcess[] = [];
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 children.push(spawn(npm, ["run", "dev", "--workspace", "@motion-levels-games/playground", "--", "--host", "127.0.0.1", "--port", "4104", "--strictPort"], {
-  env: process.env,
+  env: {
+    ...process.env,
+    VITE_LOCAL_PLAYER_MENU_PORT: "4103",
+  },
   stdio: "inherit",
 }));
 children.push(spawn(npm, ["run", "dev", "--workspace", "@motion-levels-games/player-menu"], {

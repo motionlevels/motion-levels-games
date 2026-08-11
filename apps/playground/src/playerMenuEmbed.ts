@@ -17,7 +17,7 @@ export function localPlayerMenuUrl(
   if (playgroundLocation.protocol !== "http:" && playgroundLocation.protocol !== "https:") return undefined;
 
   const playerMenuPort = configuredPort
-    ?? (import.meta.env.DEV ? import.meta.env.VITE_LOCAL_PLAYER_MENU_PORT || "4103" : undefined);
+    ?? (import.meta.env?.DEV ? import.meta.env.VITE_LOCAL_PLAYER_MENU_PORT : undefined);
   if (!playerMenuPort || !portPattern.test(playerMenuPort)) return undefined;
 
   const host = playgroundLocation.hostname.includes(":")
