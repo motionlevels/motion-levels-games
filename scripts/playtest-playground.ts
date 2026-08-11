@@ -2108,9 +2108,18 @@ async function prepareNativeJugarCapture(page: Page): Promise<void> {
       zIndex: "2147483646"
     });
     const viewport = element.querySelector<HTMLElement>(".agent-lab-viewport");
-    if (viewport) viewport.style.borderBottomWidth = "0";
+    if (viewport) {
+      Object.assign(viewport.style, {
+        borderBottomWidth: "0",
+        height: "1080px",
+        width: "1920px"
+      });
+    }
   });
-  await page.waitForTimeout(500);
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(".jugar-agent-surface canvas");
+    return (canvas?.width ?? 0) >= 1_920 && (canvas?.height ?? 0) >= 1_080;
+  }, undefined, { timeout: 10_000 });
   const dimensions = await page.evaluate(() => {
     const canvas = document.querySelector<HTMLCanvasElement>(".jugar-agent-surface canvas");
     const bounds = canvas?.getBoundingClientRect();
