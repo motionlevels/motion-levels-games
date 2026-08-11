@@ -6,6 +6,7 @@ import {
   createGameEngine,
   normalizeGameSeed,
   type GameConfig,
+  type GameContent,
   type GameConfigOptions,
   type GameEngine,
   type GameEngineState,
@@ -15,6 +16,7 @@ import {
 import { replayChecksum } from "@motion-levels-games/replay-runtime";
 
 import type {
+  GameContentSelection,
   RegisteredGame,
   SessionController,
   SessionControllerObservation
@@ -39,6 +41,10 @@ export type SessionOptions = Readonly<{
   difficulty?: string;
   durationMillis?: number;
   gameOptions?: GameConfigOptions;
+  /** Authored level/content document supplied by the host, never UI config. */
+  gameContent?: GameContent;
+  /** Host selection retained for analytics and exact restart identity. */
+  contentSelection?: GameContentSelection;
   seed?: number;
   fps?: number;
   maxCatchUpSteps?: number;
@@ -581,6 +587,7 @@ export class GameSession {
       difficulty: this.options.difficulty,
       durationMillis: this.options.durationMillis,
       options: this.options.gameOptions,
+      content: this.options.gameContent,
       nowMillis: 0
     };
   }

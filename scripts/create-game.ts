@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { scaffoldReadmeTemplate } from "./game-scaffold-readme.ts";
 
 type CreateGameOptions = {
+  canonicalId: string;
   force: boolean;
   gameId: string;
   label: string;
@@ -81,10 +83,11 @@ function parseArgs(rawArgs: string[]): CreateGameOptions {
   const [gameId, ...labelParts] = positional;
   if (!gameId) {
     printHelp();
-    throw new Error("missing game id");
+    throw new Error("missing game slug");
   }
 
   return {
+    canonicalId: randomUUID(),
     force,
     gameId,
     label: labelParts.length > 0 ? labelParts.join(" ") : titleCase(gameId),
@@ -94,7 +97,7 @@ function parseArgs(rawArgs: string[]): CreateGameOptions {
 
 function validateGameId(gameId: string): void {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(gameId)) {
-    throw new Error("game id must be lowercase kebab-case and match the games/<id> directory name");
+    throw new Error("game slug must be lowercase kebab-case and match the games/<slug> directory name");
   }
 }
 
@@ -162,7 +165,9 @@ function manifestTemplate(options: CreateGameOptions): string {
   return `import type { GameManifest } from "@motion-levels-games/game-sdk";
 
 export const manifest: GameManifest = {
-  id: ${JSON.stringify(options.gameId)},
+  id: ${JSON.stringify(options.canonicalId)},
+  slug: ${JSON.stringify(options.gameId)},
+  aliases: [${JSON.stringify(options.gameId)}],
   label: ${JSON.stringify(options.label)},
   description: "Scaffolded Motion Levels game.",
   availability: { development: true, production: false },
@@ -508,8 +513,10 @@ import {
   targetScore
 } from "../src/index.ts";
 
-test("manifest id matches the game directory", () => {
-  assert.equal(manifest.id, ${JSON.stringify(options.gameId)});
+test("manifest keeps stable identity separate from its directory slug", () => {
+  assert.match(manifest.id, /^[0-9a-f-]{36}$/u);
+  assert.equal(manifest.slug, ${JSON.stringify(options.gameId)});
+  assert.ok(manifest.aliases?.includes(${JSON.stringify(options.gameId)}));
 });
 
 test("game renders and completes the scaffolded path", () => {
@@ -551,7 +558,7 @@ test("fixtures and display render", () => {
 
 function printHelp(): void {
   console.log(`Usage:
-  npm run create:game -- <game-id> [Display Name]
+  npm run create:game -- <game-slug> [Display Name]
 
 Options:
   --force        overwrite scaffold files

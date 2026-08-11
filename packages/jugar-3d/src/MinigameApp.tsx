@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import type { GameSnapshot } from "@motion-levels-games/game-sdk";
 
 import { useCharacterChoice } from "./characters/useCharacterChoice.ts";
 import type {
@@ -20,6 +21,7 @@ const Stage = lazy(() => import("./scene/Stage.tsx"));
 type Screen =
   | { kind: "picker" }
   | { kind: "loading"; entry: GameEntry; options: SessionOptions; runId: number }
+  | { kind: "error"; entry: GameEntry; options: SessionOptions; runId: number; message: string }
   | { kind: "play"; game: RegisteredGame; options: SessionOptions; runId: number };
 
 /**
@@ -50,11 +52,6 @@ export function Jugar3DApp({
 
   const handlePlay = useCallback(
     (entry: GameEntry, options: SessionOptions) => {
-      onRunStarted?.({
-        gameId: entry.manifest.id,
-        playerCount: options.playerCount,
-        difficulty: options.difficulty ?? "medium"
-      });
       setScreen((current) => ({
         kind: "loading",
         entry,
@@ -62,7 +59,7 @@ export function Jugar3DApp({
         runId: "runId" in current ? current.runId + 1 : 1,
       }));
     },
-    [onRunStarted],
+    [],
   );
 
   const handleExit = useCallback(() => setScreen({ kind: "picker" }), []);
@@ -99,23 +96,35 @@ export function Jugar3DApp({
       return;
     }
     let cancelled = false;
-    screen.entry
-      .load()
-      .then((game) => {
+    loadGameEntry(screen.entry, screen.options)
+      .then(({ game, options }) => {
         if (!cancelled) {
-          setScreen({ kind: "play", game, options: screen.options, runId: screen.runId });
+          onRunStarted?.({
+            gameId: screen.entry.manifest.id,
+            playerCount: options.playerCount,
+            difficulty: options.difficulty ?? "medium",
+            ...(options.contentSelection?.levelId ? { levelId: options.contentSelection.levelId } : {}),
+            ...(options.contentSelection?.mode ? { mode: options.contentSelection.mode } : {})
+          });
+          setScreen({ kind: "play", game, options, runId: screen.runId });
         }
       })
       .catch((error: unknown) => {
         console.error("Could not load the game", error);
         if (!cancelled) {
-          setScreen({ kind: "picker" });
+          setScreen({
+            kind: "error",
+            entry: screen.entry,
+            options: screen.options,
+            runId: screen.runId,
+            message: error instanceof Error ? error.message : "No se pudo preparar el juego."
+          });
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [screen]);
+  }, [onRunStarted, screen]);
 
   if (screen.kind === "picker") {
     return (
@@ -138,6 +147,31 @@ export function Jugar3DApp({
     );
   }
 
+  if (screen.kind === "error") {
+    return (
+      <div className="mlg mlg-gamemode">
+        <main className="load-error" role="alert">
+          <p>No se pudo cargar {screen.entry.manifest.label}</p>
+          <strong>{screen.message}</strong>
+          <div>
+            <button
+              onClick={() => setScreen({
+                kind: "loading",
+                entry: screen.entry,
+                options: screen.options,
+                runId: screen.runId + 1
+              })}
+              type="button"
+            >
+              Reintentar
+            </button>
+            <button onClick={handleExit} type="button">Volver a juegos</button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <PlayScreen
       characterId={characterId}
@@ -151,6 +185,22 @@ export function Jugar3DApp({
       sahurModelUrl={sahurModelUrl}
     />
   );
+}
+
+export async function loadGameEntry(
+  entry: GameEntry,
+  options: SessionOptions
+): Promise<{ game: RegisteredGame; options: SessionOptions }> {
+  const contentPromise = entry.contentSource
+    ? options.contentSelection
+      ? entry.contentSource.load(options.contentSelection)
+      : Promise.reject(new Error("Falta la selección del nivel."))
+    : Promise.resolve(undefined);
+  const [game, content] = await Promise.all([entry.load(), contentPromise]);
+  return {
+    game,
+    options: content ? { ...options, gameContent: content } : options
+  };
 }
 
 function PlayScreen({
@@ -207,11 +257,28 @@ function useRunFinished(
       }
       if (reported.current || onRunFinished === undefined) return;
       reported.current = true;
-      onRunFinished({
-        gameId: session.game.manifest.id,
-        score: snapshot.score,
-        success: snapshot.success
-      });
+      onRunFinished(jugarRunFinishedPayload(
+        session.game.manifest.id,
+        session.options.contentSelection,
+        snapshot
+      ));
     });
   }, [onRunFinished, session]);
+}
+
+export function jugarRunFinishedPayload(
+  gameId: string,
+  selection: SessionOptions["contentSelection"],
+  snapshot: Pick<GameSnapshot, "score" | "success"> & { readonly level?: unknown }
+): JugarRunFinished {
+  const authoritativeLevelId = typeof snapshot.level === "string" && snapshot.level.trim().length > 0
+    ? snapshot.level
+    : selection?.levelId;
+  return {
+    gameId,
+    ...(authoritativeLevelId ? { levelId: authoritativeLevelId } : {}),
+    ...(selection?.mode ? { mode: selection.mode } : {}),
+    score: snapshot.score,
+    success: snapshot.success
+  };
 }

@@ -6,7 +6,7 @@ export type ScaffoldReadmeOptions = {
 export function scaffoldReadmeTemplate(options: ScaffoldReadmeOptions): string {
   return `# ${options.label}
 
-Game id: \`${options.gameId}\`
+Game slug: \`${options.gameId}\`
 
 This game was created with:
 
@@ -28,7 +28,9 @@ npm run test --workspace @motion-levels-games/${options.gameId}
 npm run typecheck --workspace @motion-levels-games/${options.gameId}
 \`\`\`
 
-Keep \`manifest.id\` exactly equal to the directory name: \`${options.gameId}\`.
+Keep the generated UUID in \`manifest.id\` forever. The directory/package name
+is the mutable \`manifest.slug\`; retain old names in \`manifest.aliases\` when
+renaming and let validation reject collisions.
 Register the finished package in \`packages/runner/src/registry.ts\`; the
 release validator requires every \`games/*\` package to appear in the
 production runner, catalog, and player-display registry.

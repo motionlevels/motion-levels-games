@@ -227,8 +227,12 @@ no database, venue hardware, Motion Go, or platform API coupling.
   Reusable TV motion belongs with the primitive and shared CSS in display-kit,
   while game-only display animation stays namespaced to that game.
 - Each game owns its `manifest.ts`, `game.ts`, `display.tsx`, and `fixtures.ts`.
-- Every `games/<id>` package must include a `README.md`, and `manifest.id` must
-  exactly match `<id>`.
+- Every `games/<slug>` package must include a `README.md`. New products use an
+  immutable UUID/hash in `manifest.id`, declare the current renameable
+  `manifest.slug` matching the directory, and retain old slugs in
+  `manifest.aliases`. Registries and validators must reject canonical-ID or
+  alias collisions. Legacy products without `manifest.slug` keep their
+  existing string ID until they receive an explicit identity migration.
 - `apps/playground` is for local development only.
 
 ## Jose Dev Branch

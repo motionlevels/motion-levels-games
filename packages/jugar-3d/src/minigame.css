@@ -481,6 +481,48 @@
     color: var(--mlg-text);
   }
 
+  & .dialog-options select {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 36px 8px 12px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-tight, 6px);
+    background: var(--mlg-panel-2);
+    color: var(--mlg-text);
+    font: inherit;
+  }
+
+  & .dialog-options select:focus-visible {
+    border-color: color-mix(in srgb, var(--mlg-blue) 62%, var(--mlg-line));
+    outline: 2px solid color-mix(in srgb, var(--mlg-blue) 28%, transparent);
+    outline-offset: 2px;
+  }
+
+  & .dialog-options select:disabled {
+    color: var(--mlg-muted);
+    opacity: 0.72;
+  }
+
+  & .content-load-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 11px;
+    border: 1px solid color-mix(in srgb, #ff5c6f 48%, var(--mlg-line));
+    border-radius: var(--ui-radius-tight, 6px);
+    background: color-mix(in srgb, #ff5c6f 10%, var(--mlg-panel-2));
+    color: color-mix(in srgb, #ff9ca8 84%, white);
+    font-size: 0.76rem;
+  }
+
+  & .content-load-error button {
+    color: inherit;
+    font: inherit;
+    font-weight: 760;
+    text-decoration: underline;
+  }
+
   & .play-button {
     width: 100%;
     min-height: 40px;
@@ -511,6 +553,52 @@
     filter: brightness(1.08);
     transform: translateY(-1px);
     box-shadow: 0 12px 24px -18px color-mix(in srgb, var(--mlg-blue) 85%, transparent);
+  }
+
+  & .play-button:disabled {
+    cursor: wait;
+    filter: grayscale(0.45);
+    opacity: 0.55;
+    transform: none;
+  }
+
+  & .load-error {
+    min-height: 100dvh;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    background: var(--mlg-bg);
+    color: var(--mlg-text);
+  }
+
+  & .load-error p {
+    margin: 0;
+    color: var(--mlg-muted);
+  }
+
+  & .load-error strong {
+    max-width: 52ch;
+    font-size: 1.05rem;
+  }
+
+  & .load-error div {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  & .load-error button {
+    min-height: 40px;
+    padding: 8px 14px;
+    border: 1px solid var(--mlg-line);
+    border-radius: var(--ui-radius-control, 10px);
+    background: var(--mlg-panel-2);
+    color: var(--mlg-text);
+    font-weight: 720;
   }
 
   /* ---------- character picker ---------- */

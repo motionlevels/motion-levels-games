@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { gameRegistry } from "../packages/runner/src/registry.ts";
+import { isStableGameId } from "../packages/game-sdk/src/index.ts";
+import { gamePackageRegistry } from "../packages/runner/src/registry.ts";
 
 type ManifestModule = {
   manifest?: {
     id?: string;
+    slug?: string;
+    aliases?: readonly string[];
     label?: string;
     availability?: {
       development?: unknown;
@@ -76,9 +79,9 @@ const gameDirs = (await readdir(gamesRoot, { withFileTypes: true }))
 assert.ok(gameDirs.length > 0, "expected at least one game under games/");
 
 const problems: string[] = [];
-const registeredGameIds = [...gameRegistry.keys()].sort();
+const registeredGameIds = [...gamePackageRegistry.keys()].sort();
 if (JSON.stringify(registeredGameIds) !== JSON.stringify(gameDirs)) {
-  const missing = gameDirs.filter((gameId) => !gameRegistry.has(gameId));
+  const missing = gameDirs.filter((gameId) => !gamePackageRegistry.has(gameId));
   const unexpected = registeredGameIds.filter((gameId) => !gameDirs.includes(gameId));
   if (missing.length > 0) problems.push(`production runner registry is missing: ${missing.join(", ")}`);
   if (unexpected.length > 0) problems.push(`production runner registry has unknown games: ${unexpected.join(", ")}`);
@@ -113,8 +116,14 @@ for (const gameId of gameDirs) {
     if (!manifest) {
       problems.push(`${gameId}: src/manifest.ts must export manifest`);
     } else {
-      if (manifest.id !== gameId) {
-        problems.push(`${gameId}: manifest.id must exactly match directory name (${gameId})`);
+      if ((manifest.slug ?? manifest.id) !== gameId) {
+        problems.push(`${gameId}: manifest.slug (or legacy id) must exactly match directory name (${gameId})`);
+      }
+      if (manifest.slug !== undefined && !isStableGameId(String(manifest.id ?? ""))) {
+        problems.push(`${gameId}: manifests with a renameable slug must use a UUID or hash as manifest.id`);
+      }
+      if (manifest.aliases !== undefined && !isStringArray(manifest.aliases)) {
+        problems.push(`${gameId}: manifest.aliases must be a string array`);
       }
       if (!manifest.label) {
         problems.push(`${gameId}: manifest.label is required`);

@@ -46,19 +46,24 @@ assert.equal(packageJson.name, "@motion-levels-games/ci-smoke-game");
 const manifestModule = await import(pathToFileURL(path.join(gameRoot, "src/manifest.ts")).href) as {
   manifest?: {
     id?: string;
+    slug?: string;
+    aliases?: readonly string[];
     label?: string;
     players?: {
       allowAny?: boolean;
     };
   };
 };
-assert.equal(manifestModule.manifest?.id, "ci-smoke-game");
+assert.match(manifestModule.manifest?.id ?? "", /^[0-9a-f]{8}-[0-9a-f-]{27}$/u);
+assert.equal(manifestModule.manifest?.slug, "ci-smoke-game");
+assert.deepEqual(manifestModule.manifest?.aliases, ["ci-smoke-game"]);
 assert.equal(manifestModule.manifest?.label, "CI Smoke Game");
 assert.equal(manifestModule.manifest?.players?.allowAny, true);
 
 const readme = await readFile(path.join(gameRoot, "README.md"), "utf8");
 const gameSource = await readFile(path.join(gameRoot, "src/game.ts"), "utf8");
 assert.match(readme, /ci-smoke-game/);
+assert.match(readme, /generated UUID/);
 assert.match(readme, /Required player display review/);
 assert.match(readme, /native 1920x1080 player display/);
 assert.match(readme, /Required winning animations/);

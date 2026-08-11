@@ -1,5 +1,6 @@
 import {
   createGameEngine,
+  normalizeGameLookupKey,
   normalizeGameConfig,
   type GameEngine,
   type GameEngineState
@@ -10,6 +11,7 @@ import { packFrame, type InitParams, type RunnerRequest, type RunnerState } from
 export class RunnerSession {
   private engine: GameEngine | null = null;
   private gameId = "";
+  private initialConfig: ReturnType<typeof normalizeGameConfig> | null = null;
   private paused = false;
   private held = new Set<string>();
 
@@ -29,7 +31,7 @@ export class RunnerSession {
   }
 
   private init(params: InitParams): RunnerState {
-    const gameId = String(params?.gameId || "").trim();
+    const gameId = normalizeGameLookupKey(params?.gameId);
     const module = gameRegistry.get(gameId);
     if (!module) throw new Error(`unknown game: ${gameId}`);
     if (!module.manifest.availability.production && params.development !== true) {
@@ -39,7 +41,8 @@ export class RunnerSession {
     const game = module.createGame(config);
     const events = game.init(config.nowMillis);
     this.engine = createGameEngine(game, { initialEvents: events, nowMillis: config.nowMillis });
-    this.gameId = gameId;
+    this.gameId = module.manifest.id;
+    this.initialConfig = config;
     this.paused = false;
     this.held.clear();
     return this.state(this.engine.state);
@@ -76,10 +79,11 @@ export class RunnerSession {
     }
     if (action === "reset") {
       const module = gameRegistry.get(this.gameId);
-      if (!module) throw new Error("runner has no active game");
-      const game = module.createGame({});
-      const events = game.init(0);
-      this.engine = createGameEngine(game, { initialEvents: events });
+      if (!module || !this.initialConfig) throw new Error("runner has no active game");
+      const config = this.initialConfig;
+      const game = module.createGame(config);
+      const events = game.init(config.nowMillis);
+      this.engine = createGameEngine(game, { initialEvents: events, nowMillis: config.nowMillis });
       this.paused = false;
       this.held.clear();
       return this.state(this.engine.state);

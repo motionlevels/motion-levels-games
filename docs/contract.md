@@ -100,6 +100,13 @@ export const manifest: GameManifest = {
 const pointsToWin = readGameConfigOption(config.options, gameConfigVars.pointsToWin);
 ```
 
+Large authored documents such as editable level catalogs travel through
+`GameConfig.content`, not `options`. Content must carry a versioned `schema`;
+the host supplies it before construction and the game validates its complete
+shape before using it. The engine stays deterministic and performs no network
+I/O. `options` remains reserved for the small manifest-declared controls shown
+to players/operators.
+
 Player-count constraints and `allowAny` belong only in `manifest.players`.
 Difficulty choices and their default belong only in
 `manifest.config.difficulty`.
@@ -133,9 +140,12 @@ Every game should keep a single source of truth:
 - `display.tsx`
 - `fixtures.ts`
 
-The directory name is part of the contract. For a game in `games/<id>`,
-`manifest.id` must exactly equal `<id>`, and the package name must be
-`@motion-levels-games/<id>`. CI enforces this through `npm run validate:games`.
+Every new game has an immutable UUID or content-addressed hash in `manifest.id`.
+The human-readable `manifest.slug` matches `games/<slug>` and the package name
+`@motion-levels-games/<slug>`. Slugs may be renamed; retain previous names in
+`manifest.aliases`. The runner resolves the canonical id and every declared
+alias, and CI rejects alias collisions. Older packages without `manifest.slug`
+keep their legacy id until they receive an explicit identity migration.
 
 The game logic should be deterministic. Use `createSeededRng(seed)` from the SDK
 for randomness so tests, fixtures, and local playback can be reproduced.

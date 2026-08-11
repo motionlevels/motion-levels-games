@@ -1,5 +1,9 @@
 export type {
   GameEntry,
+  GameContentSelection,
+  GameContentSource,
+  GameLevelChoice,
+  GameModeChoice,
   JugarRunFinished,
   JugarRunStarted,
   RegisteredGame,

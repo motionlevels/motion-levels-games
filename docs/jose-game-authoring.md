@@ -43,8 +43,9 @@ The scaffold creates:
 - `games/<game-id>/src/fixtures.ts`
 - `games/<game-id>/test/<game-id>.test.ts`
 
-The game id must match the directory exactly. For `games/color-chase`,
-`manifest.id` must be `color-chase`.
+The package slug must match the directory. For `games/color-chase`,
+`manifest.slug` is `color-chase`; `manifest.id` is the scaffold-generated
+immutable UUID. If the slug is renamed later, keep `color-chase` in aliases.
 
 The scaffold enables `0 / Any` players. Keep it when the game plays the same
 regardless of booking size, so groups can take turns without changing teams.
@@ -122,7 +123,8 @@ or an agent resumes work there, rather than after every `main` commit.
    `packages/runner/src/registry.ts`; validation compares that registry with
    `games/*` so a game cannot pass CI while missing from the production
    runtime, catalog, or player-display bundle.
-8. Keep `manifest.id`, package name, README, tests, and fixtures in sync.
+8. Keep the stable `manifest.id`; keep `manifest.slug`, package name, README,
+   tests, and fixtures in sync when renaming.
 9. Visually inspect native player-display captures for every main phase and
    representative worst-case text before calling a new game complete.
 10. Maximize primary score, round/progress, lives, and time values for venue

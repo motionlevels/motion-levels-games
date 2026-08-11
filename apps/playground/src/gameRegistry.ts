@@ -1,10 +1,12 @@
 import type { ComponentType } from "react";
-import type {
-  Frame,
-  GameConfig,
-  GameInstance,
-  GameManifest,
-  GameSnapshot
+import {
+  gameManifestLookupKeys,
+  normalizeGameLookupKey,
+  type Frame,
+  type GameConfig,
+  type GameInstance,
+  type GameManifest,
+  type GameSnapshot
 } from "@motion-levels-games/game-sdk";
 import type { SessionControllerFactory } from "@motion-levels-games/jugar-3d";
 
@@ -40,10 +42,10 @@ const gameModules = import.meta.glob<GameModule>("../../../games/*/src/index.ts"
 export const playgroundGames = Object.entries(gameModules)
   .map(([modulePath, module]) => normalizeGameModule(modulePath, module))
   .sort((left, right) => {
-    if (left.manifest.id === defaultGameId) {
+    if (gameManifestLookupKeys(left.manifest).includes(defaultGameId)) {
       return -1;
     }
-    if (right.manifest.id === defaultGameId) {
+    if (gameManifestLookupKeys(right.manifest).includes(defaultGameId)) {
       return 1;
     }
 
@@ -57,6 +59,11 @@ if (!firstGame) {
 }
 
 export const defaultGame: PlaygroundGame = firstGame;
+
+export function findPlaygroundGame(gameId: string): PlaygroundGame | undefined {
+  const lookupKey = normalizeGameLookupKey(gameId);
+  return playgroundGames.find((game) => gameManifestLookupKeys(game.manifest).includes(lookupKey));
+}
 
 function normalizeGameModule(modulePath: string, module: GameModule): PlaygroundGame {
   if (!module.manifest || typeof module.createGame !== "function" || !module.PlayerDisplay) {

@@ -20,6 +20,21 @@ Sahur is a CC-BY-4.0 third-party model. The picker renders its required author,
 source, and licence credit; hosts must preserve that UI and the package's
 `ATTRIBUTIONS.md` notice when supplying the model asset.
 
+## Live editor-authored content
+
+A host can attach a `GameContentSource` to a `GameEntry`. The picker requests
+the published level choices for the selected difficulty/mode, stores the
+immutable level UUID (never its renameable slug), and loads the versioned
+`GameContent` document alongside the selected game chunk. Loading failures are
+shown with retry/back controls and do not start analytics or silently substitute
+fixture content. Jugar passes the document into the same `GameSession` and SDK
+engine used by the physical floor; it owns no level database or alternate rules.
+
+The platform implementation uses canonical game and level UUIDs, separate
+`engineGame`/level-slug aliases, and a deterministic `contentRevision`. A host
+rename therefore changes presentation and compatibility aliases without
+changing progress, replay, or run identity.
+
 The playground can retain exact `SessionTrajectoryFrame` objects for same-page
 visual replay. Those objects are intentionally not a portable format;
 `@motion-levels-games/replay-runtime` remains the only encoded replay/checksum
