@@ -13,8 +13,15 @@ The bundle contains:
 - `catalog.json`: all game manifests plus deterministic media references;
 - `runtime/runner.mjs`: the production Node.js JSON-lines runner;
 - `display/display.js`: the revision-matched browser player-display registry;
+- `menu/`: the revision-matched static player menu, including its production
+  entry point declared as `playerMenu.entry`;
 - `media/<game>/`: small/full thumbnails, animated WebP previews,
   player-display captures, and generation metadata.
+
+`playerMenu.adapterProtocolVersion` versions only the menu-to-venue boundary.
+Venue consumers must reject an unsupported value before serving the static
+menu. Electron, reverse-proxy configuration, the game supervisor, controller
+connectivity, physical output, and venue deployment remain consumer-owned.
 
 `npm run validate:games` and the runner registry contract require the IDs under
 `games/*` to exactly match `packages/runner/src/registry.ts`. Every registered

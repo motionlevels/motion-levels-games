@@ -7,6 +7,7 @@ import { c as createTar } from "tar";
 import { DEFAULT_ENGINE_FPS } from "../packages/game-sdk/src/index.ts";
 import { runnerProtocolVersion } from "../packages/runner/src/protocol.ts";
 import { gameCatalog } from "../packages/runner/src/registry.ts";
+import { playerMenuAdapterProtocolVersion } from "../apps/player-menu/src/protocol.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 
 const repoRoot = process.cwd();
@@ -19,6 +20,8 @@ const displayCSS = await readFile(path.join(repoRoot, "packages/display-kit/src/
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(path.join(outputRoot, "runtime"), { recursive: true });
 await mkdir(path.join(outputRoot, "display"), { recursive: true });
+await stat(path.join(repoRoot, "apps/player-menu/dist/index.html"));
+await cp(path.join(repoRoot, "apps/player-menu/dist"), path.join(outputRoot, "menu"), { recursive: true });
 
 await build({
   entryPoints: [path.join(repoRoot, "packages/runner/src/runner.ts")],
@@ -79,6 +82,7 @@ const manifest = {
   artifactDigest,
   runtime: { entry: "runtime/runner.mjs", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
   playerDisplay: { entry: "display/display.js", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
+  playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
   catalog: "catalog.json",
   files
 };

@@ -4,9 +4,12 @@ Guidance for AI agents and humans working in this repository.
 
 ## Scope
 
-This repo is the TypeScript-first home for Motion Levels games and local game
-development tooling. Keep it independent from the production platform in v1:
-no database, venue hardware, Motion Go, or platform API coupling.
+This repo is the TypeScript-first home for Motion Levels games, the complete
+player experience, and local game-development tooling. Keep it independent
+from production infrastructure: no database, venue hardware, Motion Go
+runtime, or direct deployment coupling. The static player menu may use the
+versioned venue adapter contract; Electron/Caddy packaging, the supervisor,
+controller connectivity, hardware output, and deployment remain venue-owned.
 
 ## Language
 

@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   Bug,
+  ArrowLeft,
   Bot,
   Check,
   Copy,
@@ -87,6 +88,7 @@ import {
   type PlaygroundPointSpace
 } from "./playgroundApi.ts";
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
+import { readPlayerJourneyLaunch } from "./playerJourney.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 
 const playerDisplayMediaWidth = 1280;
@@ -120,10 +122,12 @@ function createStartedGame(
 }
 
 export function App() {
+  const playerJourney = useMemo(() => readPlayerJourneyLaunch(playgroundGames), []);
   const initialGame = useMemo(() => {
+    if (playerJourney) return findPlaygroundGame(playerJourney.gameId) ?? defaultGame;
     const storedGameId = readStoredSelectedGameId(playgroundGames.map((game) => game.manifest.id));
     return storedGameId ? findPlaygroundGame(storedGameId) ?? defaultGame : defaultGame;
-  }, []);
+  }, [playerJourney]);
   const [selectedGameId, setSelectedGameId] = useState(initialGame.manifest.id);
   const selectedGame = useMemo(
     () => findPlaygroundGame(selectedGameId) ?? defaultGame,
@@ -134,9 +138,9 @@ export function App() {
   const agentLabControllerRef = useRef<JugarAgentSurfaceController | null>(null);
   const [agentLabState, setAgentLabState] = useState<AgentLabState | undefined>(undefined);
   const [seed, setSeed] = useState(DEFAULT_GAME_SEED);
-  const [playerCount, setPlayerCount] = useState(defaultGamePlayerCount(initialGame.manifest));
-  const [difficulty, setDifficulty] = useState<GameDifficulty>(() => defaultDifficultyFor(initialGame));
-  const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => defaultConfigOptionsFor(initialGame));
+  const [playerCount, setPlayerCount] = useState(() => playerJourney?.playerCount ?? defaultGamePlayerCount(initialGame.manifest));
+  const [difficulty, setDifficulty] = useState<GameDifficulty>(() => playerJourney?.difficulty ?? defaultDifficultyFor(initialGame));
+  const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => playerJourney?.options ?? defaultConfigOptionsFor(initialGame));
   const [manuallyPaused, setManuallyPaused] = useState(false);
   const [pauseLocks, setPauseLocks] = useState<PauseLockSet>(() => new Set());
   const paused = isPlaygroundPaused(manuallyPaused, pauseLocks);
@@ -146,9 +150,9 @@ export function App() {
       const startedGame = createStartedGame(
         initialGame,
         DEFAULT_GAME_SEED,
-        defaultGamePlayerCount(initialGame.manifest),
-        defaultDifficultyFor(initialGame),
-        defaultConfigOptionsFor(initialGame)
+        playerJourney?.playerCount ?? defaultGamePlayerCount(initialGame.manifest),
+        playerJourney?.difficulty ?? defaultDifficultyFor(initialGame),
+        playerJourney?.options ?? defaultConfigOptionsFor(initialGame)
       );
       const engine = createGameEngine(startedGame.game, {
         fps: DEFAULT_ENGINE_FPS,
@@ -157,7 +161,7 @@ export function App() {
 
       return { ...startedGame, engine };
     },
-    [initialGame]
+    [initialGame, playerJourney]
   );
   const engineRef = useRef<GameEngine>(started.engine);
   const [snapshot, setSnapshot] = useState<GameSnapshot>(started.engine.state.snapshot);
@@ -1067,6 +1071,19 @@ export function App() {
               </div>
             </div>
             <div className="playground-controls">
+              {playerJourney?.returnUrl ? (
+                <button
+                  className="journey-return"
+                  onClick={() => {
+                    if (playerJourney.returnUrl) window.location.assign(playerJourney.returnUrl);
+                  }}
+                  title="Back to player menu"
+                  type="button"
+                >
+                  <ArrowLeft size={15} aria-hidden="true" />
+                  <span>Menu</span>
+                </button>
+              ) : null}
               <div className="control-group control-group-primary">
                 <PlaygroundSelect
                   className="control-field control-game"
