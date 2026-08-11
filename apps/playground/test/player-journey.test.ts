@@ -21,3 +21,21 @@ test("player journey selects and normalizes kiosk launch settings", () => {
 test("player journey rejects games outside the runtime registry", () => {
   assert.equal(readPlayerJourneyLaunch(playgroundGames, "?journey=1&game=missing"), undefined);
 });
+
+test("player journey accepts only same-origin menu return URLs", () => {
+  const platformLocation = new URL("https://platform.motionlevels.obis.dev/games/play");
+  const sameOriginReturn = "https://platform.motionlevels.obis.dev/games/play?screen=menu";
+  const accepted = readPlayerJourneyLaunch(
+    playgroundGames,
+    `?journey=1&game=ping-pong&return=${encodeURIComponent(sameOriginReturn)}`,
+    platformLocation,
+  );
+  const rejected = readPlayerJourneyLaunch(
+    playgroundGames,
+    `?journey=1&game=ping-pong&return=${encodeURIComponent("https://example.com/games/play?screen=menu")}`,
+    platformLocation,
+  );
+
+  assert.equal(accepted?.returnUrl, sameOriginReturn);
+  assert.equal(rejected?.returnUrl, undefined);
+});
