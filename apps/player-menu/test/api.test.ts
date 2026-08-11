@@ -20,7 +20,7 @@ describe("kiosk API requests", () => {
       hostname: "127.0.0.1",
       host: "127.0.0.1:4103",
       protocol: "http:",
-    } as Location);
+    } as Location, true);
     const url = new URL(target!);
     assert.equal(url.origin, "http://127.0.0.1:4104");
     assert.equal(url.searchParams.get("journey"), "1");
@@ -40,6 +40,35 @@ describe("kiosk API requests", () => {
     assert.equal(localPlaygroundEnabled("4104", {
       hostname: "venue.example.com",
     } as Location), false);
+  });
+
+  it("returns an embedded menu launch to its current playground", () => {
+    const target = localPlaygroundLaunchURL({
+      game: "motion-levels-games:ping-pong",
+      playerCount: 2,
+      difficulty: "medium",
+    }, undefined, {
+      hostname: "127.0.0.1",
+      host: "127.0.0.1:4103",
+      protocol: "http:",
+      search: "?embed=playground&playgroundPort=5174",
+    } as Location, true);
+
+    const url = new URL(target!);
+    assert.equal(url.origin, "http://127.0.0.1:5174");
+    assert.equal(url.searchParams.get("return"), "http://127.0.0.1:5174/?screen=menu");
+  });
+
+  it("ignores embedded playground parameters outside development", () => {
+    assert.equal(localPlaygroundLaunchURL({
+      game: "motion-levels-games:ping-pong",
+      playerCount: 2,
+    }, undefined, {
+      hostname: "127.0.0.1",
+      host: "127.0.0.1:4103",
+      protocol: "http:",
+      search: "?embed=playground&playgroundPort=5174",
+    } as Location, false), undefined);
   });
   it("returns decoded JSON and forwards request options", async () => {
     let method = "";

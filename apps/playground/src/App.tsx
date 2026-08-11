@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   LoaderCircle,
   Maximize,
+  Menu as MenuIcon,
   Minimize,
   Monitor,
   Pause,
@@ -76,6 +77,7 @@ import {
 } from "./mediaAssets.ts";
 import { playgroundMediaOptionsFor } from "./mediaOptions.ts";
 import { PhaseIndicator } from "./PhaseIndicator.tsx";
+import { PlayerMenuPreview } from "./PlayerMenuPreview.tsx";
 import { PlaygroundStatusDock, type ActiveRunSetting } from "./PlaygroundStatusDock.tsx";
 import { PlaygroundSelect } from "./PlaygroundSelect.tsx";
 import { isPlaygroundPaused, updatePauseLocks, type PauseLockSet } from "./pausePolicy.ts";
@@ -89,6 +91,7 @@ import {
 } from "./playgroundApi.ts";
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
 import { readPlayerJourneyLaunch } from "./playerJourney.ts";
+import { localPlayerMenuUrl, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 
 const playerDisplayMediaWidth = 1280;
@@ -123,12 +126,15 @@ function createStartedGame(
 
 export function App() {
   const playerJourney = useMemo(() => readPlayerJourneyLaunch(playgroundGames), []);
+  const [playerMenuPreviewUrl] = useState(() => localPlayerMenuUrl());
+  const initialPrimaryScreen: PrimaryScreen = playerMenuPreviewUrl ? readPrimaryScreen() : "display";
   const initialGame = useMemo(() => {
     if (playerJourney) return findPlaygroundGame(playerJourney.gameId) ?? defaultGame;
     const storedGameId = readStoredSelectedGameId(playgroundGames.map((game) => game.manifest.id));
     return storedGameId ? findPlaygroundGame(storedGameId) ?? defaultGame : defaultGame;
   }, [playerJourney]);
   const [selectedGameId, setSelectedGameId] = useState(initialGame.manifest.id);
+  const [primaryScreen, setPrimaryScreen] = useState<PrimaryScreen>(initialPrimaryScreen);
   const selectedGame = useMemo(
     () => findPlaygroundGame(selectedGameId) ?? defaultGame,
     [selectedGameId]
@@ -142,7 +148,9 @@ export function App() {
   const [difficulty, setDifficulty] = useState<GameDifficulty>(() => playerJourney?.difficulty ?? defaultDifficultyFor(initialGame));
   const [gameOptions, setGameOptions] = useState<GameConfigOptions>(() => playerJourney?.options ?? defaultConfigOptionsFor(initialGame));
   const [manuallyPaused, setManuallyPaused] = useState(false);
-  const [pauseLocks, setPauseLocks] = useState<PauseLockSet>(() => new Set());
+  const [pauseLocks, setPauseLocks] = useState<PauseLockSet>(
+    () => new Set(initialPrimaryScreen === "menu" ? ["player-menu"] : [])
+  );
   const paused = isPlaygroundPaused(manuallyPaused, pauseLocks);
   const agentLabActive = surfaceMode === "agents" && selectedGame.createSessionController !== undefined;
   const started = useMemo(
@@ -384,6 +392,12 @@ export function App() {
     pausedRef.current = nextEffectivePaused;
     setPauseLocks(nextLocks);
   }, [releaseActivePlayerInputs]);
+
+  const changePrimaryScreen = useCallback((nextScreen: PrimaryScreen) => {
+    if (nextScreen === "menu" && !playerMenuPreviewUrl) return;
+    setInteractionPauseState("player-menu", nextScreen === "menu");
+    setPrimaryScreen(nextScreen);
+  }, [playerMenuPreviewUrl, setInteractionPauseState]);
 
   const setDebugOpenState = useCallback((open: boolean) => {
     setInteractionPauseState("debug-dialog", open);
@@ -1025,6 +1039,7 @@ export function App() {
   const frameNumber = frameMillis > 0 ? Math.round(engineRef.current.clockMillis / frameMillis) : 0;
   const debugStats: [string, ReactNode][] = [
     ["Game", selectedGame.manifest.label],
+    ["Screen", primaryScreen === "menu" ? "Player menu" : "Player display"],
     ["Surface", agentLabActive ? "Jugar 3D" : "Floor"],
     ["Phase", snapshot.phase],
     ["Clock", formatElapsedClock(engineRef.current.clockMillis)],
@@ -1207,6 +1222,26 @@ export function App() {
             </div>
 
             <div className="surface-toolbar" role="group" aria-label="Surface, debug, and capture actions">
+              {playerMenuPreviewUrl ? (
+                <nav className="surface-mode-toggle primary-screen-toggle" aria-label="Primary screen">
+                  <button
+                    aria-pressed={primaryScreen === "display"}
+                    onClick={() => changePrimaryScreen("display")}
+                    title="Player display"
+                    type="button"
+                  >
+                    <Monitor size={14} aria-hidden="true" /> Display
+                  </button>
+                  <button
+                    aria-pressed={primaryScreen === "menu"}
+                    onClick={() => changePrimaryScreen("menu")}
+                    title="Player menu"
+                    type="button"
+                  >
+                    <MenuIcon size={14} aria-hidden="true" /> Menu
+                  </button>
+                </nav>
+              ) : null}
               <nav className="surface-mode-toggle" aria-label="Simulation surface">
                 <button
                   aria-pressed={!agentLabActive}
@@ -1393,6 +1428,9 @@ export function App() {
                 <PlayerDisplay snapshot={snapshot} frame={frame} />
               </PlayerDisplayRuntimeProvider>
             </div>
+            {primaryScreen === "menu" && playerMenuPreviewUrl ? (
+              <PlayerMenuPreview src={playerMenuPreviewUrl} />
+            ) : null}
           </div>
 
           <PlaygroundStatusDock

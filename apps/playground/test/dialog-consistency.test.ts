@@ -57,6 +57,7 @@ test("dialogs and selectors use composable pause locks", () => {
   assert.match(appSource, /const paused = isPlaygroundPaused\(manuallyPaused, pauseLocks\)/);
   assert.match(appSource, /setInteractionPauseState\("debug-dialog", open\)/);
   assert.match(appSource, /setInteractionPauseState\("settings-dialog", open\)/);
+  assert.match(appSource, /setInteractionPauseState\("player-menu", nextScreen === "menu"\)/);
 
   for (const selector of ["game-select", "players-select", "difficulty-select"]) {
     assert.match(
@@ -200,6 +201,11 @@ test("the standard top bar owns surface selection at every layout", () => {
     appSource,
     /aria-pressed=\{agentLabActive\}[\s\S]*?disabled=\{selectedGame\.createSessionController === undefined\}/,
     "Agents 3D must remain visible and disabled when a game has no product controller"
+  );
+  assert.match(
+    appSource,
+    /aria-label="Primary screen"[\s\S]*?> Display[\s\S]*?> Menu/,
+    "the primary stage must offer an explicit player display / menu toggle"
   );
   assert.match(
     styleSource,

@@ -40,9 +40,15 @@ in-browser floor and player display—run this at the repository root:
 npm run dev:experience
 ```
 
-Open `http://127.0.0.1:4103`. Development mode serves the local manifest
-catalog and hands a configured selection to the playground on port 4104. The
-handoff is deliberately loopback-only and is absent from production builds.
+Open `http://127.0.0.1:4103` for the standalone kiosk, or open the playground
+at `http://127.0.0.1:4104` and use its **Display / Menu** toggle. The embedded
+menu replaces only the 16:9 player-display preview, keeps the floor visible,
+and pauses hidden gameplay. Starting a game switches the playground back to
+the real player display; its Menu action returns to the embedded kiosk.
+
+Development mode serves the local manifest catalog and hands a configured
+selection to the current loopback playground. The handoff is deliberately
+loopback-only and is absent from production builds.
 
 Set `VITE_GAME_ENGINE_URL` if the menu is not running on the same machine as
 the game-engine:

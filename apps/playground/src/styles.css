@@ -1012,6 +1012,21 @@ select {
   width: 1920px;
 }
 
+.player-menu-preview-native {
+  background: #080b10;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.player-menu-preview-frame {
+  background: #080b10;
+  border: 0;
+  display: block;
+  height: 1080px;
+  pointer-events: auto;
+  width: 1920px;
+}
+
 .status-dock {
   container-name: status-dock;
   container-type: size;
@@ -1891,6 +1906,10 @@ select {
   flex: 0 0 auto;
   margin-right: 6px;
   min-width: 0;
+}
+
+.primary-screen-toggle {
+  margin-right: var(--pg-control-gap);
 }
 
 .surface-mode-toggle button {
