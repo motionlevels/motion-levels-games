@@ -66,7 +66,10 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run playtest
-      - run: npx playwright install --with-deps chromium
+      # Self-hosted runners provision OS libraries outside the repository.
+      # Installing only Chromium keeps this step non-interactive on runners
+      # that intentionally do not grant the Actions user passwordless sudo.
+      - run: npx playwright install chromium
       - run: npm run playtest:browser
       - run: npm run generate:media
       - run: npm run build:bundle

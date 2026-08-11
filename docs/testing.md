@@ -103,3 +103,6 @@ workflow runs four independent jobs:
 Caller workflows use concurrency cancellation so obsolete commits stop
 consuming CI time. Every job has a timeout and read-only repository permission.
 The `dev` caller retains its additional ancestry check before shared CI runs.
+The self-hosted runner image owns Chromium's operating-system dependencies;
+the workflow installs the pinned Playwright Chromium binary without invoking
+interactive `sudo` during a job.
