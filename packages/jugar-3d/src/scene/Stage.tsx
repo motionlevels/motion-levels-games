@@ -163,26 +163,24 @@ export default function Stage({
         />
       ) : null}
 
-      {/* This boundary must live INSIDE the Canvas. A character that loads a
-          model suspends on first render; without a boundary here the whole
-          Canvas suspends, which tears down and recreates the renderer and
-          loses the WebGL context — the scene goes black. The floor and TV keep
-          rendering while the model streams in. */}
-      <Suspense fallback={null}>
-        {session.avatars.map((avatar) =>
-          // Bots are always robots so the player's own character stands out.
-          avatar.isBot ? (
-            <Robot avatar={avatar} key={avatar.id} session={session} />
-          ) : (
+      {session.avatars.map((avatar) =>
+        avatar.isBot ? (
+          <Robot avatar={avatar} key={avatar.id} session={session} />
+        ) : (
+          // Each streamed skin owns its boundary. The canonical athlete stays
+          // visible until the GLB is ready instead of making every avatar pop out.
+          <Suspense
+            fallback={<Robot avatar={avatar} session={session} />}
+            key={avatar.id}
+          >
             <Character
               avatar={avatar}
-              key={avatar.id}
               modelUrl={sahurModelUrl}
               session={session}
             />
-          ),
-        )}
-      </Suspense>
+          </Suspense>
+        )
+      )}
 
       <CameraRig coarsePointer={coarsePointer} exposeFitDebug={exposeFitDebug} session={session} />
     </Canvas>

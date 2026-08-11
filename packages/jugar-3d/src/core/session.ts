@@ -23,6 +23,8 @@ import type {
 } from "../contracts.ts";
 import {
   createAvatar,
+  resetAvatarMotion,
+  setAvatarFeedback,
   setAvatarTarget,
   startAvatarJump,
   updateAvatar,
@@ -294,14 +296,7 @@ export class GameSession {
 
     for (const [index, avatar] of this.avatars.entries()) {
       const spawn = spawnTile(index, this.avatars.length, index === 0 ? firstZone : undefined);
-      avatar.tile = spawn;
-      avatar.position = { x: spawn.x, y: spawn.y };
-      avatar.pressedTile = null;
-      avatar.target = null;
-      avatar.jumpStartedAt = 0;
-      avatar.airborneUntil = 0;
-      avatar.stepCount = 0;
-      avatar.zoneIndex = null;
+      resetAvatarMotion(avatar, spawn);
     }
 
     this.rebuildControllers();
@@ -423,6 +418,7 @@ export class GameSession {
 
     this.updateControllers(deltaMillis);
     this.readyZoneDirector.update(this);
+    const result = sessionResult(this.state.snapshot);
 
     let humanStepped = false;
     for (const avatar of this.avatars) {
@@ -432,9 +428,10 @@ export class GameSession {
             // AI routes clamp exactly onto their destination centre without
             // the human click-settle curve, preserving configured tile speed.
             settleAtTarget: false,
-            nextTarget: () => this.takeControllerWaypoint(avatar.id)
+            nextTarget: () => this.takeControllerWaypoint(avatar.id),
+            ...(result ? { result } : {})
           })
-        : updateAvatar(avatar, this.clockMillis, deltaMillis);
+        : updateAvatar(avatar, this.clockMillis, deltaMillis, result ? { result } : {});
       this.applyOps(ops);
       if (!avatar.isBot && avatar.stepCount > stepsBefore) humanStepped = true;
     }
@@ -566,9 +563,12 @@ export class GameSession {
   }
 
   private emitEvents(events: GameEvent[]): void {
-    if (!this.sounds) return;
     for (const event of events) {
-      if (event.cue && event.cue !== "none") this.sounds.cue(event.cue);
+      const feedback = feedbackFromCue(event.cue);
+      if (feedback) {
+        for (const avatar of this.avatars) setAvatarFeedback(avatar, feedback, event.atMillis);
+      }
+      if (event.cue && event.cue !== "none") this.sounds?.cue(event.cue);
     }
   }
 
@@ -601,9 +601,12 @@ function readonlyAvatar(avatar: Avatar): Readonly<Avatar> {
   return Object.freeze({
     ...avatar,
     position: Object.freeze({ ...avatar.position }),
+    velocity: Object.freeze({ ...avatar.velocity }),
+    acceleration: Object.freeze({ ...avatar.acceleration }),
     tile: Object.freeze({ ...avatar.tile }),
     pressedTile: avatar.pressedTile ? Object.freeze({ ...avatar.pressedTile }) : null,
-    target: avatar.target ? Object.freeze({ ...avatar.target }) : null
+    target: avatar.target ? Object.freeze({ ...avatar.target }) : null,
+    animationGraph: freezeAnimationGraph(avatar.animationGraph)
   });
 }
 
@@ -611,10 +614,22 @@ function cloneAvatar(avatar: Readonly<Avatar>): Avatar {
   return {
     ...avatar,
     position: { ...avatar.position },
+    velocity: { ...avatar.velocity },
+    acceleration: { ...avatar.acceleration },
     tile: { ...avatar.tile },
     pressedTile: avatar.pressedTile ? { ...avatar.pressedTile } : null,
-    target: avatar.target ? { ...avatar.target } : null
+    target: avatar.target ? { ...avatar.target } : null,
+    animationGraph: structuredClone(avatar.animationGraph)
   };
+}
+
+function freezeAnimationGraph(avatarGraph: Avatar["animationGraph"]): Avatar["animationGraph"] {
+  return Object.freeze({
+    ...avatarGraph,
+    locomotion: Object.freeze({ ...avatarGraph.locomotion }),
+    ...(avatarGraph.fullBody ? { fullBody: Object.freeze({ ...avatarGraph.fullBody }) } : {}),
+    ...(avatarGraph.upperBody ? { upperBody: Object.freeze({ ...avatarGraph.upperBody }) } : {})
+  });
 }
 
 function cloneDebug(debug: SessionAgentDebug): SessionAgentDebug {
@@ -685,6 +700,19 @@ function trajectoryTickFromState(state: GameEngineState, frameMillis: number): n
 
 function isFinitePoint(point: Readonly<Point> | undefined): point is Readonly<Point> {
   return point !== undefined && Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function sessionResult(snapshot: GameEngineState["snapshot"]): "success" | "failure" | undefined {
+  if (String(snapshot.phase) !== "finished") return undefined;
+  return snapshot.success ? "success" : "failure";
+}
+
+function feedbackFromCue(cue: string): Avatar["feedback"] {
+  if (cue === "damage" || cue === "hit" || cue === "miss") return "damage";
+  if (cue === "turn" || cue === "target" || cue === "objective") return "objective";
+  if (cue === "round-win" || cue === "win") return "success";
+  if (cue === "fail") return "failure";
+  return null;
 }
 
 function normalizeCatchUpSteps(value: number | undefined): number {

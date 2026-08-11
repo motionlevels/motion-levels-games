@@ -26,6 +26,7 @@ const MIN_WALK_RATE = 0.35;
  */
 export function Sahur({ session, avatar, modelUrl = SAHUR_MODEL_URL }: CharacterProps) {
   const rootRef = useRef<THREE.Group>(null);
+  const poseRef = useRef<THREE.Group>(null);
   const modelRef = useRef<THREE.Group>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const keyLightRef = useRef<THREE.PointLight>(null);
@@ -106,7 +107,19 @@ export function Sahur({ session, avatar, modelUrl = SAHUR_MODEL_URL }: Character
   }, [scene]);
 
   useCharacterMotion(session, avatar, rootRef, (pose) => {
-    const { speed, motion, jumpPose, jumping, celebrating, defeated, time, delta } = pose;
+    const {
+      speed,
+      motion,
+      jumpPose,
+      jumping,
+      landing,
+      hit,
+      celebrating,
+      defeated,
+      time,
+      procedural,
+      delta
+    } = pose;
 
     const walkAction = walkRef.current;
     if (walkAction) {
@@ -119,19 +132,24 @@ export function Sahur({ session, avatar, modelUrl = SAHUR_MODEL_URL }: Character
       walkAction.paused = true;
     }
 
-    const holder = modelRef.current;
+    const holder = poseRef.current;
     if (holder) {
-      holder.rotation.x = -jumpPose * 0.18 + (defeated ? 0.34 : 0);
-      holder.rotation.z = celebrating ? Math.sin(time * 6.5 + avatar.id) * 0.16 : 0;
-      // A gentle sway while standing still, so it never looks frozen.
-      holder.rotation.y = motion < 0.2 ? Math.sin(time * 1.4 + avatar.id) * 0.09 : 0;
+      const idle = motion < 0.2 ? procedural.breathingWeight : 0;
+      holder.position.y = Math.sin(time * 1.65 + avatar.id) * 0.012 * idle - landing * 0.035;
+      holder.rotation.x = -jumpPose * 0.18 + hit * 0.08 + (defeated ? 0.34 : 0);
+      holder.rotation.z = celebrating
+        ? Math.sin(time * 6.5 + avatar.id) * 0.16
+        : Math.sin(time * 0.82 + avatar.id * 1.7) * 0.025 * idle + hit * 0.05;
+      holder.rotation.y = procedural.headYawRadians * 0.08
+        + Math.sin(time * 0.58 + avatar.id) * 0.045 * idle;
+      holder.scale.set(1 + landing * 0.025, 1 - landing * 0.04, 1 + landing * 0.025);
     }
 
     if (keyLightRef.current && rootRef.current) {
       const yaw = -rootRef.current.rotation.y;
       keyLightRef.current.position.set(Math.sin(yaw) * 1, 1.6, Math.cos(yaw) * 1);
     }
-    updateContactRing(ringRef.current, jumping);
+    updateContactRing(ringRef.current, jumping, landing, hit);
     void delta;
   });
 
@@ -165,8 +183,10 @@ export function Sahur({ session, avatar, modelUrl = SAHUR_MODEL_URL }: Character
         <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.8} />
       </mesh>
 
-      <group ref={modelRef}>
-        <primitive object={model} />
+      <group ref={poseRef}>
+        <group ref={modelRef}>
+          <primitive object={model} />
+        </group>
       </group>
     </group>
   );

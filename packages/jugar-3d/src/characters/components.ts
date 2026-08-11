@@ -2,7 +2,7 @@
 
 import type { ComponentType } from "react";
 
-import { Robot } from "./Robot.tsx";
+import { Explorer, Guardian, Robot, Runner, Trickster } from "./Robot.tsx";
 import { Sahur } from "./Sahur.tsx";
 import type { CharacterProps } from "./types.ts";
 
@@ -13,6 +13,10 @@ import type { CharacterProps } from "./types.ts";
  */
 export const characterComponents: Record<string, ComponentType<CharacterProps>> = {
   robot: Robot,
+  explorer: Explorer,
+  runner: Runner,
+  trickster: Trickster,
+  guardian: Guardian,
   sahur: Sahur
 };
 

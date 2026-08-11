@@ -206,7 +206,12 @@ test("intermediate controller waypoints preserve configured travel speed", () =>
   session.stepTicks(50);
 
   const travelled = 27 - (session.avatars[0]?.position.y ?? 27);
-  assert.ok(travelled >= 4.65 && travelled <= 4.85, `expected ~4.8 tiles, got ${travelled}`);
+  const speed = Math.hypot(
+    session.avatars[0]?.velocity.x ?? 0,
+    session.avatars[0]?.velocity.y ?? 0
+  );
+  assert.ok(travelled >= 4.45 && travelled <= 4.65, `expected accelerated travel, got ${travelled}`);
+  assert.ok(speed >= 4.79 && speed <= 4.81, `expected configured cruise speed, got ${speed}`);
   assert.ok(positions.every((position, index) => index === 0 || position <= (positions[index - 1] ?? 27)));
   unsubscribe();
   session.dispose();

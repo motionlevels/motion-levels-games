@@ -21,18 +21,32 @@ export type CharacterMeta = {
 };
 
 /**
- * Playable characters for the HUMAN player only — companion bots always render
- * as robots so the player's character stands out. The picker is deliberately
- * tucked away; Sahur is the default face of the game.
+ * Playable characters for the HUMAN player. Companion bots rotate through the
+ * four canonical Motion Athlete silhouettes; Sahur remains an optional skin.
  *
  * `credit` is rendered in the picker. The Sahur model is CC-BY, so that credit
  * is a licence obligation, not decoration: see ATTRIBUTIONS.md.
  */
 export const characterCatalog: CharacterMeta[] = [
   {
-    id: "robot",
-    label: "Robot",
-    description: "El personaje de siempre del suelo interactivo."
+    id: "explorer",
+    label: "Explorador",
+    description: "Compacto, curioso y equipado con mochila baliza."
+  },
+  {
+    id: "runner",
+    label: "Velocista",
+    description: "Silueta ligera con banda de energía magenta."
+  },
+  {
+    id: "trickster",
+    label: "Tramposo",
+    description: "Antena asimétrica y movimientos más juguetones."
+  },
+  {
+    id: "guardian",
+    label: "Guardián",
+    description: "Hombros anchos y una presencia protectora."
   },
   {
     id: "sahur",
@@ -46,7 +60,7 @@ export const characterCatalog: CharacterMeta[] = [
   }
 ];
 
-export const defaultCharacterId = "sahur";
+export const defaultCharacterId = "explorer";
 
 export function findCharacter(id: string | null | undefined): CharacterMeta {
   return (
