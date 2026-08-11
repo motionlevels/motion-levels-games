@@ -104,9 +104,11 @@ checksum. Batched stepping records every authority tick but renders only the
 last. Replay seek swaps presentation state while parking live authority; exit
 restores the live avatars/session exactly.
 
-Character jump, idle, victory and locomotion phases sample
-`session.presentationMillis`. Locomotion has no render-history phase/blend
-accumulator, so repeated seeks to one recorded tick produce the same pose.
+Character jump, idle, victory and procedural animation phases sample
+`session.presentationMillis`. Locomotion phase is derived from authoritative
+distance travelled, while acceleration, braking, facing and graph transitions
+advance only on fixed ticks. There is no render-history phase/blend accumulator,
+so repeated seeks to one recorded tick produce the same pose.
 `exportReplay()` uses a `replay-runtime` diagnostic envelope; it does not
 contain the authoritative input stream. The larger visual trajectory is
 intentionally page-local and is not a second portable schema. Portable Duelo
@@ -115,12 +117,14 @@ subpath, which records the real press/release inputs.
 
 ## Canonical Stage and assets
 
-The shared Stage preserves the deployed Jugar camera, arena, LED floor, TV,
-Robot and Sahur composition. Sahur remains a credited interim GLB; the Robot
-is the dependable procedural/default asset. Capture, coarse-pointer and fit
-debug behavior are explicit props rather than environment-global branches.
-Every host owns one Canvas/session and disposes through normal React/R3F
-lifecycle.
+The shared Stage preserves the deployed Jugar camera, arena, LED floor and TV,
+and renders the canonical four-variant Motion Athlete cast. The legacy `Robot`
+component name remains a compatibility entry point for that procedural cast.
+Sahur remains an optional credited interim GLB and falls back per character to
+Motion Athlete while its model streams, so one slow asset never hides the
+whole team. Capture, coarse-pointer and fit debug behavior are explicit props
+rather than environment-global branches. Every host owns one Canvas/session
+and disposes through normal React/R3F lifecycle.
 
 The playground keeps `Floor / Agents 3D` in the standard top bar at all widths.
 The switch is always visible, disabled when the selected game has no product

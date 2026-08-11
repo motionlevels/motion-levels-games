@@ -8,6 +8,12 @@ The package never creates a raw `WebGLRenderer`, a second game engine, or a
 game-specific controller. Optional product controllers receive the existing
 game instance and fixed-step observations through `createSessionController`.
 
+Avatar acceleration, braking, facing, distance travelled and animation-graph
+state are part of the fixed-tick session. The canonical procedural Motion
+Athlete cast (Explorer, Runner, Trickster and Guardian) reads that state without
+render-history accumulators, so replay seeks reproduce the same pose. New users
+default to Explorer; automated players rotate through all four silhouettes.
+
 Use `@motion-levels-games/jugar-3d/react` for `Stage`, `Jugar3DApp` and
 `useGameSession`, and import `@motion-levels-games/jugar-3d/styles.css` once in
 the host. React, React DOM, Three, R3F, Drei and Lucide are peers on purpose:
@@ -18,7 +24,9 @@ currently deployed website (Three 0.182/R3F 9.6) and platform (Three 0.184/R3F
 
 Sahur is a CC-BY-4.0 third-party model. The picker renders its required author,
 source, and licence credit; hosts must preserve that UI and the package's
-`ATTRIBUTIONS.md` notice when supplying the model asset.
+`ATTRIBUTIONS.md` notice when supplying the model asset. Each streamed Sahur
+instance has an independent Motion Athlete fallback, preventing one model load
+from blanking every avatar in the Stage.
 
 The playground can retain exact `SessionTrajectoryFrame` objects for same-page
 visual replay. Those objects are intentionally not a portable format;

@@ -28,6 +28,7 @@ test("workspace source imports respect package ownership", async () => {
     {
       directory: "packages/jugar-3d/src",
       allowed: new Set([
+        "@motion-levels-games/character-runtime",
         "@motion-levels-games/display-kit",
         "@motion-levels-games/game-sdk",
         "@motion-levels-games/replay-runtime"

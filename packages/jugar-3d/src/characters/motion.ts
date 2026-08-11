@@ -3,10 +3,18 @@
 import { useFrame } from "@react-three/fiber";
 import { useLayoutEffect, type RefObject } from "react";
 import * as THREE from "three";
+import {
+  animationBlendWeights,
+  proceduralPose,
+  type AnimationChannelState,
+  type AnimationGraphState,
+  type AnimationClipName,
+  type ProceduralPose
+} from "@motion-levels-games/character-runtime";
 
-import { JUMP_MILLIS, type Avatar } from "../core/avatar.ts";
+import { JUMP_MILLIS, avatarAnimationParameters, type Avatar } from "../core/avatar.ts";
 import type { GameSession } from "../core/session.ts";
-import { TILE_TOP_Y, tileToWorld } from "../core/tileMath.ts";
+import { TILE_SIZE, TILE_TOP_Y, tileToWorld } from "../core/tileMath.ts";
 
 /**
  * Shared skeleton metrics. Every character is built around these so its soles
@@ -41,8 +49,12 @@ export type CharacterPose = {
   /** 0 on the ground, rising to 1 at the top of the jump arc. */
   jumpPose: number;
   jumping: boolean;
+  landing: number;
+  hit: number;
   celebrating: boolean;
   defeated: boolean;
+  animationGraph: AnimationGraphState;
+  procedural: ProceduralPose;
 };
 
 export type DeterministicLocomotionPose = Readonly<{
@@ -64,10 +76,17 @@ export function deterministicLocomotionPose(
   presentationMillis: number
 ): DeterministicLocomotionPose {
   const time = Math.max(0, presentationMillis) / 1_000;
-  const moving = avatar.target !== null;
-  const speed = moving ? Math.max(0, avatar.speed) : 0;
-  const motion = moving ? 1 : 0;
-  const phase = avatar.id * 1.7 + time * (7 + Math.min(speed, 4) * 4.5);
+  const speed = Math.hypot(avatar.velocity.x, avatar.velocity.y) * TILE_SIZE;
+  const locomotionWeights = animationBlendWeights(avatar.animationGraph.locomotion);
+  const motion = THREE.MathUtils.clamp(
+    MOVING_CLIPS.reduce((sum, clip) => sum + (locomotionWeights[clip] ?? 0), 0),
+    0,
+    1
+  );
+  const moving = speed > 0.02 || motion > 0.02;
+  // Phase follows actual ground covered, so retargeting and frame partitioning
+  // cannot make the feet pedal or skate while the authority is slowing down.
+  const phase = avatar.id * 1.7 + avatar.distanceTravelled * 5.6;
   const stride = motion === 0 ? 0 : Math.sin(phase) * motion;
   const counterStride = motion === 0 ? 0 : Math.cos(phase) * motion;
   return {
@@ -120,12 +139,7 @@ export function useCharacterMotion(
     const world = tileToWorld(avatar.position.x, avatar.position.y);
     root.position.x = world.x;
     root.position.z = world.z;
-    const targetWorld = avatar.target
-      ? tileToWorld(avatar.target.x, avatar.target.y)
-      : undefined;
-    root.rotation.y = targetWorld
-      ? Math.atan2(targetWorld.x - world.x, targetWorld.z - world.z)
-      : Math.PI;
+    root.rotation.y = avatar.facingRadians;
 
     // Jump arc from the session clock, matching the press/release the game saw.
     const jumping = avatar.airborneUntil > session.presentationMillis;
@@ -133,12 +147,25 @@ export function useCharacterMotion(
       ? THREE.MathUtils.clamp((session.presentationMillis - avatar.jumpStartedAt) / JUMP_MILLIS, 0, 1)
       : 0;
     const jumpPose = jumping ? Math.sin(jumpProgress * Math.PI) : 0;
+    const landing = animationClipWeight(avatar.animationGraph.fullBody, "land-light");
+    const hit = animationClipWeight(avatar.animationGraph.fullBody, "hit");
+    const result = finished ? (snapshot.success ? "success" : "failure") : undefined;
+    const parameters = avatarAnimationParameters(avatar, session.presentationMillis, result);
+    const procedural = proceduralPose(
+      parameters,
+      Math.round(session.presentationMillis / session.engine.frameMillis),
+      session.seed + avatar.id * 101
+    );
 
     const victory = celebrating ? Math.abs(Math.sin(time * 4.6 + avatar.id)) * 0.4 : 0;
     const bounce = Math.abs(counterStride) * 0.05;
 
     root.position.y = TILE_TOP_Y + bounce + jumpPose * 0.72 + victory;
-    root.scale.set(1 - jumpPose * 0.06, 1 + jumpPose * 0.1, 1 - jumpPose * 0.06);
+    root.scale.set(
+      1 - jumpPose * 0.06 + landing * 0.035,
+      1 + jumpPose * 0.1 - landing * 0.055,
+      1 - jumpPose * 0.06 + landing * 0.035
+    );
 
     applyPose({
       time,
@@ -150,10 +177,35 @@ export function useCharacterMotion(
       motion,
       jumpPose,
       jumping,
+      landing,
+      hit,
       celebrating,
-      defeated
+      defeated,
+      animationGraph: avatar.animationGraph,
+      procedural
     });
   });
+}
+
+const MOVING_CLIPS: readonly AnimationClipName[] = [
+  "walk",
+  "run",
+  "strafe-left",
+  "strafe-right",
+  "turn-left",
+  "turn-right",
+  "pivot",
+  "stop-recover"
+];
+
+export function animationClipWeight(
+  channel: AnimationChannelState | undefined,
+  clip: AnimationClipName
+): number {
+  if (!channel) return 0;
+  let weight = channel.clip === clip ? channel.currentWeight : 0;
+  if (channel.previousClip === clip) weight += channel.previousWeight;
+  return THREE.MathUtils.clamp(weight, 0, 1);
 }
 
 /**
@@ -174,10 +226,15 @@ export function faceKeyLightAtCamera(
 }
 
 /** Contact ring fades and widens as the character leaves the ground. */
-export function updateContactRing(ring: THREE.Mesh | null, jumping: boolean): void {
+export function updateContactRing(
+  ring: THREE.Mesh | null,
+  jumping: boolean,
+  landing = 0,
+  hit = 0
+): void {
   if (!ring) {
     return;
   }
-  (ring.material as THREE.MeshBasicMaterial).opacity = jumping ? 0.04 : 0.3;
-  ring.scale.setScalar(jumping ? 1.4 : 1);
+  (ring.material as THREE.MeshBasicMaterial).opacity = jumping ? 0.04 : 0.3 + landing * 0.16;
+  ring.scale.setScalar(jumping ? 1.4 : 1 + landing * 0.22 + hit * 0.05);
 }

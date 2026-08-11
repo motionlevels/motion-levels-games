@@ -18,6 +18,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@motion-levels-games/character-runtime": "0.1.0",
     "@motion-levels-games/display-kit": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
     "@motion-levels-games/replay-runtime": "0.1.0"
