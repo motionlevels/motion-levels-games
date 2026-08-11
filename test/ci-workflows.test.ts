@@ -47,9 +47,15 @@ test("green main builds automatically promote one immutable release", () => {
   assert.doesNotMatch(ci, /gh workflow run release-bundle\.yml/);
 });
 
-test("reusable CI separates quality, compatibility, coverage, and runtime checks", () => {
+test("reusable CI separates quality, compatibility, coverage, bundle, and browser checks", () => {
   assert.match(checks, /workflow_call:/);
-  for (const job of ["quality", "compatibility-tests", "coverage-tests", "build-and-playtest"]) {
+  for (const job of [
+    "quality",
+    "compatibility-tests",
+    "coverage-tests",
+    "build-and-playtest",
+    "browser-playtest",
+  ]) {
     assert.match(checks, new RegExp(`^  ${job}:`, "m"), `${job} must remain an independent job`);
   }
   assert.match(checks, /node-version: 22/);
@@ -59,9 +65,11 @@ test("reusable CI separates quality, compatibility, coverage, and runtime checks
   assert.match(checks, /run: npm run validate:characters/);
   assert.match(checks, /run: npm run benchmark:agents/);
   assert.match(checks, /run: npm run playtest/);
-  assert.match(checks, /run: npx playwright install chromium/);
-  assert.doesNotMatch(checks, /playwright install --with-deps/, "self-hosted CI must not require interactive sudo");
-  assert.equal((checks.match(/timeout-minutes:/g) ?? []).length, 4, "every reusable job needs a timeout");
+  assert.match(checks, /^  browser-playtest:[\s\S]*?mcr\.microsoft\.com\/playwright:v1\.61\.1-noble/m);
+  assert.match(checks, /^  browser-playtest:[\s\S]*?options: --ipc=host/m);
+  assert.match(checks, /^  browser-playtest:[\s\S]*?run: npm run playtest:browser/m);
+  assert.doesNotMatch(checks, /playwright install/, "browser CI must use the pinned runtime image without host installation");
+  assert.equal((checks.match(/timeout-minutes:/g) ?? []).length, 5, "every reusable job needs a timeout");
 });
 
 test("release tags pass the shared quality gate and identify current main exactly", () => {

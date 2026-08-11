@@ -91,18 +91,20 @@ one to land an unrelated change without documenting the uncovered behavior.
 
 `ci.yml` and `dev-games.yml` call the same reusable `checks.yml` workflow. This
 prevents the main and authoring branches from drifting apart. The reusable
-workflow runs four independent jobs:
+workflow runs five independent jobs:
 
 1. lint, manifest validation, and TypeScript;
 2. the full test set on Node 22 for compatibility;
 3. repository contracts and thresholded coverage on Node 24;
-4. the production build, deterministic engine playtests, and a real-browser
-   playground interaction playtest on Node 24, with the playground build
-   uploaded for inspection.
+4. the production build, deterministic engine playtests, media, and verified
+   release bundle on Node 24;
+5. the real-browser playground interaction playtest on Node 24 inside the
+   Playwright runtime image pinned to the repository's Playwright version.
 
 Caller workflows use concurrency cancellation so obsolete commits stop
 consuming CI time. Every job has a timeout and read-only repository permission.
 The `dev` caller retains its additional ancestry check before shared CI runs.
-The self-hosted runner image owns Chromium's operating-system dependencies;
-the workflow installs the pinned Playwright Chromium binary without invoking
-interactive `sudo` during a job.
+The browser job runs in the pinned official Playwright image, so heterogeneous
+self-hosted workers cannot silently supply different Chromium system libraries
+or require interactive `sudo`. Release-bundle generation stays in its separate
+host job and remains gated by the browser job through the reusable workflow.
