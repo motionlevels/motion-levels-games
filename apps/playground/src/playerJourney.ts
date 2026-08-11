@@ -19,6 +19,9 @@ export type PlayerJourneyLaunch = Readonly<{
 export function readPlayerJourneyLaunch(
   games: readonly PlaygroundGame[],
   search = typeof window === "undefined" ? "" : window.location.search,
+  playgroundLocation: Pick<Location, "href" | "origin"> | undefined = typeof window === "undefined"
+    ? undefined
+    : window.location,
 ): PlayerJourneyLaunch | undefined {
   const params = new URLSearchParams(search);
   if (params.get("journey") !== "1") return undefined;
@@ -33,7 +36,7 @@ export function readPlayerJourneyLaunch(
     : defaultGamePlayerCount(game.manifest);
   const difficulty = normalizeGameDifficulty(params.get("difficulty") ?? undefined, game.manifest);
   const rawOptions = parseOptions(params.get("options"));
-  const returnUrl = safeReturnUrl(params.get("return"));
+  const returnUrl = safeReturnUrl(params.get("return"), playgroundLocation);
 
   return {
     gameId,
@@ -56,12 +59,15 @@ function parseOptions(value: string | null): GameConfigOptions {
   }
 }
 
-function safeReturnUrl(value: string | null): string | undefined {
-  if (!value || typeof window === "undefined") return undefined;
+function safeReturnUrl(
+  value: string | null,
+  playgroundLocation: Pick<Location, "href" | "origin"> | undefined,
+): string | undefined {
+  if (!value || !playgroundLocation) return undefined;
   try {
-    const url = new URL(value, window.location.href);
+    const url = new URL(value, playgroundLocation.href);
     if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-    if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname)) return undefined;
+    if (url.origin !== playgroundLocation.origin) return undefined;
     return url.toString();
   } catch {
     return undefined;
