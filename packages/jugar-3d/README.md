@@ -43,6 +43,20 @@ The platform implementation uses canonical game and level UUIDs, separate
 rename therefore changes presentation and compatibility aliases without
 changing progress, replay, or run identity.
 
+## Host catalog renderer
+
+`Jugar3DApp` accepts an optional `catalogRenderer` component for hosts that
+already have a canonical game-catalog UI. The component receives only plain
+catalog entries (`id` plus manifest), the selected character's id/label, and
+callbacks to select a game or open Jugar's character picker. It never receives
+runtime loaders, content providers, session state, or setup-dialog controls.
+
+Selecting an id through that callback opens Jugar's existing setup dialog.
+Jugar continues to own level/difficulty/player setup, authored-content loading,
+the character picker, loading/error screens, the single `GameSession`, and the
+exit transition back to the host catalog. Omitting `catalogRenderer` preserves
+the built-in card grid exactly.
+
 The playground can retain exact `SessionTrajectoryFrame` objects for same-page
 visual replay. Those objects are intentionally not a portable format;
 `@motion-levels-games/replay-runtime` remains the only encoded replay/checksum

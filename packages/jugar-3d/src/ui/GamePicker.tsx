@@ -5,7 +5,8 @@ import {
   gameDifficultyOptions,
   gamePlayerCountOptions,
   normalizeGameDifficulty,
-  type GameDifficulty
+  type GameDifficulty,
+  type GameManifest
 } from "@motion-levels-games/game-sdk";
 import {
   ArrowRight,
@@ -16,10 +17,15 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { soundBank } from "../audio/sfx.ts";
 import { findCharacter } from "../characters/catalog.ts";
+import type {
+  JugarCatalogEntry,
+  JugarCatalogRenderer,
+  JugarCatalogRenderProps
+} from "../catalog.ts";
 import type { GameEntry, GameLevelChoice } from "../contracts.ts";
 import type { SessionOptions } from "../core/session.ts";
 import { CharacterPicker } from "./CharacterPicker.tsx";
@@ -29,6 +35,7 @@ type Props = {
   onPlay: (game: GameEntry, options: SessionOptions) => void;
   characterId: string;
   onCharacterChange: (id: string) => void;
+  catalogRenderer?: JugarCatalogRenderer;
 };
 
 const categoryLabels: Record<string, string> = {
@@ -45,7 +52,13 @@ const difficultyLabels: Record<string, string> = {
   expert: "Experta"
 };
 
-export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: Props) {
+export function GamePicker({
+  entries,
+  onPlay,
+  characterId,
+  onCharacterChange,
+  catalogRenderer
+}: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [characterOpen, setCharacterOpen] = useState(false);
 
@@ -54,8 +67,107 @@ export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: 
     [entries, selectedId]
   );
 
+  const catalogEntries = useMemo(() => projectCatalogEntries(entries), [entries]);
+  const character = useMemo(() => ({
+    id: characterId,
+    label: findCharacter(characterId).label
+  }), [characterId]);
+  const handleSelect = useCallback((id: string) => {
+    const entry = entries.find((game) => game.manifest.id === id);
+    if (!entry) return;
+    soundBank.unlock();
+    soundBank.ui();
+    setSelectedId(entry.manifest.id);
+  }, [entries]);
+  const handleOpenCharacterPicker = useCallback(() => {
+    soundBank.unlock();
+    soundBank.ui();
+    setCharacterOpen(true);
+  }, []);
+
+  return (
+    <GamePickerFrame
+      catalogEntries={catalogEntries}
+      catalogRenderer={catalogRenderer}
+      character={character}
+      characterOpen={characterOpen}
+      onCharacterChange={onCharacterChange}
+      onCloseCharacter={() => setCharacterOpen(false)}
+      onCloseGame={() => setSelectedId(null)}
+      onOpenCharacterPicker={handleOpenCharacterPicker}
+      onPlay={onPlay}
+      onSelect={handleSelect}
+      selected={selected}
+    />
+  );
+}
+
+type GamePickerFrameProps = Readonly<{
+  catalogEntries: readonly JugarCatalogEntry[];
+  catalogRenderer?: JugarCatalogRenderer;
+  character: JugarCatalogRenderProps["character"];
+  characterOpen: boolean;
+  onCharacterChange(id: string): void;
+  onCloseCharacter(): void;
+  onCloseGame(): void;
+  onOpenCharacterPicker(): void;
+  onPlay: Props["onPlay"];
+  onSelect(id: string): void;
+  selected: GameEntry | null;
+}>;
+
+/** Internal controlled composition exported only for focused package tests. */
+export function GamePickerFrame({
+  catalogEntries,
+  catalogRenderer,
+  character,
+  characterOpen,
+  onCharacterChange,
+  onCloseCharacter,
+  onCloseGame,
+  onOpenCharacterPicker,
+  onPlay,
+  onSelect,
+  selected
+}: GamePickerFrameProps) {
+  const CatalogRenderer = catalogRenderer ?? DefaultCatalogRenderer;
+
   return (
     <div className="picker">
+      <CatalogRenderer
+        character={character}
+        entries={catalogEntries}
+        onOpenCharacterPicker={onOpenCharacterPicker}
+        onSelect={onSelect}
+      />
+
+      {selected ? (
+        <GameDialog
+          game={selected}
+          onClose={onCloseGame}
+          onPlay={onPlay}
+        />
+      ) : null}
+
+      {characterOpen ? (
+        <CharacterPicker
+          characterId={character.id}
+          onClose={onCloseCharacter}
+          onSelect={onCharacterChange}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DefaultCatalogRenderer({
+  entries,
+  character,
+  onOpenCharacterPicker,
+  onSelect
+}: JugarCatalogRenderProps) {
+  return (
+    <>
       <header className="picker-header">
         <div>
           <p className="picker-label">Juegos disponibles</p>
@@ -66,33 +178,24 @@ export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: 
 
         <button
           className="character-trigger"
-          onClick={() => {
-            soundBank.unlock();
-            soundBank.ui();
-            setCharacterOpen(true);
-          }}
+          onClick={onOpenCharacterPicker}
           title="Cambiar personaje"
           type="button"
         >
           <CircleUserRound aria-hidden="true" />
           <span>Personaje</span>
-          <strong>{findCharacter(characterId).label}</strong>
+          <strong>{character.label}</strong>
         </button>
       </header>
 
       <ul className="picker-grid">
-        {entries.map((game) => {
-          const { manifest } = game;
+        {entries.map(({ id, manifest }) => {
           const accent = manifest.catalog.color;
           return (
-            <li key={manifest.id}>
+            <li key={id}>
               <button
                 className="game-card"
-                onClick={() => {
-                  soundBank.unlock();
-                  soundBank.ui();
-                  setSelectedId(manifest.id);
-                }}
+                onClick={() => onSelect(id)}
                 style={{ "--accent": accent } as React.CSSProperties}
                 type="button"
               >
@@ -107,7 +210,7 @@ export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: 
                 <strong className="game-card-title">{manifest.label}</strong>
                 <span className="game-card-mode">{manifest.catalog.modeLabel}</span>
                 <span className="game-card-meta">
-                  <span><UsersRound aria-hidden="true" />{playersLabel(game)}</span>
+                  <span><UsersRound aria-hidden="true" />{playersLabel(manifest)}</span>
                   <span><Clock3 aria-hidden="true" />{manifest.catalog.durationLabel}</span>
                 </span>
               </button>
@@ -115,23 +218,7 @@ export function GamePicker({ entries, onPlay, characterId, onCharacterChange }: 
           );
         })}
       </ul>
-
-      {selected ? (
-        <GameDialog
-          game={selected}
-          onClose={() => setSelectedId(null)}
-          onPlay={onPlay}
-        />
-      ) : null}
-
-      {characterOpen ? (
-        <CharacterPicker
-          characterId={characterId}
-          onClose={() => setCharacterOpen(false)}
-          onSelect={onCharacterChange}
-        />
-      ) : null}
-    </div>
+    </>
   );
 }
 
@@ -347,10 +434,14 @@ function GameDialog({
   );
 }
 
-function playersLabel(game: GameEntry): string {
-  const { min, max } = game.manifest.players;
+function playersLabel(manifest: GameManifest): string {
+  const { min, max } = manifest.players;
   if (min === max) {
     return min === 1 ? "1 jugador" : `${min} jugadores`;
   }
   return `${min}–${max} jugadores`;
+}
+
+export function projectCatalogEntries(entries: readonly GameEntry[]): readonly JugarCatalogEntry[] {
+  return entries.map(({ manifest }) => ({ id: manifest.id, manifest }));
 }
