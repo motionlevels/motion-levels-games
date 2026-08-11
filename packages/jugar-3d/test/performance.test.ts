@@ -20,7 +20,7 @@ test("quality tiers expose explicit complete-scene budgets", () => {
   assert.deepEqual(jugarStageQualityBudgets["desktop-medium"], {
     minimumSamples: 60,
     maxP95FrameMillis: 25,
-    maxSoftwareP95FrameMillis: 275,
+    maxSoftwareP95FrameMillis: 700,
     maxDrawCalls: 170,
     maxTriangles: 33_000,
     maxGeometries: 168,
@@ -38,7 +38,7 @@ test("quality tiers expose explicit complete-scene budgets", () => {
   );
   assert.equal(jugarStageQualityBudgets["mobile-low"].maxSoftwareP95FrameMillis, 175);
   assert.equal(jugarStageQualityBudgets["venue-high"].maxSoftwareP95FrameMillis, 175);
-  assert.equal(jugarStageQualityBudgets.capture.maxSoftwareP95FrameMillis, 525);
+  assert.equal(jugarStageQualityBudgets.capture.maxSoftwareP95FrameMillis, 1300);
   assert.equal(jugarStageQualityBudgets.capture.maxP95FrameMillis, 40);
   assert.equal(jugarStageQualityBudgets.capture.maxDrawCalls, 170);
 });

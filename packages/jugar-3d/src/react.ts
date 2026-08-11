@@ -2,6 +2,7 @@ export { Jugar3DApp, loadGameEntry, type Jugar3DAppProps } from "./MinigameApp.t
 export type {
   JugarCatalogCharacter,
   JugarCatalogEntry,
+  JugarCatalogPresentation,
   JugarCatalogRenderer,
   JugarCatalogRenderProps
 } from "./catalog.ts";

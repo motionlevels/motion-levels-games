@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: source
+
 jobs:
   quality:
     name: Lint, manifests, and types
@@ -13,10 +17,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: source
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: source/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm run validate:games
@@ -30,10 +37,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: source
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: source/package-lock.json
       - run: npm ci
       - run: npm run test:all
 
@@ -43,10 +53,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: source
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: source/package-lock.json
       - run: npm ci
       - run: npm run test:contracts
       - run: npm run test:coverage
@@ -56,45 +69,58 @@ jobs:
   build-and-playtest:
     name: Production build and deterministic engine playtest
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: source
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: source/package-lock.json
       - run: npm ci
       - run: npm run build
       - run: npm run playtest
-      - run: npm run generate:media
-      - run: npm run build:bundle
+
+  browser-playtest:
+    name: Browser playtest and release bundle in pinned runtime
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Run browser-backed release gate in pinned runtime
         env:
           MOTION_LEVELS_GAMES_SOURCE_REVISION: ${{ github.sha }}
-      - run: npm run verify:bundle
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/playwright-home"
+          docker run --rm --ipc=host \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/runner-temp/playwright-home \
+            --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+            --env MOTION_LEVELS_GAMES_SOURCE_REVISION \
+            --volume "$GITHUB_WORKSPACE/source:/workspace" \
+            --volume "$RUNNER_TEMP:/runner-temp" \
+            --workdir /workspace \
+            mcr.microsoft.com/playwright:v1.61.1-noble \
+            bash -lc 'npm run playtest:browser && npm run generate:media && npm run build:bundle && npm run verify:bundle'
       - name: Upload production bundle
         uses: actions/upload-artifact@v4
         with:
           name: motion-levels-games-${{ github.sha }}
           path: |
-            dist/bundle
-            dist/motion-levels-games-${{ github.sha }}.tgz
-            dist/motion-levels-games-${{ github.sha }}.tgz.sha256
+            source/dist/bundle
+            source/dist/motion-levels-games-${{ github.sha }}.tgz
+            source/dist/motion-levels-games-${{ github.sha }}.tgz.sha256
           if-no-files-found: error
           retention-days: 30
-
-  browser-playtest:
-    name: Browser playtest in pinned Playwright runtime
-    runs-on: ${{ vars.CI_RUNNER_LABEL }}
-    timeout-minutes: 15
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --ipc=host
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npm run playtest:browser

@@ -65,9 +65,25 @@ test("reusable CI separates quality, compatibility, coverage, bundle, and browse
   assert.match(checks, /run: npm run validate:characters/);
   assert.match(checks, /run: npm run benchmark:agents/);
   assert.match(checks, /run: npm run playtest/);
-  assert.match(checks, /^  browser-playtest:[\s\S]*?mcr\.microsoft\.com\/playwright:v1\.61\.1-noble/m);
-  assert.match(checks, /^  browser-playtest:[\s\S]*?options: --ipc=host/m);
-  assert.match(checks, /^  browser-playtest:[\s\S]*?run: npm run playtest:browser/m);
+  assert.match(checks, /defaults:[\s\S]*?working-directory: source/);
+  assert.equal(
+    (checks.match(/^\s+path: source$/gm) ?? []).length,
+    5,
+    "every job must use the isolated checkout directory",
+  );
+  assert.equal(
+    (checks.match(/cache-dependency-path: source\/package-lock\.json/g) ?? []).length,
+    5,
+    "every Node cache must follow the isolated checkout",
+  );
+  const browserJob = checks.match(/^  browser-playtest:[\s\S]*$/m)?.[0] || "";
+  assert.match(browserJob, /docker run --rm --ipc=host/);
+  assert.match(browserJob, /--user "\$\(id -u\):\$\(id -g\)"/);
+  assert.match(browserJob, /mcr\.microsoft\.com\/playwright:v1\.61\.1-noble/);
+  assert.match(browserJob, /npm run playtest:browser && npm run generate:media && npm run build:bundle && npm run verify:bundle/);
+  assert.match(browserJob, /source\/dist\/motion-levels-games-/);
+  assert.doesNotMatch(browserJob, /^    container:/m, "the runtime image must not own the runner workspace");
+  assert.doesNotMatch(checks, /\bchown\b/, "CI must not repair shared-runner ownership recursively");
   assert.doesNotMatch(checks, /playwright install/, "browser CI must use the pinned runtime image without host installation");
   assert.equal((checks.match(/timeout-minutes:/g) ?? []).length, 5, "every reusable job needs a timeout");
 });
@@ -87,7 +103,12 @@ test("release tags pass the shared quality gate and identify current main exactl
 test("bundle generation has enough time for every production game", () => {
   assert.match(
     checks,
-    /^  build-and-playtest:[\s\S]*?timeout-minutes: 30[\s\S]*?npm run generate:media/m
+    /^  browser-playtest:[\s\S]*?timeout-minutes: 30[\s\S]*?npm run playtest:browser[\s\S]*?npm run generate:media[\s\S]*?npm run build:bundle/m
+  );
+  assert.doesNotMatch(
+    checks.match(/^  build-and-playtest:[\s\S]*?(?=^  browser-playtest:)/m)?.[0] || "",
+    /playwright|generate:media|build:bundle/,
+    "host-only build job must not depend on browser libraries",
   );
 });
 

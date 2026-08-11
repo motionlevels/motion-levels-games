@@ -45,20 +45,22 @@
     box-sizing: border-box;
   }
 
-  & button {
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
-  }
+}
 
-  & button:focus-visible,
-  & a:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--mlg-blue) 72%, white);
-    outline-offset: 2px;
-  }
+/* Keep the package reset below host component classes such as `.ui-button`. */
+:where(.mlg) :where(button) {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+:where(.mlg) :where(button):focus-visible,
+:where(.mlg) :where(a):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--mlg-blue) 72%, white);
+  outline-offset: 2px;
 }
 
 /* Framed stage for the loading and play screens. */

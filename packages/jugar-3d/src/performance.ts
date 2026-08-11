@@ -23,13 +23,13 @@ export type JugarStageQualityBudget = Readonly<{
 export const jugarStageQualityBudgets: Readonly<Record<JugarStageQuality, JugarStageQualityBudget>> =
   Object.freeze({
     "mobile-low": createBudget(45, 34, 175, 170, 33_000, 168, 4, 9, 20),
-    // The self-hosted SwiftShader runner measured 238 ms desktop p95 over the
-    // complete 120-sample window; 275 ms retains about 15% regression headroom.
-    "desktop-medium": createBudget(60, 25, 275, 170, 33_000, 168, 4, 9, 24),
+    // The slowest self-hosted SwiftShader worker measured 602.5 ms desktop p95
+    // over a complete window; 700 ms retains about 16% regression headroom.
+    "desktop-medium": createBudget(60, 25, 700, 170, 33_000, 168, 4, 9, 24),
     "venue-high": createBudget(60, 18.5, 175, 170, 33_000, 168, 4, 9, 36),
     // Local native capture/desktop p95 was 1.90x. Applying that ratio to the
-    // CI desktop result predicts about 452 ms; 525 ms keeps similar headroom.
-    capture: createBudget(45, 40, 525, 170, 33_000, 168, 4, 9, 36)
+    // slowest CI result predicts about 1,145 ms; 1,300 ms keeps similar headroom.
+    capture: createBudget(45, 40, 1300, 170, 33_000, 168, 4, 9, 36)
   });
 
 export type JugarStagePerformanceSample = Readonly<{

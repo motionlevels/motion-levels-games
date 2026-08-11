@@ -15,10 +15,24 @@ export type JugarCatalogCharacter = Readonly<{
   label: string;
 }>;
 
+/**
+ * Optional host-owned copy for Jugar's setup dialog. These fields are purely
+ * presentational: the selected catalog id still resolves the canonical game
+ * entry, whose manifest owns mechanics, runtime loading and run identity.
+ */
+export type JugarCatalogPresentation = Readonly<{
+  label?: string;
+  color?: string;
+  category?: string;
+  modeLabel?: string;
+  durationLabel?: string;
+  rules?: readonly string[];
+}>;
+
 export type JugarCatalogRenderProps = Readonly<{
   entries: readonly JugarCatalogEntry[];
   character: JugarCatalogCharacter;
-  onSelect(id: string): void;
+  onSelect(id: string, presentation?: JugarCatalogPresentation): void;
   onOpenCharacterPicker(): void;
 }>;
 
