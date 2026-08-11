@@ -112,6 +112,14 @@ test("every playground configuration change restarts the active game", () => {
   assert.match(appSource, /storeSelectedGameId\(nextGame\.manifest\.id\)/);
 });
 
+test("integrated player journey owns player-facing game selection", () => {
+  assert.match(
+    appSource,
+    /\{!playerMenuPreviewUrl \? \([\s\S]*?className="control-group control-group-primary"[\s\S]*?label="Game"[\s\S]*?label="Players"[\s\S]*?label="Difficulty"[\s\S]*?\) : null\}/,
+    "integrated mode must not duplicate the menu's game, roster, or difficulty selection"
+  );
+});
+
 test("compact action groups use zero-gap shared control styling", () => {
   assert.match(styleSource, /--pg-control-bg:/, "shared control background token is required");
   assert.match(styleSource, /--pg-control-border:/, "shared control border token is required");

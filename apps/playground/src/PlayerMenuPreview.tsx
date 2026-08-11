@@ -7,8 +7,8 @@ type PlayerMenuPreviewProps = Readonly<{
 export function PlayerMenuPreview({ src }: PlayerMenuPreviewProps) {
   return (
     <div className="display-preview-native player-menu-preview-native">
-      {/* The loopback-only Vite app needs its own origin for module loading and
-          storage; its different port still isolates it from the playground. */}
+      {/* The menu has its own document and styles, but is served by the same
+          Vite process as the playground. */}
       <iframe
         className="player-menu-preview-frame"
         loading="eager"

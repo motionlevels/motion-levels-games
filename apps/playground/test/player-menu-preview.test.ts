@@ -4,35 +4,41 @@ import test from "node:test";
 import { localPlayerMenuUrl, readPrimaryScreen } from "../src/playerMenuEmbed.ts";
 
 const previewSource = readFileSync(new URL("../src/PlayerMenuPreview.tsx", import.meta.url), "utf8");
-const devExperienceSource = readFileSync(new URL("../../../scripts/dev-player-experience.ts", import.meta.url), "utf8");
+const rootPackage = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
+  scripts: Record<string, string>;
+};
 
 const loopbackPlayground = {
+  href: "http://127.0.0.1:4104/",
   hostname: "127.0.0.1",
-  port: "5174",
+  origin: "http://127.0.0.1:4104",
+  port: "4104",
   protocol: "http:",
 } as Location;
 
-test("local player menu preview targets the fixed kiosk viewport", () => {
-  const target = localPlayerMenuUrl(loopbackPlayground, "4103");
+test("the full local experience serves the menu from the playground origin", () => {
+  const target = localPlayerMenuUrl(loopbackPlayground, true);
 
   const url = new URL(target!);
-  assert.equal(url.origin, "http://127.0.0.1:4103");
+  assert.equal(url.origin, "http://127.0.0.1:4104");
+  assert.equal(url.pathname, "/player-menu/");
   assert.equal(url.searchParams.get("embed"), "playground");
   assert.equal(url.searchParams.get("kioskViewport"), "1920x1080");
-  assert.equal(url.searchParams.get("playgroundPort"), "5174");
 });
 
-test("standalone playground does not advertise an unavailable player menu", () => {
-  assert.equal(localPlayerMenuUrl(loopbackPlayground), undefined);
-  assert.match(devExperienceSource, /VITE_LOCAL_PLAYER_MENU_PORT:\s*"4103"/u);
+test("the root development command starts one fixed full-experience server", () => {
+  assert.match(rootPackage.scripts.dev, /@motion-levels-games\/playground/u);
+  assert.match(rootPackage.scripts.dev, /--port 4104/u);
+  assert.equal(rootPackage.scripts["dev:experience"], "npm run dev");
 });
 
 test("player menu preview stays loopback-only", () => {
   assert.equal(localPlayerMenuUrl({
     hostname: "venue.example.com",
+    href: "https://venue.example.com/",
     port: "443",
     protocol: "https:",
-  } as Location, "4103"), undefined);
+  } as Location, true), undefined);
 });
 
 test("screen query restores the selected playground preview", () => {

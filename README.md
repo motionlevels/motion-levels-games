@@ -14,7 +14,8 @@ npm run check
 npm run dev
 ```
 
-`npm run dev` starts the playground at the Vite URL printed in the terminal.
+`npm run dev` starts the complete menu-to-game playground at
+`http://127.0.0.1:4104` using one Vite service.
 `npm run check:fast` runs the native linter and strict workspace typechecks for
 the normal edit loop. `npm run check` adds all tests, validation, builds, the
 scaffold smoke test, and deterministic game playtests before a commit or push.
@@ -27,8 +28,8 @@ layers.
 - `packages/display-kit`: reusable React display primitives.
 - `games/*`: independently tested game packages discovered through their
   manifests and index exports.
-- `apps/playground`: local app that runs the game, floor, display, event log,
-  and snapshot inspector together.
+- `apps/playground`: local app that runs the player menu, game, floor, display,
+  event log, and snapshot inspector together.
 
 ## v1 Boundary
 

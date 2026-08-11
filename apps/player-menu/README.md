@@ -17,7 +17,8 @@ component and accessibility debt without weakening lint rules for new games or
 shared packages. Decompose `App.tsx` and remove those exceptions incrementally;
 behavioral parity with the deployed menu takes priority during the handover.
 
-During development it talks to the game-engine API at `http://127.0.0.1:4102`.
+The normal development entry point is the complete player experience. From the
+repository root run:
 
 ```sh
 npm install
@@ -27,28 +28,24 @@ npm run dev
 Open:
 
 ```txt
-http://127.0.0.1:4103
+http://127.0.0.1:4104
 ```
 
-Other devices on the same network can use the Vite network URL printed by
-`npm run dev`, for example `http://192.168.1.137:4103`.
-
-For the complete local player journey—kiosk selection followed by the real
-in-browser floor and player display—run this at the repository root:
-
-```sh
-npm run dev:experience
-```
-
-Open `http://127.0.0.1:4103` for the standalone kiosk, or open the playground
-at `http://127.0.0.1:4104` and use its **Display / Menu** toggle. The embedded
-menu replaces only the 16:9 player-display preview, keeps the floor visible,
-and pauses hidden gameplay. Starting a game switches the playground back to
-the real player display; its Menu action returns to the embedded kiosk.
+One Vite process serves both the playground and its embedded menu document on
+the same origin. Use the **Display / Menu** toggle to change the 16:9 player
+screen while keeping the floor visible. Starting a game switches back to the
+real player display; its Menu action returns to the kiosk. The kiosk is the
+only source for game, player-count, and difficulty selection.
 
 Development mode serves the local manifest catalog and hands a configured
-selection to the current loopback playground. The handoff is deliberately
-loopback-only and is absent from production builds.
+selection to the current playground origin. The handoff is deliberately
+loopback-only and is absent from production builds. `npm run dev:experience`
+remains as a compatibility alias for `npm run dev`; it does not start another
+service.
+
+The player-menu workspace can still be built independently for the venue
+artifact. When run on its own, it talks to the game-engine API at
+`http://127.0.0.1:4102`.
 
 Set `VITE_GAME_ENGINE_URL` if the menu is not running on the same machine as
 the game-engine:

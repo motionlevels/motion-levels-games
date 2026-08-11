@@ -49,14 +49,15 @@ describe("kiosk API requests", () => {
       difficulty: "medium",
     }, undefined, {
       hostname: "127.0.0.1",
-      host: "127.0.0.1:4103",
+      host: "127.0.0.1:4104",
+      origin: "http://127.0.0.1:4104",
       protocol: "http:",
-      search: "?embed=playground&playgroundPort=5174",
+      search: "?embed=playground",
     } as Location, true);
 
     const url = new URL(target!);
-    assert.equal(url.origin, "http://127.0.0.1:5174");
-    assert.equal(url.searchParams.get("return"), "http://127.0.0.1:5174/?screen=menu");
+    assert.equal(url.origin, "http://127.0.0.1:4104");
+    assert.equal(url.searchParams.get("return"), "http://127.0.0.1:4104/?screen=menu");
   });
 
   it("ignores embedded playground parameters outside development", () => {
@@ -65,11 +66,13 @@ describe("kiosk API requests", () => {
       playerCount: 2,
     }, undefined, {
       hostname: "127.0.0.1",
-      host: "127.0.0.1:4103",
+      host: "127.0.0.1:4104",
+      origin: "http://127.0.0.1:4104",
       protocol: "http:",
-      search: "?embed=playground&playgroundPort=5174",
+      search: "?embed=playground",
     } as Location, false), undefined);
   });
+
   it("returns decoded JSON and forwards request options", async () => {
     let method = "";
     globalThis.fetch = (async (_url, init) => {

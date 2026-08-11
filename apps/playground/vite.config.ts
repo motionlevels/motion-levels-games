@@ -1,4 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type PluginOption, type ViteDevServer } from "vite";
@@ -7,9 +8,17 @@ import react from "@vitejs/plugin-react";
 const playgroundRoot = path.dirname(fileURLToPath(import.meta.url));
 const gamesRoot = path.resolve(playgroundRoot, "../../games");
 const gameRegistryPath = path.resolve(playgroundRoot, "src/gameRegistry.ts");
+const playerMenuRoot = path.resolve(playgroundRoot, "../player-menu");
 const webpEncoderWasmPath = path.resolve(playgroundRoot, "../../node_modules/webp-encoder/lib/assets/a.out.wasm");
+const menuBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse --short HEAD") || "dev";
+const menuBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
 
 export default defineConfig({
+  publicDir: path.resolve(playerMenuRoot, "public"),
+  define: {
+    __MENU_BUILD_REVISION__: JSON.stringify(menuBuildRevision),
+    __MENU_BUILD_DATE__: JSON.stringify(menuBuildDate),
+  },
   plugins: [motionLevelsGamesWatcher(), webpEncoderWasm(), react()],
   server: {
     fs: {
@@ -18,8 +27,24 @@ export default defineConfig({
         path.resolve(playgroundRoot, "../..")
       ]
     }
-  }
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(playgroundRoot, "index.html"),
+        "player-menu/index": path.resolve(playgroundRoot, "player-menu/index.html"),
+      },
+    },
+  },
 });
+
+function gitValue(command: string) {
+  try {
+    return execSync(command, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+}
 
 function motionLevelsGamesWatcher(): PluginOption {
   return {
