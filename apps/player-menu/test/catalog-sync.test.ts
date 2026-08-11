@@ -355,7 +355,7 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /const showLogoFallback = !mediaSrc && !showAnimation;/);
     assert.match(appSource, /logoMedia \|\| showLogoFallback \? "logo-preview" : ""/);
     assert.match(appSource, /showAnimation \? \(\s*<FloorPreview anim=\{anim\} orientation="landscape" \/>/);
-    assert.match(appSource, /<div className="preview-logo-fallback" aria-hidden="true">[\s\S]*?<img src="\/motion-levels-icon\.webp" alt="" \/>/);
+    assert.match(appSource, /<div className="preview-logo-fallback" aria-hidden="true">[\s\S]*?<img src=\{publicAssetURL\("motion-levels-icon\.webp"\)\} alt="" \/>/);
     assert.match(styleSource, /\.game-body\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(54px, max-content\);[\s\S]*?align-items: center;/);
     assert.match(styleSource, /\.game-card-meta\s*\{[\s\S]*?justify-self: end;[\s\S]*?align-self: center;/);
     assert.match(styleSource, /\.game-body h3\s*\{[\s\S]*?line-height: 1\.05;/);

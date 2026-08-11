@@ -4,27 +4,68 @@ import test from "node:test";
 import { localPlayerMenuUrl, readPrimaryScreen } from "../src/playerMenuEmbed.ts";
 
 const previewSource = readFileSync(new URL("../src/PlayerMenuPreview.tsx", import.meta.url), "utf8");
+const rootPackage = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
+  scripts: Record<string, string>;
+};
 
-test("local player menu preview targets the fixed kiosk viewport", () => {
-  const target = localPlayerMenuUrl({
-    hostname: "127.0.0.1",
-    port: "5174",
-    protocol: "http:",
-  } as Location, "4103");
+const loopbackPlayground = {
+  href: "http://127.0.0.1:4104/",
+  hostname: "127.0.0.1",
+  origin: "http://127.0.0.1:4104",
+  port: "4104",
+  protocol: "http:",
+} as Location;
+
+test("the full local experience serves the menu from the playground origin", () => {
+  const target = localPlayerMenuUrl(loopbackPlayground, {
+    basePath: "/",
+    enabled: true,
+    loopbackOnly: true,
+  });
 
   const url = new URL(target!);
-  assert.equal(url.origin, "http://127.0.0.1:4103");
+  assert.equal(url.origin, "http://127.0.0.1:4104");
+  assert.equal(url.pathname, "/player-menu/");
   assert.equal(url.searchParams.get("embed"), "playground");
   assert.equal(url.searchParams.get("kioskViewport"), "1920x1080");
-  assert.equal(url.searchParams.get("playgroundPort"), "5174");
+});
+
+test("the root development command starts one fixed full-experience server", () => {
+  assert.match(rootPackage.scripts.dev, /@motion-levels-games\/playground/u);
+  assert.match(rootPackage.scripts.dev, /--port 4104/u);
+  assert.equal(rootPackage.scripts["dev:experience"], "npm run dev");
 });
 
 test("player menu preview stays loopback-only", () => {
   assert.equal(localPlayerMenuUrl({
     hostname: "venue.example.com",
+    href: "https://venue.example.com/",
+    origin: "https://venue.example.com",
     port: "443",
     protocol: "https:",
-  } as Location, "4103"), undefined);
+  } as Location, {
+    basePath: "/",
+    enabled: true,
+    loopbackOnly: true,
+  }), undefined);
+});
+
+test("the hosted experience keeps its menu under the platform route", () => {
+  const target = localPlayerMenuUrl({
+    hostname: "platform.motionlevels.obis.dev",
+    href: "https://platform.motionlevels.obis.dev/games/play/",
+    origin: "https://platform.motionlevels.obis.dev",
+    port: "443",
+    protocol: "https:",
+  } as Location, {
+    basePath: "/games/play/",
+    enabled: true,
+    loopbackOnly: false,
+  });
+
+  const url = new URL(target!);
+  assert.equal(url.origin, "https://platform.motionlevels.obis.dev");
+  assert.equal(url.pathname, "/games/play/player-menu/");
 });
 
 test("screen query restores the selected playground preview", () => {

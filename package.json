@@ -9,8 +9,8 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace apps/playground",
-    "dev:experience": "tsx scripts/dev-player-experience.ts",
+    "dev": "npm run dev --workspace @motion-levels-games/playground -- --host 127.0.0.1 --port 4104 --strictPort",
+    "dev:experience": "npm run dev",
     "dev:venue": "tsx scripts/dev-venue.ts",
     "build": "npm run build --workspaces --if-present",
     "check:fast": "npm run lint && npm run typecheck",

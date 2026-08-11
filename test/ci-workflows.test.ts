@@ -28,6 +28,9 @@ test("green main builds automatically promote one immutable release", () => {
   assert.match(ci, /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/);
   assert.match(ci, /permissions:\s*\n\s+actions: read\s*\n\s+contents: write/);
   assert.match(ci, /^permissions:\s*\n\s+contents: read/m);
+  const promotion = ci.match(/^  promote-release:[\s\S]*$/m)?.[0] || "";
+  assert.match(promotion, /defaults:[\s\S]*?working-directory: source/);
+  assert.match(promotion, /actions\/checkout@v4[\s\S]*?path: source/);
   assert.match(ci, /git fetch origin main --tags/);
   assert.match(ci, /git rev-parse HEAD.*git rev-parse origin\/main/);
   assert.match(ci, /git merge-base --is-ancestor "\$latest_tag" HEAD/);
@@ -41,6 +44,8 @@ test("green main builds automatically promote one immutable release", () => {
   assert.match(ci, /node scripts\/next-release-tag\.ts/);
   assert.match(ci, /actions\/download-artifact@v4/);
   assert.match(ci, /name: motion-levels-games-\$\{\{ github\.sha \}\}/);
+  assert.match(promotion, /path: source\/dist/);
+  assert.match(promotion, /source\/dist\/motion-levels-games-\$\{\{ github\.sha \}\}\.tgz/);
   assert.match(ci, /git tag --annotate "\$RELEASE_TAG"/);
   assert.match(ci, /softprops\/action-gh-release@v2/);
   assert.match(ci, /tag_name: \$\{\{ steps\.release\.outputs\.release_tag \}\}/);
@@ -94,6 +99,9 @@ test("reusable CI separates quality, compatibility, coverage, bundle, and browse
 test("release tags pass the shared quality gate and identify current main exactly", () => {
   assert.match(release, /workflow_dispatch:/);
   assert.match(release, /^\s{2}release-policy:/m);
+  const releasePolicy = release.match(/^  release-policy:[\s\S]*?(?=^  checks:)/m)?.[0] || "";
+  assert.match(releasePolicy, /defaults:[\s\S]*?working-directory: source/);
+  assert.match(releasePolicy, /actions\/checkout@v4[\s\S]*?path: source/);
   assert.match(release, /\^games-v\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\$/);
   assert.match(release, /git fetch --no-tags origin main/);
   assert.match(release, /git rev-list -n 1 "\$GITHUB_REF_NAME"/);
@@ -119,8 +127,12 @@ test("bundle generation has enough time for every production game", () => {
 test("release reuses the exact bundle that passed the quality gate", () => {
   const releaseBundle = release.match(/^  bundle:[\s\S]*?(?=^  notify-platform:)/m)?.[0] || "";
   assert.match(releaseBundle, /timeout-minutes: 10/);
+  assert.match(releaseBundle, /defaults:[\s\S]*?working-directory: source/);
+  assert.match(releaseBundle, /actions\/checkout@v4[\s\S]*?path: source/);
   assert.match(releaseBundle, /actions\/download-artifact@v4/);
   assert.match(releaseBundle, /name: motion-levels-games-\$\{\{ env\.SOURCE_REVISION \}\}/);
+  assert.match(releaseBundle, /path: source\/dist/);
+  assert.match(releaseBundle, /source\/dist\/motion-levels-games-\$\{\{ env\.SOURCE_REVISION \}\}\.tgz/);
   assert.match(releaseBundle, /sha256sum --check "\$archive\.sha256"/);
   assert.match(releaseBundle, /apps\/player-menu/);
   assert.match(releaseBundle, /apps\/venue-runtime/);

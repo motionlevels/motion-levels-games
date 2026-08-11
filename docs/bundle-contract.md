@@ -10,11 +10,13 @@ The required production entries are:
 - `venueRuntime: { entry: "venue/runtime.mjs", apiProtocolVersion: 1,
   controllerProtocolVersion: 2, games: [...] }`;
 - `playerMenu: { entry: "menu/index.html", adapterProtocolVersion: 1 }`;
-- `playerDisplay: { entry: "display/display.js", games: [...] }`.
+- `playerDisplay: { entry: "display/display.js", games: [...] }`;
+- `playground: { entry: "playground/index.html", basePath: "/games/play/" }`.
 
-The bundle also contains `catalog.json`, the complete static `menu/`, and
-deterministic `media/<game>/` assets. The menu and player display are mandatory
-and revision-matched to the runtime. There is no legacy process protocol entry.
+The bundle also contains `catalog.json`, the complete static `menu/`, the
+hosted `playground/` for `/games/play/`, and deterministic `media/<game>/`
+assets. The menu, playground, and player display are mandatory and
+revision-matched to the runtime. There is no legacy process protocol entry.
 
 `venueRuntime.games` and `playerDisplay.games` contain only manifests with
 `availability.production: true`. Development games remain in the catalog and

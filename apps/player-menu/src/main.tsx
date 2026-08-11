@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import App from "./App";
 import { initMenuAnalytics } from "./analytics";
+import { publicAssetURL } from "./utils";
 import "./styles.css";
 
 try {
@@ -77,7 +78,7 @@ class KioskErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
     return (
       <main className="app recovery-screen" role="alert">
         <section className="panel recovery-card">
-          <img src="/motion-levels-icon.webp" alt="" />
+          <img src={publicAssetURL("motion-levels-icon.webp")} alt="" />
           <span className="micro">Recuperación del quiosco</span>
           <h1>Vamos a volver a cargar el menú</h1>
           <p>La partida no se ha modificado. Pulsa el botón para reconectar esta pantalla.</p>

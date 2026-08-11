@@ -1099,50 +1099,52 @@ export function App() {
                   <span>Menu</span>
                 </button>
               ) : null}
-              <div className="control-group control-group-primary">
-                <PlaygroundSelect
-                  className="control-field control-game"
-                  label="Game"
-                  lockId="game-select"
-                  onLockChange={setInteractionPauseState}
-                  onValueChange={selectGame}
-                  value={selectedGame.manifest.id}
-                >
-                  {playgroundGames.map((game) => (
-                    <option key={game.manifest.id} value={game.manifest.id}>
-                      {game.manifest.label}
-                    </option>
-                  ))}
-                </PlaygroundSelect>
-                <PlaygroundSelect
-                  className="control-field control-players"
-                  label="Players"
-                  lockId="players-select"
-                  onLockChange={setInteractionPauseState}
-                  onValueChange={(value) => changePlayerCount(Number(value))}
-                  value={playerCount}
-                >
-                  {playerCountChoices.map((count) => (
-                    <option key={count} value={count}>
-                      {count === 0 ? "0 / Any" : count}
-                    </option>
-                  ))}
-                </PlaygroundSelect>
-                <PlaygroundSelect
-                  className="control-field control-difficulty"
-                  label="Difficulty"
-                  lockId="difficulty-select"
-                  onLockChange={setInteractionPauseState}
-                  onValueChange={changeDifficulty}
-                  value={difficulty}
-                >
-                  {difficultyChoices.map((choice) => (
-                    <option key={choice} value={choice}>
-                      {difficultyLabels[choice] ?? choice}
-                    </option>
-                  ))}
-                </PlaygroundSelect>
-              </div>
+              {!playerMenuPreviewUrl ? (
+                <div className="control-group control-group-primary">
+                  <PlaygroundSelect
+                    className="control-field control-game"
+                    label="Game"
+                    lockId="game-select"
+                    onLockChange={setInteractionPauseState}
+                    onValueChange={selectGame}
+                    value={selectedGame.manifest.id}
+                  >
+                    {playgroundGames.map((game) => (
+                      <option key={game.manifest.id} value={game.manifest.id}>
+                        {game.manifest.label}
+                      </option>
+                    ))}
+                  </PlaygroundSelect>
+                  <PlaygroundSelect
+                    className="control-field control-players"
+                    label="Players"
+                    lockId="players-select"
+                    onLockChange={setInteractionPauseState}
+                    onValueChange={(value) => changePlayerCount(Number(value))}
+                    value={playerCount}
+                  >
+                    {playerCountChoices.map((count) => (
+                      <option key={count} value={count}>
+                        {count === 0 ? "0 / Any" : count}
+                      </option>
+                    ))}
+                  </PlaygroundSelect>
+                  <PlaygroundSelect
+                    className="control-field control-difficulty"
+                    label="Difficulty"
+                    lockId="difficulty-select"
+                    onLockChange={setInteractionPauseState}
+                    onValueChange={changeDifficulty}
+                    value={difficulty}
+                  >
+                    {difficultyChoices.map((choice) => (
+                      <option key={choice} value={choice}>
+                        {difficultyLabels[choice] ?? choice}
+                      </option>
+                    ))}
+                  </PlaygroundSelect>
+                </div>
+              ) : null}
               <div className="control-group">
                 <label className="control-field control-seed">
                   <span>Seed</span>

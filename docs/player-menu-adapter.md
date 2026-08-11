@@ -44,9 +44,10 @@ Venue bundle import must validate the declared version before deployment.
 
 ## Local full playthrough
 
-`npm run dev:experience` starts the player menu and playground together. The
-menu serves a catalog projection directly from the checked-out manifests. A
-launch transfers only game id, player count, difficulty, and public game
-configuration to the loopback playground; names, team identity, session ids,
-and recording state never leave the menu. The playground provides a return-to-
-menu action. This path is development-only and cannot target a remote host.
+`npm run dev` starts one Vite service at `http://127.0.0.1:4104`. It serves the
+playground at `/` and the embedded player menu at `/player-menu/`. The menu
+serves a catalog projection directly from the checked-out manifests. A launch
+transfers only game id, player count, difficulty, and public game configuration
+within that origin; names, team identity, session ids, and recording state
+never leave the menu. The playground provides a return-to-menu action. This
+path is development-only and cannot target a remote host.

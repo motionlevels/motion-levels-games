@@ -26,9 +26,11 @@ test("production bundle declares the static menu and adapter protocol", async ()
 
 test("offline menu catalog carries the exact bundled games revision", async () => {
   const vite = await readFile(path.join(menuRoot, "vite.config.ts"), "utf8");
+  const playgroundVite = await readFile(path.join(repoRoot, "apps/playground/vite.config.ts"), "utf8");
   const catalog = await readFile(path.join(menuRoot, "src/localCatalog.ts"), "utf8");
   assert.match(vite, /git rev-parse HEAD/u);
   assert.match(vite, /MOTION_LEVELS_GAMES_SOURCE_REVISION/u);
+  assert.match(playgroundVite, /MOTION_LEVELS_GAMES_SOURCE_REVISION/u);
   assert.match(catalog, /source_revision: MOTION_LEVELS_GAMES_SOURCE_REVISION/u);
 });
 

@@ -20,10 +20,14 @@ jobs:
     timeout-minutes: 5
     outputs:
       source_revision: ${{ steps.source.outputs.source_revision }}
+    defaults:
+      run:
+        working-directory: source
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: source
       - name: Require a strict version tag on the current main commit
         id: source
         shell: bash
@@ -58,13 +62,18 @@ jobs:
       contents: write
     env:
       SOURCE_REVISION: ${{ needs.release-policy.outputs.source_revision }}
+    defaults:
+      run:
+        working-directory: source
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: source
       - name: Download the bundle produced by the release quality gate
         uses: actions/download-artifact@v4
         with:
           name: motion-levels-games-${{ env.SOURCE_REVISION }}
-          path: dist
+          path: source/dist
       - name: Verify the downloaded release archive
         shell: bash
         run: |
@@ -80,8 +89,8 @@ jobs:
           overwrite_files: false
           target_commitish: ${{ env.SOURCE_REVISION }}
           files: |
-            dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz
-            dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz.sha256
+            source/dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz
+            source/dist/motion-levels-games-${{ env.SOURCE_REVISION }}.tgz.sha256
       - name: Refuse to notify consumers from a stale bundle
         shell: bash
         run: |
