@@ -28,6 +28,21 @@ source, and licence credit; hosts must preserve that UI and the package's
 instance has an independent Motion Athlete fallback, preventing one model load
 from blanking every avatar in the Stage.
 
+## Live editor-authored content
+
+A host can attach a `GameContentSource` to a `GameEntry`. The picker requests
+the published level choices for the selected difficulty/mode, stores the
+immutable level UUID (never its renameable slug), and loads the versioned
+`GameContent` document alongside the selected game chunk. Loading failures are
+shown with retry/back controls and do not start analytics or silently substitute
+fixture content. Jugar passes the document into the same `GameSession` and SDK
+engine used by the physical floor; it owns no level database or alternate rules.
+
+The platform implementation uses canonical game and level UUIDs, separate
+`engineGame`/level-slug aliases, and a deterministic `contentRevision`. A host
+rename therefore changes presentation and compatibility aliases without
+changing progress, replay, or run identity.
+
 The playground can retain exact `SessionTrajectoryFrame` objects for same-page
 visual replay. Those objects are intentionally not a portable format;
 `@motion-levels-games/replay-runtime` remains the only encoded replay/checksum

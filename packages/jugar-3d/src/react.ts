@@ -1,4 +1,4 @@
-export { Jugar3DApp, type Jugar3DAppProps } from "./MinigameApp.tsx";
+export { Jugar3DApp, loadGameEntry, type Jugar3DAppProps } from "./MinigameApp.tsx";
 export { useGameSession, type UseGameSessionOptions } from "./core/useGameSession.ts";
 export type { SessionAgentDebug, SessionTrajectoryFrame } from "./core/session.ts";
 export {

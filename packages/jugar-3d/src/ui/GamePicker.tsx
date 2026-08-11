@@ -16,11 +16,11 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { soundBank } from "../audio/sfx.ts";
 import { findCharacter } from "../characters/catalog.ts";
-import type { GameEntry } from "../contracts.ts";
+import type { GameEntry, GameLevelChoice } from "../contracts.ts";
 import type { SessionOptions } from "../core/session.ts";
 import { CharacterPicker } from "./CharacterPicker.tsx";
 
@@ -156,6 +156,42 @@ function GameDialog({
     const preferred = defaultGamePlayerCount(manifest);
     return preferred > 0 ? preferred : Math.min(...(playerCounts.length ? playerCounts : [1]));
   });
+  const modes = game.contentSource?.modes ?? [];
+  const [mode, setMode] = useState(() => game.contentSource?.defaultMode ?? modes[0]?.id ?? "free");
+  const [levelId, setLevelId] = useState<string | undefined>();
+  const [levels, setLevels] = useState<readonly GameLevelChoice[]>([]);
+  const [contentState, setContentState] = useState<"idle" | "loading" | "ready" | "error">(
+    game.contentSource ? "loading" : "idle"
+  );
+  const [contentError, setContentError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+
+  useEffect(() => {
+    const source = game.contentSource;
+    if (!source) return;
+    let cancelled = false;
+    setContentState("loading");
+    setContentError("");
+    source.list({ difficulty, ...(mode ? { mode } : {}) }).then((nextLevels) => {
+      if (cancelled) return;
+      setLevels(nextLevels);
+      setLevelId((current) => nextLevels.some((level) => level.id === current)
+        ? current
+        : nextLevels[0]?.id);
+      setContentState("ready");
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setLevels([]);
+      setLevelId(undefined);
+      setContentError(error instanceof Error ? error.message : "No se pudieron cargar los niveles.");
+      setContentState("error");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [difficulty, game.contentSource, mode, reloadToken]);
+
+  const contentReady = !game.contentSource || (contentState === "ready" && Boolean(levelId));
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -212,6 +248,56 @@ function GameDialog({
             </label>
           ) : null}
 
+          {modes.length > 1 ? (
+            <label>
+              <span>Modo</span>
+              <div className="chip-row" role="radiogroup" aria-label="Modo">
+                {modes.map((option) => (
+                  <button
+                    aria-checked={mode === option.id}
+                    className={`chip${mode === option.id ? " is-active" : ""}`}
+                    key={option.id}
+                    onClick={() => setMode(option.id)}
+                    role="radio"
+                    title={option.description}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </label>
+          ) : null}
+
+          {game.contentSource ? (
+            <label>
+              <span>Nivel</span>
+              {contentState === "error" ? (
+                <div className="content-load-error" role="alert">
+                  {contentError}
+                  <button onClick={() => setReloadToken((value) => value + 1)} type="button">
+                    Reintentar
+                  </button>
+                </div>
+              ) : (
+                <select
+                  aria-busy={contentState === "loading"}
+                  disabled={contentState !== "ready"}
+                  onChange={(event) => setLevelId(event.target.value)}
+                  value={levelId ?? ""}
+                >
+                  {contentState === "loading" ? <option value="">Cargando niveles…</option> : null}
+                  {levels.length === 0 && contentState === "ready" ? (
+                    <option value="">No hay niveles publicados</option>
+                  ) : null}
+                  {levels.map((level) => (
+                    <option key={level.id} value={level.id}>{level.label}</option>
+                  ))}
+                </select>
+              )}
+            </label>
+          ) : null}
+
           {playerCounts.length > 1 ? (
             <label>
               <span>Jugadores (los demás son robots)</span>
@@ -235,10 +321,21 @@ function GameDialog({
 
         <button
           className="play-button"
+          disabled={!contentReady}
           onClick={() => {
             soundBank.unlock();
             soundBank.cue("start");
-            onPlay(game, { playerCount, difficulty });
+            onPlay(game, {
+              playerCount,
+              difficulty,
+              ...(game.contentSource ? {
+                contentSelection: {
+                  difficulty,
+                  ...(levelId ? { levelId } : {}),
+                  ...(mode ? { mode } : {})
+                }
+              } : {})
+            });
           }}
           type="button"
         >

@@ -85,7 +85,8 @@ type BrowserPlaygroundState = {
     holdMillis?: number;
     holdTargetMillis?: number;
     hitZones?: number[];
-    level?: number;
+    level?: number | string;
+    levelSlug?: string;
     lines?: number;
     lives?: number;
     maxLives?: number;
@@ -197,7 +198,9 @@ const jugarPerformanceReadinessTimeoutMillis = 60_000;
 const jugarVisualBaselineDirectory = path.join(repoRoot, "test", "visual-baselines", "jugar-3d");
 const jugarVisualBaselineNames = new Set([
   "duelo-jugar-live-victory",
-  "duelo-jugar-replay-opening-tick-100"
+  "duelo-jugar-replay-opening-tick-100",
+  "parkour-jugar-live-victory",
+  "temporada1-jugar-live-victory"
 ]);
 const dueloFourPlayerZones: Array<[number, number]> = [[0, 0], [12, 28], [0, 28], [12, 0]];
 const dueloEightPlayerZones: Array<[number, number]> = [
@@ -243,6 +246,10 @@ try {
       }, null, 2));
     } else if (focusedGame === "duelo-jugar-3d") {
       console.log(JSON.stringify({ dueloJugar3d: await playtestDueloJugar3d(page) }, null, 2));
+    } else if (focusedGame === "parkour") {
+      console.log(JSON.stringify({ parkour: await playtestPublishedLevels(page, "parkour") }, null, 2));
+    } else if (focusedGame === "temporada1-niveles") {
+      console.log(JSON.stringify({ temporada1: await playtestPublishedLevels(page, "temporada1-niveles") }, null, 2));
     } else if (focusedGame === "equilibrio") {
       console.log(JSON.stringify({ equilibrio: await playtestEquilibrio(page) }, null, 2));
     } else if (focusedGame === "estela") {
@@ -274,8 +281,10 @@ try {
       const guardianesResult = await playtestGuardianes(page);
       const sueloSeguroResult = await playtestSueloSeguro(page);
       const dueloJugar3dResult = await playtestDueloJugar3d(page);
+      const parkourResult = await playtestPublishedLevels(page, "parkour");
+      const temporada1Result = await playtestPublishedLevels(page, "temporada1-niveles");
 
-      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, dueloJugar3d: dueloJugar3dResult, equilibrio: equilibrioResult, guardianes: guardianesResult, sueloSeguro: sueloSeguroResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
+      console.log(JSON.stringify({ pingPong: pingPongResult, pingPongV2: pingPongV2Result, duelo: dueloResult, dueloJugar3d: dueloJugar3dResult, parkour: parkourResult, temporada1: temporada1Result, equilibrio: equilibrioResult, guardianes: guardianesResult, sueloSeguro: sueloSeguroResult, memoryChallenge: memoryChallengeResult, whackAMole: whackAMoleResult, tetris: tetrisResult, lava: lavaResult, memoriaV2: memoriaV2Result, patrones: patronesResult, saltos: saltosResult }, null, 2));
     }
   } finally {
     await browser.close();
@@ -532,6 +541,144 @@ async function playtestDueloJugar3d(page: Page) {
       desktop: performanceSummary(desktopPerformance),
       capture: performanceSummary(capturePerformance)
     }
+  };
+}
+
+type PublishedLevelPlaytestGame = "parkour" | "temporada1-niveles";
+
+async function playtestPublishedLevels(page: Page, product: PublishedLevelPlaytestGame) {
+  const definition = product === "parkour"
+    ? {
+        canonicalId: "c1daea4f-e586-4116-8cbe-871cde887a81",
+        label: "Parkour",
+        players: 1,
+        baseline: "parkour-jugar-live-victory"
+      }
+    : {
+        canonicalId: "4773837e-3565-49d7-8953-3b40f59fca7b",
+        label: "Temporada 1",
+        players: 6,
+        baseline: "temporada1-jugar-live-victory"
+      };
+
+  await page.setViewportSize({ width: 1_280, height: 720 });
+  await page.locator(".control-game select").selectOption({ label: definition.label });
+  await page.locator(".control-players select").selectOption(String(definition.players));
+  await page.waitForFunction(({ gameId, players }) => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === gameId && state.playerCount === players && state.snapshot.phase === "countdown";
+  }, { gameId: definition.canonicalId, players: definition.players });
+  await captureNativeDisplay(page, `${product}-countdown`);
+
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(3_000));
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  await captureNativeDisplay(page, `${product}-running`);
+
+  if (product === "temporada1-niveles") {
+    const damage = await page.evaluate(() => {
+      const api = (window as BrowserPlaygroundWindow).ml;
+      if (!api) throw new Error("window.ml is not ready");
+      const before = api.getState().snapshot.lives;
+      if (typeof before !== "number") throw new Error("Temporada 1 did not expose lives");
+      for (let y = 0; y < 32; y += 1) {
+        api.press(0, y);
+        api.step(20);
+        api.release(0, y);
+        const after = api.getState().snapshot.lives;
+        if (typeof after === "number" && after < before) return { before, after, y };
+      }
+      throw new Error("Temporada 1 authored frame did not expose a damaging tile");
+    });
+    assert.equal(damage.after, damage.before - 1, "Temporada 1 must apply exactly one authored hazard hit");
+    await page.waitForFunction(
+      (expectedLives) => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.lives === expectedLives,
+      damage.after
+    );
+    await captureNativeDisplay(page, `${product}-damaged`);
+  }
+
+  await page.evaluate((game) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    if (game === "parkour") {
+      api.press(7, 5);
+      api.release(7, 5);
+    } else {
+      for (const [x, y] of [[2, 5], [13, 24]] as const) {
+        api.press(x, y);
+        api.release(x, y);
+      }
+      api.press(8, 14);
+      api.release(8, 14);
+      api.press(8, 14);
+      api.release(8, 14);
+    }
+    api.step(20);
+  }, product);
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished");
+  const floorFinished = await browserState(page);
+  assert.equal(floorFinished.snapshot.success, true);
+  await captureNativeDisplay(page, `${product}-finished`);
+
+  const agentSurfaceButton = page.getByRole("button", { name: "Agents 3D" });
+  assert.equal(await agentSurfaceButton.isEnabled(), true, `${definition.label} must expose its semantic Jugar controller`);
+  await agentSurfaceButton.click();
+  await page.locator(".jugar-agent-surface canvas").waitFor({ state: "visible" });
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Published-level Jugar API is unavailable");
+    lab.pause();
+    lab.setProfile("expert");
+    lab.setSpeed(1);
+    lab.reset();
+    for (let batch = 0; batch < 400 && lab.getState().metrics?.completed !== true; batch += 1) {
+      lab.step(50);
+    }
+  });
+  const agentState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  const agentAuthority = await browserState(page);
+  assert.ok(agentState);
+  assert.equal(agentState.agentCount, definition.players);
+  assert.equal(agentState.metrics?.completed, true, `${definition.label} semantic agents must reach a terminal state`);
+  assert.equal(agentAuthority.snapshot.success, true, `${definition.label} semantic agents must win the authoritative game`);
+  assert.ok(agentState.tick > 0 && agentState.tick <= 20_000);
+  assert.match(agentState.checksum, /^[0-9a-f]{8}$/u);
+
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Published-level Jugar API is unavailable");
+    lab.reset();
+    lab.step(175);
+  });
+  const liveCaptureState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
+  assert.ok(liveCaptureState);
+  assert.equal(liveCaptureState.tick, 175, `${definition.label} visual baseline must use a deterministic live tick`);
+  assert.notEqual(liveCaptureState.metrics?.completed, true, `${definition.label} visual baseline must retain the active floor`);
+
+  await prepareNativeJugarCapture(page);
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Published-level Jugar API is unavailable");
+    lab.setQualityTier("capture");
+  });
+  const performance = await assertJugarPerformanceBudget(page, "capture", true);
+  const capture = await captureJugar3d(page, definition.baseline);
+  await restoreJugarCaptureLayout(page);
+  await page.getByRole("button", { name: "Floor", exact: true }).click();
+  await page.locator(".ml-floor-interactive").waitFor({ state: "visible" });
+
+  return {
+    canonicalId: definition.canonicalId,
+    levelId: floorFinished.snapshot.level,
+    levelSlug: floorFinished.snapshot.levelSlug,
+    floorCaptures: product === "parkour"
+      ? ["countdown", "running", "finished"]
+      : ["countdown", "running", "damaged", "finished"],
+    jugarCapture: capture.surface,
+    agentCount: agentState.agentCount,
+    terminalTick: agentState.tick,
+    checksum: agentState.checksum,
+    performance: performanceSummary(performance)
   };
 }
 

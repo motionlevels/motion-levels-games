@@ -17,9 +17,13 @@ import {
   frameCell,
   gameEvent,
   gameDifficultyOptions,
+  gameManifestLookupKeys,
+  gameManifestSlug,
   gamePlayerCountOptions,
   inFloorBounds,
+  isStableGameId,
   normalizeGameConfig,
+  normalizeGameContent,
   normalizeGameConfigOptions,
   normalizeGameConfigValue,
   normalizeGameSeed,
@@ -57,6 +61,33 @@ const testManifestFields = {
     frameIntervalMillis: 20
   }
 } as const;
+
+test("stable identities stay separate from renameable game slugs", () => {
+  const manifest = {
+    ...testManifestFields,
+    id: "c1daea4f-e586-4116-8cbe-871cde887a81",
+    slug: "parkour-renamed",
+    aliases: ["parkour", "parkour-renamed"],
+    label: "Parkour",
+    players: { allowAny: false, min: 1, max: 1 },
+    start: { mode: "immediate" },
+    defaultDurationMillis: 1000,
+    display: { entry: "./display" }
+  } satisfies GameManifest;
+  assert.equal(gameManifestSlug(manifest), "parkour-renamed");
+  assert.deepEqual(gameManifestLookupKeys(manifest), [
+    "c1daea4f-e586-4116-8cbe-871cde887a81",
+    "parkour-renamed",
+    "parkour"
+  ]);
+  assert.equal(isStableGameId(manifest.id), true);
+  assert.equal(isStableGameId("a".repeat(32)), true);
+  assert.equal(isStableGameId("b".repeat(40)), true);
+  assert.equal(isStableGameId("c".repeat(64)), true);
+  assert.equal(isStableGameId(manifest.id.toUpperCase()), false);
+  assert.equal(isStableGameId("A".repeat(32)), false);
+  assert.equal(isStableGameId("parkour"), false);
+});
 
 test("frame helpers create a fixed 16x32 floor", () => {
   const frame = createFrame("#000000");
@@ -233,6 +264,25 @@ test("manifest config normalization owns defaults, constraints, and difficulty",
   assert.equal(defaultGamePlayerCount(manifest), 1);
   assert.equal(defaultGamePlayerCount(flexibleManifest), 0);
   assert.equal(normalizeGameConfig({}, flexibleManifest).playerCount, 0);
+});
+
+test("authored content is defensively copied and deeply immutable", () => {
+  const source = {
+    schema: "motion-levels-test-content-v1",
+    levels: [{ id: "level-1", frames: [[0, 1, 2]] }]
+  };
+  const content = normalizeGameContent(source);
+  assert.ok(content);
+  assert.notEqual(content, source);
+  assert.notEqual(content.levels, source.levels);
+  assert.ok(Object.isFrozen(content));
+  assert.ok(Object.isFrozen(content.levels));
+  assert.ok(Object.isFrozen((content.levels as readonly unknown[])[0]));
+
+  source.levels[0]?.frames[0]?.push(3);
+  assert.deepEqual(content.levels, [{ id: "level-1", frames: [[0, 1, 2]] }]);
+  assert.equal(normalizeGameContent({ schema: "", levels: [] }), undefined);
+  assert.equal(normalizeGameContent({ schema: "valid", value: Number.NaN }), undefined);
 });
 
 test("config value helpers use manifest definitions as the only schema", () => {

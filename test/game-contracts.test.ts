@@ -12,6 +12,7 @@ import {
   FRAME_SIZE,
   defaultGamePlayerCount,
   gameDifficultyOptions,
+  gameManifestSlug,
   gamePlayerCountOptions,
   normalizeGameConfig,
   type Frame,
@@ -41,7 +42,7 @@ for (const gameId of gameIds) {
     assert.ok(manifest, "index.ts must export manifest");
     assert.ok(typeof createGame === "function", "index.ts must export createGame");
     assert.ok(typeof PlayerDisplay === "function", "index.ts must export PlayerDisplay");
-    assert.equal(manifest.id, gameId);
+    assert.equal(gameManifestSlug(manifest), gameId);
 
     const playerCounts = gamePlayerCountOptions(manifest);
     const difficulties = gameDifficultyOptions(manifest);
@@ -107,7 +108,16 @@ for (const gameId of gameIds) {
         const candidateConfig = normalizeGameConfig({ difficulty, playerCount, seed: 137 }, manifest);
         const candidate = createGame(candidateConfig);
         candidate.init(0);
-        assert.equal(candidate.snapshot().playerCount, playerCount);
+        if (playerCount === 0 && manifest.players.allowAny) {
+          assert.ok(
+            candidate.snapshot().playerCount === 0
+              || (candidate.snapshot().playerCount >= manifest.players.min
+                && candidate.snapshot().playerCount <= manifest.players.max),
+            "Any mode must preserve the unconstrained roster or expose a valid effective roster"
+          );
+        } else {
+          assert.equal(candidate.snapshot().playerCount, playerCount);
+        }
         assertSnapshot(candidate.snapshot(), manifest.id, manifest.label);
         assertFrame(candidate.render());
       }

@@ -140,7 +140,12 @@ export type GameSnapshot = {
 };
 
 export type GameManifest = {
+  /** Immutable identity. New products use a UUID or content-addressed hash. */
   id: string;
+  /** Mutable human-readable/package key. Omitted by legacy products whose id is still their slug. */
+  slug?: string;
+  /** Previous or alternate unique lookup names retained across transparent renames. */
+  aliases?: readonly string[];
   label: string;
   description?: string;
   availability: {
@@ -169,6 +174,28 @@ export type GameManifest = {
   preview: GamePreviewScenario;
   tags?: string[];
 };
+
+export function gameManifestSlug(manifest: GameManifest): string {
+  const slug = String(manifest.slug ?? "").trim();
+  return slug || manifest.id;
+}
+
+export function gameManifestLookupKeys(manifest: GameManifest): readonly string[] {
+  const keys = [manifest.id, gameManifestSlug(manifest), ...(manifest.aliases ?? [])]
+    .map(normalizeGameLookupKey)
+    .filter(Boolean);
+  return Object.freeze([...new Set(keys)]);
+}
+
+export function normalizeGameLookupKey(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+export function isStableGameId(value: string): boolean {
+  const candidate = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(candidate)
+    || /^(?:[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{64})$/u.test(candidate);
+}
 
 export type GamePreviewAction = {
   atMillis: number;
@@ -238,6 +265,17 @@ export type GameConfigValue<T extends GameConfigVar = GameConfigVar> =
       ? boolean
       : string;
 
+/**
+ * Immutable, host-supplied authored content used to construct a deterministic
+ * game instance. This is deliberately separate from player-facing config
+ * variables: a level document may be large and structured, while `options`
+ * remains a small manifest-declared set of operator controls.
+ */
+export type GameContent = Readonly<{
+  schema: string;
+  [key: string]: unknown;
+}>;
+
 export type GameConfig = {
   seed?: number;
   playerCount?: number;
@@ -246,6 +284,7 @@ export type GameConfig = {
   nowMillis?: number;
   difficulty?: GameDifficulty;
   options?: GameConfigOptions;
+  content?: GameContent;
 };
 
 export type GameConfigOptions = Record<string, unknown>;
@@ -261,6 +300,7 @@ export type NormalizedGameConfig = {
   nowMillis: number;
   difficulty: GameDifficulty;
   options: GameConfigOptions;
+  content?: GameContent;
 };
 
 export type PressEvent = {
@@ -345,6 +385,7 @@ export function inFloorBounds(x: number, y: number): boolean {
 }
 
 export function normalizeGameConfig(config: GameConfig, manifest: GameManifest): NormalizedGameConfig {
+  const content = normalizeGameContent(config.content);
   return {
     seed: normalizeGameSeed(config.seed),
     playerCount: normalizePlayerCount(config.playerCount, manifest),
@@ -352,8 +393,61 @@ export function normalizeGameConfig(config: GameConfig, manifest: GameManifest):
     durationMillis: normalizeNonNegativeNumber(config.durationMillis, manifest.defaultDurationMillis),
     nowMillis: normalizeNonNegativeNumber(config.nowMillis, 0),
     difficulty: normalizeGameDifficulty(config.difficulty, manifest),
-    options: normalizeGameConfigOptions(config.options, manifest)
+    options: normalizeGameConfigOptions(config.options, manifest),
+    ...(content ? { content } : {})
   };
+}
+
+export function normalizeGameContent(value: unknown): GameContent | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const schema = String((value as { schema?: unknown }).schema ?? "").trim();
+  if (!schema || schema.length > 120) return undefined;
+  const clone = cloneGameContentValue(value, new WeakSet<object>());
+  if (!clone || typeof clone !== "object" || Array.isArray(clone)) return undefined;
+  return Object.freeze({ ...(clone as Record<string, unknown>), schema });
+}
+
+function cloneGameContentValue(value: unknown, ancestors: WeakSet<object>): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "object") return undefined;
+  if (ancestors.has(value)) return undefined;
+
+  ancestors.add(value);
+  if (Array.isArray(value)) {
+    const cloned: unknown[] = [];
+    for (const child of value) {
+      const normalized = cloneGameContentValue(child, ancestors);
+      if (normalized === undefined) {
+        ancestors.delete(value);
+        return undefined;
+      }
+      cloned.push(normalized);
+    }
+    ancestors.delete(value);
+    return Object.freeze(cloned);
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    ancestors.delete(value);
+    return undefined;
+  }
+  const cloned: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "__proto__" || key === "prototype" || key === "constructor") {
+      ancestors.delete(value);
+      return undefined;
+    }
+    const normalized = cloneGameContentValue(child, ancestors);
+    if (normalized === undefined) {
+      ancestors.delete(value);
+      return undefined;
+    }
+    cloned[key] = normalized;
+  }
+  ancestors.delete(value);
+  return Object.freeze(cloned);
 }
 
 export function normalizeGameSeed(value: number | undefined): number {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
 import { runnerProtocolVersion } from "../src/protocol.ts";
 import { gameCatalog } from "../src/registry.ts";
 import { RunnerSession } from "../src/session.ts";
@@ -53,4 +54,45 @@ test("production runner initializes TypeScript Duelo with its strict roster", ()
   assert.equal(initialized.snapshot.players.length, 8);
   assert.equal(initialized.snapshot.requiredPlayers, 8);
   assert.equal(initialized.frame.colors.length, 512);
+});
+
+test("published-level games resolve aliases to UUID authority and retain live content on reset", () => {
+  const session = new RunnerSession();
+  const initialized = session.handle({
+    version: runnerProtocolVersion,
+    id: "init-parkour",
+    method: "init",
+    params: {
+      gameId: "PARKOUR",
+      playerCount: 1,
+      difficulty: "medium",
+      seed: 137,
+      content: parkourContent
+    }
+  });
+  assert.equal(initialized.snapshot.currentGame, parkourGameId);
+  assert.equal(initialized.snapshot.phase, "countdown");
+
+  const reset = session.handle({
+    version: runnerProtocolVersion,
+    id: "reset-parkour",
+    method: "control",
+    params: { action: "reset" }
+  });
+  assert.deepEqual(reset.snapshot, initialized.snapshot);
+  assert.deepEqual(reset.frame, initialized.frame);
+});
+
+test("published-level games reject malformed host content instead of silently using fixtures", () => {
+  const session = new RunnerSession();
+  assert.throws(() => session.handle({
+    version: runnerProtocolVersion,
+    id: "invalid-parkour-content",
+    method: "init",
+    params: {
+      gameId: parkourGameId,
+      playerCount: 1,
+      content: { schema: "motion-levels-published-level-content-v1", gameId: parkourGameId }
+    }
+  }), /content|levels/iu);
 });

@@ -13,8 +13,9 @@ job. Keep each layer focused so failures point to the relevant contract.
   shared paused-TV behavior. It also checks package boundaries, the floor
   visual-state invariant, and the CI workflow topology.
 - `npm run test:coverage`: runs separate thresholded coverage suites for the
-  game SDK, display kit, and all game packages. Thresholds stay package-scoped
-  so a well-tested game cannot hide a weak shared library.
+  game SDK, display kit, all game packages, the agent/replay runtimes, and the
+  published-level runtime. Thresholds stay package-scoped so a well-tested
+  game cannot hide a weak shared library.
 - `npm run test:all`: workspace tests, repository contracts, and the generated
   game scaffold smoke test.
 - `npm run playtest:browser`: exercises the built playground with a real
@@ -23,7 +24,12 @@ job. Keep each layer focused so failures point to the relevant contract.
   sequential single-mouse floor clicks. The Duelo Jugar 3D portion additionally
   verifies the product controller in the shared `GameSession`, exact retained
   replay seek/restore, and representative native 1920×1080 frames against the
-  checked-in visual baselines. It also waits for and enforces the shared
+  checked-in visual baselines. Parkour and Temporada 1 additionally prove
+  canonical UUID dispatch, editor-compatible content fixtures, authored hazard
+  behavior, successful semantic-agent terminals, and reviewed live 3D captures.
+  Platform integration tests separately prove delivery of live published
+  content revisions through the host content source. The
+  browser gate also waits for and enforces the shared
   desktop-medium and capture performance budgets: structural renderer totals
   always hard-fail, while SwiftShader uses its separately published timing
   ceiling and emits the non-certification caveat. Run `npm run build` first.
@@ -43,9 +49,10 @@ snapshots; extract cohesive ownership and test its public behavior instead.
 
 ## Jugar 3D visual baselines
 
-`test/visual-baselines/jugar-3d` owns reviewed Duelo opening-replay and terminal
-victory captures from the canonical shared Stage. The browser gate requires a
-real 1920×1080 drawing buffer, decodes both images, downsizes them to 240×135,
+`test/visual-baselines/jugar-3d` owns reviewed Duelo replay/victory captures and
+live Parkour/Temporada 1 captures from the canonical shared Stage. The browser
+gate requires a real 1920×1080 drawing buffer, decodes the images, downsizes
+them to 240×135,
 and compares RGB values with the reviewed tolerance in
 `scripts/lib/visual-regression.ts`. Downsampling and a small channel threshold
 absorb GPU edge-rasterisation differences; missing characters, a black floor,
@@ -75,6 +82,7 @@ Coverage is a regression floor, not a target to game. Current minimums are:
 | Game SDK | 90% | 90% | 80% |
 | Display kit | 75% | 60% | 70% |
 | Games | 85% | 80% | 80% |
+| Published-level runtime | 90% | 90% | 80% |
 
 Raise a floor when durable behavioral tests increase the baseline. Do not lower
 one to land an unrelated change without documenting the uncovered behavior.

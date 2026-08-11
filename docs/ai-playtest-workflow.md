@@ -216,7 +216,8 @@ For every playthrough, judge both surfaces:
 
 - Keep game logic deterministic; randomness must flow through SDK seeded RNG
   helpers.
-- Keep `manifest.id` exactly equal to the `games/<game-id>` directory name.
+- Keep the immutable UUID/hash in `manifest.id`, the package/directory name in
+  `manifest.slug`, and any previous names in `manifest.aliases`.
 - Let the playground discover games through `games/*/src/index.ts`; do not add
   manual game imports to `apps/playground/src/App.tsx`.
 - Prefer focused edits in the target game and shared display/game helpers.

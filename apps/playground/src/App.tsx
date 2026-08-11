@@ -57,6 +57,7 @@ import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { eventKey, isEventStreamAtLatest } from "./eventStream.ts";
 import {
   defaultGame,
+  findPlaygroundGame,
   playgroundGames,
   type PlaygroundGame
 } from "./gameRegistry.ts";
@@ -121,11 +122,11 @@ function createStartedGame(
 export function App() {
   const initialGame = useMemo(() => {
     const storedGameId = readStoredSelectedGameId(playgroundGames.map((game) => game.manifest.id));
-    return playgroundGames.find((game) => game.manifest.id === storedGameId) ?? defaultGame;
+    return storedGameId ? findPlaygroundGame(storedGameId) ?? defaultGame : defaultGame;
   }, []);
   const [selectedGameId, setSelectedGameId] = useState(initialGame.manifest.id);
   const selectedGame = useMemo(
-    () => playgroundGames.find((game) => game.manifest.id === selectedGameId) ?? defaultGame,
+    () => findPlaygroundGame(selectedGameId) ?? defaultGame,
     [selectedGameId]
   );
   const [surfaceMode, setSurfaceMode] = useState<"floor" | "agents">("floor");
@@ -499,7 +500,7 @@ export function App() {
 
   const selectGame = useCallback(
     (gameId: string) => {
-      const nextGame = playgroundGames.find((game) => game.manifest.id === gameId) ?? defaultGame;
+      const nextGame = findPlaygroundGame(gameId) ?? defaultGame;
       const nextSeed = DEFAULT_GAME_SEED;
       const nextPlayerCount = defaultGamePlayerCount(nextGame.manifest);
       const nextDifficulty = defaultDifficultyFor(nextGame);
@@ -735,7 +736,7 @@ export function App() {
 
   const generateMedia = useCallback(
     async (gameId = selectedGameRef.current.manifest.id, options: PlaygroundMediaOptions = {}) => {
-      const game = playgroundGames.find((candidate) => candidate.manifest.id === gameId);
+      const game = findPlaygroundGame(gameId);
       if (!game) {
         throw new Error(`Unknown game: ${gameId}`);
       }

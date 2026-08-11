@@ -10,6 +10,7 @@ const gamePackages = new Set([
   "@motion-levels-games/agent-runtime",
   "@motion-levels-games/display-kit",
   "@motion-levels-games/game-sdk",
+  "@motion-levels-games/published-level-runtime",
   "@motion-levels-games/replay-runtime"
 ]);
 const playgroundPackages = new Set([
@@ -24,6 +25,13 @@ test("workspace source imports respect package ownership", async () => {
     { directory: "packages/agent-runtime/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
     { directory: "packages/agent-analytics/src", allowed: new Set(["@motion-levels-games/replay-runtime"]) },
     { directory: "packages/replay-runtime/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
+    {
+      directory: "packages/published-level-runtime/src",
+      allowed: new Set([
+        "@motion-levels-games/display-kit",
+        "@motion-levels-games/game-sdk"
+      ])
+    },
     { directory: "packages/character-runtime/src", allowed: new Set<string>() },
     {
       directory: "packages/jugar-3d/src",
