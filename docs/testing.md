@@ -98,14 +98,20 @@ workflow runs five independent jobs:
 3. repository contracts and thresholded coverage on Node 24;
 4. the production build and deterministic engine playtests on Node 24;
 5. the real-browser playground interaction playtest, generated media, and
-   verified release bundle on Node 24 inside the Playwright runtime image
-   pinned to the repository's Playwright version.
+   verified release bundle inside the Playwright runtime image pinned to the
+   repository's Playwright version.
 
 Caller workflows use concurrency cancellation so obsolete commits stop
 consuming CI time. Every job has a timeout and read-only repository permission.
 The `dev` caller retains its additional ancestry check before shared CI runs.
-The browser job runs in the pinned official Playwright image, so heterogeneous
-self-hosted workers cannot silently supply different Chromium system libraries
-or require interactive `sudo`. Browser-backed release media and the resulting
-bundle are created in that same reproducible job; the separate host job remains
-a fast, browser-independent production-build and engine gate.
+Every job checks out into an isolated `source/` directory. This prevents stale
+files in a shared runner's default workspace from influencing a new checkout.
+The browser job installs and builds on Node 24, then bind-mounts that isolated
+checkout into the pinned official Playwright image. The container runs as the
+runner's exact uid/gid, so it cannot leave root-owned repository files behind;
+it needs neither recursive ownership repair nor interactive `sudo`.
+
+Heterogeneous self-hosted workers therefore cannot silently supply different
+Chromium system libraries. Browser-backed release media and the resulting
+bundle are created in that same pinned runtime; the separate host job remains a
+fast, browser-independent production-build and engine gate.
