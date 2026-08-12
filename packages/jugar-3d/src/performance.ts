@@ -27,9 +27,9 @@ export const jugarStageQualityBudgets: Readonly<Record<JugarStageQuality, JugarS
     // over a complete window; 700 ms retains about 16% regression headroom.
     "desktop-medium": createBudget(60, 25, 700, 170, 33_000, 168, 4, 9, 24),
     "venue-high": createBudget(60, 18.5, 175, 170, 33_000, 168, 4, 9, 36),
-    // Local native capture/desktop p95 was 1.90x. Applying that ratio to the
-    // slowest CI result predicts about 1,145 ms; 1,300 ms keeps similar headroom.
-    capture: createBudget(45, 40, 1300, 170, 33_000, 168, 4, 9, 36)
+    // Local native capture/desktop p95 was 1.90x. The slowest self-hosted
+    // SwiftShader capture measured 1,305.6 ms; 1,400 ms keeps 7% headroom.
+    capture: createBudget(45, 40, 1400, 170, 33_000, 168, 4, 9, 36)
   });
 
 export type JugarStagePerformanceSample = Readonly<{

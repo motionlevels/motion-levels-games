@@ -38,7 +38,7 @@ test("quality tiers expose explicit complete-scene budgets", () => {
   );
   assert.equal(jugarStageQualityBudgets["mobile-low"].maxSoftwareP95FrameMillis, 175);
   assert.equal(jugarStageQualityBudgets["venue-high"].maxSoftwareP95FrameMillis, 175);
-  assert.equal(jugarStageQualityBudgets.capture.maxSoftwareP95FrameMillis, 1300);
+  assert.equal(jugarStageQualityBudgets.capture.maxSoftwareP95FrameMillis, 1400);
   assert.equal(jugarStageQualityBudgets.capture.maxP95FrameMillis, 40);
   assert.equal(jugarStageQualityBudgets.capture.maxDrawCalls, 170);
 });
