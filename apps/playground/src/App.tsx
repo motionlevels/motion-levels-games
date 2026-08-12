@@ -1080,6 +1080,8 @@ export function App() {
       .toLocaleLowerCase("es");
     return !libraryNeedle || haystack.includes(libraryNeedle);
   });
+  const libraryHasVisibleContent = (libraryTab !== "animations" && visibleLibraryGames.length > 0)
+    || (libraryTab !== "games" && visibleLibraryAnimations.length > 0);
   const effectivePresentationPaused = paused || (agentLabActive && (agentLabState?.paused ?? false));
   const displayedPhase = effectivePresentationPaused ? "paused" : snapshot.phase;
   const frameMillis = engineRef.current.frameMillis;
@@ -1576,7 +1578,7 @@ export function App() {
                   </div>
                 </section>
               ) : null}
-              {visibleLibraryGames.length === 0 && visibleLibraryAnimations.length === 0 ? (
+              {!libraryHasVisibleContent ? (
                 <div className="library-empty"><Search aria-hidden="true" /><strong>No content found</strong><span>Try a different name, category, or tag.</span></div>
               ) : null}
             </div>
