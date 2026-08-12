@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   minimumAnimationLibrary,
+  quaterniusAssetManifests,
   sahurAssetManifest,
   validateCharacterAsset,
   inspectGlb,
@@ -13,6 +14,7 @@ import {
   auditCharacterAsset,
   defaultAuditPolicyFor,
   inspectCharacterGlb,
+  quaterniusInterimAuditPolicy,
   sahurInterimAuditPolicy
 } from "../scripts/lib/character-asset-audit.ts";
 import {
@@ -93,6 +95,26 @@ test("canonical assets fail explicitly when animation, texture, scale, or hierar
   assert.match(failures, /hierarchy-multiple-parent:Head<-Spine,Neck/);
   assert.match(failures, /canonical-non-unit-scale/);
   assert.match(failures, /canonical-non-identity-scene-root/);
+});
+
+test("palette-only Quaternius GLBs pass the documented CC0 interim policy", async () => {
+  const manifest = quaterniusAssetManifests[0]!;
+  const bytes = await readFile(new URL(
+    `../packages/character-runtime/${manifest.file}`,
+    import.meta.url
+  ));
+  const inspection = inspectCharacterGlb(bytes);
+  assert.equal(inspection.textures.length, 0);
+  assert.equal(inspection.animations.length, 24);
+  const audit = auditCharacterAsset(
+    manifest,
+    validateCharacterAsset(manifest, inspectGlb(bytes)),
+    inspection,
+    canonicalClips,
+    quaterniusInterimAuditPolicy
+  );
+  assert.deepEqual(audit.errors, []);
+  assert.match(audit.warnings.join("\n"), /Quaternius rig supplies 24 named source clips/u);
 });
 
 test("the pinned optimizer refuses in-place writes and has an immutable three-stage plan", () => {

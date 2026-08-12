@@ -36,6 +36,7 @@ export type Jugar3DAppProps = Readonly<{
   /** Optional host catalog UI. Jugar still owns selection, setup and play. */
   catalogRenderer?: JugarCatalogRenderer;
   sahurModelUrl?: string;
+  characterModelBaseUrl?: string;
   captureFrames?: boolean;
   exposeDebug?: boolean;
   onRunStarted?(run: JugarRunStarted): void;
@@ -46,6 +47,7 @@ export function Jugar3DApp({
   entries,
   catalogRenderer,
   sahurModelUrl = "/models/tung-tung-tung-sahur.glb",
+  characterModelBaseUrl = "/models/quaternius",
   captureFrames = false,
   exposeDebug = false,
   onRunStarted,
@@ -180,6 +182,7 @@ export function Jugar3DApp({
   return (
     <PlayScreen
       characterId={characterId}
+      characterModelBaseUrl={characterModelBaseUrl}
       captureFrames={captureFrames}
       exposeDebug={exposeDebug}
       game={screen.game}
@@ -210,6 +213,7 @@ export async function loadGameEntry(
 
 function PlayScreen({
   characterId,
+  characterModelBaseUrl,
   captureFrames,
   exposeDebug,
   game,
@@ -219,6 +223,7 @@ function PlayScreen({
   sahurModelUrl
 }: {
   characterId: string;
+  characterModelBaseUrl: string;
   captureFrames: boolean;
   exposeDebug: boolean;
   game: RegisteredGame;
@@ -236,6 +241,7 @@ function PlayScreen({
           <Stage
             captureFrames={captureFrames}
             characterId={characterId}
+            characterModelBaseUrl={characterModelBaseUrl}
             exposeFitDebug={exposeDebug}
             sahurModelUrl={sahurModelUrl}
             session={session}

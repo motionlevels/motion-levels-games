@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
@@ -15,6 +16,9 @@ import {
   minimumAnimationLibrary,
   motionAthleteCast,
   proceduralPose,
+  quaterniusAnimationClips,
+  quaterniusAssetManifests,
+  quaterniusCharacterAssets,
   sahurAssetManifest,
   validateCharacterAsset,
   type AnimationClipName,
@@ -266,6 +270,24 @@ test("the included Sahur GLB passes its audited interim budgets and licence meta
   assert.equal(validation.valid, true, validation.errors.join(", "));
   assert.match(validation.warnings.join("\n"), /asset-status:interim/);
   assert.match(validation.warnings.join("\n"), /attribution-required:KAG3D/);
+});
+
+test("all ten Quaternius characters retain their shared rig and 24 authored clips", async () => {
+  assert.equal(quaterniusCharacterAssets.length, 10);
+  assert.equal(quaterniusAssetManifests.length, 10);
+  for (const [index, asset] of quaterniusCharacterAssets.entries()) {
+    const manifest = quaterniusAssetManifests[index]!;
+    const bytes = await readFile(new URL(`../assets/${asset.fileName}`, import.meta.url));
+    const inspection = inspectGlb(bytes);
+    assert.equal(bytes.byteLength, asset.bytes, asset.id);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), asset.sha256, asset.id);
+    assert.deepEqual(inspection.animations, quaterniusAnimationClips, asset.id);
+    assert.ok(inspection.skins >= 1, asset.id);
+    assert.ok(inspection.bones.length >= 60, asset.id);
+    assert.ok(inspection.triangles <= asset.maxTriangles, asset.id);
+    const validation = validateCharacterAsset(manifest, inspection);
+    assert.equal(validation.valid, true, `${asset.id}: ${validation.errors.join(", ")}`);
+  }
 });
 
 test("GLB inspector fails closed for corrupt files", () => {

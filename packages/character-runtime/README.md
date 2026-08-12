@@ -12,6 +12,12 @@ separate skeletons. The included Sahur model remains an audited interim asset:
 it is commercially usable under CC-BY 4.0 but has only one walk clip and needs
 retargeting before it can satisfy the full shared animation library.
 
+The runtime also includes ten optimized CC0 Quaternius characters on a shared
+62-bone humanoid rig. Every character carries the same 24 authored clips,
+including neutral idle, walk, run, roll, interaction, hit, wave, and death.
+Palette materials avoid texture downloads; meshopt compression keeps the whole
+collection near 7.4 MB while preserving geometry, armatures, and animation.
+
 All 29 graph states have deterministic action, movement, gesture, event, or
 emotion inputs. Animation channels retain the outgoing clip and elapsed time
 while exposing explicit previous/current weights, including optional-layer

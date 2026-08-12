@@ -42,6 +42,14 @@ test("agent explanations are reachable through the shared surface selector", asy
   assert.match(source, /selectedDebug\.explanation/u);
 });
 
+test("agent lab can preview every production character on the shared stage", async () => {
+  const source = await readFile(new URL("../src/JugarAgentSurface.tsx", import.meta.url), "utf8");
+  assert.match(source, /characterCatalog, defaultCharacterId/u);
+  assert.match(source, /characterId=\{characterId\}/u);
+  assert.match(source, /aria-label="Playable character"/u);
+  assert.match(source, /characterCatalog\.map/u);
+});
+
 test("Agents 3D publishes the shared Stage diagnostic report unchanged", async () => {
   const source = await readFile(new URL("../src/JugarAgentSurface.tsx", import.meta.url), "utf8");
   const api = await readFile(new URL("../src/playgroundApi.ts", import.meta.url), "utf8");

@@ -14,6 +14,12 @@ Athlete cast (Explorer, Runner, Trickster and Guardian) reads that state without
 render-history accumulators, so replay seeks reproduce the same pose. New users
 default to Explorer; automated players rotate through all four silhouettes.
 
+The picker additionally exposes ten CC0 rigged characters from Quaternius.
+Jugar maps their authored clips deterministically to idle, locomotion,
+jump/roll, interaction, hit, victory, and defeat states. Only the selected GLB
+is streamed. Hosts may set `characterModelBaseUrl` (default
+`/models/quaternius`) and must serve the runtime assets from that directory.
+
 Use `@motion-levels-games/jugar-3d/react` for `Stage`, `Jugar3DApp` and
 `useGameSession`, and import `@motion-levels-games/jugar-3d/styles.css` once in
 the host. React, React DOM, Three, R3F, Drei and Lucide are peers on purpose:

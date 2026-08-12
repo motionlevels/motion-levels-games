@@ -44,6 +44,31 @@ test("shared package carries the visible Sahur licence obligation", async () => 
   assert.match(catalog, /license: "CC Attribution"/u);
 });
 
+test("the picker exposes ten animated CC0 characters and the stage maps every rig", async () => {
+  const catalog = await source("../src/characters/catalog.ts");
+  const components = await source("../src/characters/components.ts");
+  const riggedCharacter = await source("../src/characters/RiggedCharacter.tsx");
+  assert.equal(catalog.match(/quaterniusCharacter\(/gu)?.length, 11);
+  for (const id of [
+    "adventurer", "casual-hoodie", "mystic", "punk", "spacesuit",
+    "star-pilot", "street-scout", "swat", "trailblazer", "worker"
+  ]) {
+    assert.match(components, new RegExp(`rigged\\("${id}"\\)`, "u"));
+  }
+  assert.match(catalog, /license: "CC0"/u);
+  assert.match(riggedCharacter, /Idle_Neutral/u);
+  assert.match(riggedCharacter, /HitRecieve/u);
+  assert.match(riggedCharacter, /setActionPhase\(actionRefs\.current\.Death/u);
+});
+
+test("the playground serves and packages character GLBs outside its public tree", async () => {
+  const vite = await readFile(new URL("../../../apps/playground/vite.config.ts", import.meta.url), "utf8");
+  assert.match(vite, /motion-levels-character-models/u);
+  assert.match(vite, /server\.middlewares\.use\("\/models"/u);
+  assert.match(vite, /path\.join\(modelsOutput, "quaternius"\)/u);
+  assert.match(vite, /copyFileSync\(path\.join\(characterAssetsRoot, entry\.name\), destination\)/u);
+});
+
 test("shared Stage instrumentation is opt-in and uses renderer totals", async () => {
   const stage = await source("../src/scene/Stage.tsx");
   assert.match(stage, /onDiagnostics\?: \(diagnostics: JugarStageDiagnostics\) => void/u);

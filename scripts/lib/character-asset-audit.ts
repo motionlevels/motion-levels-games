@@ -65,6 +65,7 @@ export type CharacterAssetAuditPolicy = Readonly<{
   maxTextureWidth: number;
   maxTextureHeight: number;
   requireEmbeddedTextures: boolean;
+  requireTextures: boolean;
   requireAttributionExtras: boolean;
   requireUnitScale: boolean;
   requireIdentitySceneRoots: boolean;
@@ -120,6 +121,7 @@ export const sahurInterimAuditPolicy: CharacterAssetAuditPolicy = Object.freeze(
   maxTextureWidth: 512,
   maxTextureHeight: 512,
   requireEmbeddedTextures: true,
+  requireTextures: true,
   requireAttributionExtras: true,
   requireUnitScale: false,
   requireIdentitySceneRoots: false,
@@ -138,11 +140,30 @@ export function defaultAuditPolicyFor(manifest: CharacterAssetManifest): Charact
     maxTextureWidth: 1_024,
     maxTextureHeight: 1_024,
     requireEmbeddedTextures: true,
+    requireTextures: true,
     requireAttributionExtras: manifest.attributionRequired,
     requireUnitScale: manifest.status === "canonical",
     requireIdentitySceneRoots: manifest.status === "canonical"
   });
 }
+
+export const quaterniusInterimAuditPolicy: CharacterAssetAuditPolicy = Object.freeze({
+  classification: "interim",
+  processedTextureMimeTypes: Object.freeze([]),
+  maxTextureWidth: 0,
+  maxTextureHeight: 0,
+  requireEmbeddedTextures: false,
+  requireTextures: false,
+  requireAttributionExtras: false,
+  requireUnitScale: false,
+  requireIdentitySceneRoots: false,
+  canonicalCoverageException: Object.freeze({
+    reason: "The Quaternius rig supplies 24 named source clips mapped by the Jugar adapter to Motion Levels animation states."
+  }),
+  scaleException: Object.freeze({
+    reason: "Source rigs retain harmless exporter precision on upper-leg scale and intentional accessory-local scale; runtime height normalization seats the character."
+  })
+});
 
 export function inspectCharacterGlb(bytes: Uint8Array): CharacterGlbAuditInspection {
   const { json, binary } = parseGlb(bytes);
@@ -280,7 +301,7 @@ export function auditCharacterAsset(
     }
   }
 
-  if (inspection.textures.length === 0) errors.push("processed-textures:missing");
+  if (policy.requireTextures && inspection.textures.length === 0) errors.push("processed-textures:missing");
   for (const texture of inspection.textures) {
     if (texture.declaredMimeType && texture.detectedMimeType && texture.declaredMimeType !== texture.detectedMimeType) {
       errors.push(`processed-texture-mime-mismatch:${texture.name}:${texture.declaredMimeType}/${texture.detectedMimeType}`);

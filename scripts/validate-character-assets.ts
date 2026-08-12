@@ -4,6 +4,8 @@ import path from "node:path";
 import {
   inspectGlb,
   minimumAnimationLibrary,
+  characterAssetManifests,
+  quaterniusAssetManifests,
   sahurAssetManifest,
   validateCharacterAsset,
   type CharacterAssetManifest
@@ -12,13 +14,15 @@ import {
   auditCharacterAsset,
   defaultAuditPolicyFor,
   inspectCharacterGlb,
+  quaterniusInterimAuditPolicy,
   sahurInterimAuditPolicy,
   type CharacterAssetAuditPolicy
 } from "./lib/character-asset-audit.ts";
 
-const manifests: readonly CharacterAssetManifest[] = [sahurAssetManifest];
+const manifests: readonly CharacterAssetManifest[] = characterAssetManifests;
 const policies: Readonly<Record<string, CharacterAssetAuditPolicy>> = Object.freeze({
-  [sahurAssetManifest.id]: sahurInterimAuditPolicy
+  [sahurAssetManifest.id]: sahurInterimAuditPolicy,
+  ...Object.fromEntries(quaterniusAssetManifests.map((manifest) => [manifest.id, quaterniusInterimAuditPolicy]))
 });
 const failures: string[] = [];
 

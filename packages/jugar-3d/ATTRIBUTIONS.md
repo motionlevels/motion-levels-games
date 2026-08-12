@@ -16,3 +16,18 @@ the model is offered. Hosts must preserve that visible credit and this notice.
 
 The procedural Robot is original Motion Levels geometry and has no third-party
 asset dependency.
+
+## Quaternius character collection
+
+Ten animated characters from the **Ultimate Modular Characters Pack** and
+**Ultimate Modular Women Pack** by **Quaternius** are available under
+[CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
+
+- https://quaternius.com/packs/ultimatemodularcharacters.html
+- https://quaternius.com/packs/ultimatemodularwomen.html
+
+They are delivered by the shared character runtime as optimized, self-contained
+GLBs. Each has a humanoid rig and 24 authored clips; Jugar maps those clips to
+idle, walk, run, jump/roll, hit, interaction, victory, and defeat states. CC0
+does not require credit, but the picker retains the creator and source link as
+transparent provenance.

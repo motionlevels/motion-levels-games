@@ -8,9 +8,11 @@ export type CharacterProps = {
   avatar: Avatar;
   /** Host-resolved asset URL; omitted by procedural characters. */
   modelUrl?: string;
+  /** Host-resolved directory for the Quaternius GLBs. */
+  modelBaseUrl?: string;
 };
 
-/** Attribution for a third-party model, shown in the picker to satisfy CC-BY. */
+/** Third-party provenance shown in the picker; mandatory for CC-BY and transparent for CC0. */
 export type CharacterCredit = {
   author: string;
   url: string;

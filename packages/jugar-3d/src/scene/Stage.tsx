@@ -26,6 +26,7 @@ export type JugarStageProps = Readonly<{
   session: GameSession;
   characterId: string;
   sahurModelUrl?: string;
+  characterModelBaseUrl?: string;
   /** Opt in only for hosts that synchronously read pixels from the canvas. */
   captureFrames?: boolean;
   /** Explicit test/embed override; browser media-query detection is the default. */
@@ -62,6 +63,7 @@ export default function Stage({
   session,
   characterId,
   sahurModelUrl,
+  characterModelBaseUrl,
   captureFrames = false,
   coarsePointer = detectsCoarsePointer(),
   exposeFitDebug = false,
@@ -164,7 +166,7 @@ export default function Stage({
       ) : null}
 
       {session.avatars.map((avatar) =>
-        avatar.isBot ? (
+        avatar.isBot && debug?.selectedAvatarId !== avatar.id ? (
           <Robot avatar={avatar} key={avatar.id} session={session} />
         ) : (
           // Each streamed skin owns its boundary. The canonical athlete stays
@@ -175,6 +177,7 @@ export default function Stage({
           >
             <Character
               avatar={avatar}
+              modelBaseUrl={characterModelBaseUrl}
               modelUrl={sahurModelUrl}
               session={session}
             />

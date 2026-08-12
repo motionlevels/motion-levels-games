@@ -22,10 +22,11 @@ export type CharacterMeta = {
 
 /**
  * Playable characters for the HUMAN player. Companion bots rotate through the
- * four canonical Motion Athlete silhouettes; Sahur remains an optional skin.
+ * four canonical Motion Athlete silhouettes; streamed rigged skins remain
+ * optional and are fetched only after selection.
  *
- * `credit` is rendered in the picker. The Sahur model is CC-BY, so that credit
- * is a licence obligation, not decoration: see ATTRIBUTIONS.md.
+ * `credit` is rendered in the picker. Sahur's is a CC-BY obligation; the CC0
+ * entries document provenance and thank Quaternius: see ATTRIBUTIONS.md.
  */
 export const characterCatalog: CharacterMeta[] = [
   {
@@ -48,6 +49,66 @@ export const characterCatalog: CharacterMeta[] = [
     label: "Guardián",
     description: "Hombros anchos y una presencia protectora."
   },
+  quaterniusCharacter(
+    "adventurer",
+    "Aventurero",
+    "Mochila de expedición y una silueta preparada para cualquier reto.",
+    "https://quaternius.com/packs/ultimatemodularcharacters.html"
+  ),
+  quaterniusCharacter(
+    "trailblazer",
+    "Pionera",
+    "Exploradora de montaña con un estilo ágil y decidido.",
+    "https://quaternius.com/packs/ultimatemodularwomen.html"
+  ),
+  quaterniusCharacter(
+    "casual-hoodie",
+    "Urbano",
+    "Sudadera, zapatillas y movimientos naturales de juego.",
+    "https://quaternius.com/packs/ultimatemodularcharacters.html"
+  ),
+  quaterniusCharacter(
+    "street-scout",
+    "Exploradora urbana",
+    "Estilo callejero y una respuesta rápida en movimiento.",
+    "https://quaternius.com/packs/ultimatemodularwomen.html"
+  ),
+  quaterniusCharacter(
+    "punk",
+    "Punk",
+    "Cresta, actitud y animaciones con mucha personalidad.",
+    "https://quaternius.com/packs/ultimatemodularcharacters.html"
+  ),
+  quaterniusCharacter(
+    "mystic",
+    "Mística",
+    "Una hechicera de fantasía con capa y presencia escénica.",
+    "https://quaternius.com/packs/ultimatemodularwomen.html"
+  ),
+  quaterniusCharacter(
+    "spacesuit",
+    "Astronauta",
+    "Traje espacial completo para cruzar cualquier zona peligrosa.",
+    "https://quaternius.com/packs/ultimatemodularcharacters.html"
+  ),
+  quaterniusCharacter(
+    "star-pilot",
+    "Piloto estelar",
+    "Equipo de ciencia ficción y silueta de heroína espacial.",
+    "https://quaternius.com/packs/ultimatemodularwomen.html"
+  ),
+  quaterniusCharacter(
+    "swat",
+    "Unidad táctica",
+    "Equipamiento táctico robusto y movimientos precisos.",
+    "https://quaternius.com/packs/ultimatemodularcharacters.html"
+  ),
+  quaterniusCharacter(
+    "worker",
+    "Constructor",
+    "Casco, chaleco y botas para entrar en acción con seguridad.",
+    "https://quaternius.com/packs/ultimatemodularcharacters.html"
+  ),
   {
     id: "sahur",
     label: "Tung Tung Tung Sahur",
@@ -59,6 +120,20 @@ export const characterCatalog: CharacterMeta[] = [
     }
   }
 ];
+
+function quaterniusCharacter(
+  id: string,
+  label: string,
+  description: string,
+  url: string
+): CharacterMeta {
+  return {
+    id,
+    label,
+    description,
+    credit: { author: "Quaternius", url, license: "CC0" }
+  };
+}
 
 export const defaultCharacterId = "explorer";
 

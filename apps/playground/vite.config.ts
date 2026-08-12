@@ -9,6 +9,7 @@ const playgroundRoot = path.dirname(fileURLToPath(import.meta.url));
 const gamesRoot = path.resolve(playgroundRoot, "../../games");
 const gameRegistryPath = path.resolve(playgroundRoot, "src/gameRegistry.ts");
 const playerMenuRoot = path.resolve(playgroundRoot, "../player-menu");
+const characterAssetsRoot = path.resolve(playgroundRoot, "../../packages/character-runtime/assets");
 const webpEncoderWasmPath = path.resolve(playgroundRoot, "../../node_modules/webp-encoder/lib/assets/a.out.wasm");
 const menuBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse --short HEAD") || "dev";
 const menuBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
@@ -21,7 +22,7 @@ export default defineConfig({
     __MENU_BUILD_REVISION__: JSON.stringify(menuBuildRevision),
     __MENU_BUILD_DATE__: JSON.stringify(menuBuildDate),
   },
-  plugins: [motionLevelsGamesWatcher(), webpEncoderWasm(), react()],
+  plugins: [motionLevelsGamesWatcher(), characterModels(), webpEncoderWasm(), react()],
   server: {
     fs: {
       allow: [
@@ -108,6 +109,52 @@ function webpEncoderWasm(): PluginOption {
       copyFileSync(webpEncoderWasmPath, path.join(options.dir, "a.out.wasm"));
     }
   };
+}
+
+function characterModels(): PluginOption {
+  return {
+    name: "motion-levels-character-models",
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use("/models", (request, response, next) => {
+        const source = characterModelSource(request.url ?? "");
+        if (!source || !existsSync(source)) {
+          next();
+          return;
+        }
+
+        response.setHeader("Content-Type", "model/gltf-binary");
+        response.setHeader("Cache-Control", "public, max-age=3600");
+        response.end(readFileSync(source));
+      });
+    },
+    writeBundle(options) {
+      if (!options.dir || !existsSync(characterAssetsRoot)) return;
+      const modelsOutput = path.join(options.dir, "models");
+      const quaterniusOutput = path.join(modelsOutput, "quaternius");
+      mkdirSync(quaterniusOutput, { recursive: true });
+      for (const entry of readdirSync(characterAssetsRoot, { withFileTypes: true })) {
+        if (!entry.isFile() || !/^[a-z0-9-]+\.glb$/u.test(entry.name)) continue;
+        const destination = entry.name === "tung-tung-tung-sahur.glb"
+          ? path.join(modelsOutput, entry.name)
+          : path.join(quaterniusOutput, entry.name);
+        copyFileSync(path.join(characterAssetsRoot, entry.name), destination);
+      }
+    }
+  };
+}
+
+function characterModelSource(requestUrl: string): string | undefined {
+  let relative: string;
+  try {
+    relative = decodeURIComponent(requestUrl.split("?", 1)[0] ?? "").replace(/^\/+/, "");
+  } catch {
+    return undefined;
+  }
+  if (relative === "tung-tung-tung-sahur.glb") {
+    return path.join(characterAssetsRoot, relative);
+  }
+  const match = /^quaternius\/([a-z0-9-]+\.glb)$/u.exec(relative);
+  return match?.[1] ? path.join(characterAssetsRoot, match[1]) : undefined;
 }
 
 function snapshotGamesTree(): string {

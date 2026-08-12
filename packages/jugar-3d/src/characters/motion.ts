@@ -48,6 +48,8 @@ export type CharacterPose = {
   motion: number;
   /** 0 on the ground, rising to 1 at the top of the jump arc. */
   jumpPose: number;
+  /** 0..1 progress through the complete jump, without reversing after the apex. */
+  jumpProgress: number;
   jumping: boolean;
   landing: number;
   hit: number;
@@ -177,6 +179,7 @@ export function useCharacterMotion(
       counterStride,
       motion,
       jumpPose,
+      jumpProgress,
       jumping,
       landing,
       hit,

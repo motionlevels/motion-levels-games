@@ -607,10 +607,12 @@
 
   & .character-dialog {
     --accent: var(--mlg-blue);
+    width: min(880px, 100%);
   }
 
   & .character-list {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     margin: 18px 0 0;
     padding: 0;
@@ -672,6 +674,12 @@
 
   & .character-credit a {
     color: inherit;
+  }
+
+  @media (max-width: 680px) {
+    & .character-list {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ---------- play screen ---------- */

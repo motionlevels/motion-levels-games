@@ -15,8 +15,8 @@ type Props = {
  * Character chooser. Deliberately low-key — it opens from a small control in
  * the header rather than sitting on the main surface.
  *
- * The credit line is a licence requirement for third-party models (CC-BY),
- * not decoration. Do not drop it. See ATTRIBUTIONS.md.
+ * The Sahur credit is a CC-BY licence requirement; CC0 credits document
+ * provenance and thank the creator. Keep both visible. See ATTRIBUTIONS.md.
  */
 export function CharacterPicker({ characterId, onSelect, onClose }: Props) {
   return (

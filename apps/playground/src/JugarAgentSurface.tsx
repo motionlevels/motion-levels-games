@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { characterCatalog, defaultCharacterId } from "@motion-levels-games/jugar-3d";
 import {
   Stage,
   useGameSession,
@@ -95,6 +96,7 @@ export function JugarAgentSurface({
   const stateRef = useRef<AgentLabState>(emptyState(seed, playerCount));
 
   const [profile, setProfile] = useState<PlaygroundAgentProfile>("mixed");
+  const [characterId, setCharacterId] = useState(defaultCharacterId);
   const [qualityTier, setQualityTier] = useState<(typeof qualityOptions)[number]>("desktop-medium");
   const [recording, setRecording] = useState(true);
   const [replayMode, setReplayMode] = useState(false);
@@ -468,7 +470,8 @@ export function JugarAgentSurface({
       <div className="agent-lab-viewport">
         <Stage
           captureFrames
-          characterId="robot"
+          characterId={characterId}
+          characterModelBaseUrl={`${import.meta.env.BASE_URL}models/quaternius`}
           debug={{
             paths: debugVisibility.paths,
             targets: debugVisibility.targets,
@@ -533,6 +536,17 @@ export function JugarAgentSurface({
                 <option key={avatar.id} value={avatar.id.toString()}>
                   {avatar.playerIndex + 1}
                 </option>
+              ))}
+            </select>
+          </label>
+          <label>Character
+            <select
+              aria-label="Playable character"
+              onChange={(event) => setCharacterId(event.target.value)}
+              value={characterId}
+            >
+              {characterCatalog.map((character) => (
+                <option key={character.id} value={character.id}>{character.label}</option>
               ))}
             </select>
           </label>

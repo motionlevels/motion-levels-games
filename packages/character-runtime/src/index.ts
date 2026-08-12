@@ -517,6 +517,75 @@ export const sahurAssetManifest: CharacterAssetManifest = {
   requiredBones: ["Hips", "Spine", "Head", "LeftArm", "RightArm", "LeftUpLeg", "RightUpLeg"]
 };
 
+export const quaterniusAnimationClips = Object.freeze([
+  "Death", "Gun_Shoot", "HitRecieve", "HitRecieve_2", "Idle", "Idle_Gun",
+  "Idle_Gun_Pointing", "Idle_Gun_Shoot", "Idle_Neutral", "Idle_Sword", "Interact",
+  "Kick_Left", "Kick_Right", "Punch_Left", "Punch_Right", "Roll", "Run", "Run_Back",
+  "Run_Left", "Run_Right", "Run_Shoot", "Sword_Slash", "Walk", "Wave"
+] as const);
+
+export type QuaterniusCharacterAsset = Readonly<{
+  id: string;
+  label: string;
+  fileName: string;
+  source: string;
+  sha256: string;
+  bytes: number;
+  maxTriangles: number;
+}>;
+
+const quaterniusMenSource = "https://quaternius.com/packs/ultimatemodularcharacters.html";
+const quaterniusWomenSource = "https://quaternius.com/packs/ultimatemodularwomen.html";
+
+export const quaterniusCharacterAssets: readonly QuaterniusCharacterAsset[] = Object.freeze([
+  quaternius("adventurer", "Aventurero", "adventurer.glb", quaterniusMenSource, "359ce77215e3d4bf7ed9fa45d343280a8a1b3511ea07721a88f58fc36dec2f1a", 817_116, 10_500),
+  quaternius("casual-hoodie", "Urbano", "casual-hoodie.glb", quaterniusMenSource, "903f460b55dd1563381739d56a495eadba82cf0d268e4c23e8c03753bb36bca7", 745_836, 6_500),
+  quaternius("punk", "Punk", "punk.glb", quaterniusMenSource, "7cc6c3af903d16df88dc917cde0e4ac9f02f1b44196632e1dbc921511bcff772", 737_424, 6_000),
+  quaternius("spacesuit", "Astronauta", "spacesuit.glb", quaterniusMenSource, "2d3fbe5b2f03f6f1d08eb28a58a4ccf2f5ec4fd2f1dbbf3f93978457d708fb91", 812_556, 11_000),
+  quaternius("swat", "Unidad táctica", "swat.glb", quaterniusMenSource, "68db9fd01465d4f584f4c7dcb54df67010d2e4ae4ad8355aefc5226e0f674f5f", 782_300, 9_000),
+  quaternius("worker", "Constructor", "worker.glb", quaterniusMenSource, "62957fdcf4f54976240bfcb6ff16c0761873ea8c5f164d54648459c841d382c5", 734_968, 5_500),
+  quaternius("trailblazer", "Pionera", "trailblazer.glb", quaterniusWomenSource, "c8bff37f0e8fef9e962a2a960558e0396dde9ca7d1bc2fdc5ac90f31523613f2", 761_708, 7_000),
+  quaternius("street-scout", "Exploradora urbana", "street-scout.glb", quaterniusWomenSource, "b833ebb8d564a4c99ed2c6c7b2f688cd309c714d870cced4526d97db6d17f1d3", 743_904, 6_700),
+  quaternius("star-pilot", "Piloto estelar", "star-pilot.glb", quaterniusWomenSource, "e6d802b27b085df54afcfeb13e95c6832959d46257d985f2f7b53f5239bead76", 783_620, 8_300),
+  quaternius("mystic", "Mística", "mystic.glb", quaterniusWomenSource, "3e39ea410be4b8b0fd1c0b0be3e506c7c8073e07e5bd0150efce9f826f50128d", 757_612, 7_100)
+]);
+
+export const quaterniusAssetManifests: readonly CharacterAssetManifest[] = Object.freeze(
+  quaterniusCharacterAssets.map((asset): CharacterAssetManifest => ({
+    schemaVersion: CHARACTER_ASSET_SCHEMA_VERSION,
+    id: `quaternius-${asset.id}`,
+    status: "interim",
+    file: `assets/${asset.fileName}`,
+    sha256: asset.sha256,
+    source: asset.source,
+    author: "Quaternius",
+    license: "CC0-1.0",
+    attributionRequired: false,
+    maxBytes: 850_000,
+    maxMaterials: 12,
+    maxTriangles: asset.maxTriangles,
+    expectedClips: quaterniusAnimationClips,
+    requiredBones: ["Root", "Hips", "Chest", "Head", "UpperArm.L", "UpperArm.R", "UpperLeg.L", "UpperLeg.R"]
+  }))
+);
+
+export const characterAssetManifests: readonly CharacterAssetManifest[] = Object.freeze([
+  sahurAssetManifest,
+  ...quaterniusAssetManifests
+]);
+
+function quaternius(
+  id: string,
+  label: string,
+  fileName: string,
+  source: string,
+  sha256: string,
+  bytes: number,
+  maxTriangles: number
+): QuaterniusCharacterAsset {
+  return Object.freeze({ id, label, fileName, source, sha256, bytes, maxTriangles });
+}
+
 export type CharacterAssetValidation = {
   valid: boolean;
   errors: string[];

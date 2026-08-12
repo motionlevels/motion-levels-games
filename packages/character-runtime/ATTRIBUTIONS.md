@@ -22,3 +22,26 @@ floor.
 CC-BY requires KAG3D to be credited anywhere this asset is presented. The four
 procedural Motion Athlete variants are original Motion Levels geometry and do
 not have third-party asset dependencies.
+
+## Quaternius modular characters
+
+Ten characters are derived from the **Ultimate Modular Characters Pack** and
+**Ultimate Modular Women Pack** by **Quaternius**, released under
+[CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
+
+- Sources:
+  - https://quaternius.com/packs/ultimatemodularcharacters.html
+  - https://quaternius.com/packs/ultimatemodularwomen.html
+- Downloaded: 12 August 2026
+- Included characters: Adventurer, Casual Hoodie, Mystic, Punk, Spacesuit,
+  Star Pilot, Street Scout, SWAT, Trailblazer, and Worker.
+- Each character includes one humanoid skin and 24 authored animation clips.
+
+The source glTF files were converted to self-contained GLBs and compressed
+losslessly with meshopt. Geometry, armatures, animation curves, and palette
+materials were preserved. Exact per-file hashes, size ceilings, triangle
+budgets, source URLs, and required bones are declared in `src/index.ts` and
+checked by `npm run validate:characters`.
+
+CC0 does not require attribution; this notice and the visible picker credit are
+kept as transparent provenance and thanks to Quaternius.
