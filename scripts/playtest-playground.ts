@@ -232,6 +232,10 @@ try {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    page.on("pageerror", (error) => process.stderr.write(`[browser page error] ${error.stack ?? error.message}\n`));
+    page.on("console", (message) => {
+      if (message.type() === "error") process.stderr.write(`[browser console error] ${message.text()}\n`);
+    });
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
 
