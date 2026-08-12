@@ -1,57 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { idleLoopSyncDecision, visibleActiveLevelLaunch } from "../src/runtimeFlow.ts";
+import { visibleActiveLevelLaunch } from "../src/runtimeFlow.ts";
 
 describe("runtime screen flow", () => {
-  it("keeps the game screen after a level was stopped", () => {
-    assert.deepEqual(
-      idleLoopSyncDecision({
-        launchedGameID: "temporada1-niveles",
-        launchingGameID: null,
-        screenMode: "game",
-        stoppedLevelGameID: "temporada1-niveles",
-      }),
-      { action: "hold-stopped", message: "Nivel detenido" },
-    );
-  });
-
-  it("keeps the game screen while a replacement level launch is in flight", () => {
-    assert.deepEqual(
-      idleLoopSyncDecision({
-        launchedGameID: "temporada1-niveles",
-        launchingGameID: "temporada1-niveles",
-        screenMode: "game",
-        stoppedLevelGameID: null,
-      }),
-      { action: "hold-launching" },
-    );
-  });
-
-  it("returns to browse only for an idle loop with no stopped or launching level", () => {
-    assert.deepEqual(
-      idleLoopSyncDecision({
-        launchedGameID: "temporada1-niveles",
-        launchingGameID: null,
-        screenMode: "game",
-        stoppedLevelGameID: null,
-      }),
-      { action: "return-to-browse", message: "Juego finalizado" },
-    );
-  });
-
-  it("ignores idle sync outside the game screen", () => {
-    assert.deepEqual(
-      idleLoopSyncDecision({
-        launchedGameID: "temporada1-niveles",
-        launchingGameID: null,
-        screenMode: "browse",
-        stoppedLevelGameID: "temporada1-niveles",
-      }),
-      { action: "ignore" },
-    );
-  });
-
   it("shows active level launch progress on the current game screen", () => {
     assert.deepEqual(
       visibleActiveLevelLaunch({

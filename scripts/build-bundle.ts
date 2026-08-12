@@ -22,6 +22,7 @@ if (!/^[0-9a-f]{40}$/u.test(sourceRevision)) throw new Error(`invalid source rev
 const outputRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(repoRoot, "dist/bundle"));
 const mediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path.join(repoRoot, "dist/media"));
 const displayCSS = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
+const playerExperienceSchema = await readFile(path.join(repoRoot, "packages/player-experience/schema/player-experience-state.schema.json"), "utf8");
 
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(path.join(outputRoot, "runtime"), { recursive: true });
@@ -108,6 +109,7 @@ const animationCatalog = {
   animations: animationLibrary.map(animationMediaCatalogEntry)
 };
 await writeFile(path.join(outputRoot, "animations.json"), `${JSON.stringify(animationCatalog, null, 2)}\n`);
+await writeFile(path.join(outputRoot, "player-experience-state.schema.json"), `${JSON.stringify(JSON.parse(playerExperienceSchema), null, 2)}\n`);
 
 const files = await bundleFiles(outputRoot);
 const artifactDigest = bundleContentDigest(files);
@@ -121,6 +123,7 @@ const manifest = {
   runtime: { entry: "runtime/runner.mjs", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
   playerDisplay: { entry: "display/display.js", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
   playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
+  playerExperience: { contractVersion: 1, schema: "player-experience-state.schema.json" },
   playground: { entry: "playground/index.html", basePath: "/games/play/" },
   catalog: "catalog.json",
   animations: "animations.json",

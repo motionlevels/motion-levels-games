@@ -14,6 +14,7 @@ const manifest = JSON.parse(await readFile(path.join(root, "bundle.json"), "utf8
   contractVersion?: number;
   runnerProtocolVersion?: number;
   playerMenu?: { entry?: string; adapterProtocolVersion?: number };
+  playerExperience?: { contractVersion?: number; schema?: string };
   playground?: { entry?: string; basePath?: string };
   animations?: string;
   sourceRevision?: string;
@@ -25,7 +26,9 @@ assert.equal(manifest.schema, "motion-levels-games-bundle-v1");
 assert.equal(manifest.contractVersion, 1);
 assert.equal(manifest.runnerProtocolVersion, 1);
 assert.equal(manifest.playerMenu?.entry, "menu/index.html");
-assert.equal(manifest.playerMenu?.adapterProtocolVersion, 1);
+assert.equal(manifest.playerMenu?.adapterProtocolVersion, 2);
+assert.equal(manifest.playerExperience?.contractVersion, 1);
+assert.equal(manifest.playerExperience?.schema, "player-experience-state.schema.json");
 assert.equal(manifest.playground?.entry, "playground/index.html");
 assert.equal(manifest.playground?.basePath, "/games/play/");
 assert.equal(manifest.animations, "animations.json");
@@ -35,6 +38,7 @@ const files = await bundleFiles(root);
 assert.ok(files.some((file) => file.path === manifest.playerMenu?.entry), "player menu entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playground?.entry), "playground entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.animations), "animation catalog is missing from bundle files");
+assert.ok(files.some((file) => file.path === manifest.playerExperience?.schema), "player experience schema is missing from bundle files");
 
 const animationCatalog = JSON.parse(await readFile(path.join(root, manifest.animations!), "utf8")) as {
   schema?: string;

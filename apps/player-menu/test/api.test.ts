@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchURL, requestJSON, RequestError } from "../src/api.ts";
+import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchURL, requestJSON, RequestError, selectGame } from "../src/api.ts";
 
 const nativeFetch = globalThis.fetch;
 
@@ -144,5 +144,43 @@ describe("kiosk API requests", () => {
       friendlyRequestError(new RequestError("response", "database stack trace", { status: 500 }), "No se pudo iniciar"),
       "No se pudo iniciar",
     );
+  });
+
+  it("serializes the sole menu command stream", async () => {
+    let releaseFirst!: () => void;
+    const first = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const requests: string[] = [];
+    globalThis.fetch = (async (url) => {
+      requests.push(String(url));
+      if (requests.length === 1) await first;
+      return new Response(JSON.stringify({ revision: requests.length }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    const selected = selectGame({ game: "ping-pong", playerCount: 2 });
+    const controlled = controlGame("pause");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(requests.length, 1);
+    releaseFirst();
+    await Promise.all([selected, controlled]);
+    assert.deepEqual(requests.map((url) => new URL(url).pathname), ["/api/select", "/api/control"]);
+  });
+
+  it("retries a lost command response with the same id", async () => {
+    const bodies: Array<{ commandId: string }> = [];
+    globalThis.fetch = (async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as { commandId: string });
+      if (bodies.length === 1) throw new TypeError("lost response");
+      return new Response(JSON.stringify({ revision: 2 }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    await controlGame("restart");
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0].commandId, bodies[1].commandId);
   });
 });

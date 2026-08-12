@@ -1,4 +1,5 @@
 import type { EngineGame, EngineStatus, PlatformGameCatalogEntry } from "./contracts";
+import { newPlayerExperienceCommandId } from "@motion-levels-games/player-experience";
 
 export type { EngineGame, EngineStatus, PlatformGameCatalogEntry };
 
@@ -59,6 +60,7 @@ export type AnimationPreview = {
 };
 
 export type SelectGameRequest = {
+  commandId?: string;
   game: string;
   engineGame?: string;
   gameLabel?: string;
@@ -187,7 +189,7 @@ function inferEngineURL(): string {
 }
 
 export function engineBaseURL(): string {
-  return import.meta.env.VITE_GAME_ENGINE_URL || inferEngineURL();
+  return import.meta.env?.VITE_GAME_ENGINE_URL || inferEngineURL();
 }
 
 export function inferPlatformURL(location: Pick<Location, "hostname" | "origin" | "pathname" | "protocol"> = window.location): string {
@@ -207,7 +209,7 @@ export function inferPlatformURL(location: Pick<Location, "hostname" | "origin" 
 }
 
 export function platformBaseURL(): string {
-  return import.meta.env.VITE_PLATFORM_URL || inferPlatformURL();
+  return import.meta.env?.VITE_PLATFORM_URL || inferPlatformURL();
 }
 
 export async function fetchEngineStatus(): Promise<EngineStatus> {
@@ -226,17 +228,27 @@ export async function fetchEngineStatus(): Promise<EngineStatus> {
     }));
     return localIdleEngineStatus(catalog);
   }
-  return requestJSON<EngineStatus>(`${engineBaseURL()}/api/status`, { cache: "no-store" }, statusTimeoutMillis);
+  return requestJSON<EngineStatus>(`${engineBaseURL()}/api/player-state`, { cache: "no-store" }, statusTimeoutMillis);
+}
+
+export function playerExperienceEventSource(): EventSource {
+  return new EventSource(`${engineBaseURL()}/api/player-state/events`);
 }
 
 function localIdleEngineStatus(catalog: EngineGame[]): EngineStatus {
   return {
+    contractVersion: 1,
+    revision: 1,
+    runId: "",
+    lifecycle: "idle",
+    allowedControls: [],
     currentGame: "salvapantallas",
     venueSessionId: "",
     label: "Playground local",
     difficulty: "medium",
     teamName: "",
     playerCount: 0,
+    players: [],
     score: 0,
     lives: -1,
     music: "",
@@ -249,9 +261,15 @@ function localIdleEngineStatus(catalog: EngineGame[]): EngineStatus {
     introRemainingMillis: 0,
     countdownRemainingMillis: 0,
     startedUnix: 0,
+    endsUnix: 0,
     elapsedMillis: 0,
+    remainingMillis: 0,
+    activeTargets: 0,
     sessionId: "",
     lastPressureUnix: Math.floor(Date.now() / 1000),
+    lastEventUnixNanos: 0,
+    lastEventCue: "",
+    lastEventMessage: "",
     catalog,
   };
 }
@@ -273,22 +291,43 @@ export async function fetchAnimationPreview(level: string, frames = 16, revision
   return requestJSON<AnimationPreview>(`${engineBaseURL()}/api/animation-preview?${params.toString()}`);
 }
 
-export async function selectGame(request: SelectGameRequest): Promise<EngineStatus> {
-  return requestJSON<EngineStatus>(`${engineBaseURL()}/api/select`, {
+// One menu is the sole command writer. Keep a single ordered transport queue
+// so launch/control requests cannot overtake one another after double taps,
+// reconnects, or a slow engine response.
+let playerCommandTail: Promise<void> = Promise.resolve();
+
+function enqueuePlayerCommand<T>(command: () => Promise<T>): Promise<T> {
+  const result = playerCommandTail.then(command, command);
+  playerCommandTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+async function requestPlayerCommand(url: string, body: unknown): Promise<EngineStatus> {
+  const init: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  }, commandTimeoutMillis);
+    body: JSON.stringify(body),
+  };
+  try {
+    return await requestJSON<EngineStatus>(url, init, commandTimeoutMillis);
+  } catch (error) {
+    if (!(error instanceof RequestError) || error.kind === "response") throw error;
+    // The first response may have been lost after the engine committed. The
+    // same commandId makes this retry a read of the committed result.
+    return requestJSON<EngineStatus>(url, init, commandTimeoutMillis);
+  }
+}
+
+export async function selectGame(request: SelectGameRequest): Promise<EngineStatus> {
+  const commandId = request.commandId || newPlayerExperienceCommandId(globalThis.crypto);
+  return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/select`, { ...request, commandId }));
 }
 
 export type ControlGameAction = "pause" | "resume" | "restart" | "exit" | "narration" | "mute" | "unmute" | "toggle_mute";
 
 export async function controlGame(action: ControlGameAction): Promise<EngineStatus> {
-  return requestJSON<EngineStatus>(`${engineBaseURL()}/api/control`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action }),
-  }, commandTimeoutMillis);
+  const commandId = newPlayerExperienceCommandId(globalThis.crypto);
+  return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/control`, { action, commandId }));
 }
 
 export type VenueSessionRequest = {

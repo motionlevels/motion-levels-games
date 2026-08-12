@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, platformBaseURL, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type SelectGameRequest } from "./api";
+import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type SelectGameRequest } from "./api";
+import { acceptsPlayerExperienceState, playerExperienceView } from "@motion-levels-games/player-experience";
 import { categories, colors, difficulties, games, playerColorNames, playerColors, type CategoryID, type DifficultyID, type GameCard, type GameConfigVar, type PartyMiniGame } from "./catalog";
 import { partyCatalogIsComplete, partyLaunchGame } from "./party";
 import {
@@ -46,7 +47,7 @@ import {
 } from "./previews";
 import { captureMenuEvent, menuKioskID, setMenuEventForwarder } from "./analytics";
 import { nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
-import { idleLoopSyncDecision, visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
+import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
   closestLevelIDForDifficulty,
   defaultLevelIDForDifficulty,
@@ -115,7 +116,7 @@ type ChallengeCompletion = {
   totalElapsedMillis: number;
 };
 
-type PlayerMenuEngineStatus = EngineStatus & { pressureStreamConnected?: boolean };
+type PlayerMenuEngineStatus = EngineStatus;
 type FinishedLevelAttempt = NonNullable<PlayerMenuEngineStatus["finishedLevelAttempts"]>[number] & { venueSessionId?: string };
 type ConnectionState = "connection-off" | "connection-on" | "connection-pending";
 type KeyboardTarget = { kind: "team" } | { kind: "player"; id: number };
@@ -127,12 +128,6 @@ type PartyRunState = {
 };
 type MenuMirrorSnapshot = {
   menu: MenuState;
-  screenMode: ScreenMode;
-  launchedGameID: string;
-  levelBrowserGameID: string | null;
-  teamOpen: boolean;
-  message: string;
-  error: string;
 };
 type RemoteSessionRequest = {
   configuredPlayerCount: number;
@@ -1267,6 +1262,9 @@ function MenuApp() {
   const readOnlyMirror = useMemo(() => menuReadOnlyFromURL(), []);
   const [menu, setMenu] = useState<MenuState>(() => loadMenuState());
   const [status, setStatus] = useState<PlayerMenuEngineStatus | null>(null);
+  const acceptStatus = useCallback((next: PlayerMenuEngineStatus) => {
+    setStatus((current) => acceptsPlayerExperienceState(current, next) ? next : current);
+  }, []);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connection-pending");
   const [platformCatalog, setPlatformCatalog] = useState<PlatformGameCatalogEntry[] | null>(() => loadCachedPlatformCatalog());
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
@@ -1287,10 +1285,11 @@ function MenuApp() {
   const [settingsPinFailures, setSettingsPinFailures] = useState(0);
   const [settingsLockoutUntil, setSettingsLockoutUntil] = useState(0);
   const [teamOpen, setTeamOpen] = useState(false);
-  const [screenMode, setScreenMode] = useState<ScreenMode>("browse");
+  // This fallback exists only before the first engine snapshot (and in the
+  // read-only mirror). Once connected, canonical runtime state owns routing.
+  const [fallbackScreenMode, setScreenMode] = useState<ScreenMode>("browse");
+  const screenMode = status ? playerExperienceView(status).screen : fallbackScreenMode;
   const [remoteSessionRequest, setRemoteSessionRequest] = useState<RemoteSessionRequest | null>(() => remoteSessionRequestFromURL());
-  const [launchedGameID, setLaunchedGameID] = useState(menu.selectedGame);
-  const [stoppedLevelGameID, setStoppedLevelGameID] = useState<string | null>(null);
   const [launchingGameID, setLaunchingGameID] = useState<string | null>(null);
   const [pendingControlAction, setPendingControlAction] = useState<ControlGameAction | null>(null);
   const [activeLevelLaunch, setActiveLevelLaunch] = useState<ActiveLevelLaunch | null>(null);
@@ -1299,9 +1298,6 @@ function MenuApp() {
     const saved = loadPartyRun();
     return saved?.sessionId && saved.sessionId === menu.sessionId ? saved : null;
   });
-  const [introUntil, setIntroUntil] = useState(0);
-  const [countdownUntil, setCountdownUntil] = useState(0);
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const processedFinishedSessions = useRef(new Set<string>(menu.processedAttemptIDs));
   const processedChallengeCompletions = useRef(new Set<string>());
   const processedPartyFinishes = useRef(new Set<string>());
@@ -1309,7 +1305,6 @@ function MenuApp() {
   const catalogRefreshDelayRef = useRef(platformCatalogRefreshMillis);
   const platformCatalogRef = useRef(platformCatalog);
   const syncedEngineSession = useRef("");
-  const stoppedLevelGameIDRef = useRef<string | null>(null);
   const mirroredMenuVersion = useRef(0);
   const mirroredMenuUpdatedUnixMillis = useRef(0);
   const venueSessionIDRef = useRef(menu.sessionId);
@@ -1413,10 +1408,6 @@ function MenuApp() {
 
   useEffect(() => {
     if (!platformCatalog || !menuGames.length) return;
-    const launchedStillVisible = menuGames.some((game) => game.id === launchedGameID);
-    if (!launchedStillVisible) {
-      setLaunchedGameID(menuGames[0].id);
-    }
     setMenu((current) => {
       const categoryGames = gamesForCategory(menuGames, current.category);
       // An empty category is a valid catalog view. Keep it selected so the
@@ -1445,7 +1436,7 @@ function MenuApp() {
         selectedLevels,
       };
     });
-  }, [launchedGameID, menu.category, menu.selectedGame, menuGames, platformCatalog]);
+  }, [menu.category, menu.selectedGame, menuGames, platformCatalog]);
 
   // Mirror every captured menu event to the game-engine so the visit is fully
   // recorded server-side (independent of PostHog analytics).
@@ -1474,18 +1465,12 @@ function MenuApp() {
     if (readOnlyMirror) return;
     const snapshot: MenuMirrorSnapshot = {
       menu,
-      screenMode,
-      launchedGameID,
-      levelBrowserGameID,
-      teamOpen,
-      message,
-      error,
     };
     const timeout = window.setTimeout(() => {
       postMenuState({ kioskId: menuKioskID(), snapshot });
     }, 150);
     return () => window.clearTimeout(timeout);
-  }, [error, launchedGameID, levelBrowserGameID, menu, message, readOnlyMirror, screenMode, teamOpen]);
+  }, [menu, readOnlyMirror]);
 
   useEffect(() => {
     if (!readOnlyMirror) return;
@@ -1501,12 +1486,6 @@ function MenuApp() {
       mirroredMenuUpdatedUnixMillis.current = envelope.updatedUnixMillis;
       const snapshot = envelope.snapshot;
       setMenu({ ...snapshot.menu, processedAttemptIDs: snapshot.menu.processedAttemptIDs || [] });
-      setScreenMode(snapshot.screenMode);
-      setLaunchedGameID(snapshot.launchedGameID);
-      setLevelBrowserGameID(snapshot.levelBrowserGameID);
-      setTeamOpen(snapshot.teamOpen);
-      setMessage(snapshot.message);
-      setError(snapshot.error);
       setKeyboardTarget(null);
       setColorPickerFor(null);
       setConfirmRemove(null);
@@ -1539,24 +1518,49 @@ function MenuApp() {
   useEffect(() => {
     let cancelled = false;
     let nextRefresh: number | undefined;
+    let source: EventSource | null = null;
+    let streamFreshAt = 0;
+    const accept = (next: PlayerMenuEngineStatus) => {
+      if (cancelled) return;
+      acceptStatus(next);
+      setConnectionState("connection-on");
+    };
+    const attach = () => {
+      source?.close();
+      source = playerExperienceEventSource();
+      source.addEventListener("player-state", (event) => {
+        try {
+          streamFreshAt = Date.now();
+          accept(JSON.parse((event as MessageEvent).data) as PlayerMenuEngineStatus);
+        } catch {
+          // A malformed event cannot replace the last accepted revision.
+        }
+      });
+      source.onerror = () => {
+        if (!cancelled) setConnectionState("connection-pending");
+      };
+    };
     async function refresh() {
       try {
         const next = await fetchEngineStatus();
-        if (cancelled) return;
-        setStatus(next);
-        setConnectionState("connection-on");
+        accept(next);
       } catch {
         if (!cancelled) setConnectionState("connection-off");
       } finally {
-        if (!cancelled) nextRefresh = window.setTimeout(refresh, 2500);
+        if (!cancelled) {
+          if (Date.now() - streamFreshAt > 5_000 && source?.readyState === EventSource.CLOSED) attach();
+          nextRefresh = window.setTimeout(refresh, 2500);
+        }
       }
     }
+    attach();
     void refresh();
     return () => {
       cancelled = true;
+      source?.close();
       if (nextRefresh !== undefined) window.clearTimeout(nextRefresh);
     };
-  }, []);
+  }, [acceptStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1582,12 +1586,6 @@ function MenuApp() {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [refreshPlatformCatalog]);
-
-  useEffect(() => {
-    if (screenMode !== "game") return;
-    const id = window.setInterval(() => setNowMs(Date.now()), 100);
-    return () => window.clearInterval(id);
-  }, [screenMode]);
 
   useEffect(() => {
     if (screenMode !== "browse" || !message) return;
@@ -1620,26 +1618,6 @@ function MenuApp() {
 
     if (engineIsIdleLoop) {
       syncedEngineSession.current = syncKey;
-      const heldStoppedLevelGameID = stoppedLevelGameIDRef.current || stoppedLevelGameID;
-      const idleDecision = idleLoopSyncDecision({
-        launchedGameID,
-        launchingGameID,
-        screenMode,
-        stoppedLevelGameID: heldStoppedLevelGameID,
-      });
-      if (idleDecision.action === "hold-stopped") {
-        setMessage(idleDecision.message);
-        return;
-      }
-      if (idleDecision.action === "hold-launching") {
-        return;
-      }
-      if (idleDecision.action === "return-to-browse") {
-        stoppedLevelGameIDRef.current = null;
-        setStoppedLevelGameID(null);
-        setScreenMode("browse");
-        setMessage(idleDecision.message);
-      }
       return;
     }
 
@@ -1694,7 +1672,6 @@ function MenuApp() {
         difficulty: engineDifficulty,
       };
     });
-    setLaunchedGameID(engineGame.id);
     setLevelBrowserGameID(null);
     setTeamOpen(false);
     setKeyboardTarget(null);
@@ -1709,11 +1686,8 @@ function MenuApp() {
       setScreenMode("game");
       setMessage("En curso");
     }
-    if (syncedEngineSession.current !== syncKey) {
-      syncPlayTiming(status, engineGame);
-      syncedEngineSession.current = syncKey;
-    }
-  }, [status, menu.selectedGame, screenMode, menuGames, launchedGameID, stoppedLevelGameID, launchingGameID]);
+    syncedEngineSession.current = syncKey;
+  }, [status, menu.selectedGame, screenMode, menuGames]);
 
   useEffect(() => {
     if (screenMode !== "game") return;
@@ -1886,7 +1860,8 @@ function MenuApp() {
   const visibleGames = gamesForCategory(menuGames, menu.category);
   const selectedGame = menuGames.find((game) => game.id === menu.selectedGame) || menuGames[0] || games[0];
   const categorySelectionValid = visibleGames.some((game) => game.id === selectedGame.id);
-  const launchedGame = menuGames.find((game) => game.id === launchedGameID) || selectedGame;
+  const runtimeGame = status ? gameForEngineStatus(status.currentGame, menu.selectedGame, menuGames) : null;
+  const launchedGame = runtimeGame && playerExperienceView(status).screen === "game" ? runtimeGame : selectedGame;
   const levelBrowserGame = menuGames.find((game) => game.id === levelBrowserGameID && gameBelongsToCategory(game, menu.category) && game.levels?.length) || null;
   const browsingLevels = Boolean(levelBrowserGame);
   const levelBrowserDifficulty = levelBrowserGame ? normalizedDifficultyForGame(levelBrowserGame, menu.difficulty) : menu.difficulty;
@@ -2138,7 +2113,7 @@ function MenuApp() {
     if (status?.currentGame && !animationIsIdleLoop(status.currentGame, status.phase)) {
       setMessage("Cerrando sesión");
       try {
-        setStatus(await controlGame("exit"));
+        acceptStatus(await controlGame("exit"));
       } catch (err) {
         setMessage("");
         setError(friendlyRequestError(err, "No se pudo detener el juego. La sesión sigue abierta para que puedas reintentarlo."));
@@ -2869,11 +2844,8 @@ function MenuApp() {
       };
       if (launchLocalPlayground(launchRequest)) return true;
       const nextStatus = await selectGame(launchRequest);
-      setStatus(nextStatus);
-      stoppedLevelGameIDRef.current = null;
-      setStoppedLevelGameID(null);
+      acceptStatus(nextStatus);
       setMessage(isPartyCard(game) && game.partyMiniGames?.length ? `Party ${partyIndex + 1}/${game.partyMiniGames.length} · ${options.partyScore || 0} pts` : "En curso");
-      setLaunchedGameID(game.id);
       if (supportsNarration(launchGame) && playNarration) {
         setMenu((current) => ({
           ...current,
@@ -2883,7 +2855,6 @@ function MenuApp() {
           },
         }));
       }
-      syncPlayTiming(nextStatus, game);
       setTeamOpen(false);
       setKeyboardTarget(null);
       setScreenMode(isAmbientCard(game) ? "browse" : "game");
@@ -2904,8 +2875,6 @@ function MenuApp() {
   }
 
   async function restartLaunchedGame() {
-    stoppedLevelGameIDRef.current = null;
-    setStoppedLevelGameID(null);
     captureMenuEvent("game_restarted", {
       engine_game: engineGameID(launchedGame),
       game: launchedGame.id,
@@ -2954,19 +2923,13 @@ function MenuApp() {
     try {
       if (stopCurrent) {
         setMessage("Deteniendo nivel");
-        stoppedLevelGameIDRef.current = game.id;
-        setStoppedLevelGameID(game.id);
         const stoppedStatus = await controlGame("exit");
-        setStatus(stoppedStatus);
+        acceptStatus(stoppedStatus);
       }
       setActiveLevelLaunch({ gameID: game.id, levelID, phase: "loading" });
       setMessage("Cambiando nivel");
       await launch(game.id, { levelID, levelMode: mode });
     } catch (err) {
-      if (stopCurrent) {
-        stoppedLevelGameIDRef.current = null;
-        setStoppedLevelGameID(null);
-      }
       setMessage("");
       setError(friendlyRequestError(err, "No se pudo cambiar de nivel. Inténtalo de nuevo."));
     } finally {
@@ -2990,10 +2953,6 @@ function MenuApp() {
     setError("");
     const activeMode = activeLevelModeFor(launchedGame, menu, status);
     const stopLevelOnly = action === "exit" && activeMode === "free" && isLevelRuntimeActive(status, launchedGame);
-    if (stopLevelOnly) {
-      stoppedLevelGameIDRef.current = launchedGame.id;
-      setStoppedLevelGameID(launchedGame.id);
-    }
     captureMenuEvent("control_used", {
       action,
       engine_game: engineGameID(launchedGame),
@@ -3003,26 +2962,18 @@ function MenuApp() {
     });
     try {
       const nextStatus = await controlGame(action);
-      setStatus(nextStatus);
+      acceptStatus(nextStatus);
       if (action === "restart") {
-        stoppedLevelGameIDRef.current = null;
-        setStoppedLevelGameID(null);
-        syncPlayTiming(nextStatus, launchedGame);
         setMessage("Reiniciando");
       } else if (action === "exit") {
         if (stopLevelOnly) {
-          setScreenMode("game");
           setMessage("Nivel detenido");
           return;
         }
-        stoppedLevelGameIDRef.current = null;
-        setStoppedLevelGameID(null);
         const engineGame = gameForEngineStatus(nextStatus.currentGame, launchedGame.id, menuGames);
         if (launchedGame.levels?.length && engineGame?.id === launchedGame.id && !animationIsIdleLoop(nextStatus.currentGame, nextStatus.phase)) {
-          syncPlayTiming(nextStatus, launchedGame);
           setMessage("Nivel detenido");
         } else {
-          setScreenMode("browse");
           setMessage("Juego finalizado");
         }
       } else if (action === "narration") {
@@ -3033,10 +2984,6 @@ function MenuApp() {
         setMessage(action === "pause" ? "Pausado" : "En curso");
       }
     } catch (err) {
-      if (stopLevelOnly) {
-        stoppedLevelGameIDRef.current = null;
-        setStoppedLevelGameID(null);
-      }
       setMessage("");
       setError(friendlyRequestError(err, "No se pudo completar la acción. Inténtalo de nuevo."));
     } finally {
@@ -3045,26 +2992,10 @@ function MenuApp() {
     }
   }
 
-  function syncPlayTiming(nextStatus: EngineStatus, game: GameCard) {
-    const now = Date.now();
-    if (isAmbientCard(game)) {
-      setIntroUntil(now);
-      setCountdownUntil(now);
-      setNowMs(now);
-      return;
-    }
-    const introMillis = nextStatus.phase === "intro" ? Math.max(0, nextStatus.introRemainingMillis || 0) : 0;
-    const countdownMillis =
-      nextStatus.phase === "intro" || nextStatus.phase === "countdown"
-        ? Math.max(0, nextStatus.countdownRemainingMillis || 0)
-        : 0;
-    setIntroUntil(now + introMillis);
-    setCountdownUntil(now + introMillis + countdownMillis);
-    setNowMs(now);
-  }
-
-  const introActive = screenMode === "game" && introUntil > nowMs;
-  const countdownValue = screenMode === "game" && !introActive ? Math.max(0, Math.ceil((countdownUntil - nowMs) / 1000)) : 0;
+  const introActive = screenMode === "game" && status?.phase === "intro" && (status.introRemainingMillis || 0) > 0;
+  const countdownValue = screenMode === "game" && status?.phase === "countdown"
+    ? Math.max(0, Math.ceil((status.countdownRemainingMillis || 0) / 1000))
+    : 0;
   function enterBrowserFullscreen() {
     const fullscreenDocument = document as Document & { webkitFullscreenElement?: Element | null };
     if (document.fullscreenElement || fullscreenDocument.webkitFullscreenElement) return;

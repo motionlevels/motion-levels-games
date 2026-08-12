@@ -2,14 +2,15 @@
 
 The player-menu source and static artifact are owned by this repository. A
 venue host supplies the runtime behind a deliberately narrow browser adapter.
-The current `playerMenu.adapterProtocolVersion` is **1**.
+The current `playerMenu.adapterProtocolVersion` is **2**.
 
 ## HTTP surface
 
 The menu resolves the engine from `VITE_GAME_ENGINE_URL`, a gateway `/engine`
-route, or port `4102` on the current host. Protocol v1 uses:
+route, or port `4102` on the current host. Protocol v2 uses:
 
-- `GET /api/status` for authoritative game and session status;
+- `GET /api/player-state` for the canonical game/session/display snapshot;
+- `GET /api/player-state/events` for the revisioned live SSE feed;
 - `POST /api/select` to launch a catalog selection;
 - `POST /api/control` for pause, resume, restart, exit, narration, and mute;
 - `GET /api/animation-preview` for native preview frames;
@@ -33,6 +34,11 @@ the player menu.
 The games release owns the complete browse-to-results UI, catalog projection,
 roster/configuration flow, analytics policy, and menu tests. The venue owns the
 implementations behind these endpoints and the physical kiosk shell.
+
+Protocol v2 commands include an idempotent `commandId`, and every command
+response is the resulting canonical player state. Consumers must reject equal
+or older `revision` values so polling and stream reconnects cannot roll the UI
+backward.
 
 Additive response fields do not require a protocol bump. Removing or changing
 a field, endpoint, action, URL-resolution rule, or binary-frame meaning does.

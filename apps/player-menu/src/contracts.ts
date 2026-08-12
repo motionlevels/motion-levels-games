@@ -1,33 +1,14 @@
 import type { RGB } from "./color";
+import type {
+  PlayerExperienceFinishedAttempt,
+  PlayerExperienceGameSummary,
+  PlayerExperienceLevelSummary,
+  PlayerExperiencePlayer,
+  PlayerExperienceState,
+} from "@motion-levels-games/player-experience";
 
-export type EngineLevelSummary = {
-  id: string;
-  slug?: string;
-  label: string;
-  description: string;
-  difficulty?: string;
-  difficulties?: string[];
-  rules?: Record<string, unknown>;
-  status?: string;
-  settings_hash?: string;
-  updated_at?: string;
-  catalog_thumbnail_small_url?: string;
-  catalog_thumbnail_url?: string;
-  catalog_preview_url?: string;
-};
-
-export type EngineGame = {
-  game: string;
-  label: string;
-  description: string;
-  music: string;
-  players: boolean;
-  minPlayers: number;
-  maxPlayers: number;
-  difficulty: boolean;
-  volume: number;
-  levels?: EngineLevelSummary[];
-};
+export type EngineLevelSummary = PlayerExperienceLevelSummary;
+export type EngineGame = PlayerExperienceGameSummary;
 
 export type PlatformGameCatalogEntry = {
   id: string;
@@ -73,137 +54,8 @@ export type PlatformGameCatalogEntry = {
   levels?: EngineLevelSummary[];
 };
 
-export type EnginePlayer = {
-  index: number;
-  label: string;
-  color: RGB;
-  score: number;
-  lives: number;
-};
-
-export type FinishedLevelAttempt = {
-  attemptId: string;
-  game: string;
-  level: string;
-  levelNumber: number;
-  difficulty: string;
-  result: string;
-  success: boolean;
-  elapsedMillis: number;
-  endedUnixNanos: number;
-};
-
-export type EngineStatus = {
-  currentGame: string;
-  engineGame?: string;
-  sourceKind?: string;
-  sourceRevision?: string;
-  contentRevision?: string;
-  venueSessionId: string;
-  label: string;
-  difficulty: string;
-  difficultyConfigurable?: boolean;
-  level?: string;
-  levelSlug?: string;
-  levelMode?: string;
-  teamName: string;
-  playerCount: number;
-  playerConfigurable?: boolean;
-  players?: EnginePlayer[];
-  score: number;
-  lives: number;
-  music: string;
-  musicVolume: number;
-  audioEnabled: boolean;
-  audioMuted: boolean;
-  paused: boolean;
-  phase: string;
-  success: boolean;
-  introRemainingMillis: number;
-  countdownRemainingMillis: number;
-  startedUnix: number;
-  sessionStartedUnix?: number;
-  endsUnix?: number;
-  sessionElapsedMillis?: number;
-  sessionRemainingMillis?: number;
-  challengeElapsedMillis?: number;
-  challengeAttemptCount?: number;
-  elapsedMillis: number;
-  remainingMillis?: number;
-  activeTargets?: number;
-  lastEventUnixNanos?: number;
-  lastEventCue?: string;
-  lastEventMessage?: string;
-  levelNumber?: number;
-  attemptCount?: number;
-  failureCount?: number;
-  bestElapsedMillis?: number;
-  sessionBestElapsedMillis?: number;
-  sessionId: string;
-  lastPressureUnix: number;
-  finishedLevelAttempts?: FinishedLevelAttempt[];
-  catalog: EngineGame[];
-};
-
+export type EnginePlayer = PlayerExperiencePlayer & { color: RGB };
+export type FinishedLevelAttempt = PlayerExperienceFinishedAttempt;
+export type EngineStatus = PlayerExperienceState;
 export type DisplayPlayer = EnginePlayer;
-
-export type DisplayRound = {
-  index: number;
-  winnerIndex: number;
-  winnerLabel: string;
-  hits: number;
-};
-
-export type DisplayStatus = {
-  currentGame: string;
-  engineGame?: string;
-  sourceKind?: string;
-  sourceRevision?: string;
-  contentRevision?: string;
-  gameSnapshot?: Record<string, unknown>;
-  frame?: {
-    width: number;
-    height: number;
-    cells: Array<{ x: number; y: number; color: string }>;
-  };
-  label: string;
-  phase: string;
-  difficulty: string;
-  difficultyConfigurable?: boolean;
-  levelMode?: string;
-  levelSlug?: string;
-  playerCount: number;
-  playerConfigurable?: boolean;
-  players: DisplayPlayer[];
-  score: number;
-  lives: number;
-  livesStart?: number;
-  startedUnix: number;
-  sessionStartedUnix?: number;
-  endsUnix: number;
-  sessionElapsedMillis?: number;
-  sessionRemainingMillis?: number;
-  challengeElapsedMillis?: number;
-  challengeAttemptCount?: number;
-  elapsedMillis: number;
-  remainingMillis: number;
-  introRemainingMillis: number;
-  countdownRemainingMillis: number;
-  activeTargets: number;
-  matchTarget?: number;
-  roundHits?: number;
-  lastRoundHits?: number;
-  lastRoundWinner?: string;
-  rounds?: DisplayRound[];
-  audioEnabled: boolean;
-  audioMuted: boolean;
-  lastEventUnixNanos: number;
-  lastEventCue: string;
-  lastEventMessage: string;
-  level?: string;
-  levelNumber?: number;
-  attemptCount?: number;
-  failureCount?: number;
-  bestElapsedMillis?: number;
-  sessionBestElapsedMillis?: number;
-};
+export type DisplayStatus = PlayerExperienceState;

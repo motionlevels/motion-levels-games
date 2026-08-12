@@ -5,4 +5,4 @@
  * games bundle publishes the value so a venue image can fail closed before it
  * serves an incompatible menu.
  */
-export const playerMenuAdapterProtocolVersion = 1 as const;
+export const playerMenuAdapterProtocolVersion = 2 as const;

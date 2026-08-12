@@ -20,6 +20,20 @@ test("production bundle declares the static menu and adapter protocol", async ()
   assert.match(source, /playerMenu:\s*\{ entry: "menu\/index\.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion \}/u);
 });
 
+test("the menu consumes only the canonical revisioned player state", async () => {
+  const api = await readFile(path.join(menuRoot, "src/api.ts"), "utf8");
+  const app = await readFile(path.join(menuRoot, "src/App.tsx"), "utf8");
+  const contracts = await readFile(path.join(menuRoot, "src/contracts.ts"), "utf8");
+  assert.match(api, /\/api\/player-state/);
+  assert.match(api, /\/api\/player-state\/events/);
+  assert.match(api, /commandId/);
+  assert.match(app, /acceptsPlayerExperienceState/);
+  assert.match(app, /status \? playerExperienceView\(status\)\.screen : fallbackScreenMode/);
+  assert.doesNotMatch(app, /(?:launchedGameID|stoppedLevelGameID|introUntil|countdownUntil)/u);
+  assert.match(app, /type MenuMirrorSnapshot = \{\s*menu: MenuState;\s*\}/u);
+  assert.doesNotMatch(contracts, /export type EngineStatus = \{/u);
+});
+
 async function sourceFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {

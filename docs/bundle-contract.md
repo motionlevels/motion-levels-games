@@ -13,6 +13,8 @@ The bundle contains:
 - `catalog.json`: all game manifests plus deterministic media references;
 - `animations.json`: the canonical native TypeScript animation catalog,
   deterministic preview recipe, and media references;
+- `player-experience-state.schema.json`: the language-neutral canonical live
+  state consumed by both Player Menu and Player Display;
 - `runtime/runner.mjs`: the production Node.js JSON-lines runner;
 - `display/display.js`: the revision-matched browser player-display registry;
 - `menu/`: the revision-matched static player menu, including its production

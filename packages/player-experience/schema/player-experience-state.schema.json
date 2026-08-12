@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://motionlevels.com/contracts/player-experience-state-v1.schema.json",
+  "title": "Motion Levels Player Experience State v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contractVersion", "revision", "runId", "lifecycle", "allowedControls",
+    "currentGame", "venueSessionId", "sessionId", "label", "phase",
+    "difficulty", "teamName", "playerCount", "players", "score", "lives",
+    "music", "musicVolume", "audioEnabled", "audioMuted", "paused", "success",
+    "startedUnix", "endsUnix", "elapsedMillis", "remainingMillis",
+    "introRemainingMillis", "countdownRemainingMillis", "activeTargets",
+    "lastEventUnixNanos", "lastEventCue", "lastEventMessage", "lastPressureUnix",
+    "catalog"
+  ],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "runId": { "type": "string" },
+    "lifecycle": { "enum": ["idle", "launching", "waiting", "starting", "running", "paused", "finished", "stopping", "error"] },
+    "allowedControls": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["pause", "resume", "restart", "exit", "narration", "mute", "unmute", "toggle_mute"] }
+    },
+    "currentGame": { "type": "string", "minLength": 1 },
+    "venueSessionId": { "type": "string" },
+    "sessionId": { "type": "string" },
+    "label": { "type": "string" },
+    "phase": { "type": "string" },
+    "difficulty": { "type": "string" },
+    "teamName": { "type": "string" },
+    "playerCount": { "type": "integer", "minimum": 0 },
+    "players": { "type": "array", "items": { "$ref": "#/$defs/player" } },
+    "score": { "type": "integer" },
+    "lives": { "type": "integer" },
+    "music": { "type": "string" },
+    "musicVolume": { "type": "number" },
+    "audioEnabled": { "type": "boolean" },
+    "audioMuted": { "type": "boolean" },
+    "paused": { "type": "boolean" },
+    "success": { "type": "boolean" },
+    "startedUnix": { "type": "integer" },
+    "endsUnix": { "type": "integer" },
+    "elapsedMillis": { "type": "integer", "minimum": 0 },
+    "remainingMillis": { "type": "integer", "minimum": 0 },
+    "introRemainingMillis": { "type": "integer", "minimum": 0 },
+    "countdownRemainingMillis": { "type": "integer", "minimum": 0 },
+    "activeTargets": { "type": "integer", "minimum": 0 },
+    "lastEventUnixNanos": { "type": "integer" },
+    "lastEventCue": { "type": "string" },
+    "lastEventMessage": { "type": "string" },
+    "lastPressureUnix": { "type": "integer" },
+    "catalog": { "type": "array" }
+  },
+  "$defs": {
+    "player": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "label", "color", "score", "lives"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "label": { "type": "string" },
+        "color": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["r", "g", "b"],
+          "properties": {
+            "r": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "g": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "b": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        },
+        "score": { "type": "integer" },
+        "lives": { "type": "integer" }
+      }
+    }
+  }
+}
