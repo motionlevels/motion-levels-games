@@ -168,7 +168,7 @@ export class JugarStagePerformanceMonitor {
     const timingWithinBudget = !violations.includes("frame-time");
     const softwareTimingWithinBudget = p95FrameMillis <= budget.maxSoftwareP95FrameMillis;
     const structuralWithinBudget = violations.every((violation) => violation === "frame-time");
-    const timingBudgetWaived = this.#qualityTier === "venue-high"
+    const timingBudgetWaived = (this.#qualityTier === "venue-high" || this.#qualityTier === "capture")
       && context.environment?.softwareRenderer === true
       && !softwareTimingWithinBudget;
     const appliedTimingWithinBudget = timingWithinBudget

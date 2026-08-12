@@ -81,7 +81,7 @@ test("the performance monitor is bounded and evaluates every structural channel"
   assert.throws(() => violating.record(sample({ drawCalls: Number.NaN })), /finite and non-negative/u);
 });
 
-test("venue timing is visible but waived only for identified software WebGL", () => {
+test("venue and capture timing stay visible but are waived only for identified software WebGL", () => {
   const monitor = new JugarStagePerformanceMonitor("venue-high", 60);
   for (let index = 0; index < 60; index += 1) monitor.record(sample({ frameMillis: 200 }));
   const hardware = monitor.report({
@@ -100,6 +100,16 @@ test("venue timing is visible but waived only for identified software WebGL", ()
   assert.equal(software.timingBudgetWaived, true);
   assert.equal(software.budgetReady, true);
   assert.equal(software.withinBudget, true);
+
+  const capture = new JugarStagePerformanceMonitor("capture", 45);
+  for (let index = 0; index < 45; index += 1) capture.record(sample({ frameMillis: 2_100 }));
+  const captureSoftware = capture.report({
+    environment: { renderer: "ANGLE SwiftShader", vendor: "Google", softwareRenderer: true }
+  });
+  assert.deepEqual(captureSoftware.violations, ["frame-time"]);
+  assert.equal(captureSoftware.softwareTimingWithinBudget, false);
+  assert.equal(captureSoftware.timingBudgetWaived, true);
+  assert.equal(captureSoftware.withinBudget, true);
 });
 
 test("memory proxy deduplicates shared scene resources without WebGL", () => {

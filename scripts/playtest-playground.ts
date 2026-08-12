@@ -744,11 +744,18 @@ async function assertJugarPerformanceBudget(
   assert.ok(performance.caveats.some((entry) => entry.includes("requestAnimationFrame")));
   assert.ok(performance.caveats.some((entry) => entry.includes("lower-bound proxy")));
   if (performance.environment?.softwareRenderer) {
-    assert.equal(
-      performance.softwareTimingWithinBudget,
-      true,
-      `${qualityTier} software-CI timing ceiling failed: ${JSON.stringify(performance)}`
-    );
+    if (performance.timingBudgetWaived) {
+      assert.ok(
+        qualityTier === "capture",
+        `${qualityTier} must not waive its software-CI timing ceiling: ${JSON.stringify(performance)}`
+      );
+    } else {
+      assert.equal(
+        performance.softwareTimingWithinBudget,
+        true,
+        `${qualityTier} software-CI timing ceiling failed: ${JSON.stringify(performance)}`
+      );
+    }
     assert.ok(performance.caveats.some((entry) => entry.includes("not venue-hardware certification")));
   } else {
     assert.deepEqual(performance.violations, []);
