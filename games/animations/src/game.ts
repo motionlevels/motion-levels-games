@@ -1,6 +1,8 @@
 import {
+  animationContentSchema,
   animationLibrary,
   findAnimation,
+  normalizeAnimationRuntimeContent,
   renderAnimationFrame,
   type NativeAnimation,
   type PressurePoint
@@ -20,7 +22,7 @@ import {
 } from "@motion-levels-games/game-sdk";
 import { animationOption, manifest, modeOption, rotationSecondsOption, speedOption } from "./manifest.ts";
 
-export const animationContentSchema = "motion-levels-animation-content-v1";
+export { animationContentSchema } from "@motion-levels-games/animation-runtime";
 const pressureLifetimeMillis = 900;
 
 export type AnimationSnapshot = GameSnapshot & {
@@ -35,13 +37,6 @@ export type AnimationSnapshot = GameSnapshot & {
 };
 
 export type AnimationGameInstance = Omit<GameInstance, "snapshot"> & { snapshot(): AnimationSnapshot };
-
-type AnimationContent = Readonly<{
-  contentRevision: string;
-  selectedAnimationId?: string;
-  rotationIds: readonly string[];
-  rotationSeconds?: number;
-}>;
 
 export function createGame(config: GameConfig): AnimationGameInstance {
   return new AnimationGame(config);
@@ -155,14 +150,11 @@ class AnimationGame implements AnimationGameInstance {
     return selected.length ? selected : [...animationLibrary];
   }
 
-  private content(): AnimationContent {
-    const content = this.config.content;
-    if (content?.schema !== animationContentSchema) return { contentRevision: "builtin", rotationIds: [] };
-    return {
-      contentRevision: String(content.contentRevision ?? "unversioned").slice(0, 160),
-      selectedAnimationId: typeof content.selectedAnimationId === "string" ? content.selectedAnimationId : undefined,
-      rotationIds: Array.isArray(content.rotationIds) ? content.rotationIds.filter((id): id is string => typeof id === "string").slice(0, 100) : [],
-      rotationSeconds: typeof content.rotationSeconds === "number" && Number.isFinite(content.rotationSeconds) ? Math.min(120, Math.max(5, Math.round(content.rotationSeconds))) : undefined
+  private content() {
+    return normalizeAnimationRuntimeContent(this.config.content) ?? {
+      schema: animationContentSchema,
+      contentRevision: "builtin",
+      rotationIds: []
     };
   }
 }

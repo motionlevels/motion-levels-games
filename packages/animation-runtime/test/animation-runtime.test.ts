@@ -1,6 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { animationLibrary, defineAnimation, findAnimation, renderAnimationFrame, solid } from "../src/index.ts";
+import {
+  animationContentSchema,
+  animationLibrary,
+  defineAnimation,
+  findAnimation,
+  normalizeAnimationRuntimeContent,
+  renderAnimationFrame,
+  solid
+} from "../src/index.ts";
+
+test("runtime content is normalized at the package boundary", () => {
+  assert.deepEqual(normalizeAnimationRuntimeContent({
+    schema: animationContentSchema,
+    contentRevision: "revision-1",
+    selectedAnimationId: " Aurora ",
+    rotationIds: ["Aurora", "aurora", "PRISM-TUNNEL", 42],
+    rotationSeconds: 2
+  }), {
+    schema: animationContentSchema,
+    contentRevision: "revision-1",
+    selectedAnimationId: "aurora",
+    rotationIds: ["aurora", "prism-tunnel"],
+    rotationSeconds: 5
+  });
+});
 
 test("the native library exposes unique, production-sized animations", () => {
   assert.ok(animationLibrary.length >= 24);
