@@ -10,6 +10,7 @@ const gamesRoot = path.resolve(playgroundRoot, "../../games");
 const gameRegistryPath = path.resolve(playgroundRoot, "src/gameRegistry.ts");
 const playerMenuRoot = path.resolve(playgroundRoot, "../player-menu");
 const characterAssetsRoot = path.resolve(playgroundRoot, "../../packages/character-runtime/assets");
+const generatedMediaRoot = path.resolve(playgroundRoot, "../../dist/media");
 const webpEncoderWasmPath = path.resolve(playgroundRoot, "../../node_modules/webp-encoder/lib/assets/a.out.wasm");
 const menuBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse --short HEAD") || "dev";
 const menuBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
@@ -22,7 +23,7 @@ export default defineConfig({
     __MENU_BUILD_REVISION__: JSON.stringify(menuBuildRevision),
     __MENU_BUILD_DATE__: JSON.stringify(menuBuildDate),
   },
-  plugins: [motionLevelsGamesWatcher(), characterModels(), webpEncoderWasm(), react()],
+  plugins: [motionLevelsGamesWatcher(), generatedMedia(), characterModels(), webpEncoderWasm(), react()],
   server: {
     fs: {
       allow: [
@@ -40,6 +41,38 @@ export default defineConfig({
     },
   },
 });
+
+function generatedMedia(): PluginOption {
+  const install = (server: Pick<ViteDevServer, "middlewares">) => {
+    server.middlewares.use((request, response, next) => {
+      let pathname: string;
+      try {
+        pathname = decodeURIComponent((request.url ?? "").split("?", 1)[0] ?? "");
+      } catch {
+        next();
+        return;
+      }
+      const mediaPrefixOffset = pathname.indexOf("/media/");
+      if (mediaPrefixOffset < 0) {
+        next();
+        return;
+      }
+      const source = path.resolve(generatedMediaRoot, pathname.slice(mediaPrefixOffset + "/media/".length));
+      if (!source.startsWith(`${generatedMediaRoot}${path.sep}`) || !existsSync(source) || !statSync(source).isFile()) {
+        next();
+        return;
+      }
+      response.setHeader("Content-Type", source.endsWith(".webp") ? "image/webp" : "application/json; charset=utf-8");
+      response.setHeader("Cache-Control", "no-store");
+      response.end(readFileSync(source));
+    });
+  };
+  return {
+    name: "motion-levels-generated-media",
+    configureServer: install,
+    configurePreviewServer: install
+  };
+}
 
 function gitValue(command: string) {
   try {

@@ -45,7 +45,7 @@ import {
   uniquePreviewSources,
 } from "./previews";
 import { captureMenuEvent, menuKioskID, setMenuEventForwarder } from "./analytics";
-import { platformAnimationCards } from "./animationCatalog";
+import { nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
 import { idleLoopSyncDecision, visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
   closestLevelIDForDifficulty,
@@ -406,22 +406,27 @@ function liveAnimationCards(catalog: EngineGame[] | undefined, existingGames: Ga
   const animationColors = [colors.cyan, colors.blue, colors.green, colors.violet, colors.orange, colors.yellow];
   return (catalog || [])
     .filter((entry) => entry.game.startsWith("animation-") && !existingEngineGames.has(entry.game))
-    .map((entry, index): GameCard => ({
-      id: entry.game,
-      label: entry.label || entry.game.replace(/^animation-/, ""),
-      category: "attract",
-      color: animationColors[index % animationColors.length],
-      players: "Todos",
-      difficulty: "Ambiente",
-      duration: "Bucle",
-      mode: "Ambiente",
-      audio: entry.music ? "Música" : "Suave",
-      description: entry.description || "Animación visible desde el editor.",
-      rules: ["Animación visible desde el editor.", "Se actualiza desde el motor sin reiniciar el menú."],
-      engineGame: entry.game,
-      previewAnimation: entry.game,
-      featured: false,
-    }));
+    .map((entry, index): GameCard => {
+      const animationId = entry.game.replace(/^animation-/, "");
+      const nativeMedia = nativeAnimationMediaSources(animationId);
+      return {
+        id: entry.game,
+        label: entry.label || animationId,
+        category: "attract",
+        color: animationColors[index % animationColors.length],
+        players: "Todos",
+        difficulty: "Ambiente",
+        duration: "Bucle",
+        mode: "Ambiente",
+        audio: entry.music ? "Música" : "Suave",
+        description: entry.description || "Animación visible desde el editor.",
+        rules: ["Animación visible desde el editor.", "Se actualiza desde el motor sin reiniciar el menú."],
+        engineGame: entry.game,
+        previewAnimation: nativeMedia ? undefined : entry.game,
+        ...nativeMedia,
+        featured: false,
+      };
+    });
 }
 
 function isCategoryID(value: string): value is CategoryID {

@@ -11,6 +11,8 @@ must recompute both the file list and digest before building or deploying.
 The bundle contains:
 
 - `catalog.json`: all game manifests plus deterministic media references;
+- `animations.json`: the canonical native TypeScript animation catalog,
+  deterministic preview recipe, and media references;
 - `runtime/runner.mjs`: the production Node.js JSON-lines runner;
 - `display/display.js`: the revision-matched browser player-display registry;
 - `menu/`: the revision-matched static player menu, including its production
@@ -19,6 +21,15 @@ The bundle contains:
   canonical `/games/play/` path and declared as `playground.entry`;
 - `media/<game>/`: small/full thumbnails, animated WebP previews,
   player-display captures, and generation metadata.
+- `media/animations/<animation>/`: small/full floor thumbnails, animated WebP
+  previews, and generation metadata for every native animation.
+
+The animation runtime owns the IDs, labels, preview recipe, filenames, and
+bundle-relative media references. Platform and venue consumers should read
+`animations.json` rather than duplicating the TypeScript animation library or
+rendering catalog previews through a separate engine endpoint. The media
+catalog is additive to contract version `1`; consumers that do not yet use it
+can continue to ignore the `animations` manifest field.
 
 `playerMenu.adapterProtocolVersion` versions only the menu-to-venue boundary.
 Venue consumers must reject an unsupported value before serving the static

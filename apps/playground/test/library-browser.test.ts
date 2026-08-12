@@ -14,6 +14,8 @@ test("local browser discovers games and native animations", () => {
   assert.match(appSource, /visibleLibraryGames/);
   assert.match(appSource, /visibleLibraryAnimations/);
   assert.match(appSource, /selectAnimation\(animation\.id\)/);
+  assert.match(appSource, /animationMediaURL\(animation\.id, "animation", animationMediaAppBaseURL\)/);
+  assert.match(appSource, /onError=\{\(event\) => \{ event\.currentTarget\.hidden = true; \}\}/);
 });
 
 test("library is searchable, filterable, responsive, and pauses the runtime", () => {

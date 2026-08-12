@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./library": "./src/library.ts"
+    "./library": "./src/library.ts",
+    "./media": "./src/media.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

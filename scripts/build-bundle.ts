@@ -4,6 +4,12 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 import { c as createTar } from "tar";
+import {
+  animationLibrary,
+  animationMediaCatalogEntry,
+  animationMediaSchema,
+  animationPreviewRecipe
+} from "../packages/animation-runtime/src/index.ts";
 import { DEFAULT_ENGINE_FPS } from "../packages/game-sdk/src/index.ts";
 import { runnerProtocolVersion } from "../packages/runner/src/protocol.ts";
 import { gameCatalog } from "../packages/runner/src/registry.ts";
@@ -74,6 +80,13 @@ for (const manifest of gameCatalog.filter((game) => game.availability.production
   await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-player-display.webp`));
   await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-player-display-animation.webp`));
 }
+for (const animation of animationLibrary) {
+  const media = animationMediaCatalogEntry(animation).media;
+  await stat(path.join(mediaRoot, path.relative("media", media.thumbnailSmall)));
+  await stat(path.join(mediaRoot, path.relative("media", media.thumbnail)));
+  await stat(path.join(mediaRoot, path.relative("media", media.animation)));
+  await stat(path.join(mediaRoot, "animations", animation.id, "metadata.json"));
+}
 await cp(mediaRoot, path.join(outputRoot, "media"), { recursive: true });
 
 const catalog = gameCatalog.map((manifest) => ({
@@ -89,6 +102,13 @@ const catalog = gameCatalog.map((manifest) => ({
 }));
 await writeFile(path.join(outputRoot, "catalog.json"), `${JSON.stringify(catalog, null, 2)}\n`);
 
+const animationCatalog = {
+  schema: animationMediaSchema,
+  recipe: animationPreviewRecipe,
+  animations: animationLibrary.map(animationMediaCatalogEntry)
+};
+await writeFile(path.join(outputRoot, "animations.json"), `${JSON.stringify(animationCatalog, null, 2)}\n`);
+
 const files = await bundleFiles(outputRoot);
 const artifactDigest = bundleContentDigest(files);
 const manifest = {
@@ -103,6 +123,7 @@ const manifest = {
   playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
   playground: { entry: "playground/index.html", basePath: "/games/play/" },
   catalog: "catalog.json",
+  animations: "animations.json",
   files
 };
 await writeFile(path.join(outputRoot, "bundle.json"), `${JSON.stringify(manifest, null, 2)}\n`);

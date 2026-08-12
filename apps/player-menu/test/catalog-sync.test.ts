@@ -248,7 +248,9 @@ describe("catalog metadata sync", () => {
     assert.deepEqual(cards.map((card) => card.id), ["animation-aurora"]);
     assert.equal(cards[0].category, "attract");
     assert.equal(cards[0].engineGame, "animation-aurora");
-    assert.equal(cards[0].previewAnimation, "animation-aurora");
+    assert.equal(cards[0].previewAnimation, undefined);
+    assert.match(cards[0].thumbnailSrc || "", /\/media\/animations\/aurora\/aurora-thumbnail-small\.webp$/);
+    assert.match(cards[0].previewSrc || "", /\/media\/animations\/aurora\/aurora-preview\.webp$/);
     assert.equal(cards[0].previewRevisionHash, "level-rev");
   });
 

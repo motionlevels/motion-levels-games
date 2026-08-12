@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import { animationLibrary, animationMediaSchema, animationPreviewRecipe } from "../packages/animation-runtime/src/index.ts";
 import { gameCatalog } from "../packages/runner/src/registry.ts";
 
 const repoRoot = process.cwd();
@@ -29,23 +30,31 @@ try {
     // CI runner and makes every game's render environment independent.
     const media = await generateGameMedia(manifest.id);
     const gameDir = path.join(outputRoot, manifest.id);
-    await mkdir(gameDir, { recursive: true });
-    const assets: Record<string, unknown> = {};
-    for (const asset of Object.values(media.assets)) {
-      const contents = dataUrlBytes(asset.dataUrl);
-      await writeFile(path.join(gameDir, asset.fileName), contents);
-      assets[asset.kind] = {
-        file: asset.fileName,
-        width: asset.width,
-        height: asset.height,
-        mimeType: asset.mimeType,
-        bytes: contents.length,
-        sha256: createHash("sha256").update(contents).digest("hex")
-      };
-    }
+    const assets = await writeMediaAssets(gameDir, media.assets);
     await writeFile(path.join(gameDir, "metadata.json"), `${JSON.stringify({
       gameId: manifest.id,
       scenario: manifest.preview,
+      assets
+    }, null, 2)}\n`);
+  }
+
+  for (const [index, animation] of animationLibrary.entries()) {
+    console.log(`Generating animation media ${index + 1}/${animationLibrary.length}: ${animation.id}`);
+    const media = await generateAnimationMedia(animation.id);
+    const animationDir = path.join(outputRoot, "animations", animation.id);
+    const assets = await writeMediaAssets(animationDir, media.assets);
+    await writeFile(path.join(animationDir, "metadata.json"), `${JSON.stringify({
+      schema: animationMediaSchema,
+      animation: {
+        id: media.id,
+        label: media.label,
+        description: media.description,
+        category: media.category,
+        durationMillis: media.durationMillis,
+        palette: media.palette,
+        tags: media.tags
+      },
+      recipe: animationPreviewRecipe,
       assets
     }, null, 2)}\n`);
   }
@@ -53,7 +62,7 @@ try {
   server.kill("SIGTERM");
 }
 
-console.log(`Generated media for ${gameCatalog.length} games in ${outputRoot}`);
+console.log(`Generated media for ${gameCatalog.length} games and ${animationLibrary.length} animations in ${outputRoot}`);
 
 type MediaAsset = {
   kind: string;
@@ -65,6 +74,16 @@ type MediaAsset = {
 };
 
 type MediaBundle = { assets: Record<string, MediaAsset> };
+
+type AnimationMediaBundle = MediaBundle & {
+  id: string;
+  label: string;
+  description: string;
+  category: string;
+  durationMillis: number;
+  palette: readonly string[];
+  tags: readonly string[];
+};
 
 async function generateGameMedia(gameId: string): Promise<MediaBundle> {
   const browser = await chromium.launch({ headless: true });
@@ -80,6 +99,40 @@ async function generateGameMedia(gameId: string): Promise<MediaBundle> {
   } finally {
     await browser.close();
   }
+}
+
+async function generateAnimationMedia(animationId: string): Promise<AnimationMediaBundle> {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
+    await page.goto(baseURL, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
+    return await page.evaluate(async (id) => {
+      const api = (window as unknown as { ml?: { animationMedia(animationId: string): Promise<unknown> } }).ml;
+      if (!api) throw new Error("playground API is not ready");
+      return api.animationMedia(id);
+    }, animationId) as AnimationMediaBundle;
+  } finally {
+    await browser.close();
+  }
+}
+
+async function writeMediaAssets(directory: string, mediaAssets: Record<string, MediaAsset>): Promise<Record<string, unknown>> {
+  await mkdir(directory, { recursive: true });
+  const assets: Record<string, unknown> = {};
+  for (const asset of Object.values(mediaAssets)) {
+    const contents = dataUrlBytes(asset.dataUrl);
+    await writeFile(path.join(directory, asset.fileName), contents);
+    assets[asset.kind] = {
+      file: asset.fileName,
+      width: asset.width,
+      height: asset.height,
+      mimeType: asset.mimeType,
+      bytes: contents.length,
+      sha256: createHash("sha256").update(contents).digest("hex")
+    };
+  }
+  return assets;
 }
 
 function dataUrlBytes(dataUrl: string): Buffer {

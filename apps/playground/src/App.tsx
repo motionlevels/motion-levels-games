@@ -25,7 +25,7 @@ import {
   TriangleAlert,
   X
 } from "lucide-react";
-import { animationLibrary } from "@motion-levels-games/animation-runtime";
+import { animationLibrary, animationMediaURL } from "@motion-levels-games/animation-runtime";
 import { FloorPreview, PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
 import {
   createGameEngine,
@@ -75,6 +75,7 @@ import {
 import { GameConfigControl } from "./GameConfigControl.tsx";
 import {
   generateGameMediaBundle,
+  generateAnimationMediaBundle,
   imagesToAnimatedWebpAsset,
   type PlaygroundMediaAsset,
   type PlaygroundMediaOptions,
@@ -103,6 +104,7 @@ const playerDisplayMediaWidth = 1280;
 const playerDisplayMediaHeight = 720;
 const playerDisplayAnimationWidth = 640;
 const playerDisplayAnimationHeight = 360;
+const animationMediaAppBaseURL = new URL(import.meta.env.BASE_URL, window.location.href);
 const difficultyLabels: Record<string, string> = {
   easy: "Easy",
   medium: "Medium",
@@ -931,6 +933,7 @@ export function App() {
         return capture;
       },
       media: generateMedia,
+      animationMedia: generateAnimationMediaBundle,
       agentLab: agentLabApi
     }),
     [agentLabApi, captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, previewFrameFor, restart, setManuallyPausedState, stepGame]
@@ -1568,7 +1571,16 @@ export function App() {
                         style={{ "--library-accent": animation.palette[1] ?? animation.palette[0] } as CSSProperties}
                         type="button"
                       >
-                        <span className="library-animation-preview" style={{ background: `linear-gradient(135deg, ${animation.palette.join(", ")})` }}><i /></span>
+                        <span className="library-animation-preview" style={{ background: `linear-gradient(135deg, ${animation.palette.join(", ")})` }}>
+                          <img
+                            alt=""
+                            decoding="async"
+                            loading="lazy"
+                            onError={(event) => { event.currentTarget.hidden = true; }}
+                            src={animationMediaURL(animation.id, "animation", animationMediaAppBaseURL)}
+                          />
+                          <i />
+                        </span>
                         <span className="library-card-type">{animation.category}</span>
                         <strong>{animation.label}</strong>
                         <p>{animation.description}</p>

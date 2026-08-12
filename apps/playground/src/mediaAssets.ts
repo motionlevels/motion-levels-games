@@ -1,5 +1,13 @@
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import {
+  animationMediaReferences,
+  animationMediaSchema,
+  animationPreviewRecipe,
+  findAnimation,
+  renderAnimationFrame,
+  type AnimationMediaCatalogEntry
+} from "@motion-levels-games/animation-runtime";
+import {
   DEFAULT_ENGINE_FPS,
   DEFAULT_GAME_SEED,
   createGameEngine,
@@ -42,6 +50,12 @@ export type PlaygroundMediaBundle = {
   playerCount: number;
   generatedAt: string;
   assets: Record<PlaygroundMediaAssetKind, PlaygroundMediaAsset>;
+};
+
+export type AnimationMediaBundle = AnimationMediaCatalogEntry & {
+  schema: typeof animationMediaSchema;
+  seed: number;
+  assets: Pick<PlaygroundMediaBundle["assets"], "thumbnailSmall" | "thumbnail" | "animation">;
 };
 
 export type PlaygroundMediaOptions = {
@@ -138,6 +152,62 @@ export async function generateGameMediaBundle(
   };
 }
 
+export async function generateAnimationMediaBundle(animationId: string): Promise<AnimationMediaBundle> {
+  const animation = findAnimation(animationId);
+  if (animation.id !== animationId.trim().toLowerCase()) {
+    throw new Error(`Unknown native animation: ${animationId}`);
+  }
+  const references = animationMediaReferences(animation.id);
+  const frames = Array.from({ length: animationPreviewRecipe.frameCount }, (_, index) => {
+    const atMillis = animationPreviewRecipe.captureStartMillis + index * animationPreviewRecipe.frameIntervalMillis;
+    return {
+      delayMs: animationPreviewRecipe.frameIntervalMillis,
+      frame: rotateFrameClockwise(renderAnimationFrame(animation, {
+        atMillis,
+        seed: animationPreviewRecipe.seed,
+        pressure: [animationPreviewRecipe.pressure]
+      }))
+    };
+  });
+  const stillFrame = frames[animationPreviewRecipe.stillFrameIndex]?.frame ?? frames[0]?.frame;
+  if (!stillFrame) {
+    throw new Error(`Animation ${animation.id} did not produce preview frames.`);
+  }
+
+  return {
+    schema: animationMediaSchema,
+    id: animation.id,
+    label: animation.label,
+    description: animation.description,
+    category: animation.category,
+    durationMillis: animation.durationMillis,
+    palette: animation.palette,
+    tags: animation.tags,
+    media: references,
+    seed: animationPreviewRecipe.seed,
+    assets: {
+      thumbnailSmall: frameToImageAsset(stillFrame, {
+        fileName: fileNameFromMediaReference(references.thumbnailSmall),
+        kind: "thumbnailSmall",
+        mimeType: "image/webp",
+        quality: 0.45,
+        tilePixels: thumbnailSmallTilePixels
+      }),
+      thumbnail: frameToImageAsset(stillFrame, {
+        fileName: fileNameFromMediaReference(references.thumbnail),
+        kind: "thumbnail",
+        mimeType: "image/webp",
+        quality: 0.92,
+        tilePixels: thumbnailTilePixels
+      }),
+      animation: await framesToAnimatedWebpAsset(
+        frames,
+        fileNameFromMediaReference(references.animation)
+      )
+    }
+  };
+}
+
 function createPreviewEngine(
   game: PlaygroundGame,
   config: Pick<GameConfig, "difficulty" | "options" | "playerCount" | "players" | "seed">
@@ -213,7 +283,10 @@ function frameToImageAsset(
   };
 }
 
-async function framesToAnimatedWebpAsset(frames: PreviewFrame[], fileName: string): Promise<PlaygroundMediaAsset> {
+async function framesToAnimatedWebpAsset(
+  frames: Array<Pick<PreviewFrame, "delayMs" | "frame">>,
+  fileName: string
+): Promise<PlaygroundMediaAsset> {
   const first = frames[0]?.frame;
   if (!first) {
     throw new Error("Cannot render an animation without frames.");
@@ -251,6 +324,12 @@ async function framesToAnimatedWebpAsset(frames: PreviewFrame[], fileName: strin
     fileName,
     dataUrl: bytesToDataUrl(webpBytes, "image/webp")
   };
+}
+
+function fileNameFromMediaReference(reference: string): string {
+  const fileName = reference.split("/").at(-1);
+  if (!fileName) throw new Error(`Invalid media reference: ${reference}`);
+  return fileName;
 }
 
 export async function imagesToAnimatedWebpAsset(

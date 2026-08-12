@@ -2,7 +2,7 @@ import type { Frame, GameConfigOptions, GameDifficulty, GameEvent, GameSnapshot 
 import type { JugarStageDiagnostics, JugarStageQuality } from "@motion-levels-games/jugar-3d/react";
 import type { PlaygroundAgentProfile } from "./gameRegistry.ts";
 import type { RenderableFrame } from "./frameTransforms.ts";
-import type { PlaygroundMediaBundle, PlaygroundMediaOptions } from "./mediaAssets.ts";
+import type { AnimationMediaBundle, PlaygroundMediaBundle, PlaygroundMediaOptions } from "./mediaAssets.ts";
 
 export type PlaygroundCaptureSurface =
   | "display"
@@ -111,6 +111,7 @@ export type PlaygroundApi = {
   capture(surfaces?: PlaygroundCaptureSurface[]): Promise<Record<PlaygroundCaptureSurface, PlaygroundCapture>>;
   copy(surface: PlaygroundCaptureSurface): Promise<PlaygroundCapture>;
   media(gameId?: string, options?: PlaygroundMediaOptions): Promise<PlaygroundMediaBundle>;
+  animationMedia(animationId: string): Promise<AnimationMediaBundle>;
   /** Present in current playgrounds; optional in the type for older embedded clients. */
   agentLab?: AgentLabApi;
 };
