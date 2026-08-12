@@ -125,6 +125,10 @@ for (const gameId of gameDirs) {
       if (manifest.aliases !== undefined && !isStringArray(manifest.aliases)) {
         problems.push(`${gameId}: manifest.aliases must be a string array`);
       }
+      if (manifest.slug !== undefined && isStableGameId(String(manifest.id ?? ""))
+        && !manifest.aliases?.includes(manifest.slug)) {
+        problems.push(`${gameId}: stable-id manifests must retain manifest.slug in manifest.aliases`);
+      }
       if (!manifest.label) {
         problems.push(`${gameId}: manifest.label is required`);
       }

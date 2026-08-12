@@ -51,7 +51,7 @@ export const rotationSecondsOption = {
 export const manifest: GameManifest = {
   id: "a861f0dc-3e2e-4fe9-b487-33194af75b68",
   slug: "animations",
-  aliases: ["salvapantallas", "ambient-animations"],
+  aliases: ["animations", "salvapantallas", "ambient-animations"],
   label: "Animaciones",
   description: "Biblioteca de animaciones ambientales nativas y reactivas para la pista.",
   availability: { development: true, production: true },
