@@ -10,7 +10,9 @@ test("shared Stage retains the deployed Jugar camera, lighting, floor, TV and ch
   assert.match(stage, /shadows=\{\{ enabled: quality !== "mobile-low", type: THREE\.PCFShadowMap \}\}/u);
   assert.doesNotMatch(stage, /PCFSoftShadowMap/u);
   assert.match(stage, /<Arena \/>[\s\S]*?<TileFloor[\s\S]*?<TvDisplay/u);
-  assert.match(stage, /stableCompositing=\{quality === "mobile-low" \|\| coarsePointer\}/u);
+  assert.match(stage, /const stableTvCompositing = quality === "mobile-low" \|\| coarsePointer/u);
+  assert.match(stage, /stableCompositing=\{stableTvCompositing\}/u);
+  assert.match(stage, /<CameraRig coarsePointer=\{stableTvCompositing\}/u);
   assert.match(stage, /<Robot avatar=\{avatar\}/u);
   assert.match(stage, /characterComponent\(characterId\)/u);
 });

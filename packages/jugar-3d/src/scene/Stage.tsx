@@ -73,6 +73,12 @@ export default function Stage({
 }: JugarStageProps) {
   const Character = characterComponent(characterId);
   const draggingRef = useRef(false);
+  // Stable 2D TV compositing and pointer parallax are mutually exclusive.
+  // Hosts can select the mobile quality tier explicitly (for example after a
+  // responsive breakpoint) even when the browser's pointer media query still
+  // reports a fine pointer. Keep the camera static whenever the stable TV
+  // surface is active so the canvas and DOM projection cannot drift apart.
+  const stableTvCompositing = quality === "mobile-low" || coarsePointer;
 
   useEffect(() => {
     const stopDragging = () => {
@@ -156,7 +162,7 @@ export default function Stage({
       />
       <TvDisplay
         session={session}
-        stableCompositing={quality === "mobile-low" || coarsePointer}
+        stableCompositing={stableTvCompositing}
       />
       {debug?.paths || debug?.targets ? <SessionDebugOverlay debug={debug} session={session} /> : null}
 
@@ -188,7 +194,7 @@ export default function Stage({
         )
       )}
 
-      <CameraRig coarsePointer={coarsePointer} exposeFitDebug={exposeFitDebug} session={session} />
+      <CameraRig coarsePointer={stableTvCompositing} exposeFitDebug={exposeFitDebug} session={session} />
     </Canvas>
   );
 }
