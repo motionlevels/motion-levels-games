@@ -159,7 +159,11 @@ export function resetAvatarMotion(avatar: Avatar, spawn: Tile): void {
  * moving through the arc, so you can jump a gap while crossing it.
  */
 export function startAvatarJump(avatar: Avatar, clockMillis: number): PressOp[] {
-  if (isAirborne(avatar, clockMillis)) {
+  // An expired arc is still pending landing authority until updateAvatar()
+  // clears it and emits the floor press. Controllers run before that update,
+  // so accepting another jump here would let repeated jump requests replace
+  // the expired arc and suppress contact with the landing tile indefinitely.
+  if (avatar.airborneUntil !== 0) {
     return [];
   }
   avatar.jumpStartedAt = clockMillis;

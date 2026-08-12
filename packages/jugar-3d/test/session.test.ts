@@ -178,6 +178,30 @@ test("controller waypoints are followed in order through authoritative presses",
   session.dispose();
 });
 
+test("repeated controller jumps cannot suppress authoritative landing contact", () => {
+  const createSessionController: SessionControllerFactory = ({ id }) => ({
+    id,
+    step: () => ({ action: { kind: "jump" } })
+  });
+  const session = new GameSession(fakeRegistration(createSessionController), {
+    controllerSlots: "all",
+    playerCount: 1,
+    seed: 13
+  });
+  const instance = session.instance as FakeGame;
+
+  // One jump lasts 520 ms. The controller requests another jump on every
+  // authority tick, including the exact tick at which the first arc expires.
+  session.stepTicks(27);
+
+  assert.equal(instance.presses.length, 1, "the expired arc must land before another jump starts");
+  assert.deepEqual(instance.presses[0] && {
+    x: instance.presses[0].x,
+    y: instance.presses[0].y
+  }, session.avatars[0]?.tile);
+  session.dispose();
+});
+
 test("intermediate controller waypoints preserve configured travel speed", () => {
   let planned = false;
   const createSessionController: SessionControllerFactory = ({ id }) => ({
