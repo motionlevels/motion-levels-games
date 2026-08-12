@@ -23,6 +23,7 @@ import type {
 } from "../contracts.ts";
 import {
   createAvatar,
+  JUMP_MILLIS,
   resetAvatarMotion,
   setAvatarFeedback,
   setAvatarTarget,
@@ -485,7 +486,22 @@ export class GameSession {
           explanation: action.explanation ?? result?.explanation ?? "Controller selected a target"
         }));
       } else if (action?.kind === "jump") {
-        this.applyOps(startAvatarJump(avatar, this.clockMillis));
+        const landingPath = isFinitePoint(action.target)
+          ? sanitizePath(action.path, avatar.tile, action.target)
+          : [];
+        const airborneMillis = landingPath.length > 0
+          ? controllerJumpMillis(landingPath.length, avatar.speed)
+          : JUMP_MILLIS;
+        const ops = startAvatarJump(avatar, this.clockMillis, airborneMillis);
+        if (avatar.airborneUntil > this.clockMillis && landingPath.length > 0) {
+          // A planned jump owns only the crossing to its safe landing tile.
+          // Stopping there prevents a long arc from overshooting the island
+          // into a later hazard while the controller replans after landing.
+          avatar.target = null;
+          this.controllerPaths.set(avatar.id, landingPath);
+          this.advanceControllerPath(avatar);
+        }
+        this.applyOps(ops);
       } else if (result?.explanation) {
         const previous = this.controllerDebug.get(avatar.id);
         if (previous) {
@@ -595,6 +611,11 @@ export class GameSession {
   private assertActive(): void {
     if (this.disposed) throw new Error("GameSession has been disposed");
   }
+}
+
+function controllerJumpMillis(pathLength: number, speed: number): number {
+  const travelMillis = (pathLength + 0.75) / Math.max(speed, 0.1) * 1_000;
+  return Math.min(2_500, Math.max(JUMP_MILLIS, Math.ceil(travelMillis)));
 }
 
 function readonlyAvatar(avatar: Avatar): Readonly<Avatar> {

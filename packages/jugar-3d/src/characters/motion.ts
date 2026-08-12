@@ -143,8 +143,9 @@ export function useCharacterMotion(
 
     // Jump arc from the session clock, matching the press/release the game saw.
     const jumping = avatar.airborneUntil > session.presentationMillis;
+    const jumpDuration = Math.max(JUMP_MILLIS, avatar.airborneUntil - avatar.jumpStartedAt);
     const jumpProgress = jumping
-      ? THREE.MathUtils.clamp((session.presentationMillis - avatar.jumpStartedAt) / JUMP_MILLIS, 0, 1)
+      ? THREE.MathUtils.clamp((session.presentationMillis - avatar.jumpStartedAt) / jumpDuration, 0, 1)
       : 0;
     const jumpPose = jumping ? Math.sin(jumpProgress * Math.PI) : 0;
     const landing = animationClipWeight(avatar.animationGraph.fullBody, "land-light");

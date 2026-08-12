@@ -182,7 +182,19 @@ function decide(
   if (observation.self.target
     && shared.game.dangerAt(immediate.x, immediate.y, observation.atMillis) > 0
     && airborneUntil <= observation.atMillis) {
-    return jumpResult(`A red hazard is forecast at ${immediate.x},${immediate.y}; jump before crossing`);
+    const landingPath = safeLandingPath(
+      shared.game,
+      observation.self.target,
+      route,
+      semantic,
+      observation.atMillis
+    );
+    return landingPath
+      ? jumpResult(
+          `A red hazard is forecast at ${immediate.x},${immediate.y}; jump to the next safe tile`,
+          landingPath
+        )
+      : jumpResult(`A red hazard is forecast at ${immediate.x},${immediate.y}; jump before crossing`);
   }
 
   if (observation.self.target) {
@@ -197,11 +209,43 @@ function decide(
   });
 }
 
-function jumpResult(explanation: string): PublishedLevelSessionControllerStepResult {
+function jumpResult(
+  explanation: string,
+  landingPath: readonly Point[] = []
+): PublishedLevelSessionControllerStepResult {
+  const target = landingPath.at(-1);
   return Object.freeze({
-    action: Object.freeze({ kind: "jump", explanation }),
+    action: Object.freeze({
+      kind: "jump",
+      ...(target ? {
+        target: Object.freeze({ ...target }),
+        path: Object.freeze(landingPath.map((point) => Object.freeze({ ...point })))
+      } : {}),
+      explanation
+    }),
     explanation
   });
+}
+
+function safeLandingPath(
+  game: PublishedLevelGameInstance,
+  immediate: Point,
+  route: readonly Point[],
+  semantic: readonly PublishedLevelSemanticTile[],
+  atMillis: number
+): Point[] | undefined {
+  const byKey = new Map(semantic.map((tile) => [pointKey(tile), tile]));
+  const path = [immediate, ...route].filter((point, index, values) =>
+    index === 0 || pointKey(point) !== pointKey(values[index - 1]!)
+  );
+  const crossing: Point[] = [];
+  for (const point of path) {
+    crossing.push(point);
+    const tile = byKey.get(pointKey(point));
+    const hazardous = tile?.kind === 2 || game.dangerAt(point.x, point.y, atMillis) > 0;
+    if (!hazardous) return crossing.length <= 10 ? crossing : undefined;
+  }
+  return undefined;
 }
 
 function targetGroups(tiles: readonly PublishedLevelSemanticTile[]): TargetGroup[] {

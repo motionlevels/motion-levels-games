@@ -48,6 +48,8 @@ The shared Spanish `PublishedLevelPlayerDisplay` and semantic
 `createPublishedLevelSessionController` are reusable product adapters. The 3D
 controller reserves objectives across bots, plans deterministic hazard-aware
 paths, and jumps moving danger or held purple objectives while observing the
-same supplied game instance. Its exported factory, controller, observation,
+same supplied game instance. Hazard crossings target the next safe landing
+tile; every landing reaches floor authority before another jump can begin. Its
+exported factory, controller, observation,
 avatar, action, and result types are structurally compatible with Jugar 3D but
 depend only on `game-sdk`; the gameplay runtime has no renderer/UI dependency.

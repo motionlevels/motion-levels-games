@@ -158,7 +158,11 @@ export function resetAvatarMotion(avatar: Avatar, spawn: Tile): void {
  * Leave the floor. Jumping does not interrupt travel — the character keeps
  * moving through the arc, so you can jump a gap while crossing it.
  */
-export function startAvatarJump(avatar: Avatar, clockMillis: number): PressOp[] {
+export function startAvatarJump(
+  avatar: Avatar,
+  clockMillis: number,
+  airborneMillis = JUMP_MILLIS
+): PressOp[] {
   // An expired arc is still pending landing authority until updateAvatar()
   // clears it and emits the floor press. Controllers run before that update,
   // so accepting another jump here would let repeated jump requests replace
@@ -167,7 +171,7 @@ export function startAvatarJump(avatar: Avatar, clockMillis: number): PressOp[] 
     return [];
   }
   avatar.jumpStartedAt = clockMillis;
-  avatar.airborneUntil = clockMillis + JUMP_MILLIS;
+  avatar.airborneUntil = clockMillis + Math.max(JUMP_MILLIS, airborneMillis);
   if (avatar.pressedTile) {
     const released = avatar.pressedTile;
     avatar.pressedTile = null;

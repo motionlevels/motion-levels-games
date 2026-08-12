@@ -202,6 +202,41 @@ test("repeated controller jumps cannot suppress authoritative landing contact", 
   session.dispose();
 });
 
+test("planned controller jumps cross hazards once and land on their safe target", () => {
+  let planned = false;
+  const createSessionController: SessionControllerFactory = ({ id }) => ({
+    id,
+    step: () => {
+      if (planned) return undefined;
+      planned = true;
+      return {
+        action: {
+          kind: "jump",
+          target: { x: 7, y: 23 },
+          path: [
+            { x: 7, y: 26 },
+            { x: 7, y: 25 },
+            { x: 7, y: 24 },
+            { x: 7, y: 23 }
+          ]
+        }
+      };
+    }
+  });
+  const session = new GameSession(fakeRegistration(createSessionController), {
+    controllerSlots: "all",
+    playerCount: 1,
+    seed: 17
+  });
+  const instance = session.instance as FakeGame;
+
+  session.stepTicks(80);
+
+  assert.deepEqual(instance.presses.map(({ x, y }) => ({ x, y })), [{ x: 7, y: 23 }]);
+  assert.deepEqual(session.avatars[0]?.tile, { x: 7, y: 23 });
+  session.dispose();
+});
+
 test("intermediate controller waypoints preserve configured travel speed", () => {
   let planned = false;
   const createSessionController: SessionControllerFactory = ({ id }) => ({
