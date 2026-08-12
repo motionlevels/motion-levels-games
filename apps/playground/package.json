@@ -11,6 +11,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@motion-levels-games/animation-runtime": "0.1.0",
     "@motion-levels-games/display-kit": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
     "@motion-levels-games/jugar-3d": "0.1.0",

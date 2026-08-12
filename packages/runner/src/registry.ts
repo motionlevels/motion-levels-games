@@ -1,4 +1,5 @@
 import * as arkanoid from "@motion-levels-games/arkanoid";
+import * as animations from "@motion-levels-games/animations";
 import * as cruceGalactico from "@motion-levels-games/cruce-galactico";
 import * as duelo from "@motion-levels-games/duelo";
 import * as equilibrio from "@motion-levels-games/equilibrio";
@@ -35,6 +36,7 @@ export type RunnerGameModule = {
 };
 
 const registeredGames: RunnerGameModule[] = [
+  animations,
   arkanoid,
   cruceGalactico,
   duelo,

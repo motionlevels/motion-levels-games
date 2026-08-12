@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@motion-levels-games/animations": "0.1.0",
     "@motion-levels-games/arkanoid": "0.1.0",
     "@motion-levels-games/duelo": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",

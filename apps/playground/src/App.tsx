@@ -5,9 +5,11 @@ import {
   Bug,
   ArrowLeft,
   Bot,
+  BookOpen,
   Check,
   Copy,
   Dices,
+  Gamepad2,
   LayoutGrid,
   LoaderCircle,
   Maximize,
@@ -17,10 +19,13 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Search,
   Settings2,
+  Sparkles,
   TriangleAlert,
   X
 } from "lucide-react";
+import { animationLibrary } from "@motion-levels-games/animation-runtime";
 import { FloorPreview, PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
 import {
   createGameEngine,
@@ -179,12 +184,16 @@ export function App() {
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
   const [captureMessage, setCaptureMessage] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [libraryTab, setLibraryTab] = useState<"all" | "games" | "animations">("all");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [eventAutoFollow, setEventAutoFollow] = useState(true);
   const [inputResetSequence, setInputResetSequence] = useState(0);
   const shellRef = useRef<HTMLElement>(null);
   const debugRef = useRef<HTMLElement>(null);
   const debugTriggerRef = useRef<HTMLButtonElement>(null);
+  const libraryTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const eventStreamRef = useRef<HTMLOListElement>(null);
@@ -404,6 +413,12 @@ export function App() {
     setDebugOpen(open);
   }, [setInteractionPauseState]);
 
+  const setLibraryOpenState = useCallback((open: boolean) => {
+    setInteractionPauseState("library-dialog", open);
+    setLibraryOpen(open);
+    if (!open) setLibraryQuery("");
+  }, [setInteractionPauseState]);
+
   const setSettingsOpenState = useCallback((open: boolean) => {
     setInteractionPauseState("settings-dialog", open);
     setSettingsOpen(open);
@@ -517,12 +532,12 @@ export function App() {
   }, [restart]);
 
   const selectGame = useCallback(
-    (gameId: string) => {
+    (gameId: string, optionOverrides: GameConfigOptions = {}) => {
       const nextGame = findPlaygroundGame(gameId) ?? defaultGame;
       const nextSeed = DEFAULT_GAME_SEED;
       const nextPlayerCount = defaultGamePlayerCount(nextGame.manifest);
       const nextDifficulty = defaultDifficultyFor(nextGame);
-      const nextOptions = defaultConfigOptionsFor(nextGame);
+      const nextOptions = normalizeGameConfigOptions({ ...defaultConfigOptionsFor(nextGame), ...optionOverrides }, nextGame.manifest);
 
       selectedGameRef.current = nextGame;
       seedRef.current = nextSeed;
@@ -543,6 +558,13 @@ export function App() {
     },
     [restart]
   );
+
+  const selectAnimation = useCallback((animationId: string) => {
+    const animationsGame = findPlaygroundGame("animations");
+    if (!animationsGame) return;
+    selectGame(animationsGame.manifest.id, { animation: animationId, mode: "single" });
+    setLibraryOpenState(false);
+  }, [selectGame, setLibraryOpenState]);
 
   const changeSurfaceMode = useCallback((nextMode: "floor" | "agents") => {
     if (nextMode === "agents" && selectedGameRef.current.createSessionController === undefined) {
@@ -960,6 +982,17 @@ export function App() {
   }, [debugOpen, setDebugOpenState]);
 
   useEffect(() => {
+    if (!libraryOpen) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setLibraryOpenState(false);
+      window.requestAnimationFrame(() => libraryTriggerRef.current?.focus());
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [libraryOpen, setLibraryOpenState]);
+
+  useEffect(() => {
     if (!settingsOpen) {
       return undefined;
     }
@@ -1033,6 +1066,20 @@ export function App() {
     fullscreenFallback ? "is-fullscreen-fallback" : ""
   ].filter(Boolean).join(" ");
   const latestEvent = events[0];
+  const libraryNeedle = libraryQuery.trim().toLocaleLowerCase("es");
+  const visibleLibraryGames = playgroundGames.filter((game) => {
+    if (game.manifest.slug === "animations") return false;
+    const haystack = [game.manifest.label, game.manifest.description, game.manifest.catalog.category, ...(game.manifest.tags ?? [])]
+      .join(" ")
+      .toLocaleLowerCase("es");
+    return !libraryNeedle || haystack.includes(libraryNeedle);
+  });
+  const visibleLibraryAnimations = animationLibrary.filter((animation) => {
+    const haystack = [animation.label, animation.description, animation.category, ...animation.tags]
+      .join(" ")
+      .toLocaleLowerCase("es");
+    return !libraryNeedle || haystack.includes(libraryNeedle);
+  });
   const effectivePresentationPaused = paused || (agentLabActive && (agentLabState?.paused ?? false));
   const displayedPhase = effectivePresentationPaused ? "paused" : snapshot.phase;
   const frameMillis = engineRef.current.frameMillis;
@@ -1158,6 +1205,19 @@ export function App() {
                 </label>
               </div>
               <div className="control-group control-actions" role="group" aria-label="Game actions">
+                <button
+                  aria-controls="library-browser"
+                  aria-expanded={libraryOpen}
+                  aria-haspopup="dialog"
+                  aria-label="Browse games and animations"
+                  className="icon-button"
+                  onClick={() => setLibraryOpenState(!libraryOpen)}
+                  ref={libraryTriggerRef}
+                  title="Browse library"
+                  type="button"
+                >
+                  <BookOpen size={16} aria-hidden="true" />
+                </button>
                 <button
                   aria-controls="settings-popover"
                   aria-expanded={settingsOpen}
@@ -1420,6 +1480,109 @@ export function App() {
               </div>
             ) : null}
       </header>
+
+      {libraryOpen ? (
+        <div className="library-backdrop">
+          <section
+            aria-label="Games and animations library"
+            className="library-browser"
+            id="library-browser"
+            role="dialog"
+          >
+            <header className="library-header">
+              <div>
+                <span>Local content browser</span>
+                <h2>Games &amp; animations</h2>
+                <p>Launch every TypeScript experience directly in the development playground.</p>
+              </div>
+              <PopoverCloseButton
+                label="Close content browser"
+                onClick={() => {
+                  setLibraryOpenState(false);
+                  window.requestAnimationFrame(() => libraryTriggerRef.current?.focus());
+                }}
+              />
+            </header>
+            <div className="library-toolbar">
+              <label className="library-search">
+                <Search aria-hidden="true" size={18} />
+                <span className="sr-only">Search library</span>
+                <input
+                  autoFocus
+                  onChange={(event) => setLibraryQuery(event.currentTarget.value)}
+                  placeholder="Search by name, category, or tag…"
+                  type="search"
+                  value={libraryQuery}
+                />
+              </label>
+              <nav aria-label="Library content type" className="library-tabs">
+                {(["all", "games", "animations"] as const).map((tab) => (
+                  <button
+                    aria-pressed={libraryTab === tab}
+                    key={tab}
+                    onClick={() => setLibraryTab(tab)}
+                    type="button"
+                  >
+                    {tab === "all" ? "All" : tab === "games" ? "Games" : "Animations"}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            <div className="library-scroll">
+              {libraryTab !== "animations" && visibleLibraryGames.length > 0 ? (
+                <section className="library-section">
+                  <div className="library-section-title"><Gamepad2 aria-hidden="true" /><h3>Games</h3><span>{visibleLibraryGames.length}</span></div>
+                  <div className="library-grid library-game-grid">
+                    {visibleLibraryGames.map((game) => (
+                      <button
+                        className="library-card library-game-card"
+                        key={game.manifest.id}
+                        onClick={() => {
+                          selectGame(game.manifest.id);
+                          setLibraryOpenState(false);
+                        }}
+                        style={{ "--library-accent": game.manifest.catalog.color } as CSSProperties}
+                        type="button"
+                      >
+                        <i className="library-card-glow" />
+                        <span className="library-card-type">{game.manifest.catalog.category}</span>
+                        <strong>{game.manifest.label}</strong>
+                        <p>{game.manifest.description ?? game.manifest.catalog.modeLabel}</p>
+                        <small>{game.manifest.players.min}–{game.manifest.players.max} players · {game.manifest.catalog.durationLabel}</small>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+              {libraryTab !== "games" && visibleLibraryAnimations.length > 0 ? (
+                <section className="library-section">
+                  <div className="library-section-title"><Sparkles aria-hidden="true" /><h3>Animations</h3><span>{visibleLibraryAnimations.length}</span></div>
+                  <div className="library-grid library-animation-grid">
+                    {visibleLibraryAnimations.map((animation) => (
+                      <button
+                        className="library-card library-animation-card"
+                        key={animation.id}
+                        onClick={() => selectAnimation(animation.id)}
+                        style={{ "--library-accent": animation.palette[1] ?? animation.palette[0] } as CSSProperties}
+                        type="button"
+                      >
+                        <span className="library-animation-preview" style={{ background: `linear-gradient(135deg, ${animation.palette.join(", ")})` }}><i /></span>
+                        <span className="library-card-type">{animation.category}</span>
+                        <strong>{animation.label}</strong>
+                        <p>{animation.description}</p>
+                        <span className="library-swatches">{animation.palette.map((color) => <i key={color} style={{ background: color }} />)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+              {visibleLibraryGames.length === 0 && visibleLibraryAnimations.length === 0 ? (
+                <div className="library-empty"><Search aria-hidden="true" /><strong>No content found</strong><span>Try a different name, category, or tag.</span></div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       <section className="playground-grid">
         <article className="display-panel">
