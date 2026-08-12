@@ -85,6 +85,10 @@ jobs:
 
   browser-playtest:
     name: Browser playtest and release bundle in pinned runtime
+    # This job measures software-rendered frame timing and generates all media.
+    # Running it beside the four CPU-heavy lanes on the same homelab host can
+    # starve SwiftShader and turn host contention into a false product failure.
+    needs: [quality, compatibility-tests, coverage-tests, build-and-playtest]
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 30
     steps:
