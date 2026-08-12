@@ -567,9 +567,35 @@ async function assertStableMobileTvCompositing(page: Page) {
 
   const surface = page.locator('[data-compositing="stable-2d"]');
   await surface.waitFor({ state: "visible" });
-  // Let the resize camera fit and the screen-space projection settle before
-  // sampling. Live game ticks continue repainting the TV during this window.
-  await page.waitForTimeout(1_000);
+  // Wait for actual rendered frames rather than wall time. SwiftShader can
+  // take substantially longer than one second to process the resize and
+  // camera-fit frames on a busy CI runner; sampling between those frames
+  // mistakes expected resize convergence for live projection drift.
+  let settlingGeometry = "";
+  let stableRenderedFrames = 0;
+  for (let attempt = 0; attempt < 40 && stableRenderedFrames < 3; attempt += 1) {
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    }));
+    const nextGeometry = await surface.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        key: [rect.left, rect.top, rect.width, rect.height]
+          .map((value) => value.toFixed(2))
+          .join(":"),
+        visible: rect.width > 40 && rect.height > 20
+      };
+    });
+    stableRenderedFrames = nextGeometry.visible && nextGeometry.key === settlingGeometry
+      ? stableRenderedFrames + 1
+      : 0;
+    settlingGeometry = nextGeometry.key;
+  }
+  assert.equal(
+    stableRenderedFrames,
+    3,
+    `mobile TV projection did not settle: ${settlingGeometry}`
+  );
 
   const samples: Array<{ left: number; top: number; width: number; height: number }> = [];
   for (let sample = 0; sample < 12; sample += 1) {
