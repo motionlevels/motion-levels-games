@@ -427,6 +427,7 @@ async function playtestDueloJugar3d(page: Page) {
   await agentSurfaceButton.click();
   await page.locator(".jugar-agent-surface canvas").waitFor({ state: "visible" });
   const desktopPerformance = await assertJugarPerformanceBudget(page, "desktop-medium");
+  const mobileTvCompositing = await assertStableMobileTvCompositing(page);
 
   await page.evaluate(() => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
@@ -551,7 +552,100 @@ async function playtestDueloJugar3d(page: Page) {
     performance: {
       desktop: performanceSummary(desktopPerformance),
       capture: performanceSummary(capturePerformance)
-    }
+    },
+    mobileTvCompositing
+  };
+}
+
+async function assertStableMobileTvCompositing(page: Page) {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Jugar 3D API is unavailable");
+    lab.setQualityTier("mobile-low");
+  });
+
+  const surface = page.locator('[data-compositing="stable-2d"]');
+  await surface.waitFor({ state: "visible" });
+  // Let the resize camera fit and the screen-space projection settle before
+  // sampling. Live game ticks continue repainting the TV during this window.
+  await page.waitForTimeout(1_000);
+
+  const samples: Array<{ left: number; top: number; width: number; height: number }> = [];
+  for (let sample = 0; sample < 12; sample += 1) {
+    const state = await surface.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const canvas = element.closest(".agent-lab-viewport")?.querySelector("canvas");
+      const canvasRect = canvas?.getBoundingClientRect();
+      let current: Element | null = element;
+      let usesPreserve3d = false;
+      let usesPerspective = false;
+      while (current && current !== canvas?.parentElement) {
+        const style = getComputedStyle(current);
+        usesPreserve3d ||= style.transformStyle === "preserve-3d";
+        usesPerspective ||= style.perspective !== "none";
+        current = current.parentElement;
+      }
+      return {
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        canvas: canvasRect
+          ? { left: canvasRect.left, top: canvasRect.top, right: canvasRect.right, bottom: canvasRect.bottom }
+          : null,
+        usesPerspective,
+        usesPreserve3d
+      };
+    });
+    assert.equal(state.usesPerspective, false, "mobile TV must not inherit CSS perspective");
+    assert.equal(state.usesPreserve3d, false, "mobile TV must not inherit preserve-3d");
+    assert.ok(state.canvas, "mobile TV must remain attached to the Jugar canvas");
+    assert.ok(state.rect.width > 40 && state.rect.height > 20, "mobile TV must have a visible projected surface");
+    const geometry = JSON.stringify({ rect: state.rect, canvas: state.canvas });
+    assert.ok(
+      state.rect.left >= state.canvas.left - 1 && state.rect.top >= state.canvas.top - 1,
+      `mobile TV starts outside the canvas: ${geometry}`
+    );
+    assert.ok(
+      state.rect.left + state.rect.width <= state.canvas.right + 1,
+      `mobile TV exceeds the canvas width: ${geometry}`
+    );
+    assert.ok(
+      state.rect.top + state.rect.height <= state.canvas.bottom + 1,
+      `mobile TV exceeds the canvas height: ${geometry}`
+    );
+    samples.push(state.rect);
+    await page.waitForTimeout(100);
+  }
+
+  const first = samples[0]!;
+  const maxLayoutDrift = Math.max(...samples.flatMap((sample) => [
+    Math.abs(sample.left - first.left),
+    Math.abs(sample.top - first.top),
+    Math.abs(sample.width - first.width),
+    Math.abs(sample.height - first.height)
+  ]));
+  assert.ok(maxLayoutDrift <= 0.25, `mobile TV projection drifted ${maxLayoutDrift.toFixed(2)}px`);
+
+  if (captureDirectory) {
+    await mkdir(captureDirectory, { recursive: true });
+    await page.locator(".jugar-agent-surface").screenshot({
+      animations: "disabled",
+      path: path.join(captureDirectory, "jugar-mobile-tv-stable.png")
+    });
+  }
+
+  await page.evaluate(() => {
+    const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
+    if (!lab) throw new Error("Jugar 3D API is unavailable");
+    lab.setQualityTier("desktop-medium");
+  });
+  await page.setViewportSize({ width: 1_920, height: 1_080 });
+  await page.locator(".mlg-tv-screen--perspective").waitFor({ state: "attached" });
+  return {
+    samples: samples.length,
+    maxLayoutDrift,
+    projectedWidth: first.width,
+    projectedHeight: first.height,
+    css3d: false
   };
 }
 

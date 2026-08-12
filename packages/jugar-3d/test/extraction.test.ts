@@ -10,8 +10,20 @@ test("shared Stage retains the deployed Jugar camera, lighting, floor, TV and ch
   assert.match(stage, /shadows=\{\{ enabled: quality !== "mobile-low", type: THREE\.PCFShadowMap \}\}/u);
   assert.doesNotMatch(stage, /PCFSoftShadowMap/u);
   assert.match(stage, /<Arena \/>[\s\S]*?<TileFloor[\s\S]*?<TvDisplay/u);
+  assert.match(stage, /stableCompositing=\{quality === "mobile-low" \|\| coarsePointer\}/u);
   assert.match(stage, /<Robot avatar=\{avatar\}/u);
   assert.match(stage, /characterComponent\(characterId\)/u);
+});
+
+test("touch and mobile-quality stages keep the live TV out of the CSS3D compositor", async () => {
+  const tv = await source("../src/scene/TvDisplay.tsx");
+  assert.match(tv, /stableCompositing \? \([\s\S]*?<StableTvSurface/u);
+  assert.match(tv, /transform=\{false\}/u);
+  assert.match(tv, /data-compositing="stable-2d"/u);
+  assert.match(tv, /surface\.style\.setProperty\("--mlg-tv-scale-x"/u);
+  assert.match(tv, /surface\.style\.setProperty\("--mlg-tv-scale-y"/u);
+  assert.match(tv, /contain: "strict"[\s\S]*?isolation: "isolate"/u);
+  assert.match(tv, /transform: "scale\(var\(--mlg-tv-scale-x\), var\(--mlg-tv-scale-y\)\)"/u);
 });
 
 test("shared floor keeps the canonical 16x32 half-metre Jugar transform", async () => {

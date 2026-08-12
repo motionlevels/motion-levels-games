@@ -154,7 +154,10 @@ export default function Stage({
         onTilePointerMove={handleTilePointerMove}
         session={session}
       />
-      <TvDisplay session={session} />
+      <TvDisplay
+        session={session}
+        stableCompositing={quality === "mobile-low" || coarsePointer}
+      />
       {debug?.paths || debug?.targets ? <SessionDebugOverlay debug={debug} session={session} /> : null}
 
       {onDiagnostics ? (

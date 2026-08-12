@@ -874,10 +874,11 @@
     }
   }
 
-  /* Keeps the TV's CSS3D layer composited so it does not flicker when the
-     camera or the display content updates. */
-  & .mlg-tv-screen,
-  & .mlg-tv-screen > div {
+  /* Desktop preserves the perspective transform. Mobile uses a normal 2D
+     layer below because repainting a large CSS3D subtree over WebGL corrupts
+     compositor tiles on some Android Chrome/GPU combinations. */
+  & .mlg-tv-screen--perspective,
+  & .mlg-tv-screen--perspective > div {
     will-change: transform;
     backface-visibility: hidden;
   }
