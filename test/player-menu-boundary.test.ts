@@ -6,8 +6,9 @@ import test from "node:test";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const menuRoot = path.join(repoRoot, "apps/player-menu");
 
-test("player menu is source-independent from venue and platform repositories", async () => {
-  for (const file of await sourceFiles(path.join(menuRoot, "src"))) {
+test("player experience apps are source-independent from venue and platform repositories", async () => {
+  const appRoots = [menuRoot, path.join(repoRoot, "apps/player-display")];
+  for (const appRoot of appRoots) for (const file of await sourceFiles(path.join(appRoot, "src"))) {
     const source = await readFile(file, "utf8");
     assert.doesNotMatch(source, /@motion-levels\/(?:core|design-tokens|floor-view)/u, path.relative(repoRoot, file));
     assert.doesNotMatch(source, /motion-levels-(?:venue|platform)/u, path.relative(repoRoot, file));
@@ -22,6 +23,13 @@ test("production bundle declares the static menu and adapter protocol", async ()
   assert.match(source, /entry: "venue\/runtime\.mjs"/u);
   assert.match(source, /apiProtocolVersion: venueApiProtocolVersion/u);
   assert.match(source, /controllerProtocolVersion/u);
+});
+
+test("production bundle declares the complete player display shell and renderer", async () => {
+  const source = await readFile(path.join(repoRoot, "scripts/build-bundle.ts"), "utf8");
+  assert.match(source, /apps\/player-display\/dist/u);
+  assert.match(source, /entry: "display\/display\.js"/u);
+  assert.match(source, /shellEntry: "display\/index\.html"/u);
 });
 
 test("offline menu catalog carries the exact bundled games revision", async () => {

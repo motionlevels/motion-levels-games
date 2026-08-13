@@ -110,6 +110,7 @@ jobs:
           fi
 
           bundle_paths=(
+            apps/player-display
             apps/player-menu
             apps/playground
             apps/venue-runtime

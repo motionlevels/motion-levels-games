@@ -31,5 +31,7 @@ layers.
   manifests and index exports.
 - `apps/venue-runtime`: Node production host and controller protocol v2 client.
 - `apps/player-menu`: release-matched kiosk menu.
+- `apps/player-display`: release-matched player-facing TV shell that loads the
+  bundle's exact game display renderer.
 - `apps/playground`: local app that runs the player menu, game, floor, display,
   event log, and snapshot inspector together.

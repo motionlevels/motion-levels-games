@@ -30,6 +30,8 @@ await mkdir(path.join(outputRoot, "venue"), { recursive: true });
 await mkdir(path.join(outputRoot, "display"), { recursive: true });
 await stat(path.join(repoRoot, "apps/player-menu/dist/index.html"));
 await cp(path.join(repoRoot, "apps/player-menu/dist"), path.join(outputRoot, "menu"), { recursive: true });
+await stat(path.join(repoRoot, "apps/player-display/dist/index.html"));
+await cp(path.join(repoRoot, "apps/player-display/dist"), path.join(outputRoot, "display"), { recursive: true });
 execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
   "run",
   "build",
@@ -127,7 +129,11 @@ const manifest = {
     controllerProtocolVersion,
     games: catalog.filter((game) => game.availability.production).map((game) => game.id)
   },
-  playerDisplay: { entry: "display/display.js", games: catalog.filter((game) => game.availability.production).map((game) => game.id) },
+  playerDisplay: {
+    entry: "display/display.js",
+    shellEntry: "display/index.html",
+    games: catalog.filter((game) => game.availability.production).map((game) => game.id)
+  },
   playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
   playerExperience: { contractVersion: 1, schema: "player-experience-state.schema.json" },
   playground: { entry: "playground/index.html", basePath: "/games/play/" },

@@ -6,7 +6,8 @@
   "files": ["src", "schema"],
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./schema/player-experience-state.schema.json"
+    "./schema": "./schema/player-experience-state.schema.json",
+    "./tokens.css": "./src/tokens.css"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

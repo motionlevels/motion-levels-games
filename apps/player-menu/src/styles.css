@@ -1,5 +1,5 @@
 /* Canonical design tokens (palette, radii, shadows) live in one place. */
-@import "./tokens.css";
+@import "@motion-levels-games/player-experience/tokens.css";
 
 :root {
   color: var(--text);

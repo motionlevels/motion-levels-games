@@ -97,6 +97,7 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin main
           if ! git diff --quiet "$SOURCE_REVISION..origin/main" -- \
+              apps/player-display \
               apps/player-menu \
               apps/playground \
               apps/venue-runtime \

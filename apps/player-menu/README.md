@@ -44,11 +44,11 @@ remains as a compatibility alias for `npm run dev`; it does not start another
 service.
 
 The player-menu workspace can still be built independently for the venue
-artifact. When run on its own, it talks to the game-engine API at
+artifact. When run on its own, it talks to the venue runtime API at
 `http://127.0.0.1:4102`.
 
 Set `VITE_GAME_ENGINE_URL` if the menu is not running on the same machine as
-the game-engine:
+the venue runtime:
 
 ```sh
 VITE_GAME_ENGINE_URL=http://192.168.1.137:4102 npm run dev
@@ -71,6 +71,6 @@ VITE_KIOSK_ID=kiosk-1
 The player menu records game/category/level/difficulty actions, team size, and
 kiosk controls. It intentionally does not send team or player names.
 
-Electron packaging is intentionally not available here. Use the kiosk shell in
-`motion-levels-venue/apps/player-menu/electron`; venue images install this
+Electron packaging is intentionally not available here. The kiosk shell and
+venue image configuration live in `motion-levels-venue`, which installs this
 workspace's static release artifact automatically.

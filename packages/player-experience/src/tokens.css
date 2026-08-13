@@ -1,21 +1,11 @@
 /*
- * Motion Levels — player-menu build tokens.
+ * Motion Levels player-experience design tokens.
  *
- * Kept in this production bundle so the player menu has no source-time venue
- * dependency. Contract tests compare these values with the venue tokens until
- * the remaining display surfaces consume the games release directly.
- *
- * The marketing site (apps/website) is intentionally a separate brand
- * (Tektur/Orbitron, volt-green) and does NOT import this file.
- *
- * These are plain CSS custom properties, so both Vite and Tailwind v4 consume
- * them natively. Tailwind apps map them into the framework via `@theme inline`.
- * Apps may override individual tokens AFTER the import for surface-specific
- * needs (e.g. the display's translucent panels), but the palette and scale
- * below are the canonical defaults — don't fork the values.
+ * The release-matched player menu and player display consume this file from
+ * the same workspace package so their shared palette, spacing, and elevation
+ * cannot drift between artifacts.
  */
 :root {
-  /* Surfaces & text */
   --bg: #060910;
   --surface: #0e1623;
   --surface-2: #131e2d;
@@ -25,7 +15,6 @@
   --muted: #8b99ad;
   --soft: #c8d2e0;
 
-  /* Brand, accent & signal colors */
   --brand-blue: #005af8;
   --brand-blue-rgb: 0, 90, 248;
   --brand-blue-ink: #dbeafe;
@@ -37,7 +26,6 @@
   --cyan-ink: #cffafe;
   --red: #ff5268;
   --red-rgb: 255, 82, 104;
-  /* Iconic game triad: use as restrained identity accents on dark surfaces. */
   --game-blue: var(--brand-blue);
   --game-blue-rgb: var(--brand-blue-rgb);
   --game-green: var(--green);
@@ -46,10 +34,8 @@
   --game-red-rgb: var(--red-rgb);
   --amber: #fbbf24;
   --amber-rgb: 251, 191, 36;
-  /* Readable amber text on amber-tinted dark fills. */
   --amber-ink: #fde68a;
 
-  /* Radii */
   --r-xs: 10px;
   --r-sm: 12px;
   --r-md: 16px;
@@ -57,7 +43,6 @@
   --r-xl: 28px;
   --r-pill: 999px;
 
-  /* Elevation & motion */
   --shadow-card: 0 18px 40px -18px rgba(0, 0, 0, 0.7);
   --shadow-float: 0 28px 80px -24px rgba(0, 0, 0, 0.8);
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);

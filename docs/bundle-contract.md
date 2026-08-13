@@ -10,7 +10,8 @@ The required production entries are:
 - `venueRuntime: { entry: "venue/runtime.mjs", apiProtocolVersion: 1,
   controllerProtocolVersion: 2, games: [...] }`;
 - `playerMenu: { entry: "menu/index.html", adapterProtocolVersion: 2 }`;
-- `playerDisplay: { entry: "display/display.js", games: [...] }`;
+- `playerDisplay: { entry: "display/display.js", shellEntry:
+  "display/index.html", games: [...] }`;
 - `playground: { entry: "playground/index.html", basePath: "/games/play/" }`.
 
 - `catalog.json`: all game manifests plus deterministic media references;
@@ -19,7 +20,10 @@ The required production entries are:
 - `player-experience-state.schema.json`: the language-neutral canonical live
   state consumed by both Player Menu and Player Display;
 - `venue/runtime.mjs`: the in-process TypeScript gameplay runtime and venue API;
-- `display/display.js`: the revision-matched browser player-display registry;
+- `display/index.html` and its static assets: the complete production TV shell,
+  declared as `playerDisplay.shellEntry`;
+- `display/display.js`: the revision-matched browser player-display registry,
+  declared as `playerDisplay.entry` and loaded by the shell;
 - `menu/`: the revision-matched static player menu, including its production
   entry point declared as `playerMenu.entry`;
 - `playground/`: the complete hosted menu-to-display playground, built for the
@@ -28,6 +32,10 @@ The required production entries are:
   player-display captures, and generation metadata.
 - `media/animations/<animation>/`: small/full floor thumbnails, animated WebP
   previews, and generation metadata for every native animation.
+
+The player-display shell, renderer, menu, and venue runtime are built from this
+repository and shipped in one release. Venue consumers package and serve these
+files but do not keep fallback source builds.
 
 The animation runtime owns the IDs, labels, preview recipe, filenames, and
 bundle-relative media references. Platform and venue consumers should read
