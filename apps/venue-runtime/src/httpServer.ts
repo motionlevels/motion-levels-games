@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { venueApiProtocolVersion } from "./apiProtocol.ts";
 import { SerializedCommandExecutor } from "./commandExecutor.ts";
-import { RequestValidationError, RevisionMismatchError, type VenueRuntime, type VenueRuntimeStatus } from "./venueRuntime.ts";
+import { RequestValidationError, RevisionMismatchError, type ObservedFloorFrame, type VenueRuntime, type VenueRuntimeStatus } from "./venueRuntime.ts";
 
 export { venueApiProtocolVersion };
 
@@ -71,11 +71,11 @@ async function route(
     return;
   }
   if (url.pathname === "/api/live-floor/events" && request.method === "GET") {
-    sseOptional(
+    sseOptional<ObservedFloorFrame>(
       response,
       request,
       "live-floor",
-      runtime.observedFloor(),
+      null,
       (listener) => runtime.subscribeObservedFloor(listener)
     );
     return;
@@ -200,15 +200,55 @@ function sseOptional<T>(
     "X-Accel-Buffering": "no"
   });
   response.flushHeaders();
-  const write = (value: T) => response.write(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
-  if (initial !== null) write(initial);
-  const unsubscribe = subscribe(write);
-  const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 15_000);
+  const writer = createLatestSseWriter<T>(response, event);
+  if (initial !== null) writer.write(initial);
+  const unsubscribe = subscribe(writer.write);
+  const heartbeat = setInterval(writer.heartbeat, 15_000);
   heartbeat.unref();
   request.on("close", () => {
     clearInterval(heartbeat);
+    writer.close();
     unsubscribe();
   });
+}
+
+type SseWritable = {
+  write(chunk: string): boolean;
+  on(event: "drain", listener: () => void): unknown;
+  off(event: "drain", listener: () => void): unknown;
+};
+
+/** Keep at most one unsent event while an HTTP client applies backpressure. */
+export function createLatestSseWriter<T>(response: SseWritable, event: string) {
+  let blocked = false;
+  let pending: T | null = null;
+  const writeNow = (value: T) => {
+    blocked = !response.write(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
+  };
+  const write = (value: T) => {
+    if (blocked) {
+      pending = value;
+      return;
+    }
+    writeNow(value);
+  };
+  const drain = () => {
+    blocked = false;
+    const latest = pending;
+    pending = null;
+    if (latest !== null) writeNow(latest);
+  };
+  response.on("drain", drain);
+  return {
+    write,
+    heartbeat: () => {
+      if (!blocked) blocked = !response.write(": keepalive\n\n");
+    },
+    close: () => {
+      pending = null;
+      response.off("drain", drain);
+    }
+  };
 }
 
 function applyLoopbackCors(request: IncomingMessage, response: ServerResponse): void {

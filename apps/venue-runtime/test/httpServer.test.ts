@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import test from "node:test";
-import { authorizeEngineRequest, createVenueHttpServer, engineTokenHeader } from "../src/httpServer.ts";
+import { authorizeEngineRequest, createLatestSseWriter, createVenueHttpServer, engineTokenHeader } from "../src/httpServer.ts";
 import { VenueRuntime } from "../src/venueRuntime.ts";
 
 test("loopback peers can use the engine adapter directly", () => {
@@ -16,6 +16,34 @@ test("container peers require the exact shared engine token", () => {
   assert.equal(authorizeEngineRequest("172.20.0.8", "secret", "wrong"), false);
   assert.equal(authorizeEngineRequest("172.20.0.8", "secret", "secret"), true);
   assert.equal(authorizeEngineRequest("172.20.0.8", "", ""), false);
+});
+
+test("live floor SSE backpressure retains only the latest pending event", () => {
+  class FakeResponse extends EventEmitter {
+    writes: string[] = [];
+    blocked = true;
+
+    write(chunk: string): boolean {
+      this.writes.push(chunk);
+      return !this.blocked;
+    }
+  }
+  const response = new FakeResponse();
+  const writer = createLatestSseWriter<{ sequence: number }>(response, "live-floor");
+
+  writer.write({ sequence: 1 });
+  writer.write({ sequence: 2 });
+  writer.write({ sequence: 3 });
+  assert.equal(response.writes.length, 1);
+
+  response.blocked = false;
+  response.emit("drain");
+  assert.equal(response.writes.length, 2);
+  assert.match(response.writes[1] ?? "", /"sequence":3/u);
+  assert.doesNotMatch(response.writes[1] ?? "", /"sequence":2/u);
+
+  writer.close();
+  assert.equal(response.listenerCount("drain"), 0);
 });
 
 test("canonical player state and idempotent commands share the venue API", async (context) => {
@@ -87,4 +115,35 @@ test("observed floor SSE starts empty and streams only controller-owned MLF1 env
   assert.match(text, /event: live-floor/u);
   assert.match(text, /"sequence":9/u);
   assert.match(text, /"frameBase64":"TUxGMQ/u);
+});
+
+test("observed floor SSE sends the current snapshot immediately on reconnect", async (context) => {
+  const runtime = new VenueRuntime({ sourceRevision: "1".repeat(40), controllerAddress: "127.0.0.1:4201" });
+  runtime.observePresentedFrame({
+    presentationSequence: 27n,
+    desiredSequence: 26n,
+    presentedUnixNanos: 456n,
+    width: 16,
+    height: 32,
+    rgb: new Uint8Array(16 * 32 * 3),
+    pressureBits: new Uint8Array(16 * 32 / 8),
+    fadeRatio: 0
+  });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+
+  const controller = new AbortController();
+  context.after(() => controller.abort());
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/live-floor/events`, { signal: controller.signal });
+  const reader = response.body?.getReader();
+  assert.ok(reader);
+  const chunk = await reader.read();
+  assert.equal(chunk.done, false);
+  const text = new TextDecoder().decode(chunk.value);
+  assert.match(text, /event: live-floor/u);
+  assert.match(text, /"sequence":27/u);
 });

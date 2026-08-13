@@ -5,6 +5,7 @@ import test from "node:test";
 import { FLOOR_COLS, FLOOR_ROWS, type Frame } from "@motion-levels-games/game-sdk";
 import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
 import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manifest";
+import { floorHeight, floorRgbBytes, floorWidth, pressureBitsetBytes, type PresentedFrame } from "../src/controllerProtocol.ts";
 import { frameToRgb, resolveRuntimeContentPlatformUrl, RevisionMismatchError, VenueRuntime } from "../src/venueRuntime.ts";
 
 const revision = "1".repeat(40);
@@ -182,6 +183,41 @@ test("frame conversion is always one 16x32 RGB frame", () => {
   assert.ok(rgb.every((channel) => channel === 0));
 });
 
+test("local live floor is latest-value and bounded to ten fps", async () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    localLiveFloorFps: 10
+  });
+  const sequences: number[] = [];
+  const unsubscribe = runtime.subscribeObservedFloor((frame) => sequences.push(frame.sequence));
+
+  runtime.observePresentedFrame(observedFrame(1n));
+  runtime.observePresentedFrame(observedFrame(2n));
+  runtime.observePresentedFrame(observedFrame(3n));
+
+  await waitFor(() => sequences.length === 2);
+  assert.deepEqual(sequences, [1, 3]);
+  unsubscribe();
+  runtime.stop();
+});
+
+test("local live floor sends the current snapshot immediately to each new subscriber", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  runtime.observePresentedFrame(observedFrame(7n));
+
+  const first: number[] = [];
+  const second: number[] = [];
+  const unsubscribeFirst = runtime.subscribeObservedFloor((frame) => first.push(frame.sequence));
+  const unsubscribeSecond = runtime.subscribeObservedFloor((frame) => second.push(frame.sequence));
+
+  assert.deepEqual(first, [7]);
+  assert.deepEqual(second, [7]);
+  unsubscribeFirst();
+  unsubscribeSecond();
+  runtime.stop();
+});
+
 test("runtime content cannot redirect production fetches to a request-controlled origin", () => {
   assert.equal(
     resolveRuntimeContentPlatformUrl("https://platform.motionlevels.example/base", "https://attacker.example")?.origin,
@@ -190,3 +226,24 @@ test("runtime content cannot redirect production fetches to a request-controlled
   assert.equal(resolveRuntimeContentPlatformUrl(undefined, "https://attacker.example"), null);
   assert.equal(resolveRuntimeContentPlatformUrl(undefined, "http://127.0.0.1:3000")?.origin, "http://127.0.0.1:3000");
 });
+
+function observedFrame(sequence: bigint): PresentedFrame {
+  return {
+    presentationSequence: sequence,
+    desiredSequence: sequence,
+    presentedUnixNanos: sequence * 20_000_000n,
+    width: floorWidth,
+    height: floorHeight,
+    rgb: new Uint8Array(floorRgbBytes),
+    pressureBits: new Uint8Array(pressureBitsetBytes),
+    fadeRatio: 0
+  };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("condition was not met");
+}

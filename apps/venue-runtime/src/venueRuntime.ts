@@ -71,6 +71,7 @@ export type VenueRuntimeOptions = {
   controllerId?: string;
   liveFloorFps?: number;
   liveFloorTimeoutMillis?: number;
+  localLiveFloorFps?: number;
   brightness?: number;
   log?(message: string, error?: unknown): void;
 };
@@ -100,6 +101,11 @@ type FloorAdapterStatus = {
   fadeRatio: number;
 };
 
+type ObservedFloorSubscription = {
+  listener: (frame: ObservedFloorFrame) => void;
+  lastSequence: number | null;
+};
+
 type SelectionMetadata = {
   manifest: GameManifest;
   runtimeGameId: string;
@@ -126,6 +132,10 @@ const blackFrame: Frame = {
   }))
 };
 
+const defaultLocalLiveFloorFps = 10;
+const minimumLocalLiveFloorFps = 5;
+const maximumLocalLiveFloorFps = 10;
+
 export class RevisionMismatchError extends Error {}
 export class RequestValidationError extends Error {}
 
@@ -133,7 +143,8 @@ export class VenueRuntime {
   private readonly session = new GameSession();
   private readonly controller: ControllerClient;
   private readonly liveFloorPublisher: LiveFloorPublisher | null;
-  private readonly liveFloorListeners = new Set<(frame: ObservedFloorFrame) => void>();
+  private readonly localLiveFloorFps: number;
+  private readonly liveFloorListeners = new Set<ObservedFloorSubscription>();
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
   private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
   private readonly menuListeners = new Set<(state: MenuStateEnvelope) => void>();
@@ -152,6 +163,9 @@ export class VenueRuntime {
   private controllerConnected = false;
   private adapterRevision = "";
   private latestObservedFloor: ObservedFloorFrame | null = null;
+  private localLiveFloorPending = false;
+  private localLiveFloorLastPublishedAt = 0;
+  private localLiveFloorTimer: NodeJS.Timeout | null = null;
   private floorAdapter: FloorAdapterStatus = emptyFloorAdapter();
   private readonly heldPressure = new Set<string>();
   private menuState: MenuStateEnvelope = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
@@ -160,6 +174,7 @@ export class VenueRuntime {
 
   constructor(private readonly options: VenueRuntimeOptions) {
     if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
+    this.localLiveFloorFps = normalizeLocalLiveFloorFps(options.localLiveFloorFps);
     this.liveFloorPublisher = createLiveFloorPublisher({
       platformUrl: options.platformUrl,
       platformToken: options.platformToken,
@@ -194,6 +209,9 @@ export class VenueRuntime {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.localLiveFloorTimer) clearTimeout(this.localLiveFloorTimer);
+    this.localLiveFloorTimer = null;
+    this.localLiveFloorPending = false;
     this.controller.stop();
   }
 
@@ -415,6 +433,7 @@ export class VenueRuntime {
   }
 
   health(): Record<string, unknown> {
+    const liveFloor = this.liveFloorPublisher?.status() ?? { configured: false };
     return {
       status: "ok",
       sourceRevision: this.options.sourceRevision,
@@ -423,7 +442,11 @@ export class VenueRuntime {
       roomControllerId: this.options.controllerId ?? "",
       adapterRevision: this.adapterRevision,
       floorAdapter: { ...this.floorAdapter },
-      liveFloor: this.liveFloorPublisher?.status() ?? { configured: false },
+      liveFloor: {
+        ...liveFloor,
+        localTargetFps: this.localLiveFloorFps,
+        localSubscribers: this.liveFloorListeners.size
+      },
       audioEnabled: false,
       displayClient: this.displayClientStatus()
     };
@@ -444,8 +467,22 @@ export class VenueRuntime {
   }
 
   subscribeObservedFloor(listener: (frame: ObservedFloorFrame) => void): () => void {
-    this.liveFloorListeners.add(listener);
-    return () => this.liveFloorListeners.delete(listener);
+    const wasEmpty = this.liveFloorListeners.size === 0;
+    const subscription: ObservedFloorSubscription = { listener, lastSequence: null };
+    this.liveFloorListeners.add(subscription);
+    const current = this.observedFloor();
+    if (current) {
+      this.deliverObservedFloor(subscription, current);
+      if (wasEmpty) this.localLiveFloorLastPublishedAt = Date.now();
+    }
+    return () => {
+      this.liveFloorListeners.delete(subscription);
+      if (this.liveFloorListeners.size > 0) return;
+      if (this.localLiveFloorTimer) clearTimeout(this.localLiveFloorTimer);
+      this.localLiveFloorTimer = null;
+      this.localLiveFloorPending = false;
+      this.localLiveFloorLastPublishedAt = 0;
+    };
   }
 
   getMenuState(): MenuStateEnvelope { return structuredClone(this.menuState); }
@@ -535,6 +572,7 @@ export class VenueRuntime {
 
   /** Authoritative controller observation boundary; public for deterministic host tests. */
   observePresentedFrame(frame: PresentedFrame): void {
+    const observedAt = Date.now();
     const encoded = encodeLiveViewerFrame(frame);
     const observed: ObservedFloorFrame = {
       sequence: safeProtocolNumber(frame.presentationSequence),
@@ -550,14 +588,46 @@ export class VenueRuntime {
       lastPresentedUnixNanos: observed.presentedUnixNanos,
       fadeRatio: frame.fadeRatio
     };
-    for (const listener of this.liveFloorListeners) {
-      try {
-        listener({ ...observed });
-      } catch (error) {
-        this.options.log?.("local live-floor listener failed", error);
-      }
+    this.scheduleObservedFloor(observedAt);
+    this.liveFloorPublisher?.observe(frame, this.gameSessionId, observedAt, encoded);
+  }
+
+  private scheduleObservedFloor(observedAt: number): void {
+    if (this.liveFloorListeners.size === 0) return;
+    this.localLiveFloorPending = true;
+    if (this.localLiveFloorTimer) return;
+    const intervalMillis = 1000 / this.localLiveFloorFps;
+    const waitMillis = this.localLiveFloorLastPublishedAt > 0
+      ? Math.max(0, this.localLiveFloorLastPublishedAt + intervalMillis - observedAt)
+      : 0;
+    if (waitMillis <= 0) {
+      this.publishObservedFloor(observedAt);
+      return;
     }
-    this.liveFloorPublisher?.observe(frame, this.gameSessionId, Date.now(), encoded);
+    this.localLiveFloorTimer = setTimeout(() => {
+      this.localLiveFloorTimer = null;
+      this.publishObservedFloor(Date.now());
+    }, waitMillis);
+    this.localLiveFloorTimer.unref();
+  }
+
+  private publishObservedFloor(publishedAt: number): void {
+    if (!this.localLiveFloorPending || this.liveFloorListeners.size === 0) return;
+    const current = this.observedFloor();
+    this.localLiveFloorPending = false;
+    if (!current) return;
+    this.localLiveFloorLastPublishedAt = publishedAt;
+    for (const subscription of this.liveFloorListeners) this.deliverObservedFloor(subscription, current);
+  }
+
+  private deliverObservedFloor(subscription: ObservedFloorSubscription, frame: ObservedFloorFrame): void {
+    if (subscription.lastSequence === frame.sequence) return;
+    subscription.lastSequence = frame.sequence;
+    try {
+      subscription.listener({ ...frame });
+    } catch (error) {
+      this.options.log?.("local live-floor listener failed", error);
+    }
   }
 
   private observeAdapterStatus(status: AdapterStatus): void {
@@ -750,6 +820,12 @@ function nonNegative(value: unknown): number {
 }
 
 function nonNegativeInteger(value: unknown): number { return Math.floor(nonNegative(value)); }
+
+function normalizeLocalLiveFloorFps(value: unknown): number {
+  const candidate = Number(value ?? defaultLocalLiveFloorFps);
+  if (!Number.isFinite(candidate)) return defaultLocalLiveFloorFps;
+  return Math.max(minimumLocalLiveFloorFps, Math.min(maximumLocalLiveFloorFps, candidate));
+}
 
 function cleanText(value: unknown, max: number): string { return String(value ?? "").trim().slice(0, max); }
 

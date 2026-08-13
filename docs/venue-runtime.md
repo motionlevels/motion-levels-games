@@ -15,6 +15,8 @@ header. A non-loopback bind fails at startup when the token is missing.
 
 - `GET /api/health`, `/api/status`, and `/api/display`;
 - `GET /api/display/events` (SSE event `display`);
+- `GET /api/live-floor/events` (SSE event `live-floor`, latest authoritative
+  controller observation capped at 10 fps);
 - `POST /api/select` and `/api/control`;
 - `GET`/`PUT` `/api/menu-state` and `GET /api/menu-state/events`;
 - `POST /api/venue-session` and `/api/menu-event`;
@@ -31,7 +33,8 @@ fallback. Production content always uses `MOTION_LEVELS_PLATFORM_URL`; a
 request-provided origin is accepted only when no origin is configured and the
 request points to loopback development.
 
-The engine and controller remain at 50 fps. Display SSE is capped at 4 fps.
+The engine and controller remain at 50 fps. Display SSE is capped at 4 fps and
+the observed live-floor SSE is a latest-value feed capped at 10 fps.
 Idle output is an all-black 16x32 frame. Audio reports `audioEnabled: false`:
 command-backed audio can be added as a narrow adapter later, without putting
 audio state back into gameplay.

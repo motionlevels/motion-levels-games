@@ -12,6 +12,7 @@ const runtime = new VenueRuntime({
   controllerId: process.env.MOTION_LEVELS_CONTROLLER_ID,
   liveFloorFps: parseNonNegative(process.env.MOTION_LEVELS_LIVE_PUSH_FPS, 5),
   liveFloorTimeoutMillis: parseDurationMillis(process.env.MOTION_LEVELS_LIVE_PUSH_TIMEOUT, 2_000),
+  localLiveFloorFps: parsePositive(process.env.MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS, 10),
   brightness: parseBrightness(process.env.MOTION_LEVELS_ENGINE_BRIGHTNESS),
   log: (message, error) => console.error(`[venue-runtime] ${message}`, error ?? "")
 });
@@ -65,6 +66,11 @@ function parseBrightness(value: string | undefined): number {
 function parseNonNegative(value: string | undefined, fallback: number): number {
   const number = Number(value ?? fallback);
   return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
+function parsePositive(value: string | undefined, fallback: number): number {
+  const number = Number(value ?? fallback);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
 function parseDurationMillis(value: string | undefined, fallback: number): number {

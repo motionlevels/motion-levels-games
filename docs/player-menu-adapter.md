@@ -33,7 +33,10 @@ The live floor view connects to `GET /api/live-floor/events` on the same venue
 runtime used by the rest of the menu. Each `live-floor` SSE event contains a
 base64 `MLF1` envelope with the physical 16x32 RGB floor and pressure bitset
 reported by the Go controller after its watchdog. This surface is read-only:
-the menu does not simulate or write floor pressure.
+the menu does not simulate or write floor pressure. The runtime sends the
+current authoritative snapshot immediately when a client connects, then a
+latest-value stream capped at 10 fps so a slow browser cannot queue the
+controller's 50 fps presentation feed.
 
 ## Ownership and compatibility
 
