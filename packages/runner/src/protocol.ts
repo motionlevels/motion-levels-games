@@ -25,11 +25,32 @@ export type RunnerState = {
   events: GameEvent[];
 };
 
+/**
+ * Bounded, process-local telemetry exported with every runner response.
+ * Hosts may publish these values through their own observability endpoint;
+ * the runner never opens a network listener itself.
+ */
+export type RunnerTelemetry = {
+  uptimeMillis: number;
+  requestsTotal: number;
+  errorsTotal: number;
+  initTotal: number;
+  inputTotal: number;
+  controlTotal: number;
+  tickTotal: number;
+  statusTotal: number;
+  lastMethod: RunnerMethod | "invalid";
+  lastRequestDurationMicros: number;
+  rssBytes: number;
+  heapUsedBytes: number;
+};
+
 export type RunnerResponse = {
   version: typeof runnerProtocolVersion;
   id: string;
   ok: boolean;
   sourceRevision: string;
+  telemetry: RunnerTelemetry;
   state?: RunnerState;
   error?: string;
 };

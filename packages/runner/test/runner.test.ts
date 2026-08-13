@@ -4,6 +4,7 @@ import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels
 import { runnerProtocolVersion } from "../src/protocol.ts";
 import { gameCatalog } from "../src/registry.ts";
 import { RunnerSession } from "../src/session.ts";
+import { RunnerTelemetryCollector } from "../src/telemetry.ts";
 
 test("runner protocol initializes, accepts input, and returns a fixed floor frame", () => {
   const session = new RunnerSession();
@@ -95,4 +96,21 @@ test("published-level games reject malformed host content instead of silently us
       content: { schema: "motion-levels-published-level-content-v1", gameId: parkourGameId }
     }
   }), /content|levels/iu);
+});
+
+test("runner telemetry stays bounded and reports process health", () => {
+  const telemetry = new RunnerTelemetryCollector();
+  const first = telemetry.observe("init", performance.now());
+  const second = telemetry.observe("tick", performance.now());
+  const failed = telemetry.observe("invalid", performance.now(), true);
+
+  assert.equal(first.requestsTotal, 1);
+  assert.equal(second.initTotal, 1);
+  assert.equal(second.tickTotal, 1);
+  assert.equal(failed.requestsTotal, 3);
+  assert.equal(failed.errorsTotal, 1);
+  assert.equal(failed.lastMethod, "invalid");
+  assert.ok(failed.rssBytes > 0);
+  assert.ok(failed.heapUsedBytes > 0);
+  assert.ok(failed.lastRequestDurationMicros >= 0);
 });
