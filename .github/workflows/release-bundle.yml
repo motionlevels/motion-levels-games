@@ -24,7 +24,7 @@ jobs:
       run:
         working-directory: source
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           path: source
@@ -66,11 +66,11 @@ jobs:
       run:
         working-directory: source
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: source
       - name: Download the bundle produced by the release quality gate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: motion-levels-games-${{ env.SOURCE_REVISION }}
           path: source/dist
@@ -83,7 +83,7 @@ jobs:
           test -f "dist/$archive.sha256"
           cd dist
           sha256sum --check "$archive.sha256"
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           fail_on_unmatched_files: true
           overwrite_files: false
