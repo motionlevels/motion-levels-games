@@ -10,6 +10,9 @@ import {
   pressureAt,
   validateControllerHello,
   validateRuntimeFrame,
+  type AdapterStatus,
+  type ControllerHello,
+  type PresentedFrame,
   type RuntimeFrame
 } from "./controllerProtocol.ts";
 
@@ -19,7 +22,9 @@ export type ControllerClientOptions = {
   address: string;
   sourceRevision: string;
   onPressure(input: PressureInput): void;
-  onConnectionChange?(connected: boolean, controllerId: string): void;
+  onPresentedFrame?(frame: PresentedFrame): void;
+  onAdapterStatus?(status: AdapterStatus): void;
+  onConnectionChange?(connected: boolean, adapterRevision: string, hello?: ControllerHello): void;
   log?(message: string, error?: unknown): void;
 };
 
@@ -35,12 +40,12 @@ export class ControllerClient {
   private pendingFrame: RuntimeFrame | null = null;
   private pressed = new Uint8Array(floorWidth * floorHeight / 8);
   private pressureSequence = 0n;
-  private controllerIdValue = "";
+  private adapterRevisionValue = "";
 
   constructor(private readonly options: ControllerClientOptions) {}
 
   get connected(): boolean { return this.helloReceived; }
-  get controllerId(): string { return this.controllerIdValue; }
+  get adapterRevision(): string { return this.adapterRevisionValue; }
 
   start(): void {
     if (this.socket || this.reconnectTimer) return;
@@ -109,9 +114,9 @@ export class ControllerClient {
     if (message.type === "hello") {
       validateControllerHello(message.hello);
       this.helloReceived = true;
-      this.controllerIdValue = message.hello.controllerId;
+      this.adapterRevisionValue = message.hello.adapterRevision;
       this.reconnectMillis = 250;
-      this.options.onConnectionChange?.(true, this.controllerIdValue);
+      this.options.onConnectionChange?.(true, this.adapterRevisionValue, message.hello);
       if (!this.blocked && this.pendingFrame) {
         const pending = this.pendingFrame;
         this.pendingFrame = null;
@@ -121,10 +126,22 @@ export class ControllerClient {
     }
     if (message.type === "presentedFrame") {
       if (!this.helloReceived) throw new Error("controller hello must precede presented frames");
-      this.resyncPressure(message.pressureBits, this.pressureSequence, message.presentedUnixNanos);
+      this.resyncPressure(message.frame.pressureBits, this.pressureSequence, message.frame.presentedUnixNanos);
+      try {
+        this.options.onPresentedFrame?.(message.frame);
+      } catch (error) {
+        this.options.log?.("presented-frame observer failed", error);
+      }
       return;
     }
-    if (message.type === "status") return;
+    if (message.type === "status") {
+      try {
+        this.options.onAdapterStatus?.(message.status);
+      } catch (error) {
+        this.options.log?.("adapter-status observer failed", error);
+      }
+      return;
+    }
     if (!this.helloReceived) throw new Error("controller hello must precede pressure changes");
     if (message.pressureChange.sequence <= this.pressureSequence) return;
     if (pressureSequenceHasGap(this.pressureSequence, message.pressureChange.sequence)) {
@@ -155,7 +172,7 @@ export class ControllerClient {
   private setDisconnected(): void {
     const wasConnected = this.helloReceived;
     this.helloReceived = false;
-    this.controllerIdValue = "";
+    this.adapterRevisionValue = "";
     this.blocked = false;
     if (wasConnected) this.options.onConnectionChange?.(false, "");
   }

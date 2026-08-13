@@ -56,6 +56,14 @@ test("the menu consumes only the canonical revisioned player state", async () =>
   assert.doesNotMatch(contracts, /export type EngineStatus = \{/u);
 });
 
+test("the menu reads the runtime-owned authoritative floor stream", async () => {
+  const source = await readFile(path.join(menuRoot, "src/LiveFloorView.tsx"), "utf8");
+  assert.match(source, /new EventSource\(liveFloorEventsURL\(\)\)/u);
+  assert.match(source, /\/api\/live-floor\/events/u);
+  assert.match(source, /addEventListener\("live-floor"/u);
+  assert.doesNotMatch(source, /controller\/ws|new WebSocket|\.send\(/u);
+});
+
 async function sourceFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {

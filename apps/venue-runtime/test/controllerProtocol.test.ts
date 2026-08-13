@@ -31,7 +31,7 @@ test("controller runtime.proto v2 has cross-language golden encodings", () => {
 
   const controllerHello = encodeControllerMessage({
     type: "hello",
-    hello: { protocolVersion: 2, controllerId: "controller-v2", width: 16, height: 32, refreshFps: 50 }
+    hello: { protocolVersion: 2, adapterRevision: "controller-v2", width: 16, height: 32, refreshFps: 50 }
   });
   assert.equal(Buffer.from(controllerHello).toString("hex"), "12170802120d636f6e74726f6c6c65722d7632181020202832");
 
@@ -47,14 +47,14 @@ test("controller hello validates the adapter contract", () => {
     type: "hello" as const,
     hello: {
       protocolVersion: controllerProtocolVersion,
-      controllerId: "floor-a",
+      adapterRevision: "floor-a",
       width: floorWidth,
       height: floorHeight,
       refreshFps: 50
     }
   };
   assert.deepEqual(decodeControllerMessage(encodeControllerMessage(message)), message);
-  assert.throws(() => validateControllerHello({ ...message.hello, controllerId: "" }), /controller id/);
+  assert.throws(() => validateControllerHello({ ...message.hello, adapterRevision: "" }), /adapter revision/);
   assert.throws(() => validateControllerHello({ ...message.hello, refreshFps: 0 }), /refresh fps/);
 });
 
@@ -97,13 +97,35 @@ test("pressure changes use bounded floor coordinates", () => {
 
 test("controller decoder accepts presented pressure snapshots and adapter status", () => {
   const presented = Buffer.concat([
-    Buffer.from([0x2a, 0x48, 0x18, 0x7b, 0x20, 0x10, 0x28, 0x20, 0x3a, 0x40]),
+    Buffer.from([0x2a, 0xcf, 0x0c, 0x08, 0x2a, 0x10, 0x29, 0x18, 0x7b, 0x20, 0x10, 0x28, 0x20, 0x32, 0x80, 0x0c]),
+    Buffer.alloc(floorRgbBytes),
+    Buffer.from([0x3a, 0x40]),
     Buffer.alloc(64),
   ]);
   const decoded = decodeControllerMessage(presented);
   assert.equal(decoded.type, "presentedFrame");
   if (decoded.type !== "presentedFrame") throw new Error("expected presented frame");
-  assert.deepEqual([...decoded.pressureBits], Array(64).fill(0));
-  assert.equal(decoded.presentedUnixNanos, 123n);
-  assert.deepEqual(decodeControllerMessage(Uint8Array.from([0x32, 0x00])), { type: "status" });
+  assert.equal(decoded.frame.presentationSequence, 42n);
+  assert.equal(decoded.frame.desiredSequence, 41n);
+  assert.deepEqual([...decoded.frame.pressureBits], Array(64).fill(0));
+  assert.equal(decoded.frame.presentedUnixNanos, 123n);
+
+  const actualFps = Buffer.alloc(8);
+  actualFps.writeDoubleLE(49.5);
+  const statusPayload = Buffer.concat([
+    Buffer.from([0x08, 0x7b, 0x10, 0x2a, 0x19]),
+    actualFps,
+    Buffer.from([0x20, 0x32, 0x28, 0x11, 0x30, 0x02]),
+  ]);
+  const status = decodeControllerMessage(Buffer.concat([Buffer.from([0x32, statusPayload.length]), statusPayload]));
+  assert.equal(status.type, "status");
+  if (status.type !== "status") throw new Error("expected adapter status");
+  assert.deepEqual(status.status, {
+    unixNanos: 123n,
+    presentedFrames: 42n,
+    actualFps: 49.5,
+    targetFps: 50,
+    desiredFrameAgeMillis: 17n,
+    udpSendErrors: 2n,
+  });
 });

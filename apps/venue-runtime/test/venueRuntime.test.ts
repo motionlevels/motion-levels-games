@@ -8,9 +8,14 @@ import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manife
 import { frameToRgb, resolveRuntimeContentPlatformUrl, RevisionMismatchError, VenueRuntime } from "../src/venueRuntime.ts";
 
 const revision = "1".repeat(40);
+const roomControllerId = "01234567-89ab-4def-8123-456789abcdef";
 
 test("venue runtime exposes an honest idle status and audio capability", () => {
-  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    controllerId: roomControllerId
+  });
   const status = runtime.status();
   assert.equal(status.contractVersion, 1);
   assert.equal(status.revision, 1);
@@ -20,6 +25,9 @@ test("venue runtime exposes an honest idle status and audio capability", () => {
   assert.equal(status.currentGame, "salvapantallas");
   assert.equal(status.audioEnabled, false);
   assert.equal(status.pressureStreamConnected, false);
+  assert.equal(status.controllerId, roomControllerId);
+  assert.equal(status.roomControllerId, roomControllerId);
+  assert.equal(status.floorAdapter.revision, "");
   assert.equal(runtime.health().controllerProtocolVersion, 2);
 });
 

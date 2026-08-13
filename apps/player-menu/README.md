@@ -8,7 +8,7 @@ the complete browse-to-results journey.
 Venue-specific ownership remains outside this workspace: Electron/Caddy
 packaging, the Go supervisor, controller connectivity, hardware output, and
 deployment are supplied by `motion-levels-venue`. The static build talks only
-through the versioned HTTP/WebSocket adapter documented in
+through the versioned HTTP/SSE adapter documented in
 `../../docs/player-menu-adapter.md`.
 
 The first source migration intentionally preserves the proven kiosk DOM and

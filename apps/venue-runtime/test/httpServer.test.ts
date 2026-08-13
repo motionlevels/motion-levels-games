@@ -53,3 +53,38 @@ test("canonical player state and idempotent commands share the venue API", async
   assert.equal(first.runId, retry.runId);
   assert.equal(first.currentGame, body.game);
 });
+
+test("observed floor SSE starts empty and streams only controller-owned MLF1 envelopes", async (context) => {
+  const runtime = new VenueRuntime({ sourceRevision: "1".repeat(40), controllerAddress: "127.0.0.1:4201" });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+
+  const controller = new AbortController();
+  context.after(() => controller.abort());
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/live-floor/events`, { signal: controller.signal });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/u);
+  const reader = response.body?.getReader();
+  assert.ok(reader);
+
+  runtime.observePresentedFrame({
+    presentationSequence: 9n,
+    desiredSequence: 8n,
+    presentedUnixNanos: 123n,
+    width: 16,
+    height: 32,
+    rgb: new Uint8Array(16 * 32 * 3),
+    pressureBits: new Uint8Array(16 * 32 / 8),
+    fadeRatio: 0
+  });
+  const chunk = await reader.read();
+  assert.equal(chunk.done, false);
+  const text = new TextDecoder().decode(chunk.value);
+  assert.match(text, /event: live-floor/u);
+  assert.match(text, /"sequence":9/u);
+  assert.match(text, /"frameBase64":"TUxGMQ/u);
+});

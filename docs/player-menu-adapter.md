@@ -15,6 +15,8 @@ route, or port `4102` on the current host. Protocol v2 uses:
 - `POST /api/control` for pause, resume, restart, exit, narration, and mute;
 - `GET /api/health`, `/api/display`, and `/api/display/events` for venue and
   player-display health/state;
+- `GET /api/live-floor/events` for the runtime-owned SSE stream of the latest
+  authoritative `MLF1` frame observed from the Go controller;
 - `GET`/`PUT /api/menu-state` and `GET /api/menu-state/events` for mirrored
   kiosk recovery state;
 - `POST /api/venue-session` and `POST /api/menu-event` as best-effort
@@ -25,12 +27,13 @@ The platform catalog remains a read-only input at `GET /api/game-catalog`.
 The menu resolves it from `VITE_PLATFORM_URL`, the active platform/gateway
 origin, or the public platform URL.
 
-## Floor WebSocket
+## Observed floor stream
 
-The live floor view connects through `VITE_FLOOR_CONTROLLER_URL` or the
-controller endpoint derived from the current host. Binary frames contain the
-physical 16x32 RGB floor; status/configuration text messages are ignored by
-the player menu.
+The live floor view connects to `GET /api/live-floor/events` on the same venue
+runtime used by the rest of the menu. Each `live-floor` SSE event contains a
+base64 `MLF1` envelope with the physical 16x32 RGB floor and pressure bitset
+reported by the Go controller after its watchdog. This surface is read-only:
+the menu does not simulate or write floor pressure.
 
 ## Ownership and compatibility
 

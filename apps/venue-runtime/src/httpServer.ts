@@ -70,6 +70,16 @@ async function route(
     sse(response, request, "display", runtime.display(), (listener) => runtime.subscribeDisplay(listener));
     return;
   }
+  if (url.pathname === "/api/live-floor/events" && request.method === "GET") {
+    sseOptional(
+      response,
+      request,
+      "live-floor",
+      runtime.observedFloor(),
+      (listener) => runtime.subscribeObservedFloor(listener)
+    );
+    return;
+  }
   if (url.pathname === "/api/player-state/events" && request.method === "GET") {
     sse(response, request, "player-state", runtime.status(), (listener) => runtime.subscribeStatus(listener));
     return;
@@ -118,7 +128,7 @@ async function route(
     }
   }
   if ([
-    "/api/health", "/api/status", "/api/player-state", "/api/player-state/events", "/api/display", "/api/display/events", "/api/select", "/api/control",
+    "/api/health", "/api/status", "/api/player-state", "/api/player-state/events", "/api/display", "/api/display/events", "/api/live-floor/events", "/api/select", "/api/control",
     "/api/menu-state", "/api/menu-state/events", "/api/venue-session", "/api/menu-event", "/api/display-client"
   ].includes(url.pathname)) {
     response.writeHead(405, { Allow: "GET, HEAD, POST, PUT, OPTIONS" }).end("method not allowed");
@@ -164,8 +174,34 @@ function sse<T>(
     Connection: "keep-alive",
     "X-Accel-Buffering": "no"
   });
+  response.flushHeaders();
   const write = (value: T) => response.write(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
   write(initial);
+  const unsubscribe = subscribe(write);
+  const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 15_000);
+  heartbeat.unref();
+  request.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+}
+
+function sseOptional<T>(
+  response: ServerResponse,
+  request: IncomingMessage,
+  event: string,
+  initial: T | null,
+  subscribe: (listener: (value: T) => void) => () => void
+): void {
+  response.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  response.flushHeaders();
+  const write = (value: T) => response.write(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
+  if (initial !== null) write(initial);
   const unsubscribe = subscribe(write);
   const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 15_000);
   heartbeat.unref();

@@ -20,7 +20,7 @@ export type RuntimeFrame = {
 
 export type ControllerHello = {
   protocolVersion: number;
-  controllerId: string;
+  adapterRevision: string;
   width: number;
   height: number;
   refreshFps: number;
@@ -34,6 +34,29 @@ export type PressureChange = {
   pressed: boolean;
 };
 
+/** The exact post-watchdog, post-pressure frame reported by the Go hardware
+ * controller. The venue runtime may forward this technical observation but
+ * must never recreate it from game state. */
+export type PresentedFrame = {
+  presentationSequence: bigint;
+  desiredSequence: bigint;
+  presentedUnixNanos: bigint;
+  width: number;
+  height: number;
+  rgb: Uint8Array;
+  pressureBits: Uint8Array;
+  fadeRatio: number;
+};
+
+export type AdapterStatus = {
+  unixNanos: bigint;
+  presentedFrames: bigint;
+  actualFps: number;
+  targetFps: number;
+  desiredFrameAgeMillis: bigint;
+  udpSendErrors: bigint;
+};
+
 export type RuntimeMessage =
   | { type: "hello"; hello: RuntimeHello }
   | { type: "frame"; frame: RuntimeFrame };
@@ -41,8 +64,8 @@ export type RuntimeMessage =
 export type ControllerMessage =
   | { type: "hello"; hello: ControllerHello }
   | { type: "pressureChange"; pressureChange: PressureChange }
-  | { type: "presentedFrame"; pressureBits: Uint8Array; presentedUnixNanos: bigint }
-  | { type: "status" };
+  | { type: "presentedFrame"; frame: PresentedFrame }
+  | { type: "status"; status: AdapterStatus };
 
 export function encodeRuntimeMessage(message: RuntimeMessage): Uint8Array {
   const payload = message.type === "hello" ? encodeRuntimeHello(message.hello) : encodeRuntimeFrame(message.frame);
@@ -67,7 +90,7 @@ export function decodeControllerMessage(bytes: Uint8Array): ControllerMessage {
   if (envelope.field === 2) return { type: "hello", hello: decodeControllerHello(envelope.payload) };
   if (envelope.field === 4) return { type: "pressureChange", pressureChange: decodePressureChange(envelope.payload) };
   if (envelope.field === 5) return decodePresentedFrame(envelope.payload);
-  if (envelope.field === 6) return { type: "status" };
+  if (envelope.field === 6) return { type: "status", status: decodeAdapterStatus(envelope.payload) };
   throw new Error(`unknown controller message field: ${envelope.field}`);
 }
 
@@ -113,7 +136,7 @@ export function validateControllerHello(hello: ControllerHello): void {
   if (hello.width !== floorWidth || hello.height !== floorHeight) {
     throw new Error(`unsupported controller floor: ${hello.width}x${hello.height}`);
   }
-  if (!hello.controllerId.trim() || hello.controllerId.length > 256) throw new Error("controller id is invalid");
+  if (!hello.adapterRevision.trim() || hello.adapterRevision.length > 256) throw new Error("adapter revision is invalid");
   if (!Number.isInteger(hello.refreshFps) || hello.refreshFps <= 0) throw new Error("controller refresh fps is invalid");
 }
 
@@ -151,7 +174,7 @@ function encodeRuntimeFrame(value: RuntimeFrame): Uint8Array {
 function encodeControllerHello(value: ControllerHello): Uint8Array {
   return concat([
     fieldVarint(1, value.protocolVersion),
-    fieldString(2, value.controllerId),
+    fieldString(2, value.adapterRevision),
     fieldVarint(3, value.width),
     fieldVarint(4, value.height),
     fieldVarint(5, value.refreshFps)
@@ -192,7 +215,7 @@ function decodeControllerHello(bytes: Uint8Array): ControllerHello {
   const fields = fieldsByNumber(bytes);
   const hello = {
     protocolVersion: numberField(fields, 1),
-    controllerId: stringField(fields, 2),
+    adapterRevision: stringField(fields, 2),
     width: numberField(fields, 3),
     height: numberField(fields, 4),
     refreshFps: numberField(fields, 5)
@@ -204,6 +227,7 @@ function decodePresentedFrame(bytes: Uint8Array): ControllerMessage {
   const fields = fieldsByNumber(bytes);
   const width = numberField(fields, 4);
   const height = numberField(fields, 5);
+  const rgb = bytesField(fields, 6);
   const pressureBits = bytesField(fields, 7);
   if (width !== floorWidth || height !== floorHeight) {
     throw new Error(`unsupported presented floor: ${width}x${height}`);
@@ -211,10 +235,33 @@ function decodePresentedFrame(bytes: Uint8Array): ControllerMessage {
   if (pressureBits.byteLength !== pressureBitsetBytes) {
     throw new Error(`presented pressure bitset must be ${pressureBitsetBytes} bytes`);
   }
+  if (rgb.byteLength !== floorRgbBytes) {
+    throw new Error(`presented RGB payload must be ${floorRgbBytes} bytes`);
+  }
   return {
     type: "presentedFrame",
-    pressureBits,
-    presentedUnixNanos: bigintField(fields, 3)
+    frame: {
+      presentationSequence: bigintField(fields, 1),
+      desiredSequence: bigintField(fields, 2),
+      presentedUnixNanos: bigintField(fields, 3),
+      width,
+      height,
+      rgb,
+      pressureBits,
+      fadeRatio: floatField(fields, 8)
+    }
+  };
+}
+
+function decodeAdapterStatus(bytes: Uint8Array): AdapterStatus {
+  const fields = fieldsByNumber(bytes);
+  return {
+    unixNanos: bigintField(fields, 1),
+    presentedFrames: bigintField(fields, 2),
+    actualFps: doubleField(fields, 3),
+    targetFps: numberField(fields, 4),
+    desiredFrameAgeMillis: signedBigintField(fields, 5),
+    udpSendErrors: bigintField(fields, 6)
   };
 }
 
@@ -234,7 +281,7 @@ function decodePressureChange(bytes: Uint8Array): PressureChange {
   return value;
 }
 
-type DecodedField = { wire: number; varint?: bigint; bytes?: Uint8Array };
+type DecodedField = { wire: number; varint?: bigint; bytes?: Uint8Array; fixed?: Uint8Array };
 
 function oneofEnvelope(bytes: Uint8Array, label: string): { field: number; payload: Uint8Array } {
   const fields = fieldsByNumber(bytes);
@@ -269,12 +316,12 @@ function fieldsByNumber(bytes: Uint8Array): Map<number, DecodedField[]> {
       offset = end;
     } else if (wire === 1) {
       if (offset + 8 > bytes.byteLength) throw new Error("truncated protobuf fixed64 field");
+      decoded = { wire, fixed: bytes.slice(offset, offset + 8) };
       offset += 8;
-      decoded = { wire };
     } else if (wire === 5) {
       if (offset + 4 > bytes.byteLength) throw new Error("truncated protobuf fixed32 field");
+      decoded = { wire, fixed: bytes.slice(offset, offset + 4) };
       offset += 4;
-      decoded = { wire };
     } else {
       throw new Error(`unsupported protobuf wire type: ${wire}`);
     }
@@ -290,6 +337,28 @@ function bigintField(fields: Map<number, DecodedField[]>, field: number): bigint
   if (!value) return 0n;
   if (value.wire !== 0 || value.varint === undefined) throw new Error(`protobuf field ${field} must be varint`);
   return value.varint;
+}
+
+function signedBigintField(fields: Map<number, DecodedField[]>, field: number): bigint {
+  const value = bigintField(fields, field);
+  return value > 0x7fff_ffff_ffff_ffffn ? value - 0x1_0000_0000_0000_0000n : value;
+}
+
+function doubleField(fields: Map<number, DecodedField[]>, field: number): number {
+  const value = fields.get(field)?.at(-1);
+  if (!value || value.wire !== 1 || value.fixed?.byteLength !== 8) {
+    throw new Error(`protobuf field ${field} must be fixed64`);
+  }
+  return new DataView(value.fixed.buffer, value.fixed.byteOffset, value.fixed.byteLength).getFloat64(0, true);
+}
+
+function floatField(fields: Map<number, DecodedField[]>, field: number): number {
+  const value = fields.get(field)?.at(-1);
+  if (!value) return 0;
+  if (value.wire !== 5 || value.fixed?.byteLength !== 4) {
+    throw new Error(`protobuf field ${field} must be fixed32`);
+  }
+  return new DataView(value.fixed.buffer, value.fixed.byteOffset, value.fixed.byteLength).getFloat32(0, true);
 }
 
 function numberField(fields: Map<number, DecodedField[]>, field: number): number {

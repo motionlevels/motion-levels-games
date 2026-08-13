@@ -15,7 +15,13 @@ import {
 } from "@motion-levels-games/player-experience";
 import { GameSession, gameCatalog, gameplayRegistry, type GameSessionState } from "@motion-levels-games/runtime";
 import { ControllerClient, type PressureInput } from "./controllerClient.ts";
-import { floorRgbBytes } from "./controllerProtocol.ts";
+import {
+  floorRgbBytes,
+  type AdapterStatus,
+  type ControllerHello,
+  type PresentedFrame
+} from "./controllerProtocol.ts";
+import { createLiveFloorPublisher, encodeLiveViewerFrame, type LiveFloorPublisher } from "./liveFloorPublisher.ts";
 
 export type SelectGameRequest = {
   commandId?: string;
@@ -52,7 +58,9 @@ export type MenuStateEnvelope = {
 
 export type VenueRuntimeStatus = PlayerExperienceState & {
   pressureStreamConnected: boolean;
+  roomControllerId: string;
   controllerId: string;
+  floorAdapter: FloorAdapterStatus;
 };
 
 export type VenueRuntimeOptions = {
@@ -60,8 +68,36 @@ export type VenueRuntimeOptions = {
   controllerAddress: string;
   platformUrl?: string;
   platformToken?: string;
+  controllerId?: string;
+  liveFloorFps?: number;
+  liveFloorTimeoutMillis?: number;
   brightness?: number;
   log?(message: string, error?: unknown): void;
+};
+
+export type ObservedFloorFrame = {
+  sequence: number;
+  width: number;
+  height: number;
+  presentedUnixNanos: number;
+  frameBase64: string;
+};
+
+type FloorAdapterStatus = {
+  connected: boolean;
+  protocol: "v2";
+  revision: string;
+  width: number;
+  height: number;
+  targetFps: number;
+  actualFps: number;
+  desiredFrameAgeMillis: number;
+  presentedFrames: number;
+  udpErrorCount: number;
+  lastStatusUnixNanos: number;
+  lastPresentedSequence: number;
+  lastPresentedUnixNanos: number;
+  fadeRatio: number;
 };
 
 type SelectionMetadata = {
@@ -96,6 +132,8 @@ export class RequestValidationError extends Error {}
 export class VenueRuntime {
   private readonly session = new GameSession();
   private readonly controller: ControllerClient;
+  private readonly liveFloorPublisher: LiveFloorPublisher | null;
+  private readonly liveFloorListeners = new Set<(frame: ObservedFloorFrame) => void>();
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
   private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
   private readonly menuListeners = new Set<(state: MenuStateEnvelope) => void>();
@@ -112,7 +150,9 @@ export class VenueRuntime {
   private timer: NodeJS.Timeout | null = null;
   private lastPressureUnix = 0;
   private controllerConnected = false;
-  private controllerId = "";
+  private adapterRevision = "";
+  private latestObservedFloor: ObservedFloorFrame | null = null;
+  private floorAdapter: FloorAdapterStatus = emptyFloorAdapter();
   private readonly heldPressure = new Set<string>();
   private menuState: MenuStateEnvelope = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
   private displayClientReport: Record<string, unknown> | null = null;
@@ -120,13 +160,26 @@ export class VenueRuntime {
 
   constructor(private readonly options: VenueRuntimeOptions) {
     if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
+    this.liveFloorPublisher = createLiveFloorPublisher({
+      platformUrl: options.platformUrl,
+      platformToken: options.platformToken,
+      controllerId: options.controllerId,
+      fps: options.liveFloorFps,
+      timeoutMillis: options.liveFloorTimeoutMillis,
+      log: options.log
+    });
     this.controller = new ControllerClient({
       address: options.controllerAddress,
       sourceRevision: options.sourceRevision,
       onPressure: (input) => this.applyPressure(input),
-      onConnectionChange: (connected, id) => {
+      onPresentedFrame: (frame) => this.observePresentedFrame(frame),
+      onAdapterStatus: (status) => this.observeAdapterStatus(status),
+      onConnectionChange: (connected, revision, hello) => {
         this.controllerConnected = connected;
-        this.controllerId = id;
+        this.adapterRevision = revision;
+        this.floorAdapter = connected && hello
+          ? connectedFloorAdapter(revision, hello)
+          : { ...this.floorAdapter, connected: false };
       },
       log: options.log
     });
@@ -281,7 +334,9 @@ export class VenueRuntime {
       return {
         ...status,
         pressureStreamConnected: this.controllerConnected,
-        controllerId: this.controllerId
+        roomControllerId: this.options.controllerId ?? "",
+        controllerId: this.options.controllerId ?? "",
+        floorAdapter: { ...this.floorAdapter }
       };
     }
     const snapshot = this.state.snapshot;
@@ -342,7 +397,9 @@ export class VenueRuntime {
     return {
       ...status,
       pressureStreamConnected: this.controllerConnected,
-      controllerId: this.controllerId
+      roomControllerId: this.options.controllerId ?? "",
+      controllerId: this.options.controllerId ?? "",
+      floorAdapter: { ...this.floorAdapter }
     };
   }
 
@@ -363,7 +420,10 @@ export class VenueRuntime {
       sourceRevision: this.options.sourceRevision,
       controllerProtocolVersion: 2,
       controllerConnected: this.controllerConnected,
-      controllerId: this.controllerId,
+      roomControllerId: this.options.controllerId ?? "",
+      adapterRevision: this.adapterRevision,
+      floorAdapter: { ...this.floorAdapter },
+      liveFloor: this.liveFloorPublisher?.status() ?? { configured: false },
       audioEnabled: false,
       displayClient: this.displayClientStatus()
     };
@@ -377,6 +437,15 @@ export class VenueRuntime {
   subscribeStatus(listener: (status: VenueRuntimeStatus) => void): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
+  }
+
+  observedFloor(): ObservedFloorFrame | null {
+    return this.latestObservedFloor ? { ...this.latestObservedFloor } : null;
+  }
+
+  subscribeObservedFloor(listener: (frame: ObservedFloorFrame) => void): () => void {
+    this.liveFloorListeners.add(listener);
+    return () => this.liveFloorListeners.delete(listener);
   }
 
   getMenuState(): MenuStateEnvelope { return structuredClone(this.menuState); }
@@ -462,6 +531,45 @@ export class VenueRuntime {
     this.state = input.pressed
       ? this.session.press(input.x, input.y, atMillis)
       : this.session.release(input.x, input.y, atMillis);
+  }
+
+  /** Authoritative controller observation boundary; public for deterministic host tests. */
+  observePresentedFrame(frame: PresentedFrame): void {
+    const encoded = encodeLiveViewerFrame(frame);
+    const observed: ObservedFloorFrame = {
+      sequence: safeProtocolNumber(frame.presentationSequence),
+      width: frame.width,
+      height: frame.height,
+      presentedUnixNanos: Number(frame.presentedUnixNanos),
+      frameBase64: Buffer.from(encoded).toString("base64")
+    };
+    this.latestObservedFloor = observed;
+    this.floorAdapter = {
+      ...this.floorAdapter,
+      lastPresentedSequence: observed.sequence,
+      lastPresentedUnixNanos: observed.presentedUnixNanos,
+      fadeRatio: frame.fadeRatio
+    };
+    for (const listener of this.liveFloorListeners) {
+      try {
+        listener({ ...observed });
+      } catch (error) {
+        this.options.log?.("local live-floor listener failed", error);
+      }
+    }
+    this.liveFloorPublisher?.observe(frame, this.gameSessionId, Date.now(), encoded);
+  }
+
+  private observeAdapterStatus(status: AdapterStatus): void {
+    this.floorAdapter = {
+      ...this.floorAdapter,
+      actualFps: status.actualFps,
+      targetFps: status.targetFps,
+      desiredFrameAgeMillis: Number(status.desiredFrameAgeMillis),
+      presentedFrames: safeProtocolNumber(status.presentedFrames),
+      udpErrorCount: safeProtocolNumber(status.udpSendErrors),
+      lastStatusUnixNanos: Number(status.unixNanos)
+    };
   }
 
   private tick(now: number): void {
@@ -653,6 +761,42 @@ function validBaseUrl(value: unknown): URL | null {
   } catch {
     return null;
   }
+}
+
+function emptyFloorAdapter(): FloorAdapterStatus {
+  return {
+    connected: false,
+    protocol: "v2",
+    revision: "",
+    width: FLOOR_COLS,
+    height: FLOOR_ROWS,
+    targetFps: 0,
+    actualFps: 0,
+    desiredFrameAgeMillis: -1,
+    presentedFrames: 0,
+    udpErrorCount: 0,
+    lastStatusUnixNanos: 0,
+    lastPresentedSequence: 0,
+    lastPresentedUnixNanos: 0,
+    fadeRatio: 0
+  };
+}
+
+function connectedFloorAdapter(revision: string, hello: ControllerHello): FloorAdapterStatus {
+  return {
+    ...emptyFloorAdapter(),
+    connected: true,
+    revision,
+    width: hello.width,
+    height: hello.height,
+    targetFps: hello.refreshFps
+  };
+}
+
+function safeProtocolNumber(value: bigint): number {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result) || result < 0) throw new Error("controller protocol value exceeds JSON integer range");
+  return result;
 }
 
 /** Configured production origin wins; request URLs are loopback-dev only. */

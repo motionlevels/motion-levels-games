@@ -3845,7 +3845,7 @@ function MenuApp() {
 function FloorOnlyApp() {
   return (
     <main className="app floor-only-app">
-      <LiveFloorView interactive />
+      <LiveFloorView />
     </main>
   );
 }

@@ -9,6 +9,9 @@ const runtime = new VenueRuntime({
   controllerAddress: process.env.MOTION_LEVELS_CONTROLLER_ADDR?.trim() || "127.0.0.1:4201",
   platformUrl: process.env.MOTION_LEVELS_PLATFORM_URL,
   platformToken: process.env.MOTION_LEVELS_PLATFORM_TOKEN,
+  controllerId: process.env.MOTION_LEVELS_CONTROLLER_ID,
+  liveFloorFps: parseNonNegative(process.env.MOTION_LEVELS_LIVE_PUSH_FPS, 5),
+  liveFloorTimeoutMillis: parseDurationMillis(process.env.MOTION_LEVELS_LIVE_PUSH_TIMEOUT, 2_000),
   brightness: parseBrightness(process.env.MOTION_LEVELS_ENGINE_BRIGHTNESS),
   log: (message, error) => console.error(`[venue-runtime] ${message}`, error ?? "")
 });
@@ -57,4 +60,18 @@ function parseBrightness(value: string | undefined): number {
   const number = Number(value ?? 100);
   if (!Number.isFinite(number)) return 1;
   return Math.max(0, Math.min(1, number > 1 ? number / 100 : number));
+}
+
+function parseNonNegative(value: string | undefined, fallback: number): number {
+  const number = Number(value ?? fallback);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
+function parseDurationMillis(value: string | undefined, fallback: number): number {
+  const candidate = String(value ?? "").trim().toLowerCase();
+  const match = /^(\d+(?:\.\d+)?)(ms|s)?$/u.exec(candidate);
+  if (!match) return fallback;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return fallback;
+  return Math.round(amount * (match[2] === "s" ? 1000 : 1));
 }
