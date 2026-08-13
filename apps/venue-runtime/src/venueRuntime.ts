@@ -1,0 +1,660 @@
+import { randomUUID } from "node:crypto";
+import {
+  FLOOR_COLS,
+  FLOOR_ROWS,
+  type Frame,
+  type GameContent,
+  type GameManifest
+} from "@motion-levels-games/game-sdk";
+import {
+  controlsForState,
+  lifecycleFromRuntime,
+  playerExperienceContractVersion,
+  type PlayerExperienceGameSummary,
+  type PlayerExperienceState
+} from "@motion-levels-games/player-experience";
+import { GameSession, gameCatalog, gameplayRegistry, type GameSessionState } from "@motion-levels-games/runtime";
+import { ControllerClient, type PressureInput } from "./controllerClient.ts";
+import { floorRgbBytes } from "./controllerProtocol.ts";
+
+export type SelectGameRequest = {
+  commandId?: string;
+  game: string;
+  engineGame?: string;
+  gameLabel?: string;
+  sourceKind?: string;
+  sourceRevision?: string;
+  platformUrl?: string;
+  venueSessionId?: string;
+  recordingEnabled?: boolean;
+  playerCount: number;
+  allowAnyPlayers?: boolean;
+  difficulty?: string;
+  level?: string;
+  levelSlug?: string;
+  levelMode?: string;
+  durationSeconds?: number;
+  challengeElapsedMillis?: number;
+  challengeAttemptCount?: number;
+  narrationEnabled?: boolean;
+  countdownFloorOverlay?: boolean;
+  teamName?: string;
+  config?: Record<string, unknown>;
+  players?: Array<{ index: number; label: string; color: { r: number; g: number; b: number } }>;
+};
+
+export type MenuStateEnvelope = {
+  kioskId: string;
+  version: number;
+  updatedUnixMillis: number;
+  snapshot: unknown;
+};
+
+export type VenueRuntimeStatus = PlayerExperienceState & {
+  pressureStreamConnected: boolean;
+  controllerId: string;
+};
+
+export type VenueRuntimeOptions = {
+  sourceRevision: string;
+  controllerAddress: string;
+  platformUrl?: string;
+  platformToken?: string;
+  brightness?: number;
+  log?(message: string, error?: unknown): void;
+};
+
+type SelectionMetadata = {
+  manifest: GameManifest;
+  runtimeGameId: string;
+  engineGame: string;
+  sourceKind: "motion_levels_games" | "platform_levels";
+  difficulty: string;
+  teamName: string;
+  level: string;
+  levelSlug: string;
+  levelMode: string;
+  venueSessionId: string;
+  challengeElapsedMillis: number;
+  challengeAttemptCount: number;
+  contentRevision: string;
+};
+
+const blackFrame: Frame = {
+  width: FLOOR_COLS,
+  height: FLOOR_ROWS,
+  cells: Array.from({ length: FLOOR_COLS * FLOOR_ROWS }, (_, index) => ({
+    x: index % FLOOR_COLS,
+    y: Math.floor(index / FLOOR_COLS),
+    color: "#000000"
+  }))
+};
+
+export class RevisionMismatchError extends Error {}
+export class RequestValidationError extends Error {}
+
+export class VenueRuntime {
+  private readonly session = new GameSession();
+  private readonly controller: ControllerClient;
+  private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
+  private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
+  private readonly menuListeners = new Set<(state: MenuStateEnvelope) => void>();
+  private readonly runId = randomUUID();
+  private stateRevision = 1;
+  private state: GameSessionState | null = null;
+  private selection: SelectionMetadata | null = null;
+  private gameStartedAt = performance.now();
+  private pauseStartedAt = 0;
+  private sessionStartedUnix = 0;
+  private gameSessionId = "";
+  private frameSequence = 0n;
+  private lastDisplayPublishedAt = 0;
+  private timer: NodeJS.Timeout | null = null;
+  private lastPressureUnix = 0;
+  private controllerConnected = false;
+  private controllerId = "";
+  private readonly heldPressure = new Set<string>();
+  private menuState: MenuStateEnvelope = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
+  private displayClientReport: Record<string, unknown> | null = null;
+  private displayClientReceivedUnixMillis = 0;
+
+  constructor(private readonly options: VenueRuntimeOptions) {
+    if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
+    this.controller = new ControllerClient({
+      address: options.controllerAddress,
+      sourceRevision: options.sourceRevision,
+      onPressure: (input) => this.applyPressure(input),
+      onConnectionChange: (connected, id) => {
+        this.controllerConnected = connected;
+        this.controllerId = id;
+      },
+      log: options.log
+    });
+  }
+
+  start(): void {
+    if (this.timer) return;
+    this.controller.start();
+    this.timer = setInterval(() => this.tick(performance.now()), 20);
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.controller.stop();
+  }
+
+  async select(request: SelectGameRequest): Promise<VenueRuntimeStatus> {
+    if (request.sourceRevision !== this.options.sourceRevision) {
+      throw new RevisionMismatchError("motion-levels-games revision mismatch");
+    }
+    const gameId = runtimeGameId(request);
+    const module = gameplayRegistry.get(gameId.toLowerCase());
+    if (!module || !module.manifest.availability.production) {
+      throw new RequestValidationError(`production TypeScript game is unavailable: ${gameId}`);
+    }
+    const publishedLevels = module.manifest.tags?.includes("published-levels") === true;
+    if (request.sourceKind !== "motion_levels_games" && !(request.sourceKind === "platform_levels" && publishedLevels)) {
+      throw new RequestValidationError(`unsupported game source: ${request.sourceKind ?? ""}`);
+    }
+    if (request.allowAnyPlayers !== undefined && request.allowAnyPlayers !== module.manifest.players.allowAny) {
+      throw new RequestValidationError("player mode does not match the bundled game manifest");
+    }
+    const minimumPlayers = module.manifest.players.allowAny ? 0 : module.manifest.players.min;
+    const playerCount = boundedInteger(request.playerCount, minimumPlayers, module.manifest.players.max, "playerCount");
+    const players = normalizePlayers(request.players ?? [], playerCount, module.manifest.players.allowAny);
+    const durationSeconds = Number(request.durationSeconds);
+    const durationMillis = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds * 1_000 : undefined;
+    const contentResult = request.sourceKind === "platform_levels"
+      ? await this.fetchRuntimeContent(request)
+      : null;
+    const now = performance.now();
+    this.state = this.session.select({
+      gameId: module.manifest.id,
+      playerCount,
+      players,
+      difficulty: request.difficulty,
+      ...(durationMillis === undefined ? {} : { durationMillis }),
+      options: request.config ?? {},
+      ...(contentResult ? { content: contentResult.content } : {})
+    });
+    this.selection = {
+      manifest: module.manifest,
+      runtimeGameId: cleanText(request.game, 256),
+      engineGame: cleanText(request.engineGame, 256) || `motion-levels-games:${module.manifest.id}`,
+      sourceKind: request.sourceKind,
+      difficulty: String(request.difficulty || module.manifest.config?.difficulty?.default || "medium"),
+      teamName: cleanText(request.teamName, 256),
+      level: cleanText(request.level, 256),
+      levelSlug: cleanText(request.levelSlug, 256),
+      levelMode: cleanText(request.levelMode, 32),
+      venueSessionId: cleanText(request.venueSessionId, 256),
+      challengeElapsedMillis: nonNegative(request.challengeElapsedMillis),
+      challengeAttemptCount: nonNegativeInteger(request.challengeAttemptCount),
+      contentRevision: contentResult?.contentRevision ?? ""
+    };
+    this.gameStartedAt = now;
+    this.pauseStartedAt = 0;
+    this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
+    this.gameSessionId = randomUUID();
+    this.applyHeldPressure(0);
+    this.publishDisplay();
+    return this.status();
+  }
+
+  control(actionValue: unknown): VenueRuntimeStatus {
+    const action = String(actionValue ?? "");
+    const now = performance.now();
+    if (action === "exit") {
+      this.session.stop();
+      this.state = null;
+      this.selection = null;
+      this.gameSessionId = "";
+      this.publishDisplay();
+      return this.status();
+    }
+    if (!this.state) throw new RequestValidationError("no active game");
+    if (action === "pause") {
+      if (!this.state.paused) this.pauseStartedAt = now;
+      this.state = this.session.pause(this.elapsedAt(now));
+    } else if (action === "resume") {
+      if (this.state.paused && this.pauseStartedAt > 0) this.gameStartedAt += now - this.pauseStartedAt;
+      this.pauseStartedAt = 0;
+      this.state = this.session.resume();
+      this.applyHeldPressure(this.state.clockMillis);
+    } else if (action === "restart") {
+      this.state = this.session.restart(0);
+      this.gameStartedAt = now;
+      this.pauseStartedAt = 0;
+      this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
+      this.gameSessionId = randomUUID();
+      this.applyHeldPressure(0);
+    } else if (action === "narration" || action === "mute" || action === "unmute" || action === "toggle_mute") {
+      // Audio is intentionally unavailable until the venue provides a TS-owned adapter.
+    } else {
+      throw new RequestValidationError(`unknown control action: ${action}`);
+    }
+    this.publishDisplay();
+    return this.status();
+  }
+
+  status(): VenueRuntimeStatus {
+    const catalog = productionCatalog();
+    if (!this.state || !this.selection) {
+      const status: PlayerExperienceState = {
+        contractVersion: playerExperienceContractVersion,
+        revision: this.stateRevision,
+        runId: this.runId,
+        lifecycle: "idle",
+        allowedControls: [],
+        currentGame: "salvapantallas",
+        venueSessionId: "",
+        sessionId: "",
+        label: "En espera",
+        phase: "idle",
+        difficulty: "medium",
+        teamName: "",
+        playerCount: 0,
+        players: [],
+        score: 0,
+        lives: -1,
+        music: "",
+        musicVolume: 0,
+        audioEnabled: false,
+        audioMuted: true,
+        paused: false,
+        success: false,
+        introRemainingMillis: 0,
+        countdownRemainingMillis: 0,
+        startedUnix: 0,
+        sessionStartedUnix: 0,
+        endsUnix: 0,
+        elapsedMillis: 0,
+        remainingMillis: 0,
+        activeTargets: 0,
+        lastEventUnixNanos: 0,
+        lastEventCue: "",
+        lastEventMessage: "",
+        lastPressureUnix: this.lastPressureUnix,
+        catalog
+      };
+      return {
+        ...status,
+        pressureStreamConnected: this.controllerConnected,
+        controllerId: this.controllerId
+      };
+    }
+    const snapshot = this.state.snapshot;
+    const lastEvent = this.state.events.at(-1);
+    const status: PlayerExperienceState = {
+      contractVersion: playerExperienceContractVersion,
+      revision: this.stateRevision,
+      runId: this.runId,
+      lifecycle: "running",
+      allowedControls: [],
+      currentGame: this.selection.runtimeGameId,
+      engineGame: this.selection.engineGame,
+      sourceKind: this.selection.sourceKind,
+      sourceRevision: this.options.sourceRevision,
+      contentRevision: this.selection.contentRevision,
+      venueSessionId: this.selection.venueSessionId,
+      label: snapshot.label || this.selection.manifest.label,
+      difficulty: this.selection.difficulty,
+      difficultyConfigurable: (this.selection.manifest.config?.difficulty?.options?.length ?? 0) > 1,
+      level: this.selection.level,
+      levelSlug: this.selection.levelSlug,
+      levelMode: this.selection.levelMode,
+      teamName: this.selection.teamName,
+      playerCount: snapshot.playerCount,
+      playerConfigurable: !this.selection.manifest.players.allowAny,
+      players: snapshot.players.map((player) => ({ ...player, color: hexToRgb(player.color) })),
+      score: snapshot.score,
+      lives: snapshot.lives,
+      livesStart: snapshot.maxLives,
+      music: "",
+      musicVolume: 0,
+      audioEnabled: false,
+      audioMuted: true,
+      paused: this.state.paused,
+      phase: snapshot.phase,
+      success: snapshot.success,
+      introRemainingMillis: 0,
+      countdownRemainingMillis: snapshot.countdownMillis ?? 0,
+      startedUnix: this.sessionStartedUnix,
+      sessionStartedUnix: this.sessionStartedUnix,
+      endsUnix: snapshot.remainingMillis > 0 ? Math.floor(Date.now() / 1_000 + snapshot.remainingMillis / 1_000) : 0,
+      sessionElapsedMillis: snapshot.elapsedMillis,
+      sessionRemainingMillis: snapshot.remainingMillis,
+      challengeElapsedMillis: this.selection.challengeElapsedMillis,
+      challengeAttemptCount: this.selection.challengeAttemptCount,
+      elapsedMillis: snapshot.elapsedMillis,
+      remainingMillis: snapshot.remainingMillis,
+      activeTargets: snapshot.activeTargets,
+      lastEventUnixNanos: lastEvent ? Date.now() * 1_000_000 : 0,
+      lastEventCue: lastEvent?.cue ?? snapshot.lastEventCue,
+      lastEventMessage: lastEvent?.message ?? snapshot.lastEventMessage,
+      sessionId: this.gameSessionId,
+      lastPressureUnix: this.lastPressureUnix,
+      catalog
+    };
+    status.lifecycle = lifecycleFromRuntime(status);
+    status.allowedControls = controlsForState(status);
+    return {
+      ...status,
+      pressureStreamConnected: this.controllerConnected,
+      controllerId: this.controllerId
+    };
+  }
+
+  display(): Record<string, unknown> {
+    const status = this.status();
+    if (!this.state || !this.selection) return status;
+    return {
+      ...status,
+      sourceKind: "motion_levels_games",
+      gameSnapshot: this.state.snapshot,
+      frame: this.state.frame
+    };
+  }
+
+  health(): Record<string, unknown> {
+    return {
+      status: "ok",
+      sourceRevision: this.options.sourceRevision,
+      controllerProtocolVersion: 2,
+      controllerConnected: this.controllerConnected,
+      controllerId: this.controllerId,
+      audioEnabled: false,
+      displayClient: this.displayClientStatus()
+    };
+  }
+
+  subscribeDisplay(listener: (display: Record<string, unknown>) => void): () => void {
+    this.displayListeners.add(listener);
+    return () => this.displayListeners.delete(listener);
+  }
+
+  subscribeStatus(listener: (status: VenueRuntimeStatus) => void): () => void {
+    this.statusListeners.add(listener);
+    return () => this.statusListeners.delete(listener);
+  }
+
+  getMenuState(): MenuStateEnvelope { return structuredClone(this.menuState); }
+
+  putMenuState(kioskId: unknown, snapshot: unknown): MenuStateEnvelope {
+    const serialized = JSON.stringify(snapshot);
+    if (serialized.length > 1_000_000) throw new RequestValidationError("snapshot is too large");
+    this.menuState = {
+      kioskId: cleanText(kioskId, 256),
+      version: this.menuState.version + 1,
+      updatedUnixMillis: Date.now(),
+      snapshot: structuredClone(snapshot)
+    };
+    for (const listener of this.menuListeners) listener(this.getMenuState());
+    return this.getMenuState();
+  }
+
+  subscribeMenuState(listener: (state: MenuStateEnvelope) => void): () => void {
+    this.menuListeners.add(listener);
+    return () => this.menuListeners.delete(listener);
+  }
+
+  updateVenueSession(request: Record<string, unknown>): Record<string, unknown> {
+    const action = String(request.action ?? "");
+    if (action !== "start" && action !== "end") throw new RequestValidationError("action must be start or end");
+    const venueSessionId = cleanText(request.venueSessionId, 256);
+    if (!venueSessionId) throw new RequestValidationError("venueSessionId is required");
+    if (this.selection && (action === "start" || this.selection.venueSessionId === venueSessionId)) {
+      this.selection.venueSessionId = action === "start" ? venueSessionId : "";
+      this.selection.teamName = action === "start" ? cleanText(request.teamName, 256) : this.selection.teamName;
+    }
+    this.bestEffortCamera(action, request);
+    return this.status();
+  }
+
+  recordMenuEvent(request: Record<string, unknown>): { ok: true } {
+    if (!cleanText(request.venueSessionId, 256) || !cleanText(request.name, 160)) {
+      throw new RequestValidationError("venueSessionId and name are required");
+    }
+    return { ok: true };
+  }
+
+  updateDisplayClient(report: Record<string, unknown>): Record<string, unknown> {
+    if (report.clientId !== "player-display") throw new RequestValidationError("clientId must be player-display");
+    this.displayClientReport = structuredClone(report);
+    this.displayClientReceivedUnixMillis = Date.now();
+    return this.displayClientStatus();
+  }
+
+  displayClientStatus(): Record<string, unknown> {
+    const report = this.displayClientReport ?? {};
+    const seen = this.displayClientReceivedUnixMillis > 0;
+    const ageMillis = seen ? Math.max(0, Date.now() - this.displayClientReceivedUnixMillis) : 0;
+    const currentGame = String(this.status().currentGame ?? "");
+    const matchesCurrentGame = seen && report.currentGame === currentGame;
+    const revisionMatches = seen && report.expectedRevision === report.loadedRevision && report.loadedRevision === this.options.sourceRevision;
+    const fresh = seen && ageMillis <= 15_000;
+    return {
+      ...report,
+      seen,
+      fresh,
+      healthy: fresh && report.connected === true && report.renderStatus === "ready" && matchesCurrentGame && revisionMatches,
+      matchesCurrentGame,
+      revisionMatches,
+      receivedUnixMillis: this.displayClientReceivedUnixMillis,
+      ageMillis
+    };
+  }
+
+  /** Controller input boundary; public to permit deterministic host tests. */
+  applyPressure(input: PressureInput): void {
+    this.lastPressureUnix = Math.floor(Number(input.unixNanos / 1_000_000_000n)) || Math.floor(Date.now() / 1_000);
+    const key = `${input.x},${input.y}`;
+    if (input.pressed) this.heldPressure.add(key); else this.heldPressure.delete(key);
+    if (!this.state) return;
+    const atMillis = this.elapsedAt(performance.now());
+    this.state = input.pressed
+      ? this.session.press(input.x, input.y, atMillis)
+      : this.session.release(input.x, input.y, atMillis);
+  }
+
+  private tick(now: number): void {
+    if (this.state && !this.state.paused) this.state = this.session.tick(this.elapsedAt(now));
+    const frame = this.state?.frame ?? blackFrame;
+    this.frameSequence += 1n;
+    this.controller.sendFrame({
+      sequence: this.frameSequence,
+      unixNanos: BigInt(Date.now()) * 1_000_000n,
+      rgb: frameToRgb(frame, this.options.brightness ?? 1),
+      sessionId: this.gameSessionId,
+      venueSessionId: this.selection?.venueSessionId ?? ""
+    });
+    if (now - this.lastDisplayPublishedAt >= 250) {
+      this.lastDisplayPublishedAt = now;
+      this.publishDisplay();
+    }
+  }
+
+  private elapsedAt(now: number): number {
+    return Math.max(0, (this.pauseStartedAt || now) - this.gameStartedAt);
+  }
+
+  private applyHeldPressure(atMillis: number): void {
+    for (const key of this.heldPressure) {
+      const [x, y] = key.split(",").map(Number);
+      if (x !== undefined && y !== undefined) this.state = this.session.press(x, y, atMillis);
+    }
+  }
+
+  private publishDisplay(): void {
+    this.stateRevision = this.stateRevision >= Number.MAX_SAFE_INTEGER ? 1 : this.stateRevision + 1;
+    const status = this.status();
+    for (const listener of this.statusListeners) listener(status);
+    if (this.displayListeners.size === 0) return;
+    const display = this.state && this.selection
+      ? { ...status, sourceKind: "motion_levels_games", gameSnapshot: this.state.snapshot, frame: this.state.frame }
+      : status;
+    for (const listener of this.displayListeners) listener(display);
+  }
+
+  private async fetchRuntimeContent(request: SelectGameRequest): Promise<{ content: GameContent; contentRevision: string }> {
+    const platform = resolveRuntimeContentPlatformUrl(this.options.platformUrl, request.platformUrl);
+    if (!platform) throw new RequestValidationError("platform URL is required for published-level games");
+    const canonicalGameId = String(request.game ?? "").trim().toLowerCase();
+    if (!/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{64})$/u.test(canonicalGameId)) {
+      throw new RequestValidationError("published level canonical game id is invalid");
+    }
+    const endpoint = new URL(platform);
+    endpoint.pathname = `${endpoint.pathname.replace(/\/$/u, "")}/api/level-games/${encodeURIComponent(canonicalGameId)}/runtime-content`;
+    for (const [key, value] of [
+      ["difficulty", request.difficulty], ["level", request.level], ["levelSlug", request.levelSlug], ["mode", request.levelMode]
+    ] as const) if (value) endpoint.searchParams.set(key, value);
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (this.options.platformToken) headers.Authorization = `Bearer ${this.options.platformToken.trim()}`;
+    const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(12_000) });
+    if (!response.ok) throw new RequestValidationError(`published level content returned HTTP ${response.status}`);
+    const text = await response.text();
+    if (Buffer.byteLength(text) > 32 * 1024 * 1024) throw new RequestValidationError("published level content exceeds 32 MiB");
+    const content = JSON.parse(text) as Record<string, unknown>;
+    if (content.schema !== "motion-levels-published-level-content-v1" || String(content.gameId).toLowerCase() !== canonicalGameId) {
+      throw new RequestValidationError("published level content identity mismatch");
+    }
+    const engineGame = String(content.engineGame ?? "").trim();
+    if (!engineGame || engineGame.length > 160) throw new RequestValidationError("published level engineGame is invalid");
+    const selectedModule = gameplayRegistry.get(runtimeGameId(request).trim().toLowerCase());
+    const contentModule = gameplayRegistry.get(engineGame.replace(/^motion-levels-games:/u, "").trim().toLowerCase());
+    if (!selectedModule || contentModule !== selectedModule) {
+      throw new RequestValidationError("published level engine product mismatch");
+    }
+    const selectedLevelId = String(content.selectedLevelId ?? "").trim();
+    const selectedLevelSlug = String(content.selectedLevelSlug ?? "").trim();
+    if (!selectedLevelId || !selectedLevelSlug) throw new RequestValidationError("published level selection is incomplete");
+    if (request.level && /^[0-9a-f-]{32,64}$/iu.test(request.level) && selectedLevelId.toLowerCase() !== request.level.toLowerCase()) {
+      throw new RequestValidationError("published level selection identity mismatch");
+    }
+    const mode = String(content.mode ?? "").toLowerCase();
+    if (mode !== "challenge" && mode !== "free") throw new RequestValidationError("published level mode is invalid");
+    if (request.levelMode && mode !== request.levelMode.toLowerCase()) throw new RequestValidationError("published level mode mismatch");
+    const contentRevision = String(content.contentRevision ?? "");
+    if (!/^[0-9a-f]{64}$/u.test(contentRevision)) throw new RequestValidationError("published level content revision is invalid");
+    return { content: content as GameContent, contentRevision };
+  }
+
+  private bestEffortCamera(action: string, request: Record<string, unknown>): void {
+    const base = validBaseUrl(process.env.MOTION_LEVELS_CAMERA_RECORDER_URL);
+    if (!base || request.recordingEnabled === false) return;
+    const path = action === "start" ? "/sessions/start" : "/sessions/stop";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const token = process.env.MOTION_LEVELS_CAMERA_RECORDER_TOKEN?.trim();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    void fetch(new URL(path, base), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(action === "start"
+        ? { ...request, startedUnixNanos: Date.now() * 1_000_000 }
+        : { ...request, endedUnixNanos: Date.now() * 1_000_000 }),
+      signal: AbortSignal.timeout(2_000)
+    }).catch((error) => this.options.log?.("camera hook failed", error));
+  }
+}
+
+export function productionCatalog(): PlayerExperienceGameSummary[] {
+  return gameCatalog.filter((manifest) => manifest.availability.production).map((manifest) => ({
+    game: `motion-levels-games:${manifest.id}`,
+    label: manifest.label,
+    description: manifest.description ?? "",
+    music: "",
+    players: !manifest.players.allowAny,
+    minPlayers: manifest.players.min,
+    maxPlayers: manifest.players.max,
+    difficulty: (manifest.config?.difficulty?.options?.length ?? 0) > 1,
+    volume: 0
+  }));
+}
+
+function runtimeGameId(request: SelectGameRequest): string {
+  for (const value of [request.engineGame, request.game]) {
+    const candidate = String(value ?? "").trim();
+    if (candidate.startsWith("motion-levels-games:")) return candidate.slice("motion-levels-games:".length);
+  }
+  return String(request.game ?? "").trim();
+}
+
+function normalizePlayers(
+  players: NonNullable<SelectGameRequest["players"]>,
+  playerCount: number,
+  allowAnyPlayers: boolean
+): Array<{ index: number; label: string; color: `#${string}` }> {
+  if (!allowAnyPlayers && players.length !== playerCount) {
+    throw new RequestValidationError(`players roster must contain exactly ${playerCount} entries`);
+  }
+  if (players.length > playerCount) throw new RequestValidationError("players roster exceeds playerCount");
+  const indexes = new Set<number>();
+  return players.map((player) => {
+    if (!Number.isInteger(player.index) || player.index < 0 || player.index >= playerCount || indexes.has(player.index)) {
+      throw new RequestValidationError("player indexes must be unique and within playerCount");
+    }
+    indexes.add(player.index);
+    return { index: player.index, label: cleanText(player.label, 80), color: rgbToHex(player.color) };
+  }).sort((left, right) => left.index - right.index);
+}
+
+export function frameToRgb(frame: Frame, brightnessValue: number): Uint8Array {
+  const brightness = Math.max(0, Math.min(1, Number.isFinite(brightnessValue) ? brightnessValue : 1));
+  const rgb = new Uint8Array(floorRgbBytes);
+  for (const cell of frame.cells) {
+    if (cell.x < 0 || cell.x >= FLOOR_COLS || cell.y < 0 || cell.y >= FLOOR_ROWS) continue;
+    const color = hexToRgb(cell.color);
+    const offset = (cell.y * FLOOR_COLS + cell.x) * 3;
+    rgb[offset] = Math.round(color.r * brightness);
+    rgb[offset + 1] = Math.round(color.g * brightness);
+    rgb[offset + 2] = Math.round(color.b * brightness);
+  }
+  return rgb;
+}
+
+function rgbToHex(color: { r: number; g: number; b: number }): `#${string}` {
+  const channel = (value: unknown) => boundedInteger(value, 0, 255, "color channel").toString(16).padStart(2, "0");
+  return `#${channel(color?.r)}${channel(color?.g)}${channel(color?.b)}`;
+}
+
+function hexToRgb(color: string): { r: number; g: number; b: number } {
+  const match = /^#([0-9a-f]{6})$/iu.exec(color);
+  if (!match?.[1]) return { r: 0, g: 0, b: 0 };
+  return { r: parseInt(match[1].slice(0, 2), 16), g: parseInt(match[1].slice(2, 4), 16), b: parseInt(match[1].slice(4, 6), 16) };
+}
+
+function boundedInteger(value: unknown, min: number, max: number, label: string): number {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) throw new RequestValidationError(`${label} must be ${min}..${max}`);
+  return number;
+}
+
+function nonNegative(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+
+function nonNegativeInteger(value: unknown): number { return Math.floor(nonNegative(value)); }
+
+function cleanText(value: unknown, max: number): string { return String(value ?? "").trim().slice(0, max); }
+
+function validBaseUrl(value: unknown): URL | null {
+  try {
+    const url = new URL(String(value ?? "").trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/** Configured production origin wins; request URLs are loopback-dev only. */
+export function resolveRuntimeContentPlatformUrl(configured: unknown, requested: unknown): URL | null {
+  const production = validBaseUrl(configured);
+  if (production) return production;
+  const development = validBaseUrl(requested);
+  if (!development) return null;
+  const hostname = development.hostname.toLowerCase();
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" ? development : null;
+}

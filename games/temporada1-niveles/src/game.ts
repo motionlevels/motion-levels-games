@@ -3,14 +3,15 @@ import {
   createPublishedLevelGame,
   createPublishedLevelSessionController,
   type PublishedLevelProduct
-} from "@motion-levels-games/published-level-runtime";
+} from "@motion-levels-games/published-level-runtime/game";
 
 import { fallbackContent } from "./fixtures-content.ts";
 import { manifest } from "./manifest.ts";
 
 const product: PublishedLevelProduct = Object.freeze({
   manifest,
-  fallbackContent
+  fallbackContent,
+  contentIdentity: "platform"
 });
 
 export function createGame(config: GameConfig) {

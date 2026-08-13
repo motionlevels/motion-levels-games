@@ -14,6 +14,8 @@ const generatedMediaRoot = path.resolve(playgroundRoot, "../../dist/media");
 const webpEncoderWasmPath = path.resolve(playgroundRoot, "../../node_modules/webp-encoder/lib/assets/a.out.wasm");
 const menuBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse --short HEAD") || "dev";
 const menuBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
+const gamesSourceRevision = process.env.MOTION_LEVELS_GAMES_SOURCE_REVISION || gitValue("git rev-parse HEAD");
+if (!/^[0-9a-f]{40}$/u.test(gamesSourceRevision)) throw new Error("playground requires a full games source revision");
 const playgroundBase = process.env.VITE_PLAYGROUND_BASE || "/";
 
 export default defineConfig({
@@ -22,6 +24,7 @@ export default defineConfig({
   define: {
     __MENU_BUILD_REVISION__: JSON.stringify(menuBuildRevision),
     __MENU_BUILD_DATE__: JSON.stringify(menuBuildDate),
+    MOTION_LEVELS_GAMES_SOURCE_REVISION: JSON.stringify(gamesSourceRevision),
   },
   plugins: [motionLevelsGamesWatcher(), generatedMedia(), characterModels(), webpEncoderWasm(), react()],
   server: {

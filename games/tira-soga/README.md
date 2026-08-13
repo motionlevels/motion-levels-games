@@ -39,4 +39,4 @@ npm run typecheck --workspace @motion-levels-games/tira-soga
 
 This game was created with the repository scaffold command. Keep
 `manifest.id` exactly equal to the directory name: `tira-soga`, and keep the
-package registered in `packages/runner/src/registry.ts`.
+package registered in `packages/runtime/src/gameplayRegistry.ts`.

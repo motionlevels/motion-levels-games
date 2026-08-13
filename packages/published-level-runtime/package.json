@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./content": "./src/content.ts",
+    "./game": "./src/game.ts",
     "./display": "./src/display.tsx"
   },
   "scripts": {

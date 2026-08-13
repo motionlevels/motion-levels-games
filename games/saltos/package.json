@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./game": "./src/game.ts",
     "./fixtures": "./src/fixtures.ts",
     "./manifest": "./src/manifest.ts"
   },
