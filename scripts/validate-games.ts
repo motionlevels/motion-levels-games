@@ -79,10 +79,16 @@ const gameDirs = (await readdir(gamesRoot, { withFileTypes: true }))
 assert.ok(gameDirs.length > 0, "expected at least one game under games/");
 
 const problems: string[] = [];
+const playableGameDirs = (await Promise.all(gameDirs.map(async (gameId) => {
+  const packageJson = JSON.parse(await readFile(path.join(gamesRoot, gameId, "package.json"), "utf8")) as {
+    exports?: Record<string, unknown>;
+  };
+  return packageJson.exports?.["./game"] ? gameId : null;
+}))).filter((gameId): gameId is string => gameId !== null);
 const registeredGameIds = [...gamePackageRegistry.keys()].sort();
-if (JSON.stringify(registeredGameIds) !== JSON.stringify(gameDirs)) {
-  const missing = gameDirs.filter((gameId) => !gamePackageRegistry.has(gameId));
-  const unexpected = registeredGameIds.filter((gameId) => !gameDirs.includes(gameId));
+if (JSON.stringify(registeredGameIds) !== JSON.stringify(playableGameDirs)) {
+  const missing = playableGameDirs.filter((gameId) => !gamePackageRegistry.has(gameId));
+  const unexpected = registeredGameIds.filter((gameId) => !playableGameDirs.includes(gameId));
   if (missing.length > 0) problems.push(`production runtime registry is missing: ${missing.join(", ")}`);
   if (unexpected.length > 0) problems.push(`production runtime registry has unknown games: ${unexpected.join(", ")}`);
 }
