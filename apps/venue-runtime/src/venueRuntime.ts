@@ -432,13 +432,19 @@ export class VenueRuntime {
     const ageMillis = seen ? Math.max(0, Date.now() - this.displayClientReceivedUnixMillis) : 0;
     const currentGame = String(this.status().currentGame ?? "");
     const matchesCurrentGame = seen && report.currentGame === currentGame;
-    const revisionMatches = seen && report.expectedRevision === report.loadedRevision && report.loadedRevision === this.options.sourceRevision;
     const fresh = seen && ageMillis <= 15_000;
+    const lastFeedUnixMillis = Number(report.lastFeedUnixMillis ?? 0);
+    const feedFresh = Number.isFinite(lastFeedUnixMillis) && lastFeedUnixMillis > 0 && Date.now() - lastFeedUnixMillis <= 15_000;
+    const connected = report.connected === true || (report.feedTransport === "poll" && feedFresh);
+    const idleDisplay = currentGame === "salvapantallas";
+    const revisionMatches = seen && report.expectedRevision === report.loadedRevision && (
+      idleDisplay ? report.loadedRevision === "" : report.loadedRevision === this.options.sourceRevision
+    );
     return {
       ...report,
       seen,
       fresh,
-      healthy: fresh && report.connected === true && report.renderStatus === "ready" && matchesCurrentGame && revisionMatches,
+      healthy: fresh && connected && report.renderStatus === "ready" && matchesCurrentGame && revisionMatches,
       matchesCurrentGame,
       revisionMatches,
       receivedUnixMillis: this.displayClientReceivedUnixMillis,
@@ -465,9 +471,9 @@ export class VenueRuntime {
     this.controller.sendFrame({
       sequence: this.frameSequence,
       unixNanos: BigInt(Date.now()) * 1_000_000n,
-      rgb: frameToRgb(frame, this.options.brightness ?? 1),
-      sessionId: this.gameSessionId,
-      venueSessionId: this.selection?.venueSessionId ?? ""
+      width: FLOOR_COLS,
+      height: FLOOR_ROWS,
+      rgb: frameToRgb(frame, this.options.brightness ?? 1)
     });
     if (now - this.lastDisplayPublishedAt >= 250) {
       this.lastDisplayPublishedAt = now;

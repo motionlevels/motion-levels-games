@@ -23,6 +23,24 @@ test("venue runtime exposes an honest idle status and audio capability", () => {
   assert.equal(runtime.health().controllerProtocolVersion, 2);
 });
 
+test("idle display health accepts a fresh polling fallback without a game revision", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4203" });
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: "",
+    loadedRevision: "",
+    renderStatus: "ready",
+    connected: false,
+    feedTransport: "poll",
+    lastFeedUnixMillis: Date.now(),
+  });
+  const status = runtime.displayClientStatus();
+  assert.equal(status.fresh, true);
+  assert.equal(status.revisionMatches, true);
+  assert.equal(status.healthy, true);
+});
+
 test("selection fails closed on bundle revision mismatch", async () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   await assert.rejects(runtime.select({

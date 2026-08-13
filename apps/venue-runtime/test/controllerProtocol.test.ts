@@ -12,7 +12,6 @@ import {
   floorRgbBytes,
   floorWidth,
   maxDelimitedMessageBytes,
-  pressureBitsetBytes,
   validateControllerHello,
   validateRuntimeFrame
 } from "../src/controllerProtocol.ts";
@@ -26,27 +25,24 @@ test("controller runtime.proto v2 has cross-language golden encodings", () => {
 
   const frame = encodeRuntimeMessage({
     type: "frame",
-    frame: { sequence: 9n, unixNanos: 1_700n, rgb: Uint8Array.from([1, 2, 3]), sessionId: "session-v2", venueSessionId: "venue-v2" }
+    frame: { sequence: 9n, unixNanos: 1_700n, width: 16, height: 32, rgb: Uint8Array.from([1, 2, 3, 4, 5, 6]) }
   });
-  assert.equal(Buffer.from(frame).toString("hex"), "1220080910a40d1a03010203220a73657373696f6e2d76322a0876656e75652d7632");
+  assert.equal(Buffer.from(frame).toString("hex"), "1a11080910a40d181020202a06010203040506");
 
   const controllerHello = encodeControllerMessage({
     type: "hello",
-    hello: { protocolVersion: 2, controllerId: "controller-v2", width: 16, height: 32, refreshFps: 50, pressureSequence: 42n, pressed: Uint8Array.from([1, 2]) }
+    hello: { protocolVersion: 2, controllerId: "controller-v2", width: 16, height: 32, refreshFps: 50 }
   });
-  assert.equal(Buffer.from(controllerHello).toString("hex"), "0a1d0802120d636f6e74726f6c6c65722d7632181020202832302a3a020102");
+  assert.equal(Buffer.from(controllerHello).toString("hex"), "12170802120d636f6e74726f6c6c65722d7632181020202832");
 
   const pressure = encodeControllerMessage({
     type: "pressureChange",
     pressureChange: { sequence: 43n, unixNanos: 1_800n, x: 3, y: 7, pressed: true }
   });
-  assert.equal(Buffer.from(pressure).toString("hex"), "120b082b10880e180320072801");
+  assert.equal(Buffer.from(pressure).toString("hex"), "220b082b10880e180320072801");
 });
 
-test("controller hello preserves the authoritative pressure bitset", () => {
-  const pressure = new Uint8Array(pressureBitsetBytes);
-  pressure[0] = 1;
-  pressure[63] = 0x80;
+test("controller hello validates the adapter contract", () => {
   const message = {
     type: "hello" as const,
     hello: {
@@ -54,9 +50,7 @@ test("controller hello preserves the authoritative pressure bitset", () => {
       controllerId: "floor-a",
       width: floorWidth,
       height: floorHeight,
-      refreshFps: 50,
-      pressureSequence: 12n,
-      pressed: pressure
+      refreshFps: 50
     }
   };
   assert.deepEqual(decodeControllerMessage(encodeControllerMessage(message)), message);
@@ -67,10 +61,11 @@ test("controller hello preserves the authoritative pressure bitset", () => {
 test("runtime frames require exactly 1536 RGB bytes", () => {
   const frame = {
     type: "frame" as const,
-    frame: { sequence: 7n, unixNanos: 9n, rgb: new Uint8Array(floorRgbBytes), sessionId: "s", venueSessionId: "v" }
+    frame: { sequence: 7n, unixNanos: 9n, width: floorWidth, height: floorHeight, rgb: new Uint8Array(floorRgbBytes) }
   };
   assert.deepEqual(decodeRuntimeMessage(encodeRuntimeMessage(frame)), frame);
   assert.throws(() => validateRuntimeFrame({ ...frame.frame, rgb: new Uint8Array(floorRgbBytes - 1) }), /1536/);
+  assert.throws(() => validateRuntimeFrame({ ...frame.frame, width: 8 }), /16x32/);
 });
 
 test("delimited decoder accepts fragmented/coalesced messages and rejects limits", () => {
@@ -98,4 +93,17 @@ test("pressure changes use bounded floor coordinates", () => {
       pressed: true,
     }
   })), /out of bounds/);
+});
+
+test("controller decoder accepts presented pressure snapshots and adapter status", () => {
+  const presented = Buffer.concat([
+    Buffer.from([0x2a, 0x48, 0x18, 0x7b, 0x20, 0x10, 0x28, 0x20, 0x3a, 0x40]),
+    Buffer.alloc(64),
+  ]);
+  const decoded = decodeControllerMessage(presented);
+  assert.equal(decoded.type, "presentedFrame");
+  if (decoded.type !== "presentedFrame") throw new Error("expected presented frame");
+  assert.deepEqual([...decoded.pressureBits], Array(64).fill(0));
+  assert.equal(decoded.presentedUnixNanos, 123n);
+  assert.deepEqual(decodeControllerMessage(Uint8Array.from([0x32, 0x00])), { type: "status" });
 });

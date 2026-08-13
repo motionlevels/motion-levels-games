@@ -108,7 +108,6 @@ export class ControllerClient {
     const message = decodeControllerMessage(payload);
     if (message.type === "hello") {
       validateControllerHello(message.hello);
-      this.resyncPressure(message.hello.pressed, message.hello.pressureSequence);
       this.helloReceived = true;
       this.controllerIdValue = message.hello.controllerId;
       this.reconnectMillis = 250;
@@ -120,10 +119,16 @@ export class ControllerClient {
       }
       return;
     }
+    if (message.type === "presentedFrame") {
+      if (!this.helloReceived) throw new Error("controller hello must precede presented frames");
+      this.resyncPressure(message.pressureBits, this.pressureSequence, message.presentedUnixNanos);
+      return;
+    }
+    if (message.type === "status") return;
     if (!this.helloReceived) throw new Error("controller hello must precede pressure changes");
     if (message.pressureChange.sequence <= this.pressureSequence) return;
     if (pressureSequenceHasGap(this.pressureSequence, message.pressureChange.sequence)) {
-      throw new Error(`pressure sequence gap: ${this.pressureSequence} -> ${message.pressureChange.sequence}`);
+      this.options.log?.(`pressure sequence gap: ${this.pressureSequence} -> ${message.pressureChange.sequence}`);
     }
     this.pressureSequence = message.pressureChange.sequence;
     const { x, y, pressed, unixNanos, sequence } = message.pressureChange;
@@ -132,8 +137,8 @@ export class ControllerClient {
     this.options.onPressure({ x, y, pressed, unixNanos, sequence });
   }
 
-  private resyncPressure(authoritative: Uint8Array, sequence: bigint): void {
-    for (const input of reconcilePressure(this.pressed, authoritative, sequence)) this.options.onPressure(input);
+  private resyncPressure(authoritative: Uint8Array, sequence: bigint, unixNanos?: bigint): void {
+    for (const input of reconcilePressure(this.pressed, authoritative, sequence, unixNanos)) this.options.onPressure(input);
     this.pressed = authoritative.slice();
     this.pressureSequence = sequence;
   }

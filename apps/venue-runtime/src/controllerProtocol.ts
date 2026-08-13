@@ -13,9 +13,9 @@ export type RuntimeHello = {
 export type RuntimeFrame = {
   sequence: bigint;
   unixNanos: bigint;
+  width: number;
+  height: number;
   rgb: Uint8Array;
-  sessionId: string;
-  venueSessionId: string;
 };
 
 export type ControllerHello = {
@@ -24,8 +24,6 @@ export type ControllerHello = {
   width: number;
   height: number;
   refreshFps: number;
-  pressureSequence: bigint;
-  pressed: Uint8Array;
 };
 
 export type PressureChange = {
@@ -42,31 +40,34 @@ export type RuntimeMessage =
 
 export type ControllerMessage =
   | { type: "hello"; hello: ControllerHello }
-  | { type: "pressureChange"; pressureChange: PressureChange };
+  | { type: "pressureChange"; pressureChange: PressureChange }
+  | { type: "presentedFrame"; pressureBits: Uint8Array; presentedUnixNanos: bigint }
+  | { type: "status" };
 
 export function encodeRuntimeMessage(message: RuntimeMessage): Uint8Array {
   const payload = message.type === "hello" ? encodeRuntimeHello(message.hello) : encodeRuntimeFrame(message.frame);
-  return fieldBytes(message.type === "hello" ? 1 : 2, payload);
+  return fieldBytes(message.type === "hello" ? 1 : 3, payload);
 }
 
 export function decodeRuntimeMessage(bytes: Uint8Array): RuntimeMessage {
   const envelope = oneofEnvelope(bytes, "runtime message");
   if (envelope.field === 1) return { type: "hello", hello: decodeRuntimeHello(envelope.payload) };
-  if (envelope.field === 2) return { type: "frame", frame: decodeRuntimeFrame(envelope.payload) };
+  if (envelope.field === 3) return { type: "frame", frame: decodeRuntimeFrame(envelope.payload) };
   throw new Error(`unknown runtime message field: ${envelope.field}`);
 }
 
 export function encodeControllerMessage(message: ControllerMessage): Uint8Array {
-  const payload = message.type === "hello"
-    ? encodeControllerHello(message.hello)
-    : encodePressureChange(message.pressureChange);
-  return fieldBytes(message.type === "hello" ? 1 : 2, payload);
+  if (message.type === "hello") return fieldBytes(2, encodeControllerHello(message.hello));
+  if (message.type === "pressureChange") return fieldBytes(4, encodePressureChange(message.pressureChange));
+  throw new Error(`controller message ${message.type} is receive-only`);
 }
 
 export function decodeControllerMessage(bytes: Uint8Array): ControllerMessage {
   const envelope = oneofEnvelope(bytes, "controller message");
-  if (envelope.field === 1) return { type: "hello", hello: decodeControllerHello(envelope.payload) };
-  if (envelope.field === 2) return { type: "pressureChange", pressureChange: decodePressureChange(envelope.payload) };
+  if (envelope.field === 2) return { type: "hello", hello: decodeControllerHello(envelope.payload) };
+  if (envelope.field === 4) return { type: "pressureChange", pressureChange: decodePressureChange(envelope.payload) };
+  if (envelope.field === 5) return decodePresentedFrame(envelope.payload);
+  if (envelope.field === 6) return { type: "status" };
   throw new Error(`unknown controller message field: ${envelope.field}`);
 }
 
@@ -112,16 +113,15 @@ export function validateControllerHello(hello: ControllerHello): void {
   if (hello.width !== floorWidth || hello.height !== floorHeight) {
     throw new Error(`unsupported controller floor: ${hello.width}x${hello.height}`);
   }
-  if (hello.pressed.byteLength !== pressureBitsetBytes) {
-    throw new Error(`controller pressure bitset must be ${pressureBitsetBytes} bytes`);
-  }
   if (!hello.controllerId.trim() || hello.controllerId.length > 256) throw new Error("controller id is invalid");
   if (!Number.isInteger(hello.refreshFps) || hello.refreshFps <= 0) throw new Error("controller refresh fps is invalid");
 }
 
 export function validateRuntimeFrame(frame: RuntimeFrame): void {
+  if (frame.width !== floorWidth || frame.height !== floorHeight) {
+    throw new Error(`runtime frame must be ${floorWidth}x${floorHeight}`);
+  }
   if (frame.rgb.byteLength !== floorRgbBytes) throw new Error(`runtime frame must contain ${floorRgbBytes} RGB bytes`);
-  if (frame.sessionId.length > 256 || frame.venueSessionId.length > 256) throw new Error("session id exceeds limit");
 }
 
 export function pressureAt(bitset: Uint8Array, x: number, y: number): boolean {
@@ -142,9 +142,9 @@ function encodeRuntimeFrame(value: RuntimeFrame): Uint8Array {
   return concat([
     fieldVarint(1, value.sequence),
     fieldVarint(2, value.unixNanos),
-    fieldBytes(3, value.rgb),
-    fieldString(4, value.sessionId),
-    fieldString(5, value.venueSessionId)
+    fieldVarint(3, value.width),
+    fieldVarint(4, value.height),
+    fieldBytes(5, value.rgb)
   ]);
 }
 
@@ -154,9 +154,7 @@ function encodeControllerHello(value: ControllerHello): Uint8Array {
     fieldString(2, value.controllerId),
     fieldVarint(3, value.width),
     fieldVarint(4, value.height),
-    fieldVarint(5, value.refreshFps),
-    fieldVarint(6, value.pressureSequence),
-    fieldBytes(7, value.pressed)
+    fieldVarint(5, value.refreshFps)
   ]);
 }
 
@@ -183,9 +181,9 @@ function decodeRuntimeFrame(bytes: Uint8Array): RuntimeFrame {
   const frame = {
     sequence: bigintField(fields, 1),
     unixNanos: bigintField(fields, 2),
-    rgb: bytesField(fields, 3),
-    sessionId: stringField(fields, 4),
-    venueSessionId: stringField(fields, 5)
+    width: numberField(fields, 3),
+    height: numberField(fields, 4),
+    rgb: bytesField(fields, 5)
   };
   return frame;
 }
@@ -197,11 +195,27 @@ function decodeControllerHello(bytes: Uint8Array): ControllerHello {
     controllerId: stringField(fields, 2),
     width: numberField(fields, 3),
     height: numberField(fields, 4),
-    refreshFps: numberField(fields, 5),
-    pressureSequence: bigintField(fields, 6),
-    pressed: bytesField(fields, 7)
+    refreshFps: numberField(fields, 5)
   };
   return hello;
+}
+
+function decodePresentedFrame(bytes: Uint8Array): ControllerMessage {
+  const fields = fieldsByNumber(bytes);
+  const width = numberField(fields, 4);
+  const height = numberField(fields, 5);
+  const pressureBits = bytesField(fields, 7);
+  if (width !== floorWidth || height !== floorHeight) {
+    throw new Error(`unsupported presented floor: ${width}x${height}`);
+  }
+  if (pressureBits.byteLength !== pressureBitsetBytes) {
+    throw new Error(`presented pressure bitset must be ${pressureBitsetBytes} bytes`);
+  }
+  return {
+    type: "presentedFrame",
+    pressureBits,
+    presentedUnixNanos: bigintField(fields, 3)
+  };
 }
 
 function decodePressureChange(bytes: Uint8Array): PressureChange {
@@ -224,7 +238,7 @@ type DecodedField = { wire: number; varint?: bigint; bytes?: Uint8Array };
 
 function oneofEnvelope(bytes: Uint8Array, label: string): { field: number; payload: Uint8Array } {
   const fields = fieldsByNumber(bytes);
-  const candidates = [...fields.entries()].filter(([field]) => field === 1 || field === 2);
+  const candidates = [...fields.entries()].filter(([field]) => field >= 1 && field <= 6);
   if (candidates.length !== 1 || candidates[0]?.[1].length !== 1) throw new Error(`${label} must contain exactly one payload`);
   const [field, values] = candidates[0];
   return { field, payload: bytesValue(values[0], `${label} payload`) };

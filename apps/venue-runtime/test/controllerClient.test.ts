@@ -3,9 +3,9 @@ import test from "node:test";
 import { parseControllerAddress, pressureSequenceHasGap, reconcilePressure } from "../src/controllerClient.ts";
 
 test("controller addresses support hostnames, tcp URLs, and IPv6", () => {
-  assert.deepEqual(parseControllerAddress("127.0.0.1:4201"), { host: "127.0.0.1", port: 4201 });
-  assert.deepEqual(parseControllerAddress("tcp://controller:4201"), { host: "controller", port: 4201 });
-  assert.deepEqual(parseControllerAddress("[::1]:4201"), { host: "::1", port: 4201 });
+  assert.deepEqual(parseControllerAddress("127.0.0.1:4203"), { host: "127.0.0.1", port: 4203 });
+  assert.deepEqual(parseControllerAddress("tcp://controller:4203"), { host: "controller", port: 4203 });
+  assert.deepEqual(parseControllerAddress("[::1]:4203"), { host: "::1", port: 4203 });
   assert.throws(() => parseControllerAddress("controller"), /invalid/);
 });
 
