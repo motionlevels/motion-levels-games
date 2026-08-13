@@ -1,9 +1,8 @@
 # Motion Levels Games
 
-TypeScript-first Motion Levels game packages and a local playground. This repo
-proves that a game can own its gameplay logic, player display, fixtures, and
-local test surface without depending on the platform, Postgres, venue hardware,
-Motion Go, TinyGo, or deploy steps.
+TypeScript-first Motion Levels game packages, production venue runtime, player
+menu, player displays, and local playground. Game logic runs directly
+in-process in Node; the venue keeps its controller and supervisor in Go.
 
 ## Quickstart
 
@@ -26,13 +25,11 @@ layers.
 
 - `packages/game-sdk`: framework-agnostic TypeScript game contract.
 - `packages/display-kit`: reusable React display primitives.
+- `packages/runtime`: direct `GameSession`, gameplay registry, and separate
+  browser display registry.
 - `games/*`: independently tested game packages discovered through their
   manifests and index exports.
+- `apps/venue-runtime`: Node production host and controller protocol v2 client.
+- `apps/player-menu`: release-matched kiosk menu.
 - `apps/playground`: local app that runs the player menu, game, floor, display,
   event log, and snapshot inspector together.
-
-## v1 Boundary
-
-This is intentionally a proof-of-strategy repo. Production `motion-levels`
-integration should happen later by consuming built game packages, manifests, or
-an exported catalog from this repo.

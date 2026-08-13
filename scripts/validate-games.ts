@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isStableGameId } from "../packages/game-sdk/src/index.ts";
-import { gamePackageRegistry } from "../packages/runner/src/registry.ts";
+import { gamePackageRegistry } from "../packages/runtime/src/gameplayRegistry.ts";
 
 type ManifestModule = {
   manifest?: {
@@ -79,12 +79,18 @@ const gameDirs = (await readdir(gamesRoot, { withFileTypes: true }))
 assert.ok(gameDirs.length > 0, "expected at least one game under games/");
 
 const problems: string[] = [];
+const playableGameDirs = (await Promise.all(gameDirs.map(async (gameId) => {
+  const packageJson = JSON.parse(await readFile(path.join(gamesRoot, gameId, "package.json"), "utf8")) as {
+    exports?: Record<string, unknown>;
+  };
+  return packageJson.exports?.["./game"] ? gameId : null;
+}))).filter((gameId): gameId is string => gameId !== null);
 const registeredGameIds = [...gamePackageRegistry.keys()].sort();
-if (JSON.stringify(registeredGameIds) !== JSON.stringify(gameDirs)) {
-  const missing = gameDirs.filter((gameId) => !gamePackageRegistry.has(gameId));
-  const unexpected = registeredGameIds.filter((gameId) => !gameDirs.includes(gameId));
-  if (missing.length > 0) problems.push(`production runner registry is missing: ${missing.join(", ")}`);
-  if (unexpected.length > 0) problems.push(`production runner registry has unknown games: ${unexpected.join(", ")}`);
+if (JSON.stringify(registeredGameIds) !== JSON.stringify(playableGameDirs)) {
+  const missing = playableGameDirs.filter((gameId) => !gamePackageRegistry.has(gameId));
+  const unexpected = registeredGameIds.filter((gameId) => !playableGameDirs.includes(gameId));
+  if (missing.length > 0) problems.push(`production runtime registry is missing: ${missing.join(", ")}`);
+  if (unexpected.length > 0) problems.push(`production runtime registry has unknown games: ${unexpected.join(", ")}`);
 }
 
 for (const gameId of gameDirs) {

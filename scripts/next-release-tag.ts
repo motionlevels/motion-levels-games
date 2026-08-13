@@ -2,20 +2,23 @@ import { pathToFileURL } from "node:url";
 
 const releaseTagPattern = /^games-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 
-export type ReleaseChange = "minor" | "patch";
+export type ReleaseChange = "major" | "minor" | "patch";
 
 export function nextReleaseTag(currentTag: string, change: ReleaseChange): string {
   const match = releaseTagPattern.exec(currentTag);
   if (!match) {
     throw new Error(`Invalid games release tag: ${currentTag}`);
   }
-  if (change !== "minor" && change !== "patch") {
+  if (change !== "major" && change !== "minor" && change !== "patch") {
     throw new Error(`Unsupported release change: ${String(change)}`);
   }
 
   const major = BigInt(match[1]!);
   const minor = BigInt(match[2]!);
   const patch = BigInt(match[3]!);
+  if (change === "major") {
+    return `games-v${major + 1n}.0.0`;
+  }
   if (change === "minor") {
     return `games-v${major}.${minor + 1n}.0`;
   }

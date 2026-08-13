@@ -26,9 +26,9 @@ npm run typecheck --workspace @motion-levels-games/ping-pong-v2
 ```
 
 Keep `manifest.id` exactly equal to the directory name: `ping-pong-v2`.
-Register the finished package in `packages/runner/src/registry.ts`; the
+Register the finished package in `packages/runtime/src/gameplayRegistry.ts`; the
 release validator requires every `games/*` package to appear in the
-production runner, catalog, and player-display registry.
+production runtime, catalog, and player-display registry.
 Keep the player-presence gate and pre-start animation when replacing the
 scaffolded gameplay. Use `start: { mode: "immediate" }` only when a product
 requirement explicitly calls for selection-time autoplay.

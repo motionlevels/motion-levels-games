@@ -4,7 +4,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { animationLibrary, animationMediaSchema, animationPreviewRecipe } from "../packages/animation-runtime/src/index.ts";
-import { gameCatalog } from "../packages/runner/src/registry.ts";
+import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
 
 const repoRoot = process.cwd();
 const outputRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path.join(repoRoot, "dist/media"));

@@ -27,7 +27,7 @@ import {
 import { ArrowLeftIcon, BackspaceIcon, BoltIcon, CheckIcon, CloseIcon, GamepadIcon, GearIcon, PauseIcon, PlayIcon, PlusIcon, QuestionIcon, RefreshIcon, RestartIcon, SparkIcon, StarIcon, TeamIcon, UserIcon, VersusIcon, VolumeIcon, VolumeMutedIcon } from "./icons";
 import { FloorPreview } from "./FloorPreview";
 import { LiveFloorView } from "./LiveFloorView";
-import { floorAnimations, type FloorAnim, type RGB } from "./floor";
+import { floorAnimations, type FloorAnim } from "./floor";
 import { hexToColor, hexToRGB, publicAssetURL, randomUUID } from "./utils";
 import { avatarLabel, firstAvailableColor, gameRosterIssue, playerLabel, rosterSnapshot, statusPlayersForDisplay, type Player, type RosterIssue } from "./roster";
 import {
@@ -59,6 +59,7 @@ import {
 import { lifeMeterModel, teamLivesFromPlayers, type LifeMeterModel } from "./lifeMeter";
 import { isCanonicalEntityID } from "./identity.ts";
 import { migrateLegacyLevelState } from "./levelStateMigration.ts";
+import { isSupportedRuntimeSource } from "./localCatalog.ts";
 
 type MenuState = {
   sessionActive: boolean;
@@ -598,7 +599,7 @@ function platformEntryToGameCard(entry: PlatformGameCatalogEntry, fallback: Game
     sourceGameId: entry.source_game_id || fallback?.sourceGameId,
     countdownFloorOverlay: entry.countdown_floor_overlay === true,
     revisionHash: entry.revision_hash || fallback?.revisionHash,
-    disabled: false,
+    disabled: !isSupportedRuntimeCatalogEntry(entry, fallback),
     configVars: platformPlayerConfigVars(entry),
   };
 }
@@ -668,11 +669,19 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
 }
 
 function isPlatformLaunchableSource(game: Pick<GameCard, "sourceKind">): boolean {
-  return game.sourceKind === "motion_go" || game.sourceKind === "platform_levels" || game.sourceKind === "animation";
+  return game.sourceKind === "motion_levels_games" || game.sourceKind === "platform_levels";
+}
+
+function isSupportedRuntimeCatalogEntry(entry: PlatformGameCatalogEntry, fallback?: GameCard): boolean {
+  return isSupportedRuntimeSource(entry.source_kind, entry.source_game_id || fallback?.sourceGameId);
+}
+
+function isSupportedRuntimeGame(game: GameCard): boolean {
+  return isSupportedRuntimeSource(game.sourceKind, game.sourceGameId);
 }
 
 function canLaunchWhileCatalogRefreshes(game: GameCard): boolean {
-  return isAmbientCard(game) || game.sourceKind === "animation" || engineGameID(game).startsWith("animation-");
+  return isAmbientCard(game) && isSupportedRuntimeGame(game);
 }
 
 function isIndividualCard(game: GameCard): boolean {
@@ -1834,25 +1843,17 @@ function MenuApp() {
   }, [keyboardTarget, colorPickerFor, confirmRemove, confirmResetSession, pendingLevelSwitch, pendingGameControl, gameConfigOpen, settingsOpen, teamOpen]);
 
   const availableGames = useMemo(() => new Set((status?.catalog || []).map((entry) => entry.game)), [status]);
-  const platformEnabledGames = useMemo(() => (
-    new Set((platformCatalog || [])
-      .filter((entry) => entry.catalog_enabled !== false)
-      .flatMap((entry) => [entry.id, platformEntryEngineGame(entry)]))
-  ), [platformCatalog]);
   const isGameLaunchable = useCallback((game: GameCard) => {
     if (!status || connectionState !== "connection-on") return false;
     if (catalogLoading && isPlatformLaunchableSource(game) && !canLaunchWhileCatalogRefreshes(game)) return false;
     if (!partyCatalogIsComplete(game, menuGames)) return false;
     const launchGame = partyLaunchGame(game, menuGames);
     if (!launchGame) return false;
-    if (isScreensaverCard(launchGame)) return true;
+    if (!isSupportedRuntimeGame(launchGame)) return false;
     if (!isAmbientCard(launchGame) && status.pressureStreamConnected === false) return false;
     if (availableGames.has(runtimeGameID(launchGame)) || availableGames.has(engineGameID(launchGame))) return true;
-    if (game.sourceKind === "animation" && engineGameID(game).startsWith("animation-")) return true;
-    return isPlatformLaunchableSource(game) && (
-      platformEnabledGames.has(game.id) || platformEnabledGames.has(engineGameID(game))
-    );
-  }, [availableGames, catalogLoading, connectionState, menuGames, platformEnabledGames, status]);
+    return false;
+  }, [availableGames, catalogLoading, connectionState, menuGames, status]);
   const activePlayers = menu.players.filter((player) => player.active);
   const enginePlayers = statusPlayersForDisplay(status);
   const activeCategory = categories.find((category) => category.id === menu.category) || categories[0];
@@ -4797,50 +4798,6 @@ function TouchKeyboard({
   );
 }
 
-const animationPreviewCache = new Map<string, Promise<AnimationPreview>>();
-
-function cachedAnimationPreview(level: string, revisionHash?: string): Promise<AnimationPreview> {
-  const key = `${level.trim().toLowerCase()}@${revisionHash || "live"}`;
-  const cached = animationPreviewCache.get(key);
-  if (cached) return cached;
-  const request = fetchAnimationPreview(level, 16, revisionHash).catch((error) => {
-    animationPreviewCache.delete(key);
-    throw error;
-  });
-  animationPreviewCache.set(key, request);
-  return request;
-}
-
-function previewLevelID(animationID: string): string | null {
-  return animationID.startsWith("animation-") ? animationID.replace(/^animation-/, "") : null;
-}
-
-function decodePreviewFrames(preview: AnimationPreview | null): RGB[][] {
-  if (!preview?.frames?.length) return [];
-  return preview.frames.flatMap((frame) => {
-    const raw = frame.pixels || "";
-    if (raw.length < 16 * 32 * 6) return [];
-    const pixels: RGB[] = [];
-    for (let index = 0; index < 16 * 32; index++) {
-      const offset = index * 6;
-      pixels.push([
-        Number.parseInt(raw.slice(offset, offset + 2), 16) || 0,
-        Number.parseInt(raw.slice(offset + 2, offset + 4), 16) || 0,
-        Number.parseInt(raw.slice(offset + 4, offset + 6), 16) || 0,
-      ]);
-    }
-    return [pixels];
-  });
-}
-
-function animFromPreviewFrames(frames: RGB[][]): FloorAnim | null {
-  if (!frames.length) return null;
-  return (x, y, cols, _rows, t) => {
-    const frame = frames[Math.floor(t * 12) % frames.length] || frames[0];
-    return frame[y * cols + x] || [0, 0, 0];
-  };
-}
-
 function PartyPreview({ catalogGames, compact = false, difficulty, game, rich = true }: { catalogGames: GameCard[]; compact?: boolean; difficulty: DifficultyID; game: GameCard; rich?: boolean }) {
   const miniGames = game.partyMiniGames || [];
   const gridSize = partyPreviewGridSize(miniGames.length);
@@ -4902,7 +4859,6 @@ function Preview({
   compact = false,
   fallbackAnim,
   promoteAnimation = false,
-  revisionHash,
   richSrc,
   richSrcs = emptyPreviewSources,
   src,
@@ -4918,8 +4874,6 @@ function Preview({
   src?: string;
   srcs?: string[];
 }) {
-  const liveLevelID = previewLevelID(animationID);
-  const [livePreview, setLivePreview] = useState<AnimationPreview | null>(null);
   const [failedSrcs, setFailedSrcs] = useState<string[]>([]);
   const [loadedPosterSrc, setLoadedPosterSrc] = useState("");
   const [promotedSrc, setPromotedSrc] = useState("");
@@ -4946,10 +4900,6 @@ function Preview({
   }, [posterSrc, richCandidate]);
 
   useEffect(() => {
-    setLivePreview(null);
-  }, [liveLevelID, revisionHash]);
-
-  useEffect(() => {
     if (!richCandidate || (posterSrc && !posterReady)) return;
     let cancelled = false;
     const image = new Image();
@@ -4970,24 +4920,7 @@ function Preview({
     };
   }, [posterReady, posterSrc, richCandidate]);
 
-  useEffect(() => {
-    if (!liveLevelID || richCandidate || (posterSrc && (!posterReady || !promoteAnimation))) return;
-    let cancelled = false;
-    cachedAnimationPreview(liveLevelID, revisionHash)
-      .then((preview) => {
-        if (!cancelled) setLivePreview(preview);
-      })
-      .catch(() => {
-        if (!cancelled) setLivePreview(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [liveLevelID, posterReady, posterSrc, promoteAnimation, revisionHash, richCandidate]);
-
-  const previewFrames = useMemo(() => decodePreviewFrames(livePreview), [livePreview]);
-  const liveAnim = useMemo(() => animFromPreviewFrames(previewFrames), [previewFrames]);
-  const anim = liveAnim || fallbackAnim || floorAnimations[animationID];
+  const anim = fallbackAnim || floorAnimations[animationID];
   const promotedToAnimation = Boolean(promoteAnimation && posterReady && !richCandidate && anim);
   const mediaSrc = promotedToAnimation ? undefined : promotedSrc || posterSrc;
   const logoMedia = isMotionLevelsLogoSrc(mediaSrc);

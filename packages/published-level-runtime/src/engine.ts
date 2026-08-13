@@ -285,7 +285,7 @@ class PublishedLevelGame implements PublishedLevelGameInstance {
   private resolveContent(config: NormalizedGameConfig): PublishedLevelContent {
     return parsePublishedLevelContent(
       config.content ?? this.product.fallbackContent,
-      this.product.manifest.id
+      this.product.contentIdentity === "platform" ? undefined : this.product.manifest.id
     );
   }
 

@@ -7,9 +7,11 @@ Guidance for AI agents and humans working in this repository.
 This repo is the TypeScript-first home for Motion Levels games, the complete
 player experience, and local game-development tooling. Keep it independent
 from production infrastructure: no database, venue hardware, Motion Go
-runtime, or direct deployment coupling. The static player menu may use the
-versioned venue adapter contract; Electron/Caddy packaging, the supervisor,
-controller connectivity, hardware output, and deployment remain venue-owned.
+runtime, or direct deployment coupling. This repository owns the in-process
+TypeScript venue runtime, kiosk API, and controller protocol client.
+Electron/Caddy packaging, network/secret configuration, the supervisor,
+physical controller service, hardware output, and deployment remain
+venue-owned.
 
 ## Language
 
@@ -198,8 +200,10 @@ controller connectivity, hardware output, and deployment remain venue-owned.
   round-win animation when applicable, are implemented and verified.
 - The playground discovers games from `games/*/src/index.ts`; do not add
   manual game imports to `apps/playground/src/App.tsx`.
-- The production runner and player-display bundle use the explicit
-  `packages/runner/src/registry.ts`. Register every new game package there;
+- The in-process venue runtime uses the explicit gameplay registry at
+  `packages/runtime/src/gameplayRegistry.ts`; the browser renderer uses a
+  separate display registry so Node never pulls React into gameplay. Register
+  every new game package in both registries;
   validation requires exact coverage of `games/*` so releases cannot silently
   omit a game that works only in the playground.
 - Prefer deterministic game logic. Any randomness should flow through the SDK

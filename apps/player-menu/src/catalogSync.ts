@@ -68,7 +68,7 @@ export function shouldPreferCatalogFallbackPreviewAnimation(
 
 const gameConfigVarTypes = ["int", "float", "bool", "enum"] as const satisfies readonly GameConfigVarType[];
 
-const playerConfigSourceSchemas = new Set(["motion-go-v1", "motion-levels-games-v1"]);
+const playerConfigSourceSchemas = new Set(["motion-levels-games-v2"]);
 
 /**
  * Player-facing config vars declared by a playable game source

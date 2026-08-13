@@ -1,4 +1,4 @@
-import { createPublishedLevelContent } from "@motion-levels-games/published-level-runtime";
+import { createPublishedLevelContent } from "@motion-levels-games/published-level-runtime/content";
 
 import { temporada1EngineGame, temporada1GameId } from "./manifest.ts";
 

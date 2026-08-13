@@ -1,4 +1,4 @@
-import { createPublishedLevelContent } from "@motion-levels-games/published-level-runtime";
+import { createPublishedLevelContent } from "@motion-levels-games/published-level-runtime/content";
 
 import { parkourEngineGame, parkourGameId } from "./manifest.ts";
 

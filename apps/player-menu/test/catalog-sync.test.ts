@@ -21,6 +21,7 @@ import {
 } from "../src/catalogSync.ts";
 import { platformAnimationCards } from "../src/animationCatalog.ts";
 import { inferPlatformURL } from "../src/api.ts";
+import { isSupportedRuntimeSourceFromProducts } from "../src/runtimeSourcePolicy.ts";
 import type { PlatformGameCatalogEntry } from "../src/api.ts";
 import type { GameCard } from "../src/catalog.ts";
 
@@ -434,7 +435,7 @@ describe("catalog metadata sync", () => {
     assert.doesNotMatch(floorSource, /parkour2: parkour/);
   });
 
-  it("extracts player-facing config vars from motion-go game sources", () => {
+  it("rejects retired Go game-source config", () => {
     const entry = catalogEntry({
       game_source: {
         schema: "motion-go-v1",
@@ -452,32 +453,7 @@ describe("catalog metadata sync", () => {
       },
     });
 
-    const vars = platformPlayerConfigVars(entry);
-    assert.equal(vars?.length, 3);
-    assert.deepEqual(vars?.[0], {
-      key: "points_to_win",
-      label: "Puntos para ganar",
-      type: "int",
-      default: 7,
-      min: 1,
-      max: 21,
-    });
-    assert.deepEqual(vars?.[1], {
-      key: "mode",
-      label: "mode",
-      type: "enum",
-      default: "classic",
-      options: [{ value: "classic", label: "Clásico" }, { value: "turbo" }],
-    });
-    assert.deepEqual(vars?.[2], {
-      key: "rounds",
-      label: "Rondas",
-      type: "int",
-      default: 3,
-      min: 1,
-      max: 9,
-    });
-
+    assert.equal(platformPlayerConfigVars(entry), undefined);
     assert.equal(platformPlayerConfigVars(catalogEntry()), undefined);
     assert.equal(platformPlayerConfigVars(catalogEntry({ game_source: { schema: "motion-go-v1", kind: "wasm" } })), undefined);
   });
@@ -485,7 +461,7 @@ describe("catalog metadata sync", () => {
   it("extracts player-facing config vars from motion-levels-games sources", () => {
     const vars = platformPlayerConfigVars(catalogEntry({
       game_source: {
-        schema: "motion-levels-games-v1",
+        schema: "motion-levels-games-v2",
         kind: "typescript",
         config: {
           vars: [
@@ -567,6 +543,7 @@ describe("catalog metadata sync", () => {
 
   it("keeps platform level game launch identity separate from legacy engine aliases", () => {
     const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
+    const localCatalogSource = fs.readFileSync(path.resolve(__dirname, "../src/localCatalog.ts"), "utf8");
 
     assert.match(appSource, /function runtimeGameID\(game: Pick<GameCard, "engineGame" \| "id" \| "sourceKind">\): string/);
     assert.match(appSource, /game\.sourceKind === "platform_levels" && isCanonicalEntityID\(game\.id\) \? game\.id : engineGameID\(game\)/);
@@ -575,7 +552,15 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /slug: levelSlug \|\| undefined,/);
     assert.match(appSource, /level: selectedLevelID \|\| undefined,\s+levelSlug: launchLevel\?\.slug \|\| undefined,/);
     assert.match(appSource, /function canonicalLevelID\(/);
-    assert.doesNotMatch(appSource, /function isPlatformLaunchableSource[^}]*game\.sourceKind === "motion_levels_games"/);
+    assert.match(appSource, /function isPlatformLaunchableSource[^}]*game\.sourceKind === "motion_levels_games"/);
+    assert.match(appSource, /function isSupportedRuntimeGame/);
+    const publishedProducts = new Set(["c1daea4f-e586-4116-8cbe-871cde887a81"]);
+    assert.equal(isSupportedRuntimeSourceFromProducts("platform_levels", "c1daea4f-e586-4116-8cbe-871cde887a81", publishedProducts), true);
+    assert.equal(isSupportedRuntimeSourceFromProducts("platform_levels", "arkanoid", publishedProducts), false);
+    assert.match(appSource, /isSupportedRuntimeSource\(game\.sourceKind, game\.sourceGameId\)/);
+    assert.match(localCatalogSource, /import\.meta\.glob<ManifestModule>/);
+    assert.match(localCatalogSource, /manifest\.tags\?\.includes\("published-levels"\)/);
+    assert.doesNotMatch(appSource.match(/function isPlatformLaunchableSource[\s\S]*?\n}/)?.[0] || "", /motion_go|animation/);
     assert.match(appSource, /game: runtimeGameID\(launchGame\)/);
     assert.doesNotMatch(appSource, /runtimeGameID\([^)]*\)[\s\S]{0,120}\|\|\s*"parkour"/);
   });
