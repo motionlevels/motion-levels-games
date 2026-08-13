@@ -16,10 +16,10 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: source
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -36,10 +36,10 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: source
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -52,10 +52,10 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: source
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -71,10 +71,10 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: source
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -92,10 +92,10 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: source
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -119,7 +119,7 @@ jobs:
             mcr.microsoft.com/playwright:v1.61.1-noble \
             bash -lc 'npm run playtest:browser && npm run generate:media && npm run build:bundle && npm run verify:bundle'
       - name: Upload production bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: motion-levels-games-${{ github.sha }}
           path: |

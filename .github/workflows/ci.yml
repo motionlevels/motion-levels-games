@@ -34,12 +34,12 @@ jobs:
       run:
         working-directory: source
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           path: source
           ref: ${{ github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Plan the next immutable release
@@ -158,7 +158,7 @@ jobs:
           output release_tag "$release_tag"
       - name: Download the verified production bundle
         if: steps.release.outputs.publish == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: motion-levels-games-${{ github.sha }}
           path: source/dist
@@ -188,7 +188,7 @@ jobs:
           fi
       - name: Publish the verified release assets
         if: steps.release.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           fail_on_unmatched_files: true
           name: ${{ steps.release.outputs.release_tag }}
