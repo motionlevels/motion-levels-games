@@ -53,19 +53,28 @@ non-health endpoints and accepts one atomic JSON batch:
 {
   "commandId": "40000000-0000-4000-8000-000000000002",
   "clientId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "clientSequence": 42,
   "changes": [{ "x": 7, "y": 3, "pressed": true }],
   "releaseAll": false
 }
 ```
 
-`commandId` and `clientId` are UUIDs. `changes` is optional and may contain at
-most 512 entries; every entry requires integer `x` (0–15), integer `y` (0–31),
-and boolean `pressed`. The complete batch is rejected before mutation when any
-entry is invalid. `releaseAll` is optional and, when combined with changes,
-releases that client's existing latches before applying the batch. A request
-with an empty action list is a lease heartbeat. Command retries with the same
-`commandId` return the first committed result without applying the changes
-again.
+`commandId` and `clientId` are UUIDs. `clientSequence` is a positive safe
+integer that must increase for every new batch from one client. `changes` is
+optional and may contain at most 512 entries; every entry requires integer `x`
+(0–15), integer `y` (0–31), and boolean `pressed`. The complete batch is
+rejected before mutation when any entry is invalid. `releaseAll` is optional
+and, when combined with changes, releases that client's existing latches
+before applying the batch. A request with an empty change list is a lease
+heartbeat. Command retries with the same `commandId` return the first committed
+result without applying the changes again.
+
+The runtime keeps the highest `clientSequence` as a tombstone for the life of
+the process. A batch at or below that value is ignored and does not renew the
+lease, which prevents an in-flight press arriving after `releaseAll` from
+relatching the floor. Endpoint responses retain the canonical venue status and
+add top-level `applied` and `lastSequence` fields so a client can observe this
+decision.
 
 Each `clientId` owns an independent latch set with a five-second server lease.
 An active client must send a heartbeat or input before the lease expires;

@@ -44,7 +44,7 @@ export const rotationSecondsOption = {
   type: "int",
   default: 20,
   min: 5,
-  max: 120,
+  max: 3600,
   step: 5
 } satisfies GameConfigVar;
 

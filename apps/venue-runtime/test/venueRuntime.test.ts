@@ -175,11 +175,13 @@ test("remote floor clients are isolated and cannot release physical pressure", a
   runtime.applyRemoteFloorInput({
     commandId: "10000000-0000-4000-8000-000000000001",
     clientId: firstClient,
+    clientSequence: 1,
     changes: [topReadyTile]
   });
   runtime.applyRemoteFloorInput({
     commandId: "10000000-0000-4000-8000-000000000002",
     clientId: secondClient,
+    clientSequence: 1,
     changes: [topReadyTile]
   });
   assert.deepEqual(runtime.status().remoteFloorInput, {
@@ -192,6 +194,7 @@ test("remote floor clients are isolated and cannot release physical pressure", a
   runtime.applyRemoteFloorInput({
     commandId: "10000000-0000-4000-8000-000000000003",
     clientId: firstClient,
+    clientSequence: 2,
     releaseAll: true
   });
   runtime.control("restart");
@@ -202,6 +205,7 @@ test("remote floor clients are isolated and cannot release physical pressure", a
   runtime.applyRemoteFloorInput({
     commandId: "10000000-0000-4000-8000-000000000004",
     clientId: secondClient,
+    clientSequence: 2,
     releaseAll: true
   });
   runtime.control("restart");
@@ -218,6 +222,7 @@ test("remote floor batches validate atomically before changing the game", () => 
   assert.throws(() => runtime.applyRemoteFloorInput({
     commandId: "20000000-0000-4000-8000-000000000001",
     clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    clientSequence: 1,
     changes: [
       { x: 8, y: 16, pressed: true },
       { x: FLOOR_COLS, y: 16, pressed: true }
@@ -239,6 +244,7 @@ test("remote floor heartbeats renew leases and abandoned input is released", asy
   runtime.applyRemoteFloorInput({
     commandId: "30000000-0000-4000-8000-000000000001",
     clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    clientSequence: 1,
     changes: [{ x: 0, y: 4, pressed: true }]
   });
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
@@ -247,6 +253,7 @@ test("remote floor heartbeats renew leases and abandoned input is released", asy
   runtime.applyRemoteFloorInput({
     commandId: "30000000-0000-4000-8000-000000000002",
     clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    clientSequence: 2,
     changes: []
   });
   await new Promise((resolve) => setTimeout(resolve, 120));
@@ -275,6 +282,86 @@ test("selecting salvapantallas stays an idle rotation without a gameplay session
   assert.equal(status.sessionId, "");
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 24);
   assert.throws(() => runtime.control("pause"), /no active game/);
+});
+
+test("screensaver uses and retains the last good platform rotation", async (context) => {
+  let fail = false;
+  let authorization = "";
+  const contentRevision = "a".repeat(64);
+  const server = createServer((request, response) => {
+    authorization = String(request.headers.authorization ?? "");
+    if (fail) {
+      response.writeHead(503).end("unavailable");
+      return;
+    }
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({
+      schema: "motion-levels-animation-content-v1",
+      contentRevision,
+      selectedAnimationId: "aurora",
+      rotationIds: ["aurora", "prism-tunnel"],
+      rotationSeconds: 5
+    }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${address.port}`,
+    platformToken: "platform-token"
+  });
+
+  assert.equal(await runtime.refreshScreensaverContent(), true);
+  assert.equal(authorization, "Bearer platform-token");
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).contentRevision, contentRevision);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 2);
+
+  fail = true;
+  assert.equal(await runtime.refreshScreensaverContent(), false);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).contentRevision, contentRevision);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 2);
+});
+
+test("canonical animation selection remains an idle screensaver and requests platform duration", async (context) => {
+  let requestedUrl = "";
+  const server = createServer((request, response) => {
+    requestedUrl = request.url ?? "";
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({
+      schema: "motion-levels-animation-content-v1",
+      contentRevision: "b".repeat(64),
+      selectedAnimationId: "aurora",
+      rotationIds: ["aurora"],
+      rotationSeconds: 35
+    }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${address.port}`
+  });
+  const status = await runtime.select({
+    game: "a861f0dc-3e2e-4fe9-b487-33194af75b68",
+    engineGame: "motion-levels-games:a861f0dc-3e2e-4fe9-b487-33194af75b68",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    durationSeconds: 35,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  assert.equal(status.lifecycle, "idle");
+  assert.match(requestedUrl, /\/api\/level-games\/salvapantallas\/runtime-content\?rotationSeconds=35/u);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 1);
 });
 
 test("published levels resolve the TS product from engineGame and fetch canonical request.game content", async (context) => {

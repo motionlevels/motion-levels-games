@@ -113,6 +113,7 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   const invalid = await request({
     commandId: "40000000-0000-4000-8000-000000000001",
     clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    clientSequence: 1,
     changes: [
       { x: 0, y: 4, pressed: true },
       { x: 16, y: 4, pressed: true }
@@ -125,6 +126,7 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   const invalidClient = await request({
     commandId: "40000000-0000-4000-8000-000000000010",
     clientId: "browser-controller",
+    clientSequence: 1,
     changes: []
   });
   assert.equal(invalidClient.status, 400);
@@ -133,6 +135,7 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   const invalidCommand = await request({
     commandId: "not-a-command-uuid",
     clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    clientSequence: 1,
     changes: []
   });
   assert.equal(invalidCommand.status, 400);
@@ -143,16 +146,20 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   const firstResponse = await request({
     commandId,
     clientId,
+    clientSequence: 1,
     changes: [{ x: 0, y: 4, pressed: true }]
   });
   assert.equal(firstResponse.status, 200);
   const first = await firstResponse.json() as Record<string, unknown>;
   assert.deepEqual(first.remoteFloorInput, { activeClients: 1, heldTiles: 1, leaseMillis: 5_000 });
+  assert.equal(first.applied, true);
+  assert.equal(first.lastSequence, 1);
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
 
   const retryResponse = await request({
     commandId,
     clientId,
+    clientSequence: 2,
     changes: [{ x: 0, y: 27, pressed: true }]
   });
   assert.equal(retryResponse.status, 200);
@@ -163,18 +170,34 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   const released = await request({
     commandId: "40000000-0000-4000-8000-000000000003",
     clientId,
+    clientSequence: 2,
     releaseAll: true
   });
   assert.equal(released.status, 200);
-  assert.deepEqual((await released.json() as Record<string, unknown>).remoteFloorInput, {
+  const releasedBody = await released.json() as Record<string, unknown>;
+  assert.deepEqual(releasedBody.remoteFloorInput, {
     activeClients: 0,
     heldTiles: 0,
     leaseMillis: 5_000
   });
+  assert.equal(releasedBody.applied, true);
+  assert.equal(releasedBody.lastSequence, 2);
   runtime.control("restart");
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 0);
 
-  const missingCommandId = await request({ clientId, changes: [] });
+  const stale = await request({
+    commandId: "40000000-0000-4000-8000-000000000004",
+    clientId,
+    clientSequence: 1,
+    changes: [{ x: 0, y: 27, pressed: true }]
+  });
+  assert.equal(stale.status, 200);
+  const staleBody = await stale.json() as Record<string, unknown>;
+  assert.equal(staleBody.applied, false);
+  assert.equal(staleBody.lastSequence, 2);
+  assert.equal(runtime.status().remoteFloorInput.heldTiles, 0);
+
+  const missingCommandId = await request({ clientId, clientSequence: 3, changes: [] });
   assert.equal(missingCommandId.status, 400);
   assert.match(await missingCommandId.text(), /commandId is required/u);
 });
