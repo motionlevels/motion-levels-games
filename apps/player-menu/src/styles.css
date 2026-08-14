@@ -3362,6 +3362,163 @@ button.capsule:disabled,
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 18px;
+  isolation: isolate;
+  position: relative;
+}
+
+.recording-gate-menu-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 4vw, 72px);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(circle at 50% 4%, rgba(var(--accent-rgb), 0.22), transparent 48%),
+    rgba(3, 6, 11, 0.91);
+  backdrop-filter: blur(12px);
+}
+
+.recording-gate-menu-overlay.state-timed_out {
+  border-color: rgba(255, 158, 82, 0.42);
+  background:
+    radial-gradient(circle at 50% 4%, rgba(255, 151, 69, 0.2), transparent 48%),
+    rgba(3, 6, 11, 0.94);
+}
+
+.recording-gate-menu-card {
+  width: min(980px, 100%);
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 28px;
+  padding: clamp(34px, 5vw, 72px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--r-xl);
+  background:
+    linear-gradient(180deg, rgba(22, 32, 48, 0.98), rgba(8, 13, 21, 0.98));
+  box-shadow: var(--shadow-float);
+  text-align: center;
+}
+
+.recording-gate-menu-symbol {
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(var(--accent-rgb), 0.38);
+  border-radius: 50%;
+  color: #ffffff;
+  background: rgba(var(--accent-rgb), 0.15);
+  font-size: 54px;
+  font-weight: 950;
+}
+
+.recording-gate-menu-symbol .launch-spinner {
+  width: 48px;
+  height: 48px;
+  border-width: 5px;
+}
+
+.state-timed_out .recording-gate-menu-symbol {
+  border-color: rgba(255, 158, 82, 0.46);
+  background: rgba(255, 143, 57, 0.14);
+}
+
+.recording-gate-menu-copy {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.recording-gate-menu-copy h2,
+.recording-gate-menu-copy p {
+  max-width: 100%;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.recording-gate-menu-copy h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(2.5rem, 5vw, 5.2rem);
+  font-weight: 950;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.recording-gate-menu-copy p {
+  margin: 0;
+  color: var(--soft);
+  font-size: clamp(1.2rem, 2vw, 2rem);
+  font-weight: 700;
+  line-height: 1.32;
+}
+
+.recording-gate-menu-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.recording-gate-menu-actions .btn {
+  min-width: 0;
+  min-height: 94px;
+  padding: 18px;
+  white-space: normal;
+  font-size: clamp(1rem, 1.6vw, 1.45rem);
+  line-height: 1.08;
+}
+
+.recording-gate-ready {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 6;
+  max-width: calc(100% - 36px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid rgba(93, 255, 143, 0.42);
+  border-radius: 999px;
+  color: #d8ffe4;
+  background: rgba(4, 31, 16, 0.88);
+  box-shadow: 0 12px 40px -22px rgba(72, 255, 127, 0.8);
+  font-size: clamp(0.95rem, 2.4cqw, 1.35rem);
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: normal;
+}
+
+.recording-gate-ready svg {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+  .recording-gate-menu-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .recording-gate-menu-card {
+    gap: 18px;
+    padding: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recording-gate-menu-overlay .launch-spinner {
+    animation: none;
+  }
 }
 
 .game-control-main {

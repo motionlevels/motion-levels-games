@@ -24,6 +24,7 @@ import { normalizeLevelId, parsePublishedLevelContent } from "./content.ts";
 import type {
   PublishedAnimationRecord,
   PublishedLevelAudio,
+  PublishedLevelAttemptTransition,
   PublishedLevelContent,
   PublishedLevelGameInstance,
   PublishedLevelProduct,
@@ -135,6 +136,7 @@ class PublishedLevelGame implements PublishedLevelGameInstance {
   private lastDamageBy = new Map<number, number>();
   private hitFlash = new Map<number, number>();
   private lastEvent = gameEvent("none", "Listo", 0);
+  private automaticAttemptTransitionsBlocked = false;
 
   constructor(product: PublishedLevelProduct, config: GameConfig) {
     this.product = product;
@@ -242,6 +244,46 @@ class PublishedLevelGame implements PublishedLevelGameInstance {
     this.rebuild(this.config.nowMillis);
   }
 
+  setAutomaticAttemptTransitionsBlocked(blocked: boolean): void {
+    this.automaticAttemptTransitionsBlocked = blocked;
+  }
+
+  pendingAutomaticAttemptTransition(): PublishedLevelAttemptTransition | null {
+    if (!this.ended) return null;
+    if (!this.success && this.restartAt > 0 && this.nowMillis >= this.restartAt) {
+      return {
+        kind: "retry",
+        fromLevelId: this.level.id,
+        fromLevelSlug: this.level.slug,
+        toLevelId: this.level.id,
+        toLevelSlug: this.level.slug
+      };
+    }
+    if (this.success && this.nowMillis >= this.endedAt + resultDuration) {
+      const index = this.levels.findIndex((candidate) => candidate.id === this.level.id);
+      const next = index >= 0 ? this.levels[index + 1] : undefined;
+      return next ? {
+        kind: "level_advance",
+        fromLevelId: this.level.id,
+        fromLevelSlug: this.level.slug,
+        toLevelId: next.id,
+        toLevelSlug: next.slug
+      } : null;
+    }
+    return null;
+  }
+
+  advanceAutomaticAttemptTransition(): readonly GameEvent[] {
+    const pending = this.pendingAutomaticAttemptTransition();
+    if (!pending) return [];
+    if (pending.kind === "retry") {
+      this.restartFailedLevel(this.nowMillis);
+      return this.record([gameEvent("ready", `Reintenta ${this.level.label}`, this.nowMillis)]);
+    }
+    if (!this.advanceSuccessLevel(this.nowMillis)) return [];
+    return this.record([gameEvent("ready", `Siguiente: ${this.level.label}`, this.nowMillis)]);
+  }
+
   playerReadyZones(): PlayerReadyZone[] {
     const first = this.level.frames[0];
     if (!first) return [];
@@ -323,6 +365,7 @@ class PublishedLevelGame implements PublishedLevelGameInstance {
   private tickState(nowMillis: number): GameEvent[] {
     this.pruneRipples(nowMillis);
     if (this.ended) {
+      if (this.automaticAttemptTransitionsBlocked && this.pendingAutomaticAttemptTransition()) return [];
       if (this.success && nowMillis >= this.endedAt + resultDuration && this.advanceSuccessLevel(nowMillis)) {
         return [gameEvent("ready", `Siguiente: ${this.level.label}`, nowMillis)];
       }

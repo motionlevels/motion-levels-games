@@ -16,10 +16,18 @@ export { venueApiProtocolVersion };
  * authenticate with the shared engine token injected by the gateway. */
 export const engineTokenHeader = "x-motion-levels-engine-token" as const;
 const venueServerSseResponses = new WeakMap<Server, Set<ServerResponse>>();
+const venueServerLifecycles = new WeakMap<Server, VenueHttpLifecycle>();
+const venueServerShutdowns = new WeakMap<Server, VenueHttpShutdown>();
+
+export type VenueHttpShutdown = Readonly<{
+  mutationsDrained: Promise<void>;
+  serverClosed: Promise<void>;
+}>;
 
 export function createVenueHttpServer(runtime: VenueRuntime, engineToken = ""): Server {
   const commands = new SerializedCommandExecutor<VenueRuntimeStatus>();
   const sseResponses = new Set<ServerResponse>();
+  const lifecycle = new VenueHttpLifecycle();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://venue-runtime.local");
     const historyRequest = url.pathname === "/api/history/v1/sessions"
@@ -37,13 +45,17 @@ export function createVenueHttpServer(runtime: VenueRuntime, engineToken = ""): 
       return;
     }
     try {
-      await route(runtime, commands, request, response, sseResponses);
+      lifecycle.assertAcceptingRequests();
+      const dispatch = () => route(runtime, commands, request, response, sseResponses);
+      if (isMutationRequest(request)) await lifecycle.runMutation(dispatch);
+      else await dispatch();
     } catch (error) {
       if (response.headersSent) {
         response.end();
         return;
       }
-      const status = error instanceof RevisionMismatchError || error instanceof SessionHistoryConflictError ? 409
+      const status = error instanceof VenueHttpShuttingDownError ? 503
+        : error instanceof RevisionMismatchError || error instanceof SessionHistoryConflictError ? 409
         : error instanceof SessionHistoryNotFoundError ? 404
           : error instanceof RequestValidationError
             || error instanceof SessionHistoryValidationError
@@ -55,6 +67,7 @@ export function createVenueHttpServer(runtime: VenueRuntime, engineToken = ""): 
     }
   });
   venueServerSseResponses.set(server, sseResponses);
+  venueServerLifecycles.set(server, lifecycle);
   return server;
 }
 
@@ -62,6 +75,69 @@ export function createVenueHttpServer(runtime: VenueRuntime, engineToken = ""): 
  * connected so shutdown can wait for them before draining runtime state. */
 export function closeVenueHttpSse(server: Server): void {
   for (const response of venueServerSseResponses.get(server) ?? []) response.end();
+}
+
+/** Atomically stops accepting work, closes long-lived feeds, and exposes the
+ * two independent shutdown boundaries. Runtime camera/history drain may begin
+ * as soon as mutationsDrained resolves; it must not wait for unrelated HTTP
+ * connections represented by serverClosed. */
+export function beginVenueHttpShutdown(server: Server): VenueHttpShutdown {
+  const existing = venueServerShutdowns.get(server);
+  if (existing) return existing;
+  const lifecycle = venueServerLifecycles.get(server);
+  if (!lifecycle) throw new Error("venue HTTP server lifecycle is unavailable");
+  const mutationsDrained = lifecycle.beginShutdown();
+  closeVenueHttpSse(server);
+  const serverClosed = new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+    server.closeIdleConnections();
+  });
+  const shutdown = { mutationsDrained, serverClosed };
+  venueServerShutdowns.set(server, shutdown);
+  return shutdown;
+}
+
+class VenueHttpShuttingDownError extends Error {}
+
+class VenueHttpLifecycle {
+  private acceptingRequests = true;
+  private activeMutations = 0;
+  private mutationDrain: Promise<void> | null = null;
+  private resolveMutationDrain: (() => void) | null = null;
+
+  assertAcceptingRequests(): void {
+    if (!this.acceptingRequests) throw new VenueHttpShuttingDownError("venue runtime is shutting down");
+  }
+
+  async runMutation<T>(action: () => T | Promise<T>): Promise<T> {
+    this.assertAcceptingRequests();
+    this.activeMutations += 1;
+    try {
+      return await action();
+    } finally {
+      this.activeMutations -= 1;
+      if (this.activeMutations === 0 && this.resolveMutationDrain) {
+        this.resolveMutationDrain();
+        this.resolveMutationDrain = null;
+      }
+    }
+  }
+
+  beginShutdown(): Promise<void> {
+    this.acceptingRequests = false;
+    if (this.activeMutations === 0) return Promise.resolve();
+    if (!this.mutationDrain) {
+      this.mutationDrain = new Promise<void>((resolve) => { this.resolveMutationDrain = resolve; });
+    }
+    return this.mutationDrain;
+  }
+}
+
+function isMutationRequest(request: IncomingMessage): boolean {
+  return request.method !== "GET" && request.method !== "HEAD" && request.method !== "OPTIONS";
 }
 
 async function route(
@@ -150,7 +226,10 @@ async function route(
   }
   if (url.pathname === "/api/control" && request.method === "POST") {
     const body = await readJson(request);
-    json(response, await commands.execute(String(body.commandId ?? ""), () => runtime.control(body.action)));
+    json(response, await commands.execute(
+      String(body.commandId ?? ""),
+      () => runtime.control(body.action, body.recordingGateId)
+    ));
     return;
   }
   if (url.pathname === "/api/floor-input" && request.method === "POST") {

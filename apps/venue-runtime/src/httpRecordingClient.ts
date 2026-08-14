@@ -12,6 +12,7 @@ export type HttpRecordingClientOptions = {
   baseUrl: string | URL;
   token?: string;
   timeoutMillis?: number;
+  startConfirmTimeoutMillis?: number;
   segmentSeconds?: number;
   maximumSessionSeconds?: number;
   stopPollIntervalMillis?: number;
@@ -25,6 +26,7 @@ export class HttpRecordingClient implements RecordingClient {
   private readonly baseUrl: URL;
   private readonly request: typeof fetch;
   private readonly timeoutMillis: number;
+  private readonly startConfirmTimeoutMillis: number;
   private readonly segmentSeconds: number;
   private readonly maximumSessionSeconds: number;
   private readonly stopPollIntervalMillis: number;
@@ -36,6 +38,7 @@ export class HttpRecordingClient implements RecordingClient {
     }
     this.request = options.fetch ?? fetch;
     this.timeoutMillis = Math.max(100, options.timeoutMillis ?? 20_000);
+    this.startConfirmTimeoutMillis = Math.max(100, options.startConfirmTimeoutMillis ?? 8_000);
     this.segmentSeconds = boundedInteger(options.segmentSeconds, 10, 1_200, 300);
     this.maximumSessionSeconds = boundedInteger(options.maximumSessionSeconds, 60, 7_200, 7_200);
     this.stopPollIntervalMillis = Math.max(10, options.stopPollIntervalMillis ?? 100);
@@ -89,25 +92,30 @@ export class HttpRecordingClient implements RecordingClient {
     if (!response.ok) {
       throw new Error(`camera recorder returned HTTP ${response.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
     }
-    if (!starting && body.stopping === true) {
-      await this.waitUntilStopped(captureId, headers);
-    }
+    if (!starting) await this.waitUntilStopped(captureId, headers);
 
-    const cameraStarted = starting && body.recording === true;
-    if (starting && !cameraStarted) {
+    if (starting && body.recording === false) {
       throw new RecordingStartRejectedError(
         `camera recorder did not start capture ${captureId}: ${String(body.error ?? "camera unavailable")}`
       );
     }
+    if (starting && body.recording !== true) {
+      throw new Error(`camera recorder returned an ambiguous start response for capture ${captureId}`);
+    }
+    const cameraStart = starting
+      ? await this.waitUntilStarted(captureId, headers)
+      : undefined;
     const maxEndsAtUnixMillis = unixMillis(body.maxEndsAt)
+      ?? unixMillis(cameraStart?.session.maxEndsAt)
       ?? metadataInteger(boundary.recording, "cameraMaxEndsAtUnixMillis");
     return {
       ...boundary.recording,
       status: starting ? "recording" : "complete",
       captureId,
       backend: cleanString(body.backend) ?? boundary.recording.backend ?? "camera-recorder",
-      startedAtUnixMillis: boundary.recording.startedAtUnixMillis
-        ?? (starting ? boundary.occurredAtUnixMillis : undefined),
+      startedAtUnixMillis: starting
+        ? cameraStart?.startedAtUnixMillis
+        : boundary.recording.startedAtUnixMillis,
       endedAtUnixMillis: starting
         ? boundary.recording.endedAtUnixMillis
         : boundary.occurredAtUnixMillis,
@@ -116,8 +124,13 @@ export class HttpRecordingClient implements RecordingClient {
       metadata: {
         ...(boundary.recording.metadata ?? {}),
         cameraResponse: jsonObject(body),
+        ...(cameraStart === undefined ? {} : {
+          cameraStatus: cameraStart.session,
+          cameraStartedAtUnixMillis: cameraStart.startedAtUnixMillis,
+          cameraStartupMillis: Math.max(0, cameraStart.startedAtUnixMillis - boundary.occurredAtUnixMillis)
+        }),
         ...(maxEndsAtUnixMillis === undefined ? {} : { cameraMaxEndsAtUnixMillis: maxEndsAtUnixMillis }),
-        ...(!starting && body.stopping === true ? { stopConfirmed: true } : {})
+        ...(!starting ? { stopConfirmed: true } : {})
       }
     };
   }
@@ -142,6 +155,26 @@ export class HttpRecordingClient implements RecordingClient {
       const activeSessions = await this.activeSessions(headers, Math.max(100, Math.min(remaining, 2_000)));
       const active = activeSessions.some((session) => sessionMatches(session, captureId));
       if (!active) return;
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(this.stopPollIntervalMillis, remaining)));
+    }
+  }
+
+  private async waitUntilStarted(
+    captureId: string,
+    headers: Record<string, string>
+  ): Promise<{ session: SessionHistoryJsonObject; startedAtUnixMillis: number }> {
+    const deadline = Date.now() + this.startConfirmTimeoutMillis;
+    while (true) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new Error(`camera recorder did not confirm physical start for capture ${captureId} before timeout`);
+      }
+      const activeSessions = await this.activeSessions(headers, Math.max(100, Math.min(remaining, 2_000)));
+      const session = activeSessions.find((candidate) => sessionMatches(candidate, captureId));
+      const startedAtUnixMillis = unixMillis(session?.currentSegmentStartedAt);
+      if (session && physicalRecordingState(session.recordingState) && startedAtUnixMillis !== undefined) {
+        return { session, startedAtUnixMillis };
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, Math.min(this.stopPollIntervalMillis, remaining)));
     }
   }
@@ -197,11 +230,31 @@ export function recordingClientFromEnvironment(
     baseUrl,
     token,
     timeoutMillis: durationMillis(environment.MOTION_LEVELS_CAMERA_RECORDER_TIMEOUT, 20_000),
+    startConfirmTimeoutMillis: durationMillis(
+      environment.MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT,
+      8_000
+    ),
     segmentSeconds: Number(environment.MOTION_LEVELS_CAMERA_RECORDER_SEGMENT_SECONDS),
     maximumSessionSeconds: Number(environment.MOTION_LEVELS_CAMERA_SESSION_MAX_SECONDS),
     stopPollIntervalMillis: durationMillis(environment.MOTION_LEVELS_CAMERA_RECORDER_POLL_INTERVAL, 100),
     fetch: request
   });
+}
+
+/** Minimum graceful-shutdown window for one ambiguous START, its first STOP,
+ * and one confirmed STOP retry after the longest platform selection fetch.
+ * This prevents the process hard deadline from cutting off the physical
+ * camera drain under the configured HTTP timeouts. */
+export function recordingShutdownDrainBudgetMillis(
+  environment: NodeJS.ProcessEnv = process.env
+): number {
+  const requestTimeout = durationMillis(environment.MOTION_LEVELS_CAMERA_RECORDER_TIMEOUT, 20_000);
+  const startConfirmTimeout = durationMillis(
+    environment.MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT,
+    8_000
+  );
+  const budget = 12_000 + 10_000 + startConfirmTimeout + 5 * requestTimeout;
+  return Math.min(2_147_000_000, Math.max(30_000, budget));
 }
 
 function durationMillis(value: string | undefined, fallback: number): number {
@@ -225,6 +278,10 @@ function cleanString(value: unknown): string | undefined {
 
 function sessionMatches(session: SessionHistoryJsonObject, captureId: string): boolean {
   return session.venueSessionId === captureId || session.captureId === captureId;
+}
+
+function physicalRecordingState(value: unknown): boolean {
+  return value === "recording-segment" || value === "recording";
 }
 
 function unixMillis(value: unknown): number | undefined {

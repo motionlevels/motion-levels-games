@@ -9,6 +9,7 @@ import { shouldReportDisplayClient, type GamesDisplayRenderState } from "./displ
 import { playerLifecycleLabelES } from "./displayText";
 import { colorCSS, colorRGB, difficultyLabelES, formatClock, gameTitleES, levelLabelES, phaseLabel, playerLabelES } from "./utils";
 import { MotionLevelsGamesDisplay } from "./MotionLevelsGamesDisplay";
+import { RecordingGateDisplay } from "./RecordingGateOverlay";
 
 // If no stream event arrives, keep the display fresh with a 250ms fallback
 // poll. Some kiosk/browser combinations can silently lose EventSource delivery;
@@ -289,25 +290,24 @@ export default function App() {
     };
   }, [audioOutputState, demoStatus, effectiveRenderState.attempt, effectiveRenderState.error, effectiveRenderState.expectedRevision, effectiveRenderState.loadedRevision, effectiveRenderState.status, liveConnected, liveError, liveStatus.currentGame, telemetryEnabled]);
 
+  let display: ReactNode;
   if (gamesDisplayActive) {
-    return (
+    display = (
       <MotionLevelsGamesDisplay
         status={liveStatus}
         fallback={<ArcadeDisplay status={liveStatus} connected={liveConnected} error={liveError} />}
         onStateChange={setGamesRenderState}
       />
     );
+  } else if (isScreensaverDisplay(liveStatus)) {
+    display = <ScreensaverDisplay />;
+  } else if (options.hud === "classic") {
+    display = <ClassicDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
+  } else {
+    display = <ArcadeDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
   }
 
-  if (isScreensaverDisplay(liveStatus)) {
-    return <ScreensaverDisplay />;
-  }
-
-  if (options.hud === "classic") {
-    return <ClassicDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
-  }
-
-  return <ArcadeDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
+  return <RecordingGateDisplay gate={liveStatus.recordingGate}>{display}</RecordingGateDisplay>;
 }
 
 function ScreensaverDisplay() {
@@ -1175,6 +1175,32 @@ function demoDisplayStatus(options: DisplayOptions): DisplayStatus | null {
   };
 
   switch (name) {
+    case "recording-arming":
+      return {
+        ...base,
+        lifecycle: "launching",
+        currentGame: options.demoGame || "parkour",
+        label: options.demoLabel || "Parkour",
+        allowedControls: [],
+        recordingGate: demoRecordingGate("arming"),
+      };
+    case "recording-timeout":
+      return {
+        ...base,
+        lifecycle: "launching",
+        currentGame: options.demoGame || "parkour",
+        label: options.demoLabel || "Parkour",
+        allowedControls: ["recording_retry", "recording_continue_without", "recording_cancel"],
+        recordingGate: { ...demoRecordingGate("timed_out"), reason: "timeout" },
+      };
+    case "recording-ready":
+      return {
+        ...base,
+        lifecycle: "waiting",
+        currentGame: options.demoGame || "parkour",
+        label: options.demoLabel || "Parkour",
+        recordingGate: { ...demoRecordingGate("ready"), readyAtUnixMillis: 2_000 },
+      };
     case "screensaver":
       return {
         ...emptyStatus,
@@ -1379,4 +1405,17 @@ function demoDisplayStatus(options: DisplayOptions): DisplayStatus | null {
     default:
       return null;
   }
+}
+
+function demoRecordingGate(state: "arming" | "timed_out" | "ready") {
+  return {
+    id: "demo-recording-gate",
+    state,
+    scope: "run" as const,
+    runId: "demo-run",
+    captureId: "demo-capture",
+    attempt: 1,
+    startedAtUnixMillis: 1_000,
+    timeoutAtUnixMillis: 11_000,
+  };
 }

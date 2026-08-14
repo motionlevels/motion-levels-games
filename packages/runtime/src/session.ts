@@ -28,12 +28,27 @@ export type GameSessionState = {
   events: GameEvent[];
 };
 
+export type AutomaticAttemptTransition = Readonly<{
+  kind: "retry" | "level_advance";
+  fromLevelId: string;
+  fromLevelSlug: string;
+  toLevelId: string;
+  toLevelSlug: string;
+}>;
+
+type AutomaticAttemptTransitionGame = GameInstance & {
+  advanceAutomaticAttemptTransition(): readonly GameEvent[];
+  pendingAutomaticAttemptTransition(): AutomaticAttemptTransition | null;
+  setAutomaticAttemptTransitionsBlocked(blocked: boolean): void;
+};
+
 /**
  * Direct, in-process owner of one TypeScript game. It deliberately has no
  * transport or request-envelope concepts; venue hosts call these methods.
  */
 export class GameSession {
   private engine: GameEngine | null = null;
+  private game: GameInstance | null = null;
   private gameId = "";
   private initialConfig: NormalizedGameConfig | null = null;
   private development = false;
@@ -52,8 +67,10 @@ export class GameSession {
       throw new Error(`game is not production eligible: ${lookupKey}`);
     }
     const config = normalizeGameConfig(selection, module.manifest);
-    const engine = createSessionEngine(module.createGame(config), config.nowMillis);
+    const game = module.createGame(config);
+    const engine = createSessionEngine(game, config.nowMillis);
     this.engine = engine;
+    this.game = game;
     this.gameId = module.manifest.id;
     this.initialConfig = config;
     this.development = selection.development === true;
@@ -91,6 +108,34 @@ export class GameSession {
     return this.toState(engine.refresh());
   }
 
+  setAutomaticAttemptTransitionsBlocked(blocked: boolean): boolean {
+    const game = this.game;
+    if (!isAutomaticAttemptTransitionGame(game)) return false;
+    game.setAutomaticAttemptTransitionsBlocked(blocked);
+    return true;
+  }
+
+  pendingAutomaticAttemptTransition(): AutomaticAttemptTransition | null {
+    const game = this.game;
+    return isAutomaticAttemptTransitionGame(game) ? game.pendingAutomaticAttemptTransition() : null;
+  }
+
+  advanceAutomaticAttemptTransition(): GameSessionState {
+    const engine = this.requireEngine();
+    const game = this.game;
+    if (!isAutomaticAttemptTransitionGame(game)) {
+      throw new Error("active game does not support automatic attempt transitions");
+    }
+    this.releaseAll(engine.clockMillis);
+    return this.toState(engine.refresh([...game.advanceAutomaticAttemptTransition()]));
+  }
+
+  clearHeldInputs(atMillis?: number): GameSessionState {
+    const engine = this.requireEngine();
+    this.releaseAll(finiteMillis(atMillis, engine.clockMillis));
+    return this.toState(engine.refresh());
+  }
+
   restart(nowMillis = 0): GameSessionState {
     if (!this.initialConfig) throw new Error("game session has no active game");
     const module = gameplayRegistry.get(normalizeGameLookupKey(this.gameId));
@@ -99,8 +144,10 @@ export class GameSession {
       throw new Error(`game is not production eligible: ${this.gameId}`);
     }
     const config = { ...this.initialConfig, nowMillis: finiteMillis(nowMillis, 0) };
-    const engine = createSessionEngine(module.createGame(config), config.nowMillis);
+    const game = module.createGame(config);
+    const engine = createSessionEngine(game, config.nowMillis);
     this.engine = engine;
+    this.game = game;
     this.paused = false;
     this.held.clear();
     return this.toState(engine.state);
@@ -108,6 +155,7 @@ export class GameSession {
 
   stop(): void {
     this.engine = null;
+    this.game = null;
     this.gameId = "";
     this.initialConfig = null;
     this.development = false;
@@ -157,6 +205,14 @@ export class GameSession {
       events: state.events
     };
   }
+}
+
+function isAutomaticAttemptTransitionGame(game: GameInstance | null): game is AutomaticAttemptTransitionGame {
+  if (!game) return false;
+  const candidate = game as Partial<AutomaticAttemptTransitionGame>;
+  return typeof candidate.advanceAutomaticAttemptTransition === "function"
+    && typeof candidate.pendingAutomaticAttemptTransition === "function"
+    && typeof candidate.setAutomaticAttemptTransitionsBlocked === "function";
 }
 
 function createSessionEngine(game: GameInstance, nowMillis: number): GameEngine {

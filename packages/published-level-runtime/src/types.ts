@@ -1,5 +1,6 @@
 import type {
   GameContent,
+  GameEvent,
   GameInstance,
   GameManifest,
   GameSnapshot,
@@ -146,8 +147,23 @@ export type PublishedLevelSemanticTile = Readonly<{
   primed: boolean;
 }>;
 
+/** A level boundary owned by the venue host. Published games normally advance
+ * these transitions automatically; a host can hold them while it prepares an
+ * external dependency (for example, a run-scoped camera capture) and release
+ * the exact same transition once that dependency is ready. */
+export type PublishedLevelAttemptTransition = Readonly<{
+  kind: "retry" | "level_advance";
+  fromLevelId: string;
+  fromLevelSlug: string;
+  toLevelId: string;
+  toLevelSlug: string;
+}>;
+
 export type PublishedLevelGameInstance = Omit<GameInstance, "snapshot"> & Readonly<{
+  advanceAutomaticAttemptTransition(): readonly GameEvent[];
+  pendingAutomaticAttemptTransition(): PublishedLevelAttemptTransition | null;
   playerReadyZones(): PlayerReadyZone[];
+  setAutomaticAttemptTransitionsBlocked(blocked: boolean): void;
   snapshot(): PublishedLevelSnapshot;
   semanticTiles(atMillis?: number): readonly PublishedLevelSemanticTile[];
   dangerAt(x: number, y: number, atMillis?: number): number;

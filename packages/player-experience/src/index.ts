@@ -19,7 +19,38 @@ export type PlayerExperienceControl =
   | "narration"
   | "mute"
   | "unmute"
-  | "toggle_mute";
+  | "toggle_mute"
+  | "recording_retry"
+  | "recording_continue_without"
+  | "recording_cancel";
+
+export type PlayerExperienceRecordingGateState = "arming" | "timed_out" | "ready";
+
+export type PlayerExperienceRecordingGateReason =
+  | "timeout"
+  | "unavailable"
+  | "start_rejected"
+  | "start_unconfirmed";
+
+/**
+ * Engine-authoritative barrier for strict per-run recording.
+ *
+ * `id` is an opaque decision token. A retry rotates it while preserving the
+ * run and capture identities, so a delayed action from the previous decision
+ * cannot affect the newly armed attempt.
+ */
+export type PlayerExperienceRecordingGate = {
+  id: string;
+  state: PlayerExperienceRecordingGateState;
+  scope: "run";
+  runId: string;
+  captureId: string;
+  attempt: number;
+  startedAtUnixMillis: number;
+  timeoutAtUnixMillis: number;
+  readyAtUnixMillis?: number;
+  reason?: PlayerExperienceRecordingGateReason;
+};
 
 export type PlayerExperienceColor = { r: number; g: number; b: number };
 
@@ -155,6 +186,7 @@ export type PlayerExperienceState = {
   lastPressureUnix: number;
   pressureStreamConnected?: boolean;
   finishedLevelAttempts?: PlayerExperienceFinishedAttempt[];
+  recordingGate?: PlayerExperienceRecordingGate;
   catalog: PlayerExperienceGameSummary[];
 };
 
@@ -162,7 +194,10 @@ export type PlayerExperienceAudioOutputState = "disabled" | "checking" | "ready"
 
 const idleGames = new Set(["salvapantallas", "screensaver", "loop"]);
 
-export function lifecycleFromRuntime(input: Pick<PlayerExperienceState, "currentGame" | "paused" | "phase">): PlayerExperienceLifecycle {
+export function lifecycleFromRuntime(
+  input: Pick<PlayerExperienceState, "currentGame" | "paused" | "phase" | "recordingGate">
+): PlayerExperienceLifecycle {
+  if (input.recordingGate?.state === "arming" || input.recordingGate?.state === "timed_out") return "launching";
   if (input.paused) return "paused";
   const phase = input.phase.trim().toLowerCase();
   if (idleGames.has(input.currentGame)) return "idle";
@@ -176,7 +211,13 @@ export function lifecycleFromRuntime(input: Pick<PlayerExperienceState, "current
   return "running";
 }
 
-export function controlsForState(input: Pick<PlayerExperienceState, "audioEnabled" | "audioMuted" | "lifecycle">): PlayerExperienceControl[] {
+export function controlsForState(
+  input: Pick<PlayerExperienceState, "audioEnabled" | "audioMuted" | "lifecycle" | "recordingGate">
+): PlayerExperienceControl[] {
+  if (input.recordingGate?.state === "arming") return [];
+  if (input.recordingGate?.state === "timed_out") {
+    return ["recording_retry", "recording_continue_without", "recording_cancel"];
+  }
   if (input.lifecycle === "idle" || input.lifecycle === "launching" || input.lifecycle === "stopping" || input.lifecycle === "error") return [];
   const controls: PlayerExperienceControl[] = input.lifecycle === "paused"
     ? ["resume", "restart", "exit"]
