@@ -66,6 +66,7 @@ import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
 import { resolveMenuMirrorEnvelope } from "./menuMirror.ts";
 import { cleanNameDraft, cleanNameWhitespace } from "./nameEditing.ts";
 import { clearedVenueSessionProjection, commitVenueSessionRecordingScope, venueSessionRecordingCanRequest, venueSessionRecordingScope, venueSessionSyncDecision, type VenueSessionObservation } from "./venueSessionSync.ts";
+import { gameForMenuIdentity } from "./gameIdentity.ts";
 
 type MenuState = {
   sessionActive: boolean;
@@ -388,7 +389,7 @@ function isLevelRuntimeActive(status: EngineStatus | null, game: GameCard): bool
 }
 
 function gameForEngineStatus(engineGame: string, currentMenuGameID: string, catalogGames = games): GameCard | undefined {
-  const currentMenuGame = catalogGames.find((game) => game.id === currentMenuGameID);
+  const currentMenuGame = gameForMenuIdentity(catalogGames, currentMenuGameID);
   if (currentMenuGame && isPartyCard(currentMenuGame)) {
     const partyMiniGameMatches = (currentMenuGame.partyMiniGames || []).some((_, index) => {
       const launchGame = partyLaunchGame(currentMenuGame, catalogGames, index);
@@ -1530,14 +1531,14 @@ function MenuApp() {
     setMenu((current) => {
       const categoryGames = gamesForCategory(menuGames, current.category);
       const preservedSelection = selectedGameToPreserve
-        ? menuGames.find((game) => game.id === selectedGameToPreserve)
+        ? gameForMenuIdentity(menuGames, selectedGameToPreserve)
         : undefined;
       // An empty category is a valid catalog view. Keep it selected so the
       // recovery surface remains stable instead of snapping back to the stale
       // game that happened to be selected in the previous category.
       if (!preservedSelection && categoryGames.length === 0) return current;
       const selected = preservedSelection
-        || categoryGames.find((game) => game.id === current.selectedGame)
+        || gameForMenuIdentity(categoryGames, current.selectedGame)
         || categoryGames[0];
       const category = preservedSelection ? menuCategoryForGame(selected, current.category) : current.category;
       const difficulty = normalizedDifficultyForGame(selected, current.difficulty);
@@ -2041,7 +2042,7 @@ function MenuApp() {
   const activeCategory = categories.find((category) => category.id === menu.category) || categories[0];
   const levelsUnlocked = unlockLevelsEnabled(menu);
   const visibleGames = gamesForCategory(menuGames, menu.category);
-  const selectedGame = menuGames.find((game) => game.id === menu.selectedGame) || menuGames[0] || games[0];
+  const selectedGame = gameForMenuIdentity(menuGames, menu.selectedGame) || menuGames[0] || games[0];
   const categorySelectionValid = visibleGames.some((game) => game.id === selectedGame.id);
   const runtimeGame = status ? gameForEngineStatus(status.currentGame, menu.selectedGame, menuGames) : null;
   const launchedGame = runtimeGame && playerExperienceView(status).screen === "game" ? runtimeGame : selectedGame;
@@ -2111,7 +2112,7 @@ function MenuApp() {
     setMenu((current) => {
       const currentCategoryGames = gamesForCategory(menuGames, current.category);
       if (!current.selectedGame && currentCategoryGames.length === 0) return current;
-      const game = menuGames.find((candidate) => candidate.id === current.selectedGame) || selectedGame;
+      const game = gameForMenuIdentity(menuGames, current.selectedGame) || selectedGame;
       const category = currentCategoryGames.length === 0
         ? current.category
         : menuCategoryForGame(game, current.category);
@@ -3738,7 +3739,7 @@ function MenuApp() {
                   ) : visibleGames.map((game, index) => {
                     const future = Boolean(game.disabled);
                     const engineAvailable = isGameLaunchable(game);
-                    const selected = menu.selectedGame === game.id;
+                    const selected = selectedGame.id === game.id;
                     const active = selected && (status?.currentGame === runtimeGameID(game) || status?.currentGame === engineGameID(game));
                     const meta = gameCardMeta(game, active, selected);
                     return (

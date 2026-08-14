@@ -353,6 +353,8 @@ describe("catalog metadata sync", () => {
   it("publishes revisioned canonical bundle media in the local catalog", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../src/localCatalog.ts"), "utf8");
 
+    assert.match(source, /engine_game: `motion-levels-games:\$\{gameManifestSlug\(manifest\)\}`/);
+    assert.doesNotMatch(source, /engine_game: `motion-levels-games:\$\{manifest\.id\}`/);
     assert.match(source, /const media = gameBundleMediaSources\(manifest\.id, sourceRevision, menuLocation\);/);
     assert.match(source, /catalog_thumbnail_small_url: media\.thumbnailSmall/);
     assert.match(source, /catalog_thumbnail_url: media\.thumbnail/);
@@ -631,6 +633,8 @@ describe("catalog metadata sync", () => {
 
     assert.match(appSource, /function runtimeGameID\(game: Pick<GameCard, "engineGame" \| "id" \| "sourceKind">\): string/);
     assert.match(appSource, /game\.sourceKind === "platform_levels" && isCanonicalEntityID\(game\.id\) \? game\.id : engineGameID\(game\)/);
+    assert.match(appSource, /const selectedGame = gameForMenuIdentity\(menuGames, menu\.selectedGame\) \|\| menuGames\[0\] \|\| games\[0\];/);
+    assert.doesNotMatch(appSource, /menuGames\.find\(\(game\) => game\.id === menu\.selectedGame\) \|\| menuGames\[0\]/);
     assert.match(appSource, /game: runtimeGameID\(launchGame\),\s+engineGame: engineGameID\(launchGame\),/);
     assert.match(appSource, /const levelID = String\(lvl\.id \|\| ""\)\.trim\(\);/);
     assert.match(appSource, /slug: levelSlug \|\| undefined,/);
