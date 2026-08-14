@@ -11,7 +11,7 @@ import { frameToRgb, resolveRuntimeContentPlatformUrl, RevisionMismatchError, Ve
 const revision = "1".repeat(40);
 const roomControllerId = "01234567-89ab-4def-8123-456789abcdef";
 
-test("venue runtime exposes an honest idle status and audio capability", () => {
+test("venue runtime runs the revisioned TypeScript screensaver while remaining idle", () => {
   const runtime = new VenueRuntime({
     sourceRevision: revision,
     controllerAddress: "127.0.0.1:4201",
@@ -24,16 +24,44 @@ test("venue runtime exposes an honest idle status and audio capability", () => {
   assert.equal(status.lifecycle, "idle");
   assert.deepEqual(status.allowedControls, []);
   assert.equal(status.currentGame, "salvapantallas");
+  assert.equal(status.phase, "ambient");
+  assert.equal(status.sourceKind, "motion_levels_games");
+  assert.equal(status.sourceRevision, revision);
+  assert.equal(status.sessionId, "");
+  assert.equal(status.venueSessionId, "");
   assert.equal(status.audioEnabled, false);
   assert.equal(status.pressureStreamConnected, false);
   assert.equal(status.controllerId, roomControllerId);
   assert.equal(status.roomControllerId, roomControllerId);
   assert.equal(status.floorAdapter.revision, "");
   assert.equal(runtime.health().controllerProtocolVersion, 2);
+
+  const display = runtime.display();
+  const frame = display.frame as Frame;
+  const snapshot = display.gameSnapshot as Record<string, unknown>;
+  assert.equal(frame.cells.length, FLOOR_COLS * FLOOR_ROWS);
+  assert.ok(frameToRgb(frame, 1).some((channel) => channel > 0), "the idle floor must not be black");
+  assert.equal(snapshot.phase, "running");
+  assert.equal(snapshot.rotationSize, 24);
 });
 
-test("idle display health accepts a fresh polling fallback without a game revision", () => {
+test("idle display health requires the revisioned animations renderer", () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4203" });
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    renderStatus: "ready",
+    connected: false,
+    feedTransport: "poll",
+    lastFeedUnixMillis: Date.now(),
+  });
+  const status = runtime.displayClientStatus();
+  assert.equal(status.fresh, true);
+  assert.equal(status.revisionMatches, true);
+  assert.equal(status.healthy, true);
+
   runtime.updateDisplayClient({
     clientId: "player-display",
     currentGame: "salvapantallas",
@@ -44,10 +72,28 @@ test("idle display health accepts a fresh polling fallback without a game revisi
     feedTransport: "poll",
     lastFeedUnixMillis: Date.now(),
   });
-  const status = runtime.displayClientStatus();
-  assert.equal(status.fresh, true);
-  assert.equal(status.revisionMatches, true);
-  assert.equal(status.healthy, true);
+  assert.equal(runtime.displayClientStatus().revisionMatches, false);
+  assert.equal(runtime.displayClientStatus().healthy, false);
+});
+
+test("idle screensaver responds to pressure without becoming a venue session", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const before = (runtime.display().frame as Frame).cells.map((cell) => cell.color);
+  runtime.applyPressure({ x: 8, y: 16, pressed: true, unixNanos: 1n, sequence: 1n });
+
+  const display = runtime.display();
+  assert.equal(runtime.status().activeTargets, 1);
+  assert.equal((display.gameSnapshot as Record<string, unknown>).activeTargets, 1);
+  assert.notDeepEqual((display.frame as Frame).cells.map((cell) => cell.color), before);
+
+  runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: "venue-session-1",
+    teamName: "Equipo prueba",
+    recordingEnabled: false
+  });
+  assert.equal(runtime.status().venueSessionId, "");
+  assert.equal(runtime.status().sessionId, "");
 });
 
 test("selection fails closed on bundle revision mismatch", async () => {
@@ -107,6 +153,34 @@ test("held pressure is applied when a game is selected and restarted", async () 
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
   runtime.control("restart");
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
+
+  const idle = runtime.control("exit");
+  assert.equal(idle.lifecycle, "idle");
+  assert.equal(idle.currentGame, "salvapantallas");
+  assert.equal(idle.phase, "ambient");
+  assert.equal(idle.sessionId, "");
+  assert.equal(idle.venueSessionId, "");
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).activeTargets, 1);
+  assert.ok(frameToRgb(runtime.display().frame as Frame, 1).some((channel) => channel > 0));
+});
+
+test("selecting salvapantallas stays an idle rotation without a gameplay session", async () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const status = await runtime.select({
+    game: "salvapantallas",
+    engineGame: "salvapantallas",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    durationSeconds: 5,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  assert.equal(status.lifecycle, "idle");
+  assert.equal(status.phase, "ambient");
+  assert.equal(status.sessionId, "");
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 24);
+  assert.throws(() => runtime.control("pause"), /no active game/);
 });
 
 test("published levels resolve the TS product from engineGame and fetch canonical request.game content", async (context) => {

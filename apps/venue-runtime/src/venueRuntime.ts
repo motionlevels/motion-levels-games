@@ -122,16 +122,7 @@ type SelectionMetadata = {
   contentRevision: string;
 };
 
-const blackFrame: Frame = {
-  width: FLOOR_COLS,
-  height: FLOOR_ROWS,
-  cells: Array.from({ length: FLOOR_COLS * FLOOR_ROWS }, (_, index) => ({
-    x: index % FLOOR_COLS,
-    y: Math.floor(index / FLOOR_COLS),
-    color: "#000000"
-  }))
-};
-
+const screensaverGameId = "salvapantallas";
 const defaultLocalLiveFloorFps = 10;
 const minimumLocalLiveFloorFps = 5;
 const maximumLocalLiveFloorFps = 10;
@@ -150,7 +141,7 @@ export class VenueRuntime {
   private readonly menuListeners = new Set<(state: MenuStateEnvelope) => void>();
   private readonly runId = randomUUID();
   private stateRevision = 1;
-  private state: GameSessionState | null = null;
+  private state!: GameSessionState;
   private selection: SelectionMetadata | null = null;
   private gameStartedAt = performance.now();
   private pauseStartedAt = 0;
@@ -198,6 +189,7 @@ export class VenueRuntime {
       },
       log: options.log
     });
+    this.activateScreensaver();
   }
 
   start(): void {
@@ -236,6 +228,15 @@ export class VenueRuntime {
     const players = normalizePlayers(request.players ?? [], playerCount, module.manifest.players.allowAny);
     const durationSeconds = Number(request.durationSeconds);
     const durationMillis = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds * 1_000 : undefined;
+    if (module === gameplayRegistry.get(screensaverGameId) && isScreensaverRequest(request)) {
+      const screensaverOptions: Record<string, unknown> = { mode: "rotation", ...(request.config ?? {}) };
+      if (screensaverOptions.rotationSeconds === undefined && durationMillis !== undefined) {
+        screensaverOptions.rotationSeconds = Math.max(5, Math.min(120, Math.round(durationSeconds)));
+      }
+      this.activateScreensaver(screensaverOptions);
+      this.publishDisplay();
+      return this.status();
+    }
     const contentResult = request.sourceKind === "platform_levels"
       ? await this.fetchRuntimeContent(request)
       : null;
@@ -277,14 +278,11 @@ export class VenueRuntime {
     const action = String(actionValue ?? "");
     const now = performance.now();
     if (action === "exit") {
-      this.session.stop();
-      this.state = null;
-      this.selection = null;
-      this.gameSessionId = "";
+      this.activateScreensaver();
       this.publishDisplay();
       return this.status();
     }
-    if (!this.state) throw new RequestValidationError("no active game");
+    if (!this.selection) throw new RequestValidationError("no active game");
     if (action === "pause") {
       if (!this.state.paused) this.pauseStartedAt = now;
       this.state = this.session.pause(this.elapsedAt(now));
@@ -311,21 +309,28 @@ export class VenueRuntime {
 
   status(): VenueRuntimeStatus {
     const catalog = productionCatalog();
-    if (!this.state || !this.selection) {
+    if (!this.selection) {
+      const snapshot = this.state.snapshot;
+      const lastEvent = this.state.events.at(-1);
       const status: PlayerExperienceState = {
         contractVersion: playerExperienceContractVersion,
         revision: this.stateRevision,
         runId: this.runId,
         lifecycle: "idle",
         allowedControls: [],
-        currentGame: "salvapantallas",
+        currentGame: screensaverGameId,
+        engineGame: `motion-levels-games:${this.state.gameId}`,
+        sourceKind: "motion_levels_games",
+        sourceRevision: this.options.sourceRevision,
         venueSessionId: "",
         sessionId: "",
         label: "En espera",
-        phase: "idle",
+        phase: "ambient",
         difficulty: "medium",
+        difficultyConfigurable: false,
         teamName: "",
         playerCount: 0,
+        playerConfigurable: false,
         players: [],
         score: 0,
         lives: -1,
@@ -342,10 +347,10 @@ export class VenueRuntime {
         endsUnix: 0,
         elapsedMillis: 0,
         remainingMillis: 0,
-        activeTargets: 0,
-        lastEventUnixNanos: 0,
-        lastEventCue: "",
-        lastEventMessage: "",
+        activeTargets: snapshot.activeTargets,
+        lastEventUnixNanos: lastEvent ? Date.now() * 1_000_000 : 0,
+        lastEventCue: lastEvent?.cue ?? snapshot.lastEventCue,
+        lastEventMessage: lastEvent?.message ?? snapshot.lastEventMessage,
         lastPressureUnix: this.lastPressureUnix,
         catalog
       };
@@ -423,7 +428,6 @@ export class VenueRuntime {
 
   display(): Record<string, unknown> {
     const status = this.status();
-    if (!this.state || !this.selection) return status;
     return {
       ...status,
       sourceKind: "motion_levels_games",
@@ -542,10 +546,9 @@ export class VenueRuntime {
     const lastFeedUnixMillis = Number(report.lastFeedUnixMillis ?? 0);
     const feedFresh = Number.isFinite(lastFeedUnixMillis) && lastFeedUnixMillis > 0 && Date.now() - lastFeedUnixMillis <= 15_000;
     const connected = report.connected === true || (report.feedTransport === "poll" && feedFresh);
-    const idleDisplay = currentGame === "salvapantallas";
-    const revisionMatches = seen && report.expectedRevision === report.loadedRevision && (
-      idleDisplay ? report.loadedRevision === "" : report.loadedRevision === this.options.sourceRevision
-    );
+    const revisionMatches = seen
+      && report.expectedRevision === this.options.sourceRevision
+      && report.loadedRevision === this.options.sourceRevision;
     return {
       ...report,
       seen,
@@ -563,7 +566,6 @@ export class VenueRuntime {
     this.lastPressureUnix = Math.floor(Number(input.unixNanos / 1_000_000_000n)) || Math.floor(Date.now() / 1_000);
     const key = `${input.x},${input.y}`;
     if (input.pressed) this.heldPressure.add(key); else this.heldPressure.delete(key);
-    if (!this.state) return;
     const atMillis = this.elapsedAt(performance.now());
     this.state = input.pressed
       ? this.session.press(input.x, input.y, atMillis)
@@ -643,8 +645,8 @@ export class VenueRuntime {
   }
 
   private tick(now: number): void {
-    if (this.state && !this.state.paused) this.state = this.session.tick(this.elapsedAt(now));
-    const frame = this.state?.frame ?? blackFrame;
+    if (!this.state.paused) this.state = this.session.tick(this.elapsedAt(now));
+    const frame = this.state.frame;
     this.frameSequence += 1n;
     this.controller.sendFrame({
       sequence: this.frameSequence,
@@ -675,10 +677,24 @@ export class VenueRuntime {
     const status = this.status();
     for (const listener of this.statusListeners) listener(status);
     if (this.displayListeners.size === 0) return;
-    const display = this.state && this.selection
-      ? { ...status, sourceKind: "motion_levels_games", gameSnapshot: this.state.snapshot, frame: this.state.frame }
-      : status;
+    const display = { ...status, sourceKind: "motion_levels_games", gameSnapshot: this.state.snapshot, frame: this.state.frame };
     for (const listener of this.displayListeners) listener(display);
+  }
+
+  private activateScreensaver(options: Record<string, unknown> = { mode: "rotation" }): void {
+    this.state = this.session.select({
+      gameId: screensaverGameId,
+      playerCount: 0,
+      difficulty: "medium",
+      seed: 137,
+      options
+    });
+    this.selection = null;
+    this.gameStartedAt = performance.now();
+    this.pauseStartedAt = 0;
+    this.sessionStartedUnix = 0;
+    this.gameSessionId = "";
+    this.applyHeldPressure(0);
   }
 
   private async fetchRuntimeContent(request: SelectGameRequest): Promise<{ content: GameContent; contentRevision: string }> {
@@ -762,6 +778,13 @@ function runtimeGameId(request: SelectGameRequest): string {
     if (candidate.startsWith("motion-levels-games:")) return candidate.slice("motion-levels-games:".length);
   }
   return String(request.game ?? "").trim();
+}
+
+function isScreensaverRequest(request: SelectGameRequest): boolean {
+  return [request.engineGame, request.game].some((value) => {
+    const candidate = String(value ?? "").trim().toLowerCase();
+    return candidate === screensaverGameId || candidate === `motion-levels-games:${screensaverGameId}`;
+  });
 }
 
 function normalizePlayers(

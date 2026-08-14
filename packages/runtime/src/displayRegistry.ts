@@ -1,3 +1,4 @@
+import * as animations from "@motion-levels-games/animations";
 import * as arkanoid from "@motion-levels-games/arkanoid";
 import * as cruceGalactico from "@motion-levels-games/cruce-galactico";
 import * as duelo from "@motion-levels-games/duelo";
@@ -28,7 +29,7 @@ export type DisplayModule = {
 };
 
 const displays = [
-  arkanoid, cruceGalactico, duelo, equilibrio, estela, guardianes, helloWorld, lava,
+  animations, arkanoid, cruceGalactico, duelo, equilibrio, estela, guardianes, helloWorld, lava,
   memoryChallenge, memoriaV2, meteorDodge, parkour, patrones, pingPong, pingPongV2,
   pulso, saltos, sueloSeguro, temporada1Niveles, tetris, tiraSoga, whackAMole
 ] satisfies DisplayModule[];

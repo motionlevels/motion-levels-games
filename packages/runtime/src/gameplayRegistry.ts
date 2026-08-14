@@ -1,3 +1,5 @@
+import { createGame as createAnimations } from "@motion-levels-games/animations/game";
+import { manifest as animationsManifest } from "@motion-levels-games/animations/manifest";
 import { createGame as createArkanoid } from "@motion-levels-games/arkanoid/game";
 import { manifest as arkanoidManifest } from "@motion-levels-games/arkanoid/manifest";
 import { createGame as createCruceGalactico } from "@motion-levels-games/cruce-galactico/game";
@@ -56,6 +58,7 @@ export type GameplayModule = {
 };
 
 const registeredGames: GameplayModule[] = [
+  { manifest: animationsManifest, createGame: createAnimations },
   { manifest: arkanoidManifest, createGame: createArkanoid },
   { manifest: cruceGalacticoManifest, createGame: createCruceGalactico },
   { manifest: dueloManifest, createGame: createDuelo },

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures.ts",
+    "./game": "./src/game.ts",
     "./manifest": "./src/manifest.ts"
   },
   "scripts": {

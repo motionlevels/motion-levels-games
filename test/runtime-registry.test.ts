@@ -40,6 +40,8 @@ test("gameplay and browser display registries cover every playable game package"
       assert.equal(typeof displayRegistry.get(lookupKey)?.PlayerDisplay, "function", `${gameId} must register its browser display`);
     }
   }
+
+  assert.equal(gameplayRegistry.get("salvapantallas"), gamePackageRegistry.get("animations"));
 });
 
 test("gameplay registry rejects canonical-id, slug, and historical-alias collisions", () => {
