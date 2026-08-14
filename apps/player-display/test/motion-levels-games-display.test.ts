@@ -6,6 +6,7 @@ const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8
 const apiSource = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
 const displaySource = readFileSync(new URL("../src/MotionLevelsGamesDisplay.tsx", import.meta.url), "utf8");
 const clientSource = readFileSync(new URL("../src/displayClient.ts", import.meta.url), "utf8");
+const runtimeSource = readFileSync(new URL("../../../packages/runtime/src/display.tsx", import.meta.url), "utf8");
 
 test("new games load their revision-matched display while legacy games retain the existing app", () => {
   assert.match(appSource, /liveStatus\.sourceKind === "motion_levels_games"/u);
@@ -36,6 +37,14 @@ test("the kiosk reports the rendered revision, feed, paint, and viewport to the 
   assert.match(appSource, /lastPaintUnixMillis: lastPaintAt\.current/u);
   assert.match(appSource, /feedTransport: feedTransport\.current/u);
   assert.match(appSource, /viewportWidth:/u);
+  assert.match(appSource, /shellRevision: PLAYER_DISPLAY_REVISION/u);
+  assert.match(appSource, /new PlayerExperienceStateGate\(\)/u);
+  assert.match(appSource, /revisionConvergenceDecision/u);
   assert.match(clientSource, /\/api\/display-client/u);
   assert.match(appSource, /!telemetryEnabled/u);
+});
+
+test("a newly loaded display registry replaces revision-owned styles", () => {
+  assert.match(runtimeSource, /style\.textContent = MOTION_LEVELS_GAMES_DISPLAY_CSS/u);
+  assert.match(runtimeSource, /style\.dataset\.revision = MOTION_LEVELS_GAMES_REVISION/u);
 });

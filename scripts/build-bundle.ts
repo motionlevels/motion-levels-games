@@ -69,7 +69,23 @@ execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
 await stat(path.join(repoRoot, "apps/player-menu/dist/index.html"));
 await stat(path.join(repoRoot, "apps/player-menu/dist/build.json"));
 await cp(path.join(repoRoot, "apps/player-menu/dist"), path.join(outputRoot, "menu"), { recursive: true });
+execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
+  "run",
+  "build",
+  "--workspace",
+  "@motion-levels-games/player-display",
+], {
+  cwd: repoRoot,
+  env: {
+    ...process.env,
+    MOTION_LEVELS_BUILD_DATE: sourceBuildDate,
+    MOTION_LEVELS_BUILD_REVISION: sourceRevision,
+    MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision
+  },
+  stdio: "inherit"
+});
 await stat(path.join(repoRoot, "apps/player-display/dist/index.html"));
+await stat(path.join(repoRoot, "apps/player-display/dist/build.json"));
 await cp(path.join(repoRoot, "apps/player-display/dist"), path.join(outputRoot, "display"), { recursive: true });
 execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
   "run",
@@ -166,6 +182,7 @@ const manifest = {
   playerDisplay: {
     entry: "display/display.js",
     shellEntry: "display/index.html",
+    buildManifest: "display/build.json",
     games: catalog.filter((game) => game.availability.production).map((game) => game.id)
   },
   playerMenu: {
