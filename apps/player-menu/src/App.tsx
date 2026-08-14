@@ -3281,10 +3281,10 @@ function MenuApp() {
             className={`capsule audio-btn ${status?.audioMuted ? "muted" : ""}`}
             type="button"
             onClick={() => sendGameControl("toggle_mute")}
-            disabled={!status?.audioEnabled || connectionState !== "connection-on" || Boolean(pendingControlAction)}
+            disabled={!audioControlAvailable(status) || connectionState !== "connection-on" || Boolean(pendingControlAction)}
             aria-busy={pendingControlAction === "toggle_mute" || undefined}
-            aria-label={status?.audioMuted ? "Activar audio" : "Silenciar audio"}
-            title={status?.audioMuted ? "Activar audio" : "Silenciar audio"}
+            aria-label={audioControlTitle(status)}
+            title={audioControlTitle(status)}
           >
             {status?.audioMuted ? <VolumeMutedIcon /> : <VolumeIcon />}
           </button>
@@ -4015,7 +4015,7 @@ function MenuApp() {
           envUnlockLevels={envUnlockLevels}
           engineLabel={engineLabel}
           floorLabel={floorReady ? "Conectado" : "Sin señal"}
-          audioLabel={status?.audioEnabled ? status.audioMuted ? "Silenciado" : "Activo" : "No disponible"}
+          audioLabel={audioStatusLabel(status)}
           catalogLabel={catalogRefreshing ? "Actualizando" : `${menuGames.length} ${menuGames.length === 1 ? "modo" : "modos"}`}
           onTypeDigit={typeSettingsPinDigit}
           onBackspace={() => {
@@ -4408,6 +4408,26 @@ function GameConfigStepper({
       </button>
     </div>
   );
+}
+
+function audioControlAvailable(status: EngineStatus | null | undefined): boolean {
+  return Boolean(status?.audioEnabled && status.audioOutputState !== "failed" && status.audioOutputState !== "disabled");
+}
+
+function audioControlTitle(status: EngineStatus | null | undefined): string {
+  if (!status?.audioEnabled || status.audioOutputState === "disabled") return "Audio no disponible";
+  if (status.audioOutputState === "failed") return "Salida de audio no disponible";
+  if (status.audioOutputState === "checking") return "Comprobando salida de audio";
+  if (status.audioOutputState === "suspended") return status.audioMuted ? "Activar audio" : "Silenciar audio";
+  return status.audioMuted ? "Activar audio" : "Silenciar audio";
+}
+
+function audioStatusLabel(status: EngineStatus | null | undefined): string {
+  if (!status?.audioEnabled || status.audioOutputState === "disabled") return "No disponible";
+  if (status.audioOutputState === "failed") return "Error de salida";
+  if (status.audioOutputState === "checking") return "Comprobando";
+  if (status.audioOutputState === "suspended") return "En espera";
+  return status.audioMuted ? "Silenciado" : "Activo";
 }
 
 function OperatorSettingsDialog({

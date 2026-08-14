@@ -19,6 +19,7 @@ const runtime = new VenueRuntime({
   localLiveFloorFps: parsePositive(process.env.MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS, 20),
   remoteFloorInputLeaseMillis: parseDurationMillis(process.env.MOTION_LEVELS_REMOTE_FLOOR_INPUT_LEASE, 5_000),
   brightness: parseBrightness(process.env.MOTION_LEVELS_ENGINE_BRIGHTNESS),
+  audioEnabled: parseBoolean(process.env.MOTION_LEVELS_AUDIO_ENABLED, false),
   sessionHistoryDir: process.env.MOTION_LEVELS_SESSION_HISTORY_DIR?.trim() || "/var/lib/motion-levels/session-history",
   ...(recordingClient ? { recordingClient } : {}),
   log: (message, error) => console.error(`[venue-runtime] ${message}`, error ?? "")
@@ -90,6 +91,13 @@ function parseBrightness(value: string | undefined): number {
   const number = Number(value ?? 100);
   if (!Number.isFinite(number)) return 1;
   return Math.max(0, Math.min(1, number > 1 ? number / 100 : number));
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
 }
 
 function parseNonNegative(value: string | undefined, fallback: number): number {

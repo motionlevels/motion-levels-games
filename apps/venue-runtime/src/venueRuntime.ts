@@ -4,6 +4,7 @@ import {
   FLOOR_ROWS,
   type Frame,
   type GameContent,
+  type GameEvent,
   type GameManifest
 } from "@motion-levels-games/game-sdk";
 import {
@@ -102,6 +103,7 @@ export type VenueRuntimeOptions = {
   remoteFloorInputTombstoneMillis?: number;
   screensaverRefreshMillis?: number;
   brightness?: number;
+  audioEnabled?: boolean;
   sessionHistoryDir?: string;
   recordingClient?: RecordingClient;
   now?: () => number;
@@ -226,6 +228,7 @@ export class VenueRuntime {
   private readonly remoteFloorInputLeaseMillis: number;
   private readonly remoteFloorInputTombstoneMillis: number;
   private readonly history: SessionHistoryRecorder | null;
+  private readonly audioEnabled: boolean;
   private readonly liveFloorListeners = new Set<ObservedFloorSubscription>();
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
   private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
@@ -267,12 +270,20 @@ export class VenueRuntime {
   private menuState: MenuStateEnvelope = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
   private displayClientReport: Record<string, unknown> | null = null;
   private displayClientReceivedUnixMillis = 0;
+  private audioMuted: boolean;
+  private capturedEvents: GameEvent[] | null = null;
+  private lastEventSequence = 0;
+  private lastEventUnixNanos = 0;
+  private lastEventCue = "";
+  private lastEventMessage = "";
 
   constructor(private readonly options: VenueRuntimeOptions) {
     if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
     this.localLiveFloorFps = normalizeLocalLiveFloorFps(options.localLiveFloorFps);
     this.remoteFloorInputLeaseMillis = normalizeRemoteFloorInputLeaseMillis(options.remoteFloorInputLeaseMillis);
     this.remoteFloorInputTombstoneMillis = normalizeRemoteFloorInputTombstoneMillis(options.remoteFloorInputTombstoneMillis);
+    this.audioEnabled = options.audioEnabled === true;
+    this.audioMuted = !this.audioEnabled;
     this.history = options.sessionHistoryDir
       ? new SessionHistoryRecorder(new SessionHistoryStore(options.sessionHistoryDir, options.now), {
           now: options.now,
@@ -434,6 +445,7 @@ export class VenueRuntime {
     this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
     this.gameSessionId = randomUUID();
     this.selectionHistoryId = randomUUID();
+    this.captureLatestEvent();
     if (requestedVenueSessionId) {
       this.history?.startVisit({
         id: requestedVenueSessionId,
@@ -476,6 +488,12 @@ export class VenueRuntime {
   control(actionValue: unknown): VenueRuntimeStatus {
     const action = String(actionValue ?? "");
     const now = performance.now();
+    if (action === "mute" || action === "unmute" || action === "toggle_mute") {
+      if (!this.audioEnabled) throw new RequestValidationError("audio is not configured");
+      this.audioMuted = action === "mute" ? true : action === "unmute" ? false : !this.audioMuted;
+      this.publishDisplay();
+      return this.status();
+    }
     if (action === "exit") {
       this.history?.endSelection("exited");
       this.activateScreensaver();
@@ -485,24 +503,24 @@ export class VenueRuntime {
     if (!this.selection) throw new RequestValidationError("no active game");
     if (action === "pause") {
       if (!this.state.paused) this.pauseStartedAt = now;
-      this.state = this.session.pause(this.elapsedAt(now));
+      this.updateState(this.session.pause(this.elapsedAt(now)));
       this.history?.observeState(this.state);
     } else if (action === "resume") {
       if (this.state.paused && this.pauseStartedAt > 0) this.gameStartedAt += now - this.pauseStartedAt;
       this.pauseStartedAt = 0;
-      this.state = this.session.resume();
+      this.updateState(this.session.resume());
       this.history?.observeState(this.state);
       this.applyHeldPressure(this.state.clockMillis);
     } else if (action === "restart") {
-      this.state = this.session.restart(0);
+      this.updateState(this.session.restart(0));
       this.gameStartedAt = now;
       this.pauseStartedAt = 0;
       this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
       this.gameSessionId = randomUUID();
       this.history?.restartRun(this.gameSessionId, this.state);
       this.applyHeldPressure(0);
-    } else if (action === "narration" || action === "mute" || action === "unmute" || action === "toggle_mute") {
-      // Audio is intentionally unavailable until the venue provides a TS-owned adapter.
+    } else if (action === "narration") {
+      // Narration remains a separate media concern; cue audio is owned by the TV display.
     } else {
       throw new RequestValidationError(`unknown control action: ${action}`);
     }
@@ -539,8 +557,9 @@ export class VenueRuntime {
         lives: -1,
         music: "",
         musicVolume: 0,
-        audioEnabled: false,
-        audioMuted: true,
+        audioEnabled: this.audioEnabled,
+        audioMuted: this.audioMuted,
+        audioOutputState: this.audioOutputState(),
         paused: false,
         success: false,
         introRemainingMillis: 0,
@@ -551,9 +570,10 @@ export class VenueRuntime {
         elapsedMillis: 0,
         remainingMillis: 0,
         activeTargets: snapshot.activeTargets,
-        lastEventUnixNanos: lastEvent ? Date.now() * 1_000_000 : 0,
-        lastEventCue: lastEvent?.cue ?? snapshot.lastEventCue,
-        lastEventMessage: lastEvent?.message ?? snapshot.lastEventMessage,
+        lastEventUnixNanos: this.lastEventUnixNanos,
+        lastEventSequence: this.lastEventSequence,
+        lastEventCue: this.lastEventCue || lastEvent?.cue || snapshot.lastEventCue,
+        lastEventMessage: this.lastEventMessage || lastEvent?.message || snapshot.lastEventMessage,
         lastPressureUnix: this.lastPressureUnix,
         catalog
       };
@@ -600,8 +620,9 @@ export class VenueRuntime {
       livesStart: snapshot.maxLives,
       music: "",
       musicVolume: 0,
-      audioEnabled: false,
-      audioMuted: true,
+      audioEnabled: this.audioEnabled,
+      audioMuted: this.audioMuted,
+      audioOutputState: this.audioOutputState(),
       paused: this.state.paused,
       phase: snapshot.phase,
       success: snapshot.success,
@@ -617,9 +638,10 @@ export class VenueRuntime {
       elapsedMillis: snapshot.elapsedMillis,
       remainingMillis: snapshot.remainingMillis,
       activeTargets: snapshot.activeTargets,
-      lastEventUnixNanos: lastEvent ? Date.now() * 1_000_000 : 0,
-      lastEventCue: lastEvent?.cue ?? snapshot.lastEventCue,
-      lastEventMessage: lastEvent?.message ?? snapshot.lastEventMessage,
+      lastEventUnixNanos: this.lastEventUnixNanos,
+      lastEventSequence: this.lastEventSequence,
+      lastEventCue: this.lastEventCue || lastEvent?.cue || snapshot.lastEventCue,
+      lastEventMessage: this.lastEventMessage || lastEvent?.message || snapshot.lastEventMessage,
       sessionId: this.gameSessionId,
       lastPressureUnix: this.lastPressureUnix,
       catalog
@@ -719,7 +741,9 @@ export class VenueRuntime {
       },
       remoteFloorInput: this.remoteFloorInputStatus(),
       sessionHistory,
-      audioEnabled: false,
+      audioEnabled: this.audioEnabled,
+      audioMuted: this.audioMuted,
+      audioOutputState: this.audioOutputState(),
       displayClient: this.displayClientStatus()
     };
   }
@@ -876,8 +900,10 @@ export class VenueRuntime {
 
   updateDisplayClient(report: Record<string, unknown>): Record<string, unknown> {
     if (report.clientId !== "player-display") throw new RequestValidationError("clientId must be player-display");
+    const previousAudioOutputState = this.audioOutputState();
     this.displayClientReport = structuredClone(report);
     this.displayClientReceivedUnixMillis = Date.now();
+    if (this.audioOutputState() !== previousAudioOutputState) this.publishDisplay();
     return this.displayClientStatus();
   }
 
@@ -885,7 +911,7 @@ export class VenueRuntime {
     const report = this.displayClientReport ?? {};
     const seen = this.displayClientReceivedUnixMillis > 0;
     const ageMillis = seen ? Math.max(0, Date.now() - this.displayClientReceivedUnixMillis) : 0;
-    const currentGame = String(this.status().currentGame ?? "");
+    const currentGame = this.selection?.runtimeGameId ?? screensaverGameId;
     const matchesCurrentGame = seen && report.currentGame === currentGame;
     const fresh = seen && ageMillis <= 15_000;
     const lastFeedUnixMillis = Number(report.lastFeedUnixMillis ?? 0);
@@ -904,6 +930,16 @@ export class VenueRuntime {
       receivedUnixMillis: this.displayClientReceivedUnixMillis,
       ageMillis
     };
+  }
+
+  private audioOutputState(): "disabled" | "checking" | "ready" | "suspended" | "failed" {
+    if (!this.audioEnabled) return "disabled";
+    const ageMillis = this.displayClientReceivedUnixMillis > 0
+      ? Math.max(0, Date.now() - this.displayClientReceivedUnixMillis)
+      : Number.POSITIVE_INFINITY;
+    if (!this.displayClientReport || ageMillis > 15_000) return "checking";
+    const state = this.displayClientReport.audioOutputState;
+    return state === "ready" || state === "suspended" || state === "failed" ? state : "checking";
   }
 
   /** Controller input boundary; public to permit deterministic host tests. */
@@ -1024,7 +1060,7 @@ export class VenueRuntime {
 
   private tick(now: number): void {
     if (!this.state.paused) {
-      this.state = this.session.tick(this.elapsedAt(now));
+      this.updateState(this.session.tick(this.elapsedAt(now)));
       this.history?.observeState(this.state);
     }
     const frame = this.state.frame;
@@ -1050,7 +1086,7 @@ export class VenueRuntime {
     for (const key of this.heldPressure) {
       const [x, y] = key.split(",").map(Number);
       if (x !== undefined && y !== undefined) {
-        this.state = this.session.press(x, y, atMillis);
+        this.updateState(this.session.press(x, y, atMillis));
         this.history?.observeState(this.state);
       }
     }
@@ -1092,9 +1128,9 @@ export class VenueRuntime {
     if (wasHeld === isHeld) return;
     if (isHeld) this.heldPressure.add(key); else this.heldPressure.delete(key);
     const atMillis = this.elapsedAt(performance.now());
-    this.state = isHeld
+    this.updateState(isHeld
       ? this.session.press(x, y, atMillis)
-      : this.session.release(x, y, atMillis);
+      : this.session.release(x, y, atMillis));
     this.history?.observeState(this.state);
   }
 
@@ -1179,6 +1215,22 @@ export class VenueRuntime {
     for (const listener of this.displayListeners) listener(display);
   }
 
+  private updateState(state: GameSessionState): void {
+    this.state = state;
+    this.captureLatestEvent();
+  }
+
+  private captureLatestEvent(): void {
+    if (this.state.events === this.capturedEvents) return;
+    this.capturedEvents = this.state.events;
+    const event = this.state.events.at(-1);
+    if (!event || !this.selection) return;
+    this.lastEventSequence = this.lastEventSequence >= Number.MAX_SAFE_INTEGER ? 1 : this.lastEventSequence + 1;
+    this.lastEventUnixNanos = Date.now() * 1_000_000;
+    this.lastEventCue = event.cue;
+    this.lastEventMessage = event.message;
+  }
+
   private activateScreensaver(options: Record<string, unknown> = { mode: "rotation" }): void {
     this.state = this.session.select({
       gameId: screensaverGameId,
@@ -1194,6 +1246,11 @@ export class VenueRuntime {
     this.sessionStartedUnix = 0;
     this.gameSessionId = "";
     this.selectionHistoryId = "";
+    this.capturedEvents = this.state.events;
+    this.lastEventSequence = 0;
+    this.lastEventUnixNanos = 0;
+    this.lastEventCue = "";
+    this.lastEventMessage = "";
     this.applyHeldPressure(0);
   }
 

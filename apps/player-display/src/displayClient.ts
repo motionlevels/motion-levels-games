@@ -1,5 +1,6 @@
 import { venueRuntimeBaseURL } from "./api";
 import type { GamesDisplayRenderState } from "./displayRuntime";
+import type { AudioOutputState } from "./audio";
 
 export type DisplayClientReport = {
   clientId: "player-display";
@@ -17,6 +18,7 @@ export type DisplayClientReport = {
   viewportHeight: number;
   devicePixelRatio: number;
   error: string;
+  audioOutputState: AudioOutputState;
 };
 
 export async function reportDisplayClient(report: DisplayClientReport): Promise<void> {
