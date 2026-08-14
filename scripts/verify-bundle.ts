@@ -230,14 +230,15 @@ for (const game of gameCatalog) {
 const animationCatalog = JSON.parse(await readFile(path.join(root, manifest.animations!), "utf8")) as {
   schema?: string;
   recipe?: unknown;
-  animations?: Array<{ id?: string; media?: Record<string, string> }>;
+  animations?: Array<{ id?: string; animated?: boolean; media?: Record<string, string> }>;
 };
 assert.equal(animationCatalog.schema, animationMediaSchema);
 assert.deepEqual(animationCatalog.recipe, animationPreviewRecipe);
 assert.deepEqual(animationCatalog.animations?.map((animation) => animation.id), animationLibrary.map((animation) => animation.id));
 for (const animation of animationLibrary) {
-  const catalogEntry: { id?: string; media?: Record<string, string> } | undefined = animationCatalog.animations?.find((entry) => entry.id === animation.id);
+  const catalogEntry: { id?: string; animated?: boolean; media?: Record<string, string> } | undefined = animationCatalog.animations?.find((entry) => entry.id === animation.id);
   const expectedMedia = animationMediaReferences(animation.id);
+  assert.equal(catalogEntry?.animated, animation.animated);
   assert.deepEqual(catalogEntry?.media, expectedMedia);
   for (const mediaPath of Object.values(expectedMedia)) {
     assert.ok(files.some((file) => file.path === mediaPath), `${animation.id} media is missing: ${mediaPath}`);
@@ -246,18 +247,19 @@ for (const animation of animationLibrary) {
   assert.ok(files.some((file) => file.path === metadataPath), `${animation.id} metadata is missing`);
   const metadata = JSON.parse(await readFile(path.join(root, metadataPath), "utf8")) as {
     schema?: string;
-    animation?: { id?: string };
+    animation?: { id?: string; animated?: boolean };
     recipe?: unknown;
     media?: Record<string, string>;
     assets?: Record<string, MediaAssetMetadata>;
   };
   assert.equal(metadata.schema, animationMediaSchema);
   assert.equal(metadata.animation?.id, animation.id);
+  assert.equal(metadata.animation?.animated, animation.animated);
   assert.deepEqual(metadata.recipe, animationPreviewRecipe);
   assert.deepEqual(metadata.media, expectedMedia);
   assert.deepEqual(Object.keys(metadata.assets ?? {}).sort(), ["animation", "thumbnail", "thumbnailSmall"]);
   for (const kind of ["thumbnailSmall", "thumbnail", "animation"] as const) {
-    await verifyMediaAsset(animation.id, kind, expectedMedia[kind], metadata.assets?.[kind]);
+    await verifyMediaAsset(animation.id, kind, expectedMedia[kind], metadata.assets?.[kind], kind === "animation" ? animation.animated : undefined);
   }
 }
 assert.deepEqual(files, manifest.files);
@@ -268,7 +270,8 @@ async function verifyMediaAsset(
   ownerId: string,
   kind: GameMediaAssetKind,
   reference: string,
-  metadata: MediaAssetMetadata | undefined
+  metadata: MediaAssetMetadata | undefined,
+  expectedAnimated?: boolean
 ): Promise<void> {
   const spec = gameMediaAssetSpecs[kind];
   assert.ok(files.some((file) => file.path === reference), `${ownerId} media is missing: ${reference}`);
@@ -285,7 +288,7 @@ async function verifyMediaAsset(
   );
   const webp = inspectWebP(contents);
   assert.deepEqual([webp.width, webp.height], [spec.width, spec.height], `${ownerId} ${kind} dimensions are invalid`);
-  if (spec.animated) {
+  if (expectedAnimated ?? spec.animated) {
     assert.ok(webp.chunks.includes("ANIM"), `${ownerId} ${kind} is not an animated WebP`);
     assert.ok(webp.chunks.filter((chunk) => chunk === "ANMF").length > 1, `${ownerId} ${kind} needs more than one frame`);
   } else {

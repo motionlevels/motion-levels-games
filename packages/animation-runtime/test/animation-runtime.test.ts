@@ -34,9 +34,12 @@ test("runtime content is normalized at the package boundary", () => {
 test("the native library exposes unique, production-sized animations", () => {
   assert.ok(animationLibrary.length >= 24);
   assert.equal(new Set(animationLibrary.map((animation) => animation.id)).size, animationLibrary.length);
+  assert.deepEqual(findAnimation("apagado").palette, ["#000000"]);
+  assert.equal(findAnimation("apagado").animated, false);
+  assert.equal(findAnimation("apagado").automaticRotation, false);
   assert.ok(animationLibrary.some((animation) => animation.id === "neon-ribbons"));
   assert.ok(animationLibrary.some((animation) => animation.id === "bioluminescence"));
-  assert.ok(animationLibrary.every((animation) => animation.palette.length >= 3));
+  assert.ok(animationLibrary.filter((animation) => animation.animated).every((animation) => animation.palette.length >= 3));
 });
 
 test("animation media uses one stable recipe and bundle-relative contract", () => {
@@ -59,6 +62,7 @@ test("animation media uses one stable recipe and bundle-relative contract", () =
     "https://example.test/games/media/animations/aurora/aurora-preview.webp"
   );
   assert.deepEqual(animationMediaCatalogEntry(findAnimation("aurora")).media, animationMediaReferences("aurora"));
+  assert.equal(animationMediaCatalogEntry(findAnimation("apagado")).animated, false);
   assert.throws(() => animationMediaReferences("../aurora"));
 });
 
@@ -71,12 +75,23 @@ test("rendering is deterministic and always fills the hardware floor", () => {
   assert.ok(first.cells.every((cell) => /^#[0-9a-f]{6}$/u.test(cell.color)));
 });
 
-test("every catalog preview changes visibly during its encoded timeline", () => {
+test("every animated catalog preview changes visibly during its encoded timeline", () => {
   for (const animation of animationLibrary) {
     const options = {
       seed: animationPreviewRecipe.seed,
       pressure: [animationPreviewRecipe.pressure]
     };
+    if (!animation.animated) {
+      assert.deepEqual(
+        renderAnimationFrame(animation, { ...options, atMillis: animationPreviewRecipe.captureStartMillis }),
+        renderAnimationFrame(animation, {
+          ...options,
+          atMillis: animationPreviewRecipe.captureStartMillis + animationPreviewRecipe.frameIntervalMillis * 8
+        }),
+        "apagado preview should remain off"
+      );
+      continue;
+    }
     assert.notDeepEqual(
       renderAnimationFrame(animation, { ...options, atMillis: animationPreviewRecipe.captureStartMillis }),
       renderAnimationFrame(animation, {
@@ -85,6 +100,21 @@ test("every catalog preview changes visibly during its encoded timeline", () => 
       }),
       `${animation.id} preview should move`
     );
+  }
+});
+
+test("apagado keeps every hardware tile unlit across time and pressure", () => {
+  const animation = findAnimation("apagado");
+  assert.equal(animation.pressure, "none");
+
+  for (const atMillis of [0, 800, 4_321, animation.durationMillis + 123]) {
+    const frame = renderAnimationFrame(animation, {
+      atMillis,
+      seed: 99,
+      pressure: [{ x: 8, y: 16, startedAtMillis: Math.max(0, atMillis - 200) }]
+    });
+    assert.equal(frame.cells.length, 16 * 32);
+    assert.ok(frame.cells.every((cell) => cell.color === "#000000"));
   }
 });
 
