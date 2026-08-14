@@ -82,6 +82,60 @@ test("canonical player state and idempotent commands share the venue API", async
   assert.equal(first.currentGame, body.game);
 });
 
+test("venue session lifecycle survives game exit and publishes remote close", async (context) => {
+  const revision = "1".repeat(40);
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const venueSessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const post = (path: string, body: Record<string, unknown>) => fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then((response) => response.json() as Promise<Record<string, unknown>>);
+
+  const started = await post("/api/venue-session", {
+    action: "start",
+    venueSessionId,
+    teamName: "Equipo remoto",
+    recordingEnabled: true
+  });
+  assert.equal(started.lifecycle, "idle");
+  assert.equal(started.venueSessionId, venueSessionId);
+
+  const selected = await post("/api/select", {
+    commandId: "10000000-0000-4000-8000-000000000001",
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId,
+    teamName: "Equipo remoto",
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  assert.equal(selected.lifecycle, "waiting");
+  assert.equal(selected.venueSessionId, venueSessionId);
+
+  const exited = await post("/api/control", {
+    action: "exit",
+    commandId: "10000000-0000-4000-8000-000000000002"
+  });
+  assert.equal(exited.lifecycle, "idle");
+  assert.equal(exited.venueSessionId, venueSessionId, "exiting a game must not close the venue visit");
+
+  const ended = await post("/api/venue-session", { action: "end", venueSessionId });
+  assert.equal(ended.lifecycle, "idle");
+  assert.equal(ended.venueSessionId, "");
+  assert.ok(Number(ended.revision) > Number(exited.revision));
+});
+
 test("remote floor input is validated, idempotent, and recoverable through the venue API", async (context) => {
   const revision = "1".repeat(40);
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });

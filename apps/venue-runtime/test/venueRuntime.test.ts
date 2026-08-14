@@ -76,7 +76,7 @@ test("idle display health requires the revisioned animations renderer", () => {
   assert.equal(runtime.displayClientStatus().healthy, false);
 });
 
-test("idle screensaver responds to pressure without becoming a venue session", () => {
+test("idle screensaver keeps game state idle while tracking the venue session", () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   const before = (runtime.display().frame as Frame).cells.map((cell) => cell.color);
   runtime.applyPressure({ x: 8, y: 16, pressed: true, unixNanos: 1n, sequence: 1n });
@@ -86,14 +86,25 @@ test("idle screensaver responds to pressure without becoming a venue session", (
   assert.equal((display.gameSnapshot as Record<string, unknown>).activeTargets, 1);
   assert.notDeepEqual((display.frame as Frame).cells.map((cell) => cell.color), before);
 
-  runtime.updateVenueSession({
+  const started = runtime.updateVenueSession({
     action: "start",
     venueSessionId: "venue-session-1",
     teamName: "Equipo prueba",
     recordingEnabled: false
   });
-  assert.equal(runtime.status().venueSessionId, "");
-  assert.equal(runtime.status().sessionId, "");
+  assert.equal(started.lifecycle, "idle");
+  assert.equal(started.venueSessionId, "venue-session-1");
+  assert.equal(started.sessionId, "");
+  assert.equal(started.teamName, "Equipo prueba");
+  assert.equal(started.venueSessionRecordingEnabled, false);
+  assert.ok(Number(started.venueSessionStartedUnix) > 0);
+
+  const ended = runtime.updateVenueSession({ action: "end", venueSessionId: "venue-session-1" });
+  assert.equal(ended.lifecycle, "idle");
+  assert.equal(ended.venueSessionId, "");
+  assert.equal(ended.teamName, "");
+  assert.equal(ended.venueSessionStartedUnix, 0);
+  assert.ok(Number(ended.revision) > Number(started.revision));
 });
 
 test("selection fails closed on bundle revision mismatch", async () => {

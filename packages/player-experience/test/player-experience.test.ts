@@ -4,6 +4,7 @@ import {
   acceptsPlayerExperienceState,
   controlsForState,
   lifecycleFromRuntime,
+  PlayerExperienceStateGate,
   playerExperienceView,
   type PlayerExperienceState,
 } from "../src/index.ts";
@@ -60,6 +61,21 @@ describe("canonical player experience", () => {
     assert.equal(acceptsPlayerExperienceState({ ...base, revision: 3 }, { ...base, revision: 2 }), false);
     assert.equal(acceptsPlayerExperienceState(base, { ...base, revision: 1 }), false);
     assert.equal(acceptsPlayerExperienceState(base, { ...base, revision: 1.5 }), false);
+    assert.equal(
+      acceptsPlayerExperienceState({ ...base, revision: 99 }, { ...base, revision: 1, runId: "run-after-restart" }),
+      true,
+      "a new runtime process owns a fresh monotonic revision sequence"
+    );
+  });
+
+  it("cannot roll a restarted runtime back to a retired process", () => {
+    const gate = new PlayerExperienceStateGate();
+    const oldRuntime = { ...base, revision: 99, runId: "runtime-old" };
+    const restartedRuntime = { ...base, revision: 1, runId: "runtime-new" };
+
+    assert.equal(gate.accepts(oldRuntime, restartedRuntime), true);
+    assert.equal(gate.accepts(restartedRuntime, { ...oldRuntime, revision: 100 }), false);
+    assert.equal(gate.accepts(restartedRuntime, { ...restartedRuntime, revision: 2 }), true);
   });
 
   it("derives menu routing and controls from canonical state", () => {

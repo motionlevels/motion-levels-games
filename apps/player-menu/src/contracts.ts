@@ -56,6 +56,9 @@ export type PlatformGameCatalogEntry = {
 
 export type EnginePlayer = PlayerExperiencePlayer & { color: RGB };
 export type FinishedLevelAttempt = PlayerExperienceFinishedAttempt;
-export type EngineStatus = PlayerExperienceState;
+export type EngineStatus = PlayerExperienceState & {
+  venueSessionRecordingEnabled?: boolean;
+  venueSessionStartedUnix?: number;
+};
 export type DisplayPlayer = EnginePlayer;
 export type DisplayStatus = PlayerExperienceState;

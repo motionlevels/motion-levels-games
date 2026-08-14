@@ -62,6 +62,8 @@ export type VenueRuntimeStatus = PlayerExperienceState & {
   controllerId: string;
   floorAdapter: FloorAdapterStatus;
   remoteFloorInput: RemoteFloorInputStatus;
+  venueSessionRecordingEnabled: boolean;
+  venueSessionStartedUnix: number;
 };
 
 export type VenueRuntimeOptions = {
@@ -209,6 +211,10 @@ export class VenueRuntime {
   private pauseStartedAt = 0;
   private sessionStartedUnix = 0;
   private gameSessionId = "";
+  private venueSessionId = "";
+  private venueSessionStartedUnix = 0;
+  private venueSessionTeamName = "";
+  private venueSessionRecordingEnabled = true;
   private frameSequence = 0n;
   private lastDisplayPublishedAt = 0;
   private timer: NodeJS.Timeout | null = null;
@@ -334,17 +340,28 @@ export class VenueRuntime {
       options: request.config ?? {},
       ...(contentResult ? { content: contentResult.content } : {})
     });
+    const requestedVenueSessionId = cleanText(request.venueSessionId, 256);
+    const requestedTeamName = cleanText(request.teamName, 256);
+    if (requestedVenueSessionId) {
+      const sameVenueSession = requestedVenueSessionId === this.venueSessionId;
+      this.venueSessionId = requestedVenueSessionId;
+      this.venueSessionStartedUnix = sameVenueSession && this.venueSessionStartedUnix > 0
+        ? this.venueSessionStartedUnix
+        : Math.floor(Date.now() / 1_000);
+      this.venueSessionTeamName = requestedTeamName || this.venueSessionTeamName;
+      this.venueSessionRecordingEnabled = request.recordingEnabled !== false;
+    }
     this.selection = {
       manifest: module.manifest,
       runtimeGameId: cleanText(request.game, 256),
       engineGame: cleanText(request.engineGame, 256) || `motion-levels-games:${module.manifest.id}`,
       sourceKind: request.sourceKind,
       difficulty: String(request.difficulty || module.manifest.config?.difficulty?.default || "medium"),
-      teamName: cleanText(request.teamName, 256),
+      teamName: requestedTeamName || this.venueSessionTeamName,
       level: cleanText(request.level, 256),
       levelSlug: cleanText(request.levelSlug, 256),
       levelMode: cleanText(request.levelMode, 32),
-      venueSessionId: cleanText(request.venueSessionId, 256),
+      venueSessionId: requestedVenueSessionId || this.venueSessionId,
       challengeElapsedMillis: nonNegative(request.challengeElapsedMillis),
       challengeAttemptCount: nonNegativeInteger(request.challengeAttemptCount),
       contentRevision: contentResult?.contentRevision ?? ""
@@ -406,13 +423,13 @@ export class VenueRuntime {
         engineGame: `motion-levels-games:${this.state.gameId}`,
         sourceKind: "motion_levels_games",
         sourceRevision: this.options.sourceRevision,
-        venueSessionId: "",
+        venueSessionId: this.venueSessionId,
         sessionId: "",
         label: "En espera",
         phase: "ambient",
         difficulty: "medium",
         difficultyConfigurable: false,
-        teamName: "",
+        teamName: this.venueSessionTeamName,
         playerCount: 0,
         playerConfigurable: false,
         players: [],
@@ -444,7 +461,9 @@ export class VenueRuntime {
         roomControllerId: this.options.controllerId ?? "",
         controllerId: this.options.controllerId ?? "",
         floorAdapter: { ...this.floorAdapter },
-        remoteFloorInput: this.remoteFloorInputStatus()
+        remoteFloorInput: this.remoteFloorInputStatus(),
+        venueSessionRecordingEnabled: this.venueSessionRecordingEnabled,
+        venueSessionStartedUnix: this.venueSessionStartedUnix
       };
     }
     const snapshot = this.state.snapshot;
@@ -460,14 +479,14 @@ export class VenueRuntime {
       sourceKind: this.selection.sourceKind,
       sourceRevision: this.options.sourceRevision,
       contentRevision: this.selection.contentRevision,
-      venueSessionId: this.selection.venueSessionId,
+      venueSessionId: this.venueSessionId || this.selection.venueSessionId,
       label: snapshot.label || this.selection.manifest.label,
       difficulty: this.selection.difficulty,
       difficultyConfigurable: (this.selection.manifest.config?.difficulty?.options?.length ?? 0) > 1,
       level: this.selection.level,
       levelSlug: this.selection.levelSlug,
       levelMode: this.selection.levelMode,
-      teamName: this.selection.teamName,
+      teamName: this.venueSessionTeamName || this.selection.teamName,
       playerCount: snapshot.playerCount,
       playerConfigurable: !this.selection.manifest.players.allowAny,
       players: snapshot.players.map((player) => ({ ...player, color: hexToRgb(player.color) })),
@@ -508,7 +527,9 @@ export class VenueRuntime {
       roomControllerId: this.options.controllerId ?? "",
       controllerId: this.options.controllerId ?? "",
       floorAdapter: { ...this.floorAdapter },
-      remoteFloorInput: this.remoteFloorInputStatus()
+      remoteFloorInput: this.remoteFloorInputStatus(),
+      venueSessionRecordingEnabled: this.venueSessionRecordingEnabled,
+      venueSessionStartedUnix: this.venueSessionStartedUnix
     };
   }
 
@@ -601,11 +622,34 @@ export class VenueRuntime {
     if (action !== "start" && action !== "end") throw new RequestValidationError("action must be start or end");
     const venueSessionId = cleanText(request.venueSessionId, 256);
     if (!venueSessionId) throw new RequestValidationError("venueSessionId is required");
-    if (this.selection && (action === "start" || this.selection.venueSessionId === venueSessionId)) {
-      this.selection.venueSessionId = action === "start" ? venueSessionId : "";
-      this.selection.teamName = action === "start" ? cleanText(request.teamName, 256) : this.selection.teamName;
+    let changed = false;
+    if (action === "start") {
+      const teamName = cleanText(request.teamName, 256);
+      const recordingEnabled = request.recordingEnabled !== false;
+      const sameVenueSession = venueSessionId === this.venueSessionId;
+      changed = !sameVenueSession
+        || this.venueSessionTeamName !== teamName
+        || this.venueSessionRecordingEnabled !== recordingEnabled;
+      this.venueSessionId = venueSessionId;
+      this.venueSessionStartedUnix = sameVenueSession && this.venueSessionStartedUnix > 0
+        ? this.venueSessionStartedUnix
+        : Math.floor(Date.now() / 1_000);
+      this.venueSessionTeamName = teamName;
+      this.venueSessionRecordingEnabled = recordingEnabled;
+      if (this.selection) {
+        this.selection.venueSessionId = venueSessionId;
+        this.selection.teamName = teamName || this.selection.teamName;
+      }
+    } else if (this.venueSessionId === venueSessionId) {
+      changed = true;
+      this.venueSessionId = "";
+      this.venueSessionStartedUnix = 0;
+      this.venueSessionTeamName = "";
+      this.venueSessionRecordingEnabled = true;
+      if (this.selection?.venueSessionId === venueSessionId) this.selection.venueSessionId = "";
     }
     this.bestEffortCamera(action, request);
+    if (changed) this.publishDisplay();
     return this.status();
   }
 

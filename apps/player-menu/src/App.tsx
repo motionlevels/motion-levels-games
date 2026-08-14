@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type SelectGameRequest } from "./api";
-import { acceptsPlayerExperienceState, playerExperienceView } from "@motion-levels-games/player-experience";
+import { PlayerExperienceStateGate, playerExperienceView } from "@motion-levels-games/player-experience";
 import { categories, colors, difficulties, games, playerColorNames, playerColors, type CategoryID, type DifficultyID, type GameCard, type GameConfigVar, type PartyMiniGame } from "./catalog";
 import { partyCatalogIsComplete, partyLaunchGame } from "./party";
 import {
@@ -61,6 +61,8 @@ import { isCanonicalEntityID } from "./identity.ts";
 import { migrateLegacyLevelState } from "./levelStateMigration.ts";
 import { isSupportedRuntimeSource } from "./localCatalog.ts";
 import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
+import { resolveMenuMirrorEnvelope } from "./menuMirror.ts";
+import { clearedVenueSessionProjection, venueSessionSyncDecision, type VenueSessionObservation } from "./venueSessionSync.ts";
 
 type MenuState = {
   sessionActive: boolean;
@@ -144,6 +146,7 @@ type RemoteSessionRequest = {
 const emptyPreviewSources: string[] = [];
 const storageKey = "ml-player-menu-state-v1";
 const partyRunStorageKey = "ml-player-menu-party-run-v1";
+const venueSessionObservationStorageKey = "ml-player-menu-venue-session-observation-v1";
 const platformCatalogStorageKey = "ml-player-menu-platform-catalog-v3";
 // Cache keys older menu builds wrote; purged at boot so long-lived kiosks do
 // not carry multi-megabyte orphaned catalog payloads forever.
@@ -1125,6 +1128,30 @@ function configVarValue(item: GameConfigVar, overrides: GameConfigValues | undef
   return item.default;
 }
 
+function defaultMenuState(): MenuState {
+  return {
+    sessionActive: false,
+    sessionId: "",
+    sessionStartedUnix: 0,
+    recordingEnabled: true,
+    teamName: "",
+    players: defaultPlayers,
+    category: "featured",
+    selectedGame: "featured-lava",
+    difficulty: "easy",
+    selectedLevels: {},
+    levelModes: {},
+    levelProgress: {},
+    challengeRuns: {},
+    freeRuns: {},
+    nextPlayerId: 1,
+    narrationArmed: {},
+    operatorUnlockLevels: envUnlockLevels,
+    gameConfig: {},
+    processedAttemptIDs: [],
+  };
+}
+
 function loadMenuState(): MenuState {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) || "null") as Partial<MenuState> | null;
@@ -1175,26 +1202,19 @@ function loadMenuState(): MenuState {
   } catch {
     // Ignore broken local storage and return the default kiosk state.
   }
+  return defaultMenuState();
+}
+
+function clearedMenuSession(current: MenuState, defaultGame: GameCard): MenuState {
+  const defaultSelectedLevels = defaultGame.levels?.length ? { [defaultGame.id]: defaultLevelID(defaultGame) } : {};
   return {
-    sessionActive: false,
-    sessionId: "",
-    sessionStartedUnix: 0,
-    recordingEnabled: true,
-    teamName: "",
-    players: defaultPlayers,
-    category: "featured",
-    selectedGame: "featured-lava",
+    ...current,
+    ...clearedVenueSessionProjection(defaultPlayers),
+    category: menuCategoryForGame(defaultGame, "featured"),
+    selectedGame: defaultGame.id,
     difficulty: "easy",
-    selectedLevels: {},
-    levelModes: {},
-    levelProgress: {},
-    challengeRuns: {},
-    freeRuns: {},
-    nextPlayerId: 1,
-    narrationArmed: {},
-    operatorUnlockLevels: envUnlockLevels,
-    gameConfig: {},
-    processedAttemptIDs: [],
+    selectedLevels: defaultSelectedLevels,
+    levelModes: current.levelModes,
   };
 }
 
@@ -1244,6 +1264,26 @@ function loadPartyRun(): PartyRunState | null {
   }
 }
 
+function loadVenueSessionObservation(): VenueSessionObservation | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(venueSessionObservationStorageKey) || "null") as Partial<VenueSessionObservation> | null;
+    if (!saved || typeof saved !== "object") return null;
+    const runId = typeof saved.runId === "string" ? saved.runId : "";
+    const venueSessionId = typeof saved.venueSessionId === "string" ? saved.venueSessionId : "";
+    return runId ? { runId, venueSessionId } : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistVenueSessionObservation(observation: VenueSessionObservation) {
+  try {
+    localStorage.setItem(venueSessionObservationStorageKey, JSON.stringify(observation));
+  } catch {
+    // Recovery metadata is best-effort; the live runtime remains authoritative.
+  }
+}
+
 function isPlatformGameCatalogEntry(value: unknown): value is PlatformGameCatalogEntry {
   return Boolean(value && typeof value === "object" && !Array.isArray(value) && "id" in value && "label" in value);
 }
@@ -1269,10 +1309,11 @@ function MenuApp() {
   );
   const readOnlyMirror = menuAccess.readOnly;
   const followsMenuMirror = menuAccess.followMirror;
-  const [menu, setMenu] = useState<MenuState>(() => loadMenuState());
+  const [menu, setMenu] = useState<MenuState>(() => menuAccess.persistLocalState ? loadMenuState() : defaultMenuState());
   const [status, setStatus] = useState<PlayerMenuEngineStatus | null>(null);
+  const statusGate = useRef(new PlayerExperienceStateGate());
   const acceptStatus = useCallback((next: PlayerMenuEngineStatus) => {
-    setStatus((current) => acceptsPlayerExperienceState(current, next) ? next : current);
+    setStatus((current) => statusGate.current.accepts(current, next) ? next : current);
   }, []);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connection-pending");
   const [platformCatalog, setPlatformCatalog] = useState<PlatformGameCatalogEntry[] | null>(() => loadCachedPlatformCatalog());
@@ -1304,6 +1345,7 @@ function MenuApp() {
   const [activeLevelLaunch, setActiveLevelLaunch] = useState<ActiveLevelLaunch | null>(null);
   const [levelBrowserGameID, setLevelBrowserGameID] = useState<string | null>(null);
   const [partyRun, setPartyRun] = useState<PartyRunState | null>(() => {
+    if (!menuAccess.persistLocalState) return null;
     const saved = loadPartyRun();
     return saved?.sessionId && saved.sessionId === menu.sessionId ? saved : null;
   });
@@ -1316,14 +1358,19 @@ function MenuApp() {
   const syncedEngineSession = useRef("");
   const mirroredMenuVersion = useRef(0);
   const mirroredMenuUpdatedUnixMillis = useRef(0);
+  const venueSessionObservationRef = useRef<VenueSessionObservation | null>(
+    menuAccess.persistLocalState ? loadVenueSessionObservation() : null
+  );
   const venueSessionIDRef = useRef(menu.sessionId);
   const launchInFlightRef = useRef(false);
   const controlInFlightRef = useRef(false);
   const levelSwitchInFlightRef = useRef(false);
+  const sessionStartInFlightRef = useRef(false);
   const sessionCloseInFlightRef = useRef(false);
   const teamTriggerRef = useRef<HTMLButtonElement>(null);
   const teamCloseRef = useRef<HTMLButtonElement>(null);
   const teamWasOpenRef = useRef(false);
+  const [menuMirrorReady, setMenuMirrorReady] = useState(!followsMenuMirror);
 
   useEffect(() => {
     if (!menuAccess.persistLocalState) return;
@@ -1487,13 +1534,17 @@ function MenuApp() {
     let nextRefresh: number | undefined;
 
     function applyEnvelope(envelope: MenuStateEnvelope<MenuMirrorSnapshot>) {
-      if (cancelled || !envelope.snapshot) return;
-      const newerVersion = envelope.version > mirroredMenuVersion.current;
-      const newerSnapshot = envelope.updatedUnixMillis > mirroredMenuUpdatedUnixMillis.current;
-      if (!newerVersion && !newerSnapshot) return;
-      mirroredMenuVersion.current = envelope.version;
-      mirroredMenuUpdatedUnixMillis.current = envelope.updatedUnixMillis;
-      const snapshot = envelope.snapshot;
+      if (cancelled) return;
+      const resolved = resolveMenuMirrorEnvelope(
+        envelope,
+        mirroredMenuVersion.current,
+        mirroredMenuUpdatedUnixMillis.current
+      );
+      setMenuMirrorReady(resolved.ready);
+      if (!resolved.accepted || !resolved.snapshot) return;
+      mirroredMenuVersion.current = resolved.version;
+      mirroredMenuUpdatedUnixMillis.current = resolved.updatedUnixMillis;
+      const snapshot = resolved.snapshot;
       setMenu({ ...snapshot.menu, processedAttemptIDs: snapshot.menu.processedAttemptIDs || [] });
       setKeyboardTarget(null);
       setColorPickerFor(null);
@@ -1615,6 +1666,63 @@ function MenuApp() {
     }, remainingMillis);
     return () => window.clearTimeout(timeout);
   }, [menu.sessionActive, menu.sessionStartedUnix, status?.lastPressureUnix]);
+
+  useEffect(() => {
+    if (!status || !menuAccess.publishMirror) return;
+    const decision = venueSessionSyncDecision(status, venueSessionObservationRef.current, menu);
+    venueSessionObservationRef.current = decision.observation;
+    persistVenueSessionObservation(decision.observation);
+    const defaultGame = menuGames[0] || games[0];
+
+    if (decision.action === "hydrate") {
+      setMenu((current) => ({
+        ...current,
+        sessionActive: true,
+        sessionId: status.venueSessionId,
+        sessionStartedUnix: status.venueSessionStartedUnix || current.sessionStartedUnix || Math.floor(Date.now() / 1_000),
+        recordingEnabled: status.venueSessionRecordingEnabled ?? current.recordingEnabled,
+        teamName: status.teamName || current.teamName || defaultTeamName(),
+      }));
+      return;
+    }
+
+    if (decision.action === "clear") {
+      setMenu((current) => clearedMenuSession(current, defaultGame));
+      setPartyRun(null);
+      setTeamOpen(false);
+      setKeyboardTarget(null);
+      setColorPickerFor(null);
+      setConfirmRemove(null);
+      setConfirmResetSession(false);
+      setPendingLevelSwitch(null);
+      setLevelBrowserGameID(null);
+      setScreenMode("browse");
+      return;
+    }
+
+    if (decision.action !== "recover") return;
+    let cancelled = false;
+    let retry: number | undefined;
+    const recover = async () => {
+      try {
+        const recovered = await postVenueSession({
+          action: "start",
+          venueSessionId: menu.sessionId,
+          teamName: menu.teamName,
+          recordingEnabled: menu.recordingEnabled,
+          kioskId: menuKioskID(),
+        });
+        if (!cancelled && recovered) acceptStatus(recovered);
+      } catch {
+        if (!cancelled) retry = window.setTimeout(recover, 2_500);
+      }
+    };
+    void recover();
+    return () => {
+      cancelled = true;
+      if (retry !== undefined) window.clearTimeout(retry);
+    };
+  }, [acceptStatus, menu.sessionActive, menu.sessionId, menu.sessionStartedUnix, menu.teamName, menu.recordingEnabled, menuAccess.publishMirror, menuGames, status]);
 
   useEffect(() => {
     if (!status) return;
@@ -2047,20 +2155,32 @@ function MenuApp() {
     setConfirmRemove(null);
   }
 
-  function beginSession(remoteRequest?: RemoteSessionRequest) {
+  async function beginSession(remoteRequest?: RemoteSessionRequest) {
+    if (sessionStartInFlightRef.current) return;
+    sessionStartInFlightRef.current = true;
     const defaultGame = menuGames[0] || games[0];
     const defaultSelectedLevels = defaultGame.levels?.length ? { [defaultGame.id]: defaultLevelID(defaultGame) } : {};
     const nextTeamName = remoteRequest?.teamName || defaultTeamName();
     const nextSessionID = remoteRequest?.venueSessionId || newVenueSessionID();
     const nowUnix = Math.floor(Date.now() / 1000);
     const nextPlayers = remoteRequest ? playersForCount(remoteRequest.configuredPlayerCount) : defaultPlayers;
-    postVenueSession({
-      action: "start",
-      venueSessionId: nextSessionID,
-      teamName: nextTeamName,
-      recordingEnabled: true,
-      kioskId: menuKioskID(),
-    });
+    setMessage("Preparando sesión");
+    setError("");
+    try {
+      const nextStatus = await postVenueSession({
+        action: "start",
+        venueSessionId: nextSessionID,
+        teamName: nextTeamName,
+        recordingEnabled: true,
+        kioskId: menuKioskID(),
+      });
+      if (nextStatus) acceptStatus(nextStatus);
+    } catch (err) {
+      setMessage("");
+      setError(friendlyRequestError(err, "No se pudo iniciar la sesión. Inténtalo de nuevo."));
+      sessionStartInFlightRef.current = false;
+      return;
+    }
     captureMenuEvent("session_started", {
       default_team_name: !remoteRequest,
       remote_reservation: Boolean(remoteRequest),
@@ -2104,6 +2224,7 @@ function MenuApp() {
     setConfirmResetSession(false);
     setPendingLevelSwitch(null);
     setPartyRun(null);
+    sessionStartInFlightRef.current = false;
   }
 
   async function closeSession(reason = "manual") {
@@ -2123,14 +2244,21 @@ function MenuApp() {
       }
     }
     const defaultGame = menuGames[0] || games[0];
-    const defaultSelectedLevels = defaultGame.levels?.length ? { [defaultGame.id]: defaultLevelID(defaultGame) } : {};
     if (menu.sessionId) {
-      postVenueSession({
-        action: "end",
-        venueSessionId: menu.sessionId,
-        reason,
-        kioskId: menuKioskID(),
-      });
+      try {
+        const endedStatus = await postVenueSession({
+          action: "end",
+          venueSessionId: menu.sessionId,
+          reason,
+          kioskId: menuKioskID(),
+        });
+        if (endedStatus) acceptStatus(endedStatus);
+      } catch (err) {
+        setMessage("");
+        setError(friendlyRequestError(err, "No se pudo cerrar la sesión. Inténtalo de nuevo."));
+        sessionCloseInFlightRef.current = false;
+        return;
+      }
     }
     captureMenuEvent("session_closed", {
       category: menu.category,
@@ -2139,26 +2267,7 @@ function MenuApp() {
       player_count: activePlayers.length,
       selected_game: selectedGame.id,
     });
-    setMenu((current) => ({
-      ...current,
-      sessionActive: false,
-      sessionId: "",
-      sessionStartedUnix: 0,
-      recordingEnabled: true,
-      teamName: "",
-      players: defaultPlayers,
-      category: menuCategoryForGame(defaultGame, "featured"),
-      selectedGame: defaultGame.id,
-      difficulty: "easy",
-      selectedLevels: defaultSelectedLevels,
-      levelModes: current.levelModes,
-      levelProgress: {},
-      challengeRuns: {},
-      freeRuns: {},
-      nextPlayerId: 1,
-      narrationArmed: {},
-      processedAttemptIDs: [],
-    }));
+    setMenu((current) => clearedMenuSession(current, defaultGame));
     setKeyboardTarget(null);
     setColorPickerFor(null);
     setConfirmRemove(null);
@@ -2175,7 +2284,7 @@ function MenuApp() {
 
   function confirmRemoteSessionStart() {
     if (!remoteSessionRequest) return;
-    beginSession(remoteSessionRequest);
+    void beginSession(remoteSessionRequest);
   }
 
   function dismissRemoteSessionStart() {
@@ -2191,13 +2300,15 @@ function MenuApp() {
     });
     setMenu((current) => ({ ...current, recordingEnabled: enabled }));
     if (menu.sessionId) {
-      postVenueSession({
+      void postVenueSession({
         action: "start",
         venueSessionId: menu.sessionId,
         teamName: menu.teamName,
         recordingEnabled: enabled,
         kioskId: menuKioskID(),
-      });
+      }).then((nextStatus) => {
+        if (nextStatus) acceptStatus(nextStatus);
+      }).catch(() => {});
     }
   }
 
@@ -3009,6 +3120,22 @@ function MenuApp() {
     });
   }
 
+  if (!menuMirrorReady) {
+    return (
+      <WelcomeScreen
+        connectionState={connectionState}
+        floorReady={floorReady}
+        previewGames={menuGames}
+        readOnly
+        remoteSessionRequest={null}
+        onCancelRemoteStart={() => {}}
+        onConfirmRemoteStart={() => {}}
+        onStart={() => {}}
+        onFullscreen={enterBrowserFullscreen}
+      />
+    );
+  }
+
   if (!menu.sessionActive && screenMode !== "game") {
     return (
       <WelcomeScreen
@@ -3019,7 +3146,7 @@ function MenuApp() {
         remoteSessionRequest={remoteSessionRequest}
         onCancelRemoteStart={dismissRemoteSessionStart}
         onConfirmRemoteStart={confirmRemoteSessionStart}
-        onStart={() => beginSession()}
+        onStart={() => void beginSession()}
         onFullscreen={enterBrowserFullscreen}
       />
     );

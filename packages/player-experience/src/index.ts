@@ -185,7 +185,29 @@ export function controlsForState(input: Pick<PlayerExperienceState, "audioEnable
 export function acceptsPlayerExperienceState(current: PlayerExperienceState | null, incoming: PlayerExperienceState): boolean {
   if (incoming.contractVersion !== playerExperienceContractVersion) return false;
   if (!Number.isSafeInteger(incoming.revision) || incoming.revision < 1) return false;
-  return current === null || incoming.revision > current.revision;
+  return current === null || incoming.runId !== current.runId || incoming.revision > current.revision;
+}
+
+/** Keeps a restarted runtime's fresh revision stream from being rolled back by
+ * a late poll/SSE response that belonged to the retired process. */
+export class PlayerExperienceStateGate {
+  private readonly retiredRunIds = new Set<string>();
+  private readonly retiredRunOrder: string[] = [];
+
+  accepts(current: PlayerExperienceState | null, incoming: PlayerExperienceState): boolean {
+    if (!acceptsPlayerExperienceState(current, incoming)) return false;
+    if (!current || current.runId === incoming.runId) return true;
+    if (this.retiredRunIds.has(incoming.runId)) return false;
+    if (current.runId) {
+      this.retiredRunIds.add(current.runId);
+      this.retiredRunOrder.push(current.runId);
+      if (this.retiredRunOrder.length > 16) {
+        const expired = this.retiredRunOrder.shift();
+        if (expired) this.retiredRunIds.delete(expired);
+      }
+    }
+    return true;
+  }
 }
 
 export type PlayerExperienceView = {

@@ -21,8 +21,8 @@ route, or port `4102` on the current host. Protocol v2 uses:
   leased latches (the player menu does not call it);
 - `GET`/`PUT /api/menu-state` and `GET /api/menu-state/events` for mirrored
   kiosk recovery state;
-- `POST /api/venue-session` and `POST /api/menu-event` as best-effort
-  operational events;
+- `POST /api/venue-session` for authoritative visit start/end state and
+  `POST /api/menu-event` for best-effort operational events;
 - `GET`/`POST /api/display-client` for player-display health reports.
 
 The platform catalog remains a read-only input at `GET /api/game-catalog`.
@@ -49,8 +49,9 @@ gateway, controller process, and physical kiosk shell.
 
 Protocol v2 commands include an idempotent `commandId`, and every command
 response is the resulting canonical player state. Consumers must reject equal
-or older `revision` values so polling and stream reconnects cannot roll the UI
-backward.
+or older `revision` values within one `runId`; a new runtime `runId` starts a
+fresh revision sequence, and retired run IDs remain rejected so a late poll or
+SSE response cannot roll the UI backward.
 
 Additive response fields do not require a protocol bump. Removing or changing
 a field, endpoint, action, URL-resolution rule, or binary-frame meaning does.
@@ -64,7 +65,15 @@ canonical mirror but keeps the normal menu handlers and engine commands
 enabled. The remote controller never writes `/api/menu-state` or persists its
 menu/Party state to local storage, so it cannot become a second kiosk that
 overwrites recovery state. Explicit read-only mode still wins when both query
-parameters are present.
+parameters are present. A successful first mirror read with no snapshot makes
+remote control available with the default menu state instead of waiting
+forever for a kiosk writer.
+
+The runtime owns whether a venue session exists; the kiosk owns the detailed
+menu recovery snapshot. When a platform `end` clears the runtime session, the
+physical kiosk clears session identity, team, and roster and republishes that
+clean snapshot for every embedded mirror. A normal game `exit` preserves the
+runtime venue session and therefore keeps the visit open.
 
 ## Local full playthrough
 

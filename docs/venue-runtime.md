@@ -44,6 +44,22 @@ Idle output is an all-black 16x32 frame. Audio reports `audioEnabled: false`:
 command-backed audio can be added as a narrow adapter later, without putting
 audio state back into gameplay.
 
+## Venue session lifecycle
+
+`POST /api/venue-session` is the authoritative visit lifecycle independently
+of the selected game. `start` records the active `venueSessionId`, team,
+recording preference, and start time even while the runtime remains on the
+idle `salvapantallas`. Exiting a game returns to that idle loop without closing
+the visit. Only a matching `end` clears it. Both transitions increment the
+canonical player-state revision and publish SSE, allowing the physical kiosk
+to repair its recovery mirror after a command from the platform.
+
+The kiosk persists the last observed runtime `runId` and venue-session ID. An
+empty session in the same runtime is an authoritative close; an empty fresh
+runtime after a process restart is recovered from kiosk storage. Camera hooks
+triggered by these transitions remain best-effort and do not own lifecycle
+state.
+
 ## Remote floor input
 
 `POST /api/floor-input` uses the same engine-token boundary as the other

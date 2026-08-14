@@ -358,16 +358,17 @@ let pendingMenuStateWrite: { kioskId: string; snapshot: unknown } | null = null;
 let menuStateWriteInFlight = false;
 let menuStateRetryDelayMillis = 500;
 
-// Visit recording is best-effort: the kiosk must never block or surface errors
-// because the engine is briefly unreachable, so these are fire-and-forget.
-export function postVenueSession(request: VenueSessionRequest) {
-  if (localPlaygroundEnabled()) return;
-  postBestEffort(`${engineBaseURL()}/api/venue-session`, {
+// Venue session lifecycle is canonical runtime state. Callers that need to
+// complete a close await this response; start/update callers may explicitly
+// treat a transient failure as best-effort.
+export async function postVenueSession(request: VenueSessionRequest): Promise<EngineStatus | null> {
+  if (localPlaygroundEnabled()) return null;
+  return requestJSON<EngineStatus>(`${engineBaseURL()}/api/venue-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
     keepalive: true,
-  });
+  }, mirrorTimeoutMillis);
 }
 
 export function postMenuEvent(request: MenuEventRequest) {
