@@ -602,6 +602,7 @@ export class SessionHistoryRecorder {
     run.outcome = reason;
     run.endedAtUnixMillis = at;
     run.finishedAtUnixMillis = at;
+    visit.activeRunId = undefined;
     visit.updatedAtUnixMillis = at;
     this.store.commitTransition(visit, [{
       selectionId: selection.id,
@@ -679,7 +680,7 @@ export class SessionHistoryRecorder {
         status: this.options.recordingClient ? "requested" : "missing",
         selectionId,
         runId,
-        linkedRunIds: runId ? [runId] : visit.activeRunId ? [visit.activeRunId] : [],
+        linkedRunIds: initialLinkedRunIds(scope, visit, selectionId, runId),
         startedAtUnixMillis: at,
         backend: "camera-recorder",
         metadata: {}
@@ -851,7 +852,7 @@ export class SessionHistoryRecorder {
       || (asset.scope === "selection" && asset.selectionId === selectionId));
     for (const candidate of candidates) {
       const key = recordingKey(candidate.scope, candidate.selectionId, candidate.runId);
-      if (!this.activeRecordings.has(key) || candidate.linkedRunIds.includes(runId)) continue;
+      if (this.activeRecordings.get(key) !== candidate.id || candidate.linkedRunIds.includes(runId)) continue;
       const current = this.store.getVisit(visit.id).recordings.find((asset) => asset.id === candidate.id);
       if (current && !current.linkedRunIds.includes(runId)) {
         this.store.upsertRecording(visit.id, {
@@ -874,7 +875,7 @@ export class SessionHistoryRecorder {
       const terminalPair = current?.status === "finalizing"
         && current.metadata?.startBeforeTerminalStop === true
         && visit.activeSelectionId === recording.selectionId
-        && visit.activeRunId === recording.runId
+        && visit.activeRunId === undefined
         && terminalRun?.status === "finished";
       return visit.status === "active"
         && visit.recordingPolicy.scope === recording.scope
@@ -1246,6 +1247,20 @@ function jsonObject(value: unknown): SessionHistoryJsonObject {
 
 function recordingKey(scope: RecordingScope, selectionId?: string, runId?: string): string {
   return `${scope}:${selectionId ?? ""}:${runId ?? ""}`;
+}
+
+function initialLinkedRunIds(
+  scope: RecordingScope,
+  visit: SessionHistoryVisit,
+  selectionId?: string,
+  runId?: string
+): string[] {
+  if (scope === "run") return runId ? [runId] : [];
+  if (!visit.activeRunId || !visit.activeSelectionId) return [];
+  if (scope === "selection" && selectionId !== visit.activeSelectionId) return [];
+  const selection = visit.selections.find((candidate) => candidate.id === visit.activeSelectionId);
+  const activeRun = selection?.runs.find((candidate) => candidate.id === visit.activeRunId);
+  return activeRun && activeRun.endedAtUnixMillis === undefined ? [activeRun.id] : [];
 }
 
 function positiveMillis(value: number | undefined, fallback: number): number {

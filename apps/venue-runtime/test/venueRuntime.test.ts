@@ -260,6 +260,64 @@ test("venue history preserves selections and restarts, then restores the active 
   restored.updateVenueSession({ action: "end", venueSessionId: visit.id });
 });
 
+for (const recordingCase of [
+  { scope: "off", expected: [] },
+  { scope: "visit", expected: ["start:visit", "stop:visit"] },
+  { scope: "selection", expected: ["start:selection", "stop:selection"] },
+  { scope: "run", expected: ["start:run", "stop:run", "start:run", "stop:run"] },
+] as const) {
+  test(`${recordingCase.scope} recording follows session, game, and attempt boundaries end to end`, async (context) => {
+    const directory = mkdtempSync(join(tmpdir(), `motion-levels-recording-${recordingCase.scope}-`));
+    context.after(() => rmSync(directory, { recursive: true, force: true }));
+    const cameraCalls: RecordingBoundary[] = [];
+    const runtime = new VenueRuntime({
+      sourceRevision: revision,
+      controllerAddress: "127.0.0.1:4201",
+      sessionHistoryDir: directory,
+      recordingClient: {
+        onBoundary(boundary) {
+          cameraCalls.push(structuredClone(boundary));
+          return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+        }
+      }
+    });
+    context.after(async () => { await runtime.stop(); });
+    const venueSessionId = `recording-mode-${recordingCase.scope}`;
+
+    runtime.updateVenueSession({
+      action: "start",
+      venueSessionId,
+      recordingPolicy: { scope: recordingCase.scope }
+    });
+    if (recordingCase.scope === "visit") await waitFor(() => cameraCalls.length === 1);
+    await selectPingPong(runtime);
+    if (recordingCase.scope === "selection" || recordingCase.scope === "run") {
+      await waitFor(() => cameraCalls.length === 1);
+    }
+    runtime.control("restart");
+    if (recordingCase.scope === "run") await waitFor(() => cameraCalls.length === 3);
+    runtime.control("exit");
+    if (recordingCase.scope === "selection" || recordingCase.scope === "run") {
+      await waitFor(() => cameraCalls.length === recordingCase.expected.length);
+    }
+    runtime.updateVenueSession({ action: "end", venueSessionId });
+    await waitFor(() => cameraCalls.length === recordingCase.expected.length);
+
+    assert.deepEqual(
+      cameraCalls.map((boundary) => `${boundary.type}:${boundary.scope}`),
+      [...recordingCase.expected]
+    );
+    if (recordingCase.scope === "selection") {
+      assert.equal(new Set(cameraCalls.map((boundary) => boundary.recording.captureId)).size, 1,
+        "a same-game restart must remain inside one game capture");
+    }
+    if (recordingCase.scope === "run") {
+      assert.equal(new Set(cameraCalls.map((boundary) => boundary.recording.captureId)).size, 2,
+        "a restart must produce a second attempt capture");
+    }
+  });
+}
+
 test("history persistence failures degrade health without exposing local filesystem details", async (context) => {
   const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-health-"));
   const invalidRoot = join(directory, "not-a-directory");
@@ -951,11 +1009,12 @@ test("failed published-level attempts create a new run and run-scoped recording 
   }
   assert.equal(runtime.status().phase, "finished");
 
-  internal.tick(base + 3_100);
+  const retryAt = performance.now() + 3_100;
+  internal.tick(retryAt);
   const retryRunId = runtime.status().sessionId;
   assert.notEqual(retryRunId, initialRunId);
   assert.equal(runtime.status().phase, "running");
-  internal.tick(base + 3_120);
+  internal.tick(retryAt + 20);
   assert.equal(runtime.status().phase, "finished");
   await waitFor(() => cameraCalls.length >= 4);
   assert.deepEqual(cameraCalls.slice(0, 4).map((boundary) => `${boundary.type}:${boundary.runId}`), [

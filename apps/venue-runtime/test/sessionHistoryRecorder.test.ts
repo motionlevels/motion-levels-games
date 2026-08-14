@@ -180,6 +180,28 @@ test("restart creates a second run under the same selection", (context) => {
   assert.equal(selection?.runs[1]?.reason, "restart");
 });
 
+test("finishing a run clears the active run before a later recording policy change", (context) => {
+  let now = 1_000;
+  const store = temporaryStore(context, () => now);
+  const recorder = new SessionHistoryRecorder(store, { now: () => now });
+  recorder.startVisit({ id: "visit-finished-run", recordingPolicy: { scope: "off" } });
+  startSelection(recorder);
+
+  now = 2_000;
+  const terminal = state(1_000, 900);
+  terminal.snapshot = { ...terminal.snapshot, phase: "finished", success: true };
+  recorder.observeState(terminal);
+
+  let visit = store.getVisit("visit-finished-run");
+  assert.equal(visit.selections[0]?.runs[0]?.status, "finished");
+  assert.equal(visit.activeRunId, undefined);
+
+  recorder.startVisit({ id: visit.id, recordingPolicy: { scope: "run" } });
+  visit = store.getVisit(visit.id);
+  assert.equal(visit.recordingPolicy.scope, "run");
+  assert.deepEqual(visit.recordings, [], "an ended run must not acquire a new run-scoped capture");
+});
+
 test("updates visit roster and team from every selection while preserving prior selection snapshots", (context) => {
   let now = 1_000;
   const store = temporaryStore(context, () => now);
@@ -751,6 +773,50 @@ test("changing recording scope closes the old capture before opening the current
     "start:run",
     "stop:run"
   ]);
+});
+
+for (const scope of ["visit", "selection"] as const) {
+  test(`enabling ${scope} recording during a run links the current run immediately`, (context) => {
+    const store = temporaryStore(context, () => 1_000);
+    const recorder = new SessionHistoryRecorder(store, { now: () => 1_000 });
+    recorder.startVisit({ id: `visit-seed-${scope}`, recordingPolicy: { scope: "off" } });
+    startSelection(recorder);
+
+    recorder.startVisit({ id: `visit-seed-${scope}`, recordingPolicy: { scope } });
+
+    const recordings = store.getVisit(`visit-seed-${scope}`).recordings;
+    assert.equal(recordings.length, 1);
+    assert.equal(recordings[0]?.scope, scope);
+    assert.deepEqual(recordings[0]?.linkedRunIds, ["run-1"]);
+  });
+}
+
+test("new runs link only to the currently active asset for a recording scope", (context) => {
+  let now = 1_000;
+  const store = temporaryStore(context, () => now);
+  const recorder = new SessionHistoryRecorder(store, { now: () => now });
+  recorder.startVisit({
+    id: "visit-current-recording",
+    recordingPolicy: { scope: "visit", includeAudio: false }
+  });
+  startSelection(recorder);
+
+  now = 2_000;
+  recorder.startVisit({
+    id: "visit-current-recording",
+    recordingPolicy: { scope: "visit", includeAudio: true }
+  });
+  let assets = store.getVisit("visit-current-recording").recordings;
+  const previous = assets.find((asset) => asset.endedAtUnixMillis !== undefined);
+  const active = assets.find((asset) => asset.endedAtUnixMillis === undefined);
+  assert.deepEqual(previous?.linkedRunIds, ["run-1"]);
+  assert.deepEqual(active?.linkedRunIds, ["run-1"]);
+
+  now = 3_000;
+  recorder.restartRun("run-2", state(0, 0));
+  assets = store.getVisit("visit-current-recording").recordings;
+  assert.deepEqual(assets.find((asset) => asset.id === previous?.id)?.linkedRunIds, ["run-1"]);
+  assert.deepEqual(assets.find((asset) => asset.id === active?.id)?.linkedRunIds, ["run-1", "run-2"]);
 });
 
 test("changing camera options within the same scope restarts the active capture", async (context) => {
