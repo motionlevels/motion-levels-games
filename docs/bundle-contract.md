@@ -66,8 +66,10 @@ keeps React out of the Node gameplay graph.
 Release tags exactly match `games-vMAJOR.MINOR.PATCH`. Contract v2 must be
 published on major 2 or newer; automation promotes a v1 release directly to
 `games-v2.0.0` before using the normal manifest-minor/content-patch policy.
-Release assets are immutable and both platform and venue consume the exact
-archive and revision that passed CI.
+Release assets are immutable. The platform sync consumes the exact archive and
+revision that passed CI. Venue releases are source-first: the venue repository
+pins this repository by full revision in `venue-components.lock.json` and builds
+the verified bundle locally from that clean source checkout.
 
 The runtime entry targets Node.js 20. See `docs/venue-runtime.md` for its HTTP
 and controller contracts and for deliberate legacy feature removals.

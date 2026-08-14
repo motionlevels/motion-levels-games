@@ -147,7 +147,7 @@ test("published release assets are immutable and dispatch their exact identity t
   assert.match(release, /ref:\$ref,inputs:\{release_tag:\$release_tag,source_revision:\$source_revision\}/);
   assert.match(release, /repos\/motionlevels\/motion-levels-platform\/actions\/workflows\/sync-games-bundle\.yml\/dispatches/);
   assert.match(release, /^  notify-platform:[\s\S]*?needs:[\s\S]*?- bundle/m);
-  assert.match(release, /^  notify-venue:[\s\S]*?needs:[\s\S]*?- bundle/m);
+  assert.doesNotMatch(release, /motion-levels-venue|VENUE_SYNC_TOKEN|notify-venue/);
   assert.match(release, /--retry 3/);
   assert.match(release, /group: games-bundle-release/);
   assert.match(release, /cancel-in-progress: false/);
