@@ -236,6 +236,7 @@ export function rosterForGame<T extends { active: boolean }>(
   game: Pick<GameCard, "allowAnyPlayers" | "engineGame" | "id" | "category" | "maxPlayers" | "minPlayers" | "players">,
   players: T[],
 ): T[] {
+  if (game.allowAnyPlayers) return [];
   const { maxPlayers } = playerBoundsForGame(game);
   return players.filter((player) => player.active).slice(0, maxPlayers);
 }

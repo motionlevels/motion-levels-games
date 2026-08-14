@@ -196,6 +196,23 @@ describe("catalog metadata sync", () => {
     assert.deepEqual(rosterForGame(game, players).map((player) => player.id), [1, 2, 3]);
   });
 
+  it("omits the configured roster when an allow-any game launches with playerCount zero", () => {
+    const game = {
+      allowAnyPlayers: true,
+      id: "allow-any",
+      category: "individual",
+      minPlayers: 1,
+      maxPlayers: 1,
+      players: "Sin requisito",
+    } as Pick<GameCard, "allowAnyPlayers" | "category" | "id" | "maxPlayers" | "minPlayers" | "players">;
+    const players = [
+      { active: true, id: 1 },
+      { active: true, id: 2 },
+    ];
+
+    assert.deepEqual(rosterForGame(game, players), []);
+  });
+
   it("falls back to eight-player authored duel bounds when catalog metadata is unavailable", () => {
     const game = {
       id: "duel",
@@ -509,6 +526,7 @@ describe("catalog metadata sync", () => {
     const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
 
     assert.match(appSource, /const launchConfig = menuConfigOverridesFor\(launchGame, nextMenu\);/);
+    assert.match(appSource, /const launchRoster = rosterForGame\(launchGame, nextMenu\.players\);/);
     assert.match(appSource, /config: launchConfig,/);
     assert.match(appSource, /playerCount: launchGame\.allowAnyPlayers \? 0 : Math\.max\(1, launchRoster\.length\),/);
     assert.match(appSource, /allowAnyPlayers: launchGame\.allowAnyPlayers === true,/);

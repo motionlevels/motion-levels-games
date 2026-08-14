@@ -2821,7 +2821,7 @@ function MenuApp() {
     }
     const playNarration = narrationArmedFor(game, nextMenu);
     const showCountdownOverlay = launchGame.countdownFloorOverlay === true;
-    const launchRoster = rosterForGame(game, nextMenu.players);
+    const launchRoster = rosterForGame(launchGame, nextMenu.players);
     const partyParentDifficulty = isPartyCard(game) && usesDifficulty(game)
       ? normalizedDifficultyForGame(game, nextMenu.difficulty)
       : undefined;
