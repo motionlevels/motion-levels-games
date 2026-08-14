@@ -48,7 +48,7 @@ import {
 } from "./previews";
 import { captureMenuEvent, menuKioskID, setMenuEventForwarder } from "./analytics";
 import { nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
-import { floorPreviewMediaSpec } from "./bundleMedia";
+import { bundledGamesSourceRevision, floorPreviewMediaSpec } from "./bundleMedia";
 import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
   closestLevelIDForDifficulty,
@@ -61,7 +61,8 @@ import {
 import { lifeMeterModel, teamLivesFromPlayers, type LifeMeterModel } from "./lifeMeter";
 import { isCanonicalEntityID } from "./identity.ts";
 import { migrateLegacyLevelState } from "./levelStateMigration.ts";
-import { isSupportedRuntimeSource } from "./localCatalog.ts";
+import { isSupportedRuntimeSource, localProductionPlayerExperienceCatalog } from "./localCatalog.ts";
+import { catalogSourceMatchesBundledRuntime } from "./runtimeSourcePolicy.ts";
 import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
 import { resolveMenuMirrorEnvelope } from "./menuMirror.ts";
 import { cleanNameDraft, cleanNameWhitespace } from "./nameEditing.ts";
@@ -599,7 +600,10 @@ function platformEntryToGameCard(entry: PlatformGameCatalogEntry, fallback: Game
     previewAnimation,
     supportsLevels,
     sourceKind: entry.source_kind || fallback?.sourceKind,
-    sourceRevision: entry.source_revision || fallback?.sourceRevision,
+    // Platform rows created before revision pinning may omit the source SHA.
+    // The catalog filter only admits products confirmed by this bundle/runtime,
+    // so complete that legacy metadata with the locally compiled revision.
+    sourceRevision: entry.source_revision || fallback?.sourceRevision || bundledGamesSourceRevision(),
     sourceGameId: entry.source_game_id || fallback?.sourceGameId,
     countdownFloorOverlay: entry.countdown_floor_overlay === true,
     revisionHash: entry.revision_hash || fallback?.revisionHash,
@@ -644,7 +648,30 @@ function applyDerivedPartyPlayerRanges(catalogGames: GameCard[]): GameCard[] {
   });
 }
 
-function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalogEntry[] | null): GameCard[] {
+function bundledProductionGameCards(): GameCard[] {
+  const fallbackByID = new Map(games.map((game) => [game.id, game]));
+  const fallbackByEngine = new Map(games.map((game) => [engineGameID(game), game]));
+  return localProductionPlayerExperienceCatalog()
+    .map((entry, index) => {
+      const fallback = fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry));
+      const game = platformEntryToGameCard(entry, fallback, index);
+      return {
+        ...game,
+        // Category is intrinsic manifest metadata. Featured is platform-owned;
+        // only retain the deliberately curated bundled fallback while offline.
+        featured: fallback?.featured === true,
+      };
+    })
+    // Keep the curated fallback first so a failed cloud fetch still opens on
+    // Destacados instead of an arbitrary alphabetically-first game.
+    .sort((left, right) => Number(right.featured === true) - Number(left.featured === true));
+}
+
+function applyPlatformCatalog(
+  baseGames: GameCard[],
+  catalog: PlatformGameCatalogEntry[] | null,
+  runtimeCatalog: EngineGame[] | undefined = undefined,
+): GameCard[] {
   if (!catalog) return applyDerivedPartyPlayerRanges(baseGames);
   const fallbackByID = new Map(baseGames.map((game) => [game.id, game]));
   const fallbackByEngine = new Map(baseGames.map((game) => [engineGameID(game), game]));
@@ -652,13 +679,30 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
     fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry))
   );
   const baseOrder = new Map(baseGames.map((game, index) => [game.id, index]));
-  const catalogOrderByID = new Map(catalog.map((entry) => [entry.id, entry.catalog_order]));
-  const catalogOrderByEngine = new Map(catalog.map((entry) => [platformEntryEngineGame(entry), entry.catalog_order]));
+  const bundledRuntimeIDs = new Set((runtimeCatalog || []).flatMap((entry) => {
+    const gameID = String(entry.game || "").trim().toLowerCase();
+    return [gameID, gameID.replace(/^motion-levels-games:/u, "")];
+  }));
+  const hasBundledProduct = (entry: PlatformGameCatalogEntry, fallback: GameCard | undefined) => {
+    if (fallback) return true;
+    return [entry.source_game_id, platformEntryEngineGame(entry)].some((value) => {
+      const gameID = String(value || "").trim().toLowerCase();
+      return bundledRuntimeIDs.has(gameID) || bundledRuntimeIDs.has(gameID.replace(/^motion-levels-games:/u, ""));
+    });
+  };
   const enabledCatalog = catalog.filter((entry) => (
     entry.catalog_enabled !== false
     && !isInternalAnimationsAggregate(entry)
     && isSupportedRuntimeCatalogEntry(entry, fallbackForEntry(entry))
+    && catalogSourceMatchesBundledRuntime(
+      entry.source_kind || fallbackForEntry(entry)?.sourceKind,
+      entry.source_revision,
+      bundledGamesSourceRevision(),
+      hasBundledProduct(entry, fallbackForEntry(entry)),
+    )
   ));
+  const catalogOrderByID = new Map(enabledCatalog.map((entry) => [entry.id, entry.catalog_order]));
+  const catalogOrderByEngine = new Map(enabledCatalog.map((entry) => [platformEntryEngineGame(entry), entry.catalog_order]));
   const platformGames = enabledCatalog
     .map((entry, index) => platformEntryToGameCard(
       entry,
@@ -668,6 +712,8 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
   const remainingBaseGames = baseGames.filter((game) => (
     !isInternalAnimationsAggregate(game)
     && isSupportedRuntimeGame(game)
+    // catalog_enabled is an operator kill-switch, independent of a staged
+    // source revision, so an explicit disable always hides the local card.
     && !catalog.some((entry) => platformEntryMatchesGame(entry, game) && entry.catalog_enabled === false)
     && !enabledCatalog.some((entry) => platformEntryMatchesGame(entry, game))
   ));
@@ -689,6 +735,7 @@ function platformCatalogMenuSignature(catalog: PlatformGameCatalogEntry[]): stri
       entry.catalog_enabled !== false,
       entry.catalog_featured === true,
       entry.source_kind || "",
+      entry.source_revision || "",
       entry.source_game_id || "",
     ]))
     .sort()
@@ -1492,7 +1539,7 @@ function MenuApp() {
         const selectedID = menuRef.current.selectedGame;
         const selected = next.find((entry) => entry.id === selectedID);
         setError("");
-        setMessage(selected?.revision_hash ? `Catálogo actualizado · rev ${selected.revision_hash}` : "Catálogo actualizado");
+        setMessage("Catálogo actualizado");
         captureMenuEvent("catalog_refreshed", {
           game: selectedID,
           game_revision: selected?.revision_hash,
@@ -1512,8 +1559,13 @@ function MenuApp() {
   }, []);
 
   const menuGames = useMemo(() => {
+    const bundledGames = bundledProductionGameCards();
     const platformAnimations = platformAnimationCards(platformCatalog);
-    return applyPlatformCatalog([...games, ...platformAnimations, ...liveAnimationCards(status?.catalog, [...games, ...platformAnimations])], platformCatalog);
+    return applyPlatformCatalog(
+      [...bundledGames, ...platformAnimations, ...liveAnimationCards(status?.catalog, [...bundledGames, ...platformAnimations])],
+      platformCatalog,
+      status?.catalog,
+    );
   }, [platformCatalog, status?.catalog]);
 
   useEffect(() => {
