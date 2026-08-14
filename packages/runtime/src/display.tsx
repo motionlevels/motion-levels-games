@@ -51,12 +51,14 @@ function unmount(element: Element): void {
   mounted.delete(element);
 }
 
-if (!document.getElementById("motion-levels-games-display-styles")) {
-  const style = document.createElement("style");
+let style = document.getElementById("motion-levels-games-display-styles") as HTMLStyleElement | null;
+if (!style) {
+  style = document.createElement("style");
   style.id = "motion-levels-games-display-styles";
-  style.textContent = MOTION_LEVELS_GAMES_DISPLAY_CSS;
   document.head.append(style);
 }
+style.textContent = MOTION_LEVELS_GAMES_DISPLAY_CSS;
+style.dataset.revision = MOTION_LEVELS_GAMES_REVISION;
 
 window.MotionLevelsGamesDisplay = {
   revision: MOTION_LEVELS_GAMES_REVISION,

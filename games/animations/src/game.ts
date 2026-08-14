@@ -34,7 +34,9 @@ export type AnimationSnapshot = GameSnapshot & {
   contentRevision: string;
   librarySize: number;
   palette: readonly string[];
+  rotationActive: boolean;
   rotationIndex: number;
+  rotationRemainingMillis: number;
   rotationSize: number;
 };
 
@@ -107,6 +109,12 @@ class AnimationGame implements AnimationGameInstance {
     const animation = this.currentAnimation();
     const rotation = this.rotation();
     const rotationIndex = Math.max(0, rotation.findIndex((entry) => entry.id === animation.id));
+    const elapsedMillis = Math.max(0, this.nowMillis - this.startedAtMillis);
+    const rotationActive = readGameConfigOption(this.config.options, modeOption) === "rotation" && rotation.length > 1;
+    const rotationIntervalMillis = this.rotationIntervalMillis();
+    const rotationRemainingMillis = rotationActive
+      ? rotationIntervalMillis - (elapsedMillis % rotationIntervalMillis)
+      : 0;
     return {
       currentGame: manifest.id,
       label: manifest.label,
@@ -115,7 +123,7 @@ class AnimationGame implements AnimationGameInstance {
       players: [],
       score: 0,
       lives: -1,
-      elapsedMillis: Math.max(0, this.nowMillis - this.startedAtMillis),
+      elapsedMillis,
       remainingMillis: 0,
       activeTargets: this.pressure.size,
       success: false,
@@ -127,7 +135,9 @@ class AnimationGame implements AnimationGameInstance {
       contentRevision: this.content().contentRevision,
       librarySize: animationLibrary.length,
       palette: animation.palette,
+      rotationActive,
       rotationIndex,
+      rotationRemainingMillis,
       rotationSize: rotation.length
     };
   }
@@ -142,9 +152,14 @@ class AnimationGame implements AnimationGameInstance {
     const content = this.content();
     if (mode !== "rotation") return findAnimation(content.selectedAnimationId ?? readGameConfigOption(this.config.options, animationOption));
     const rotation = this.rotation();
-    const seconds = content.rotationSeconds ?? readGameConfigOption(this.config.options, rotationSecondsOption);
-    const index = Math.floor(Math.max(0, this.nowMillis - this.startedAtMillis) / (seconds * 1_000)) % rotation.length;
+    const index = Math.floor(Math.max(0, this.nowMillis - this.startedAtMillis) / this.rotationIntervalMillis()) % rotation.length;
     return rotation[index] ?? findAnimation("aurora");
+  }
+
+  private rotationIntervalMillis(): number {
+    const content = this.content();
+    const seconds = content.rotationSeconds ?? readGameConfigOption(this.config.options, rotationSecondsOption);
+    return seconds * 1_000;
   }
 
   private rotation(): NativeAnimation[] {

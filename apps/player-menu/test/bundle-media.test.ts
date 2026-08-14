@@ -23,6 +23,10 @@ describe("player-menu bundle media", () => {
       resolveBundleRootURL("https://venue.test/games/menu/index.html").toString(),
       "https://venue.test/games/",
     );
+    assert.equal(
+      resolveBundleRootURL("https://venue.test/games/0123456789abcdef/menu/index.html").toString(),
+      "https://venue.test/games/0123456789abcdef/",
+    );
   });
 
   it("keeps an embedded development menu relative to its host app", () => {
@@ -31,6 +35,14 @@ describe("player-menu bundle media", () => {
       "https://platform.test/games/",
     );
     assert.equal(resolveBundleRootURL("http://localhost:4104/player-menu/").toString(), "http://localhost:4104/");
+    assert.equal(
+      revisionedBundleMediaURL(
+        "media/demo-game/demo-game-preview.webp",
+        "0123456789abcdef",
+        "https://platform.test/games/play/player-menu/?embed=playground",
+      ),
+      "https://platform.test/games/media/demo-game/demo-game-preview.webp?revision=0123456789abcdef",
+    );
   });
 
   it("builds canonical, revisioned game media URLs", () => {
@@ -41,9 +53,9 @@ describe("player-menu bundle media", () => {
     );
 
     assert.deepEqual(sources, {
-      thumbnailSmall: "https://venue.test/games/media/demo-game/demo-game-thumbnail-small.webp?revision=0123456789abcdef",
-      thumbnail: "https://venue.test/games/media/demo-game/demo-game-thumbnail.webp?revision=0123456789abcdef",
-      animation: "https://venue.test/games/media/demo-game/demo-game-preview.webp?revision=0123456789abcdef",
+      thumbnailSmall: "https://venue.test/games/0123456789abcdef/media/demo-game/demo-game-thumbnail-small.webp?revision=0123456789abcdef",
+      thumbnail: "https://venue.test/games/0123456789abcdef/media/demo-game/demo-game-thumbnail.webp?revision=0123456789abcdef",
+      animation: "https://venue.test/games/0123456789abcdef/media/demo-game/demo-game-preview.webp?revision=0123456789abcdef",
     });
     assert.deepEqual(
       { width: floorPreviewMediaSpec.width, height: floorPreviewMediaSpec.height },
@@ -59,11 +71,21 @@ describe("player-menu bundle media", () => {
 
     assert.equal(
       media?.thumbnailSrc,
-      "https://platform.test/gateways/motionlevels-1/games/media/animations/aurora/aurora-thumbnail-small.webp?revision=games-revision",
+      "https://platform.test/gateways/motionlevels-1/games/games-revision/media/animations/aurora/aurora-thumbnail-small.webp?revision=games-revision",
     );
     assert.equal(
       media?.previewSrc,
-      "https://platform.test/gateways/motionlevels-1/games/media/animations/aurora/aurora-preview.webp?revision=games-revision",
+      "https://platform.test/gateways/motionlevels-1/games/games-revision/media/animations/aurora/aurora-preview.webp?revision=games-revision",
+    );
+
+    const alreadyRevisioned = gameBundleMediaSources(
+      "demo-game",
+      "0123456789abcdef",
+      "https://venue.test/games/0123456789abcdef/menu/",
+    );
+    assert.equal(
+      alreadyRevisioned.thumbnail,
+      "https://venue.test/games/0123456789abcdef/media/demo-game/demo-game-thumbnail.webp?revision=0123456789abcdef",
     );
   });
 

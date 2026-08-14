@@ -21,9 +21,21 @@ export function isSupportedRuntimeSource(sourceKind: string | undefined, sourceG
 }
 
 export function localPlayerExperienceCatalog(menuLocation?: PlayerMenuLocation): PlatformGameCatalogEntry[] {
+  return localCatalogEntries(Object.values(manifestModules).map((module) => module.manifest), menuLocation);
+}
+
+export function localProductionPlayerExperienceCatalog(menuLocation?: PlayerMenuLocation): PlatformGameCatalogEntry[] {
+  return localCatalogEntries(
+    Object.values(manifestModules)
+      .map((module) => module.manifest)
+      .filter((manifest) => manifest.availability.production && manifest.slug !== "animations"),
+    menuLocation,
+  );
+}
+
+function localCatalogEntries(manifests: GameManifest[], menuLocation?: PlayerMenuLocation): PlatformGameCatalogEntry[] {
   const sourceRevision = bundledGamesSourceRevision();
-  return Object.values(manifestModules)
-    .map((module) => module.manifest)
+  return manifests
     .sort((left, right) => left.label.localeCompare(right.label))
     .map((manifest, index) => localCatalogEntry(manifest, index, sourceRevision, menuLocation));
 }

@@ -12,7 +12,7 @@ The required production entries are:
 - `playerMenu: { entry: "menu/index.html", buildManifest: "menu/build.json",
   adapterProtocolVersion: 2 }`;
 - `playerDisplay: { entry: "display/display.js", shellEntry:
-  "display/index.html", games: [...] }`;
+  "display/index.html", buildManifest: "display/build.json", games: [...] }`;
 - `playground: { entry: "playground/index.html", basePath: "/games/play/" }`.
 
 - `catalog.json`: all game manifests plus deterministic media references;
@@ -21,8 +21,9 @@ The required production entries are:
 - `player-experience-state.schema.json`: the language-neutral canonical live
   state consumed by both Player Menu and Player Display;
 - `venue/runtime.mjs`: the in-process TypeScript gameplay runtime and venue API;
-- `display/index.html` and its static assets: the complete production TV shell,
-  declared as `playerDisplay.shellEntry`;
+- `display/index.html`, `display/build.json`, and the shell's static assets: the
+  complete production TV shell and its full source revision, declared as
+  `playerDisplay.shellEntry` and `playerDisplay.buildManifest`;
 - `display/display.js`: the revision-matched browser player-display registry,
   declared as `playerDisplay.entry` and loaded by the shell;
 - `menu/`: the revision-matched static player menu, including its production
@@ -38,8 +39,10 @@ The required production entries are:
   entries must retain multiple encoded frames.
 
 The player-display shell, renderer, menu, and venue runtime are built from this
-repository and shipped in one release. Venue consumers package and serve these
-files but do not keep fallback source builds.
+repository and shipped in one release. The shell reports its compiled revision,
+replaces renderer-owned CSS during a hot swap, and reloads once when a newer
+runtime revision is ready and gameplay is not active. Venue consumers package
+and serve these files but do not keep fallback source builds.
 
 `packages/game-sdk/src/media.ts` owns the media dimensions, filename suffixes,
 bundle-relative references, and URL resolution for both games and native
