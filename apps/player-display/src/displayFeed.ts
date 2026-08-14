@@ -57,12 +57,3 @@ export function createCoalescer<T>(scheduler: FrameScheduler, render: (value: T)
 export function isFeedStalled(lastEventAt: number, now: number, stallMs: number): boolean {
   return now - lastEventAt >= stallMs;
 }
-
-export function acceptedPlayerStateRevision(
-  currentRevision: number,
-  incoming: { contractVersion: number; revision: number },
-): number | null {
-  if (incoming.contractVersion !== 1) return null;
-  if (!Number.isSafeInteger(incoming.revision) || incoming.revision <= currentRevision) return null;
-  return incoming.revision;
-}

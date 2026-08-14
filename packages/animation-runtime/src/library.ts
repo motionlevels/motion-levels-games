@@ -29,6 +29,8 @@ type LibraryDefinition = Readonly<{
   id: string;
   label: string;
   description: string;
+  animated?: boolean;
+  automaticRotation?: boolean;
   category?: AnimationCategory;
   durationMillis?: number;
   palette: readonly HexColor[];
@@ -50,6 +52,10 @@ function libraryAnimation(definition: LibraryDefinition): NativeAnimation {
 const dark = (color: HexColor) => gradient(["#010307", color], { angle: 100 });
 
 const definitions: readonly NativeAnimation[] = [
+  libraryAnimation({
+    id: "apagado", label: "Apagado", description: "Todas las baldosas permanecen apagadas", animated: false, automaticRotation: false, palette: ["#000000"], tags: ["apagado", "sin luz"], pressure: "none",
+    render: solid("#000000")
+  }),
   libraryAnimation({
     id: "arcoiris", label: "Arcoíris", description: "Bandas de color que recorren toda la pista", palette: ["#ff416c", "#ffca3a", "#56f39a", "#35d7ff", "#b968ff"], tags: ["color", "suave"],
     render: compose(gradient(["#ff416c", "#ffca3a", "#56f39a", "#35d7ff", "#b968ff"], { angle: 26, speed: 1 }), multiply(wave({ colors: ["#657080", "#ffffff"], angle: -18, frequency: 3, speed: 2, softness: 0.8 })))

@@ -6,7 +6,11 @@ in every production games bundle. Venue infrastructure only packages and serves
 that immutable artifact.
 
 The display talks to the local TypeScript venue runtime at `http://127.0.0.1:4102`
-and subscribes to the canonical revisioned `/api/player-state/events` feed.
+and subscribes to the canonical revisioned `/api/display/events` feed. Production
+builds embed their full games revision and publish it in `build.json`. If the
+runtime moves to a newer revision without restarting Chromium, the shell waits
+for the matching renderer and a non-playing lifecycle, then reloads once with a
+revision cache-buster. Its heartbeat reports both shell and renderer revisions.
 
 ```sh
 npm install --workspace @motion-levels-games/player-display
