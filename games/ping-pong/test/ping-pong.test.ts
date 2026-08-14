@@ -57,7 +57,7 @@ test("manifest exposes renamed Ping Pong game", () => {
   assert.deepEqual(
     manifest.config?.vars?.map((variable) => variable.label),
     [
-      "Points to win",
+      "Puntos para ganar",
       "Initial ball speed (tiles/s)",
       "Speed multiplier per return",
       "Difficulty multiplier step"

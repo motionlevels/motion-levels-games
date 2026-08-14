@@ -28,7 +28,7 @@ export const dueloConfigVars = {
 export const manifest: GameManifest = {
   id: "duelo",
   label: "Duelo",
-  description: "A fast 2–8 player race to claim every tile of your color before anyone else.",
+  description: "Una carrera para 2–8 jugadores: conquista todas las baldosas de tu color antes que los demás.",
   availability: { development: true, production: true },
   catalog: {
     category: "versus",

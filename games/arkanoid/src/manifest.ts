@@ -3,9 +3,9 @@ import type { GameConfigVar, GameManifest } from "@motion-levels-games/game-sdk"
 export const arkanoidConfigVars = {
   ballSpeed: {
     key: "ball_speed",
-    label: "Ball speed (tiles/s)",
+    label: "Velocidad de la pelota",
     playerFacing: true,
-    description: "Base ball speed on Easy. Higher difficulties multiply this value.",
+    description: "Velocidad inicial de la pelota; las dificultades superiores la aumentan.",
     type: "float",
     default: 4.25,
     min: 2,
@@ -17,7 +17,7 @@ export const arkanoidConfigVars = {
 export const manifest: GameManifest = {
   id: "arkanoid",
   label: "Arkanoid",
-  description: "Single-player floor Arkanoid with step-controlled paddle movement and deterministic brick physics.",
+  description: "Mueve la pala con los pies, devuelve la pelota y rompe todos los bloques.",
   availability: { development: true, production: true },
   catalog: {
     category: "individual",

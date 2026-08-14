@@ -3,9 +3,9 @@ import type { GameConfigVar, GameManifest } from "@motion-levels-games/game-sdk"
 export const pingPongV2ConfigVars = {
   pointsToWin: {
     key: "points_to_win",
-    label: "Points to win",
+    label: "Puntos para ganar",
     playerFacing: true,
-    description: "The first team to reach this score wins.",
+    description: "Gana el primer equipo que alcance esta puntuación.",
     type: "int",
     default: 5,
     min: 1,
