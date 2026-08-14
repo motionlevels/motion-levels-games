@@ -338,6 +338,7 @@ function state(clockMillis: number): GameSessionState {
     paused: false,
     frame: { width: floorWidth, height: floorHeight, cells: [] },
     snapshot: {
+      currentGame: "ping-pong",
       label: "Ping pong",
       phase: "running",
       score: 0,
@@ -346,8 +347,10 @@ function state(clockMillis: number): GameSessionState {
       remainingMillis: 60_000 - clockMillis,
       playerCount: 0,
       players: [],
-      activeTargets: [],
-      success: false
+      activeTargets: 0,
+      success: false,
+      lastEventCue: "none",
+      lastEventMessage: ""
     },
     events: []
   };
