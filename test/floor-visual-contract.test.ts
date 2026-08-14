@@ -11,16 +11,17 @@ const styleSources = await Promise.all([
   readFile(new URL("../apps/playground/src/styles.css", import.meta.url), "utf8")
 ]);
 
-test("floor occupancy is semantic and cannot create persistent decoration", () => {
-  assert.match(floorPreviewSource, /className: "ml-floor-tile"/);
+test("floor pressure decoration uses explicit input state instead of aria state", () => {
+  assert.match(floorPreviewSource, /className: `ml-floor-tile /);
   assert.match(floorPreviewSource, /aria-pressed=\{occupied\}/);
+  assert.match(floorPreviewSource, /"data-input-pressed": occupied \? "true" : "false"/);
   assert.doesNotMatch(floorPreviewSource, /data-active|ml-floor-tile-pressed/);
 
   for (const styles of styleSources) {
     assert.doesNotMatch(
       styles,
       /(?:ml-floor-tile-pressed|\.ml-floor-tile[^{]*aria-pressed|aria-pressed[^{]*\.ml-floor-tile)/,
-      "only the game frame, real hover, and visible keyboard focus may decorate floor tiles"
+      "pressure decoration must use explicit input state, never the accessibility attribute"
     );
   }
 });
