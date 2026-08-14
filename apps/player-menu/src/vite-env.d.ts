@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_UNLOCK_LEVELS?: string;
   readonly VITE_DEV_SETTINGS_PIN?: string;
   readonly VITE_HOSTED_PLAYER_EXPERIENCE?: string;
+  readonly VITE_MENU_UPDATE_POLL_MILLIS?: string;
 }
 
 interface ImportMeta {

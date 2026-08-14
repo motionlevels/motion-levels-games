@@ -48,7 +48,7 @@ import {
 } from "./previews";
 import { captureMenuEvent, menuKioskID, setMenuEventForwarder } from "./analytics";
 import { nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
-import { floorPreviewMediaSpec } from "./bundleMedia";
+import { bundledGamesSourceRevision, floorPreviewMediaSpec } from "./bundleMedia";
 import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
   closestLevelIDForDifficulty,
@@ -61,11 +61,13 @@ import {
 import { lifeMeterModel, teamLivesFromPlayers, type LifeMeterModel } from "./lifeMeter";
 import { isCanonicalEntityID } from "./identity.ts";
 import { migrateLegacyLevelState } from "./levelStateMigration.ts";
-import { isSupportedRuntimeSource } from "./localCatalog.ts";
+import { isSupportedRuntimeSource, localProductionPlayerExperienceCatalog } from "./localCatalog.ts";
+import { catalogSourceMatchesBundledRuntime } from "./runtimeSourcePolicy.ts";
 import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
 import { resolveMenuMirrorEnvelope } from "./menuMirror.ts";
 import { cleanNameDraft, cleanNameWhitespace } from "./nameEditing.ts";
 import { clearedVenueSessionProjection, commitVenueSessionRecordingScope, venueSessionRecordingCanRequest, venueSessionRecordingScope, venueSessionSyncDecision, type VenueSessionObservation } from "./venueSessionSync.ts";
+import { gameForMenuIdentity } from "./gameIdentity.ts";
 
 type MenuState = {
   sessionActive: boolean;
@@ -388,7 +390,7 @@ function isLevelRuntimeActive(status: EngineStatus | null, game: GameCard): bool
 }
 
 function gameForEngineStatus(engineGame: string, currentMenuGameID: string, catalogGames = games): GameCard | undefined {
-  const currentMenuGame = catalogGames.find((game) => game.id === currentMenuGameID);
+  const currentMenuGame = gameForMenuIdentity(catalogGames, currentMenuGameID);
   if (currentMenuGame && isPartyCard(currentMenuGame)) {
     const partyMiniGameMatches = (currentMenuGame.partyMiniGames || []).some((_, index) => {
       const launchGame = partyLaunchGame(currentMenuGame, catalogGames, index);
@@ -599,7 +601,10 @@ function platformEntryToGameCard(entry: PlatformGameCatalogEntry, fallback: Game
     previewAnimation,
     supportsLevels,
     sourceKind: entry.source_kind || fallback?.sourceKind,
-    sourceRevision: entry.source_revision || fallback?.sourceRevision,
+    // Platform rows created before revision pinning may omit the source SHA.
+    // The catalog filter only admits products confirmed by this bundle/runtime,
+    // so complete that legacy metadata with the locally compiled revision.
+    sourceRevision: entry.source_revision || fallback?.sourceRevision || bundledGamesSourceRevision(),
     sourceGameId: entry.source_game_id || fallback?.sourceGameId,
     countdownFloorOverlay: entry.countdown_floor_overlay === true,
     revisionHash: entry.revision_hash || fallback?.revisionHash,
@@ -644,7 +649,30 @@ function applyDerivedPartyPlayerRanges(catalogGames: GameCard[]): GameCard[] {
   });
 }
 
-function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalogEntry[] | null): GameCard[] {
+function bundledProductionGameCards(): GameCard[] {
+  const fallbackByID = new Map(games.map((game) => [game.id, game]));
+  const fallbackByEngine = new Map(games.map((game) => [engineGameID(game), game]));
+  return localProductionPlayerExperienceCatalog()
+    .map((entry, index) => {
+      const fallback = fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry));
+      const game = platformEntryToGameCard(entry, fallback, index);
+      return {
+        ...game,
+        // Category is intrinsic manifest metadata. Featured is platform-owned;
+        // only retain the deliberately curated bundled fallback while offline.
+        featured: fallback?.featured === true,
+      };
+    })
+    // Keep the curated fallback first so a failed cloud fetch still opens on
+    // Destacados instead of an arbitrary alphabetically-first game.
+    .sort((left, right) => Number(right.featured === true) - Number(left.featured === true));
+}
+
+function applyPlatformCatalog(
+  baseGames: GameCard[],
+  catalog: PlatformGameCatalogEntry[] | null,
+  runtimeCatalog: EngineGame[] | undefined = undefined,
+): GameCard[] {
   if (!catalog) return applyDerivedPartyPlayerRanges(baseGames);
   const fallbackByID = new Map(baseGames.map((game) => [game.id, game]));
   const fallbackByEngine = new Map(baseGames.map((game) => [engineGameID(game), game]));
@@ -652,13 +680,30 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
     fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry))
   );
   const baseOrder = new Map(baseGames.map((game, index) => [game.id, index]));
-  const catalogOrderByID = new Map(catalog.map((entry) => [entry.id, entry.catalog_order]));
-  const catalogOrderByEngine = new Map(catalog.map((entry) => [platformEntryEngineGame(entry), entry.catalog_order]));
+  const bundledRuntimeIDs = new Set((runtimeCatalog || []).flatMap((entry) => {
+    const gameID = String(entry.game || "").trim().toLowerCase();
+    return [gameID, gameID.replace(/^motion-levels-games:/u, "")];
+  }));
+  const hasBundledProduct = (entry: PlatformGameCatalogEntry, fallback: GameCard | undefined) => {
+    if (fallback) return true;
+    return [entry.source_game_id, platformEntryEngineGame(entry)].some((value) => {
+      const gameID = String(value || "").trim().toLowerCase();
+      return bundledRuntimeIDs.has(gameID) || bundledRuntimeIDs.has(gameID.replace(/^motion-levels-games:/u, ""));
+    });
+  };
   const enabledCatalog = catalog.filter((entry) => (
     entry.catalog_enabled !== false
     && !isInternalAnimationsAggregate(entry)
     && isSupportedRuntimeCatalogEntry(entry, fallbackForEntry(entry))
+    && catalogSourceMatchesBundledRuntime(
+      entry.source_kind || fallbackForEntry(entry)?.sourceKind,
+      entry.source_revision,
+      bundledGamesSourceRevision(),
+      hasBundledProduct(entry, fallbackForEntry(entry)),
+    )
   ));
+  const catalogOrderByID = new Map(enabledCatalog.map((entry) => [entry.id, entry.catalog_order]));
+  const catalogOrderByEngine = new Map(enabledCatalog.map((entry) => [platformEntryEngineGame(entry), entry.catalog_order]));
   const platformGames = enabledCatalog
     .map((entry, index) => platformEntryToGameCard(
       entry,
@@ -668,6 +713,8 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
   const remainingBaseGames = baseGames.filter((game) => (
     !isInternalAnimationsAggregate(game)
     && isSupportedRuntimeGame(game)
+    // catalog_enabled is an operator kill-switch, independent of a staged
+    // source revision, so an explicit disable always hides the local card.
     && !catalog.some((entry) => platformEntryMatchesGame(entry, game) && entry.catalog_enabled === false)
     && !enabledCatalog.some((entry) => platformEntryMatchesGame(entry, game))
   ));
@@ -689,6 +736,7 @@ function platformCatalogMenuSignature(catalog: PlatformGameCatalogEntry[]): stri
       entry.catalog_enabled !== false,
       entry.catalog_featured === true,
       entry.source_kind || "",
+      entry.source_revision || "",
       entry.source_game_id || "",
     ]))
     .sort()
@@ -1492,7 +1540,7 @@ function MenuApp() {
         const selectedID = menuRef.current.selectedGame;
         const selected = next.find((entry) => entry.id === selectedID);
         setError("");
-        setMessage(selected?.revision_hash ? `Catálogo actualizado · rev ${selected.revision_hash}` : "Catálogo actualizado");
+        setMessage("Catálogo actualizado");
         captureMenuEvent("catalog_refreshed", {
           game: selectedID,
           game_revision: selected?.revision_hash,
@@ -1512,8 +1560,13 @@ function MenuApp() {
   }, []);
 
   const menuGames = useMemo(() => {
+    const bundledGames = bundledProductionGameCards();
     const platformAnimations = platformAnimationCards(platformCatalog);
-    return applyPlatformCatalog([...games, ...platformAnimations, ...liveAnimationCards(status?.catalog, [...games, ...platformAnimations])], platformCatalog);
+    return applyPlatformCatalog(
+      [...bundledGames, ...platformAnimations, ...liveAnimationCards(status?.catalog, [...bundledGames, ...platformAnimations])],
+      platformCatalog,
+      status?.catalog,
+    );
   }, [platformCatalog, status?.catalog]);
 
   useEffect(() => {
@@ -1530,14 +1583,14 @@ function MenuApp() {
     setMenu((current) => {
       const categoryGames = gamesForCategory(menuGames, current.category);
       const preservedSelection = selectedGameToPreserve
-        ? menuGames.find((game) => game.id === selectedGameToPreserve)
+        ? gameForMenuIdentity(menuGames, selectedGameToPreserve)
         : undefined;
       // An empty category is a valid catalog view. Keep it selected so the
       // recovery surface remains stable instead of snapping back to the stale
       // game that happened to be selected in the previous category.
       if (!preservedSelection && categoryGames.length === 0) return current;
       const selected = preservedSelection
-        || categoryGames.find((game) => game.id === current.selectedGame)
+        || gameForMenuIdentity(categoryGames, current.selectedGame)
         || categoryGames[0];
       const category = preservedSelection ? menuCategoryForGame(selected, current.category) : current.category;
       const difficulty = normalizedDifficultyForGame(selected, current.difficulty);
@@ -2041,7 +2094,7 @@ function MenuApp() {
   const activeCategory = categories.find((category) => category.id === menu.category) || categories[0];
   const levelsUnlocked = unlockLevelsEnabled(menu);
   const visibleGames = gamesForCategory(menuGames, menu.category);
-  const selectedGame = menuGames.find((game) => game.id === menu.selectedGame) || menuGames[0] || games[0];
+  const selectedGame = gameForMenuIdentity(menuGames, menu.selectedGame) || menuGames[0] || games[0];
   const categorySelectionValid = visibleGames.some((game) => game.id === selectedGame.id);
   const runtimeGame = status ? gameForEngineStatus(status.currentGame, menu.selectedGame, menuGames) : null;
   const launchedGame = runtimeGame && playerExperienceView(status).screen === "game" ? runtimeGame : selectedGame;
@@ -2111,7 +2164,7 @@ function MenuApp() {
     setMenu((current) => {
       const currentCategoryGames = gamesForCategory(menuGames, current.category);
       if (!current.selectedGame && currentCategoryGames.length === 0) return current;
-      const game = menuGames.find((candidate) => candidate.id === current.selectedGame) || selectedGame;
+      const game = gameForMenuIdentity(menuGames, current.selectedGame) || selectedGame;
       const category = currentCategoryGames.length === 0
         ? current.category
         : menuCategoryForGame(game, current.category);
@@ -3738,7 +3791,7 @@ function MenuApp() {
                   ) : visibleGames.map((game, index) => {
                     const future = Boolean(game.disabled);
                     const engineAvailable = isGameLaunchable(game);
-                    const selected = menu.selectedGame === game.id;
+                    const selected = selectedGame.id === game.id;
                     const active = selected && (status?.currentGame === runtimeGameID(game) || status?.currentGame === engineGameID(game));
                     const meta = gameCardMeta(game, active, selected);
                     return (

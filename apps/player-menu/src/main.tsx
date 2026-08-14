@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import App from "./App";
 import { initMenuAnalytics } from "./analytics";
+import MenuUpdateGate from "./MenuUpdateGate";
 import { publicAssetURL } from "./utils";
 import "./styles.css";
 
@@ -105,9 +106,11 @@ class KioskErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <KioskViewport>
-      <KioskErrorBoundary>
-        <App />
-      </KioskErrorBoundary>
+      <MenuUpdateGate>
+        <KioskErrorBoundary>
+          <App />
+        </KioskErrorBoundary>
+      </MenuUpdateGate>
     </KioskViewport>
   </StrictMode>,
 );

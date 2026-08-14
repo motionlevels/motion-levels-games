@@ -1,4 +1,4 @@
-import type { GameManifest } from "@motion-levels-games/game-sdk";
+import { gameManifestSlug, type GameManifest } from "@motion-levels-games/game-sdk";
 import type { PlatformGameCatalogEntry } from "./contracts";
 import {
   bundledGamesSourceRevision,
@@ -21,9 +21,21 @@ export function isSupportedRuntimeSource(sourceKind: string | undefined, sourceG
 }
 
 export function localPlayerExperienceCatalog(menuLocation?: PlayerMenuLocation): PlatformGameCatalogEntry[] {
+  return localCatalogEntries(Object.values(manifestModules).map((module) => module.manifest), menuLocation);
+}
+
+export function localProductionPlayerExperienceCatalog(menuLocation?: PlayerMenuLocation): PlatformGameCatalogEntry[] {
+  return localCatalogEntries(
+    Object.values(manifestModules)
+      .map((module) => module.manifest)
+      .filter((manifest) => manifest.availability.production && manifest.slug !== "animations"),
+    menuLocation,
+  );
+}
+
+function localCatalogEntries(manifests: GameManifest[], menuLocation?: PlayerMenuLocation): PlatformGameCatalogEntry[] {
   const sourceRevision = bundledGamesSourceRevision();
-  return Object.values(manifestModules)
-    .map((module) => module.manifest)
+  return manifests
     .sort((left, right) => left.label.localeCompare(right.label))
     .map((manifest, index) => localCatalogEntry(manifest, index, sourceRevision, menuLocation));
 }
@@ -43,7 +55,7 @@ function localCatalogEntry(
       : `${manifest.players.min}-${manifest.players.max}`;
   return {
     id: manifest.id,
-    engine_game: `motion-levels-games:${manifest.id}`,
+    engine_game: `motion-levels-games:${gameManifestSlug(manifest)}`,
     label: manifest.label,
     description: manifest.description ?? "",
     catalog_category: manifest.catalog.category,

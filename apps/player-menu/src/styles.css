@@ -219,6 +219,238 @@ body {
   min-width: 320px;
 }
 
+/* ---------- Revision update gate ---------- */
+
+.menu-update-gate,
+.menu-update-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.menu-update-content[inert] {
+  pointer-events: none;
+}
+
+.menu-update-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 80px;
+  overflow: hidden;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(var(--accent-rgb), 0.2), transparent 34%),
+    linear-gradient(145deg, rgba(5, 13, 25, 0.97), rgba(2, 6, 13, 0.99));
+  outline: none;
+  isolation: isolate;
+  animation: menuUpdateOverlayIn 280ms var(--ease);
+}
+
+.menu-update-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.2;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: radial-gradient(circle at center, #000 0%, transparent 76%);
+}
+
+.menu-update-card {
+  width: min(920px, 100%);
+  padding: 62px 72px 58px;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  border: 1px solid rgba(210, 229, 255, 0.18);
+  border-radius: 38px;
+  text-align: center;
+  background:
+    linear-gradient(150deg, rgba(23, 39, 62, 0.88), rgba(8, 17, 31, 0.92));
+  box-shadow:
+    0 42px 120px -48px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(18px);
+}
+
+.menu-update-orbit {
+  position: relative;
+  width: 154px;
+  height: 154px;
+  margin-bottom: 8px;
+  display: grid;
+  place-items: center;
+}
+
+.menu-update-orbit::before,
+.menu-update-orbit span {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 3px solid rgba(206, 227, 255, 0.13);
+  border-radius: 50%;
+}
+
+.menu-update-orbit span {
+  border-color: transparent;
+  border-top-color: rgba(var(--accent-rgb), 0.98);
+  border-right-color: rgba(var(--accent-rgb), 0.38);
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.45));
+  animation: menuUpdateOrbit 1.15s linear infinite;
+}
+
+.menu-update-orbit img {
+  width: 90px;
+  height: 90px;
+  filter:
+    drop-shadow(0 14px 24px rgba(0, 0, 0, 0.42))
+    drop-shadow(0 0 22px rgba(var(--accent-rgb), 0.25));
+}
+
+.menu-update-success-mark {
+  width: 90px;
+  height: 90px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #04140b;
+  background: #4fe08a;
+  box-shadow: 0 0 36px rgba(79, 224, 138, 0.34);
+  font-size: 58px;
+  font-weight: 950;
+  line-height: 1;
+  animation: menuUpdateSuccessIn 360ms var(--ease);
+}
+
+.menu-update-overlay.phase-updated .menu-update-orbit span {
+  border-color: rgba(79, 224, 138, 0.7);
+  filter: drop-shadow(0 0 12px rgba(79, 224, 138, 0.28));
+  animation: menuUpdateSuccessRing 620ms var(--ease);
+}
+
+.menu-update-overlay.phase-failed .menu-update-orbit span {
+  border-top-color: #ff647c;
+  border-right-color: rgba(255, 100, 124, 0.36);
+  animation: none;
+}
+
+.menu-update-card > .micro {
+  color: rgba(207, 224, 247, 0.72);
+  font-size: 18px;
+  letter-spacing: 0.08em;
+}
+
+.menu-update-card h1 {
+  margin: 0;
+  color: #f7fbff;
+  font-size: 54px;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+
+.menu-update-card > p {
+  max-width: 620px;
+  margin: 2px 0 14px;
+  color: rgba(220, 233, 250, 0.78);
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.42;
+}
+
+.menu-update-steps {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.menu-update-steps span {
+  min-height: 58px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid rgba(205, 224, 250, 0.1);
+  border-radius: 16px;
+  color: rgba(205, 220, 241, 0.48);
+  background: rgba(5, 11, 21, 0.38);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.menu-update-steps i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.menu-update-steps span.active {
+  border-color: rgba(var(--accent-rgb), 0.34);
+  color: rgba(235, 246, 255, 0.94);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.menu-update-steps span.active i {
+  color: rgb(var(--accent-rgb));
+  box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0.12);
+  animation: menuUpdatePulse 1.2s ease-in-out infinite;
+}
+
+.menu-update-steps span.done {
+  color: rgba(205, 236, 219, 0.74);
+}
+
+.menu-update-steps span.done i {
+  color: #4fe08a;
+}
+
+.menu-update-steps span.error {
+  border-color: rgba(255, 100, 124, 0.32);
+  color: rgba(255, 226, 231, 0.9);
+  background: rgba(255, 76, 106, 0.1);
+}
+
+.menu-update-steps span.error i {
+  color: #ff647c;
+}
+
+.menu-update-retry {
+  min-width: 330px;
+  margin-top: 12px;
+}
+
+@keyframes menuUpdateOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes menuUpdateOrbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes menuUpdatePulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.84); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes menuUpdateSuccessIn {
+  from { opacity: 0; transform: scale(0.66) rotate(-10deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes menuUpdateSuccessRing {
+  from { opacity: 0; transform: scale(0.72); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 /* ---------- Welcome screen ---------- */
 
 .welcome-app {
@@ -2458,63 +2690,6 @@ button.capsule:disabled,
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-}
-
-.detail-heading-row .game-revision-row {
-  flex: 0 0 auto;
-}
-
-.game-revision {
-  width: fit-content;
-  color: rgba(235, 241, 255, 0.46);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0;
-}
-
-.game-revision-row {
-  width: fit-content;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.game-revision-refresh {
-  width: 56px;
-  height: 56px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid rgba(235, 241, 255, 0.12);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.035);
-  color: rgba(235, 241, 255, 0.48);
-  cursor: pointer;
-  transition: border-color 140ms var(--ease), color 140ms var(--ease), background-color 140ms var(--ease);
-}
-
-.game-revision-refresh svg {
-  width: 18px;
-  height: 18px;
-}
-
-.game-revision-refresh:not(:disabled):hover {
-  border-color: rgba(54, 217, 255, 0.38);
-  background: rgba(54, 217, 255, 0.08);
-  color: rgba(235, 241, 255, 0.82);
-}
-
-.game-revision-refresh:disabled {
-  cursor: progress;
-  opacity: 0.7;
-}
-
-.game-revision-refresh:disabled svg {
-  animation: revisionRefreshSpin 800ms linear infinite;
-}
-
-@keyframes revisionRefreshSpin {
-  to { transform: rotate(360deg); }
 }
 
 .detail-copy > p {

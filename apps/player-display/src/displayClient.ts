@@ -7,6 +7,7 @@ export type DisplayClientReport = {
   currentGame: string;
   expectedRevision: string;
   loadedRevision: string;
+  shellRevision: string;
   renderStatus: GamesDisplayRenderState["status"];
   renderAttempt: number;
   connected: boolean;

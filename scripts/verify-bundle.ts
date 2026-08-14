@@ -33,7 +33,7 @@ const manifest = JSON.parse(await readFile(path.join(root, "bundle.json"), "utf8
   playerMenu?: { entry?: string; buildManifest?: string; adapterProtocolVersion?: number };
   playerExperience?: { contractVersion?: number; schema?: string };
   sessionHistory?: { contractVersion?: number; schemaId?: string; schema?: string };
-  playerDisplay?: { entry?: string; shellEntry?: string; games?: string[] };
+  playerDisplay?: { entry?: string; shellEntry?: string; buildManifest?: string; games?: string[] };
   playground?: { entry?: string; basePath?: string };
   catalog?: string;
   animations?: string;
@@ -52,6 +52,7 @@ assert.equal(manifest.venueRuntime?.controllerProtocolVersion, 2);
 assert.ok((manifest.venueRuntime?.games?.length ?? 0) > 0);
 assert.equal(manifest.playerDisplay?.entry, "display/display.js");
 assert.equal(manifest.playerDisplay?.shellEntry, "display/index.html");
+assert.equal(manifest.playerDisplay?.buildManifest, "display/build.json");
 assert.deepEqual(manifest.playerDisplay?.games, manifest.venueRuntime?.games);
 assert.equal(manifest.playerMenu?.entry, "menu/index.html");
 assert.equal(manifest.playerMenu?.buildManifest, "menu/build.json");
@@ -79,6 +80,7 @@ const files = await bundleFiles(root);
 assert.ok(files.some((file) => file.path === manifest.venueRuntime?.entry), "venue runtime entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.entry), "player display entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.shellEntry), "player display shell is missing from bundle files");
+assert.ok(files.some((file) => file.path === manifest.playerDisplay?.buildManifest), "player display build manifest is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerMenu?.entry), "player menu entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerMenu?.buildManifest), "player menu build manifest is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playground?.entry), "playground entry is missing from bundle files");
@@ -114,6 +116,20 @@ assert.equal(menuBuild.gamesSourceRevision, manifest.sourceRevision);
 assert.equal(menuBuild.buildVersion, manifest.buildVersion);
 assert.equal(menuBuild.releaseTag, manifest.releaseTag);
 assert.ok(Boolean(menuBuild.menuBuildDate), "player menu build date is missing");
+const displayBuild = JSON.parse(await readFile(path.join(root, manifest.playerDisplay!.buildManifest!), "utf8")) as {
+  schema?: string;
+  displayBuildRevision?: string;
+  displayBuildDate?: string;
+  gamesSourceRevision?: string;
+  buildVersion?: string;
+  releaseTag?: string | null;
+};
+assert.equal(displayBuild.schema, "motion-levels-player-display-build-v1");
+assert.equal(displayBuild.displayBuildRevision, manifest.sourceRevision);
+assert.equal(displayBuild.gamesSourceRevision, manifest.sourceRevision);
+assert.equal(displayBuild.buildVersion, manifest.buildVersion);
+assert.equal(displayBuild.releaseTag, manifest.releaseTag);
+assert.ok(Boolean(displayBuild.displayBuildDate), "player display build date is missing");
 const compiledMenuEntries = files.filter((file) => /^menu\/assets\/.*\.js$/u.test(file.path));
 assert.ok(compiledMenuEntries.length > 0, "player menu has no compiled JavaScript");
 assert.ok(
@@ -133,6 +149,12 @@ assert.ok(compiledDisplayShellEntries.length > 0, "player display shell has no c
 assert.ok(
   (await Promise.all(compiledDisplayShellEntries.map(async (file) => (
     await readFile(path.join(root, file.path))
+  ).includes(Buffer.from(manifest.sourceRevision!))))).some(Boolean),
+  "player display shell JavaScript does not contain its declared games source revision"
+);
+assert.ok(
+  (await Promise.all(compiledDisplayShellEntries.map(async (file) => (
+    await readFile(path.join(root, file.path))
   ).includes(Buffer.from(manifest.buildVersion!))))).some(Boolean),
   "player display shell JavaScript does not contain its declared build version"
 );
@@ -143,6 +165,15 @@ for (const [label, entry] of [
   const compiled = await readFile(path.join(root, entry));
   assert.ok(compiled.includes(Buffer.from(manifest.sourceRevision!)), `${label} does not contain its source revision`);
 }
+const compiledPlayerDisplay = await readFile(path.join(root, manifest.playerDisplay!.entry!));
+assert.ok(
+  compiledPlayerDisplay.includes(Buffer.from("data:image/png;base64,")),
+  "player display does not embed the Motion Levels logo"
+);
+assert.ok(
+  !compiledPlayerDisplay.includes(Buffer.from("./assets/motion-levels-icon.png")),
+  "player display contains an unresolved Motion Levels logo reference"
+);
 
 type MediaAssetMetadata = {
   file?: string;
