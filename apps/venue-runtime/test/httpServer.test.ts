@@ -151,7 +151,7 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   });
   assert.equal(firstResponse.status, 200);
   const first = await firstResponse.json() as Record<string, unknown>;
-  assert.deepEqual(first.remoteFloorInput, { activeClients: 1, heldTiles: 1, leaseMillis: 5_000 });
+  assert.deepEqual(first.remoteFloorInput, { activeClients: 1, heldTiles: 1, leaseMillis: 5_000, trackedClients: 1 });
   assert.equal(first.applied, true);
   assert.equal(first.lastSequence, 1);
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
@@ -178,7 +178,8 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   assert.deepEqual(releasedBody.remoteFloorInput, {
     activeClients: 0,
     heldTiles: 0,
-    leaseMillis: 5_000
+    leaseMillis: 5_000,
+    trackedClients: 1
   });
   assert.equal(releasedBody.applied, true);
   assert.equal(releasedBody.lastSequence, 2);

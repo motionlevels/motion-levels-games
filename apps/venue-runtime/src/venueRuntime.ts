@@ -74,6 +74,7 @@ export type VenueRuntimeOptions = {
   liveFloorTimeoutMillis?: number;
   localLiveFloorFps?: number;
   remoteFloorInputLeaseMillis?: number;
+  remoteFloorInputTombstoneMillis?: number;
   screensaverRefreshMillis?: number;
   brightness?: number;
   log?(message: string, error?: unknown): void;
@@ -110,6 +111,7 @@ export type RemoteFloorInputStatus = {
   activeClients: number;
   heldTiles: number;
   leaseMillis: number;
+  trackedClients: number;
 };
 
 type FloorAdapterStatus = {
@@ -137,6 +139,12 @@ type ObservedFloorSubscription = {
 type RemoteFloorInputClient = {
   held: Set<string>;
   leaseTimer: NodeJS.Timeout | null;
+};
+
+type RemoteFloorInputSequence = {
+  expiresAt: number;
+  expiryTimer: NodeJS.Timeout;
+  lastSequence: number;
 };
 
 type NormalizedRemoteFloorInputRequest = {
@@ -172,6 +180,10 @@ const maximumLocalLiveFloorFps = 25;
 const defaultRemoteFloorInputLeaseMillis = 5_000;
 const minimumRemoteFloorInputLeaseMillis = 100;
 const maximumRemoteFloorInputLeaseMillis = 30_000;
+const defaultRemoteFloorInputTombstoneMillis = 5 * 60_000;
+const minimumRemoteFloorInputTombstoneMillis = 100;
+const maximumRemoteFloorInputTombstoneMillis = 15 * 60_000;
+const maximumTrackedRemoteFloorInputClients = 1_024;
 const maximumRemoteFloorInputChanges = FLOOR_COLS * FLOOR_ROWS;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -184,6 +196,7 @@ export class VenueRuntime {
   private readonly liveFloorPublisher: LiveFloorPublisher | null;
   private readonly localLiveFloorFps: number;
   private readonly remoteFloorInputLeaseMillis: number;
+  private readonly remoteFloorInputTombstoneMillis: number;
   private readonly liveFloorListeners = new Set<ObservedFloorSubscription>();
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
   private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
@@ -214,7 +227,7 @@ export class VenueRuntime {
   private readonly physicalPressure = new Set<string>();
   private readonly remotePressureClients = new Map<string, RemoteFloorInputClient>();
   private readonly remotePressureCounts = new Map<string, number>();
-  private readonly remoteFloorInputSequences = new Map<string, number>();
+  private readonly remoteFloorInputSequences = new Map<string, RemoteFloorInputSequence>();
   private readonly heldPressure = new Set<string>();
   private menuState: MenuStateEnvelope = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
   private displayClientReport: Record<string, unknown> | null = null;
@@ -224,6 +237,7 @@ export class VenueRuntime {
     if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
     this.localLiveFloorFps = normalizeLocalLiveFloorFps(options.localLiveFloorFps);
     this.remoteFloorInputLeaseMillis = normalizeRemoteFloorInputLeaseMillis(options.remoteFloorInputLeaseMillis);
+    this.remoteFloorInputTombstoneMillis = normalizeRemoteFloorInputTombstoneMillis(options.remoteFloorInputTombstoneMillis);
     this.liveFloorPublisher = createLiveFloorPublisher({
       platformUrl: options.platformUrl,
       platformToken: options.platformToken,
@@ -645,11 +659,17 @@ export class VenueRuntime {
    * batch is validated before any mutation. */
   applyRemoteFloorInput(request: RemoteFloorInputRequest): RemoteFloorInputResult {
     const normalized = normalizeRemoteFloorInputRequest(request);
-    const lastSequence = this.remoteFloorInputSequences.get(normalized.clientId) ?? 0;
+    const now = Date.now();
+    this.pruneRemoteFloorInputTombstones(now);
+    const sequence = this.remoteFloorInputSequences.get(normalized.clientId);
+    const lastSequence = sequence?.lastSequence ?? 0;
     if (normalized.clientSequence <= lastSequence) {
       return { ...this.status(), applied: false, lastSequence };
     }
-    this.remoteFloorInputSequences.set(normalized.clientId, normalized.clientSequence);
+    if (!sequence && this.remoteFloorInputSequences.size >= maximumTrackedRemoteFloorInputClients) {
+      throw new RequestValidationError("too many remote floor input clients");
+    }
+    this.rememberRemoteFloorInputSequence(normalized.clientId, normalized.clientSequence, now);
     let mutated = false;
     if (normalized.releaseAll) {
       mutated = this.releaseRemoteFloorInputClient(normalized.clientId) || mutated;
@@ -848,8 +868,41 @@ export class VenueRuntime {
     return {
       activeClients: this.remotePressureClients.size,
       heldTiles: this.remotePressureCounts.size,
-      leaseMillis: this.remoteFloorInputLeaseMillis
+      leaseMillis: this.remoteFloorInputLeaseMillis,
+      trackedClients: this.remoteFloorInputSequences.size
     };
+  }
+
+  private rememberRemoteFloorInputSequence(clientId: string, lastSequence: number, now: number): void {
+    const previous = this.remoteFloorInputSequences.get(clientId);
+    if (previous) clearTimeout(previous.expiryTimer);
+    const entry: RemoteFloorInputSequence = {
+      expiresAt: now + this.remoteFloorInputTombstoneMillis,
+      expiryTimer: setTimeout(() => this.expireRemoteFloorInputTombstone(clientId, entry), this.remoteFloorInputTombstoneMillis),
+      lastSequence
+    };
+    entry.expiryTimer.unref();
+    this.remoteFloorInputSequences.set(clientId, entry);
+  }
+
+  private expireRemoteFloorInputTombstone(clientId: string, expected: RemoteFloorInputSequence): void {
+    const current = this.remoteFloorInputSequences.get(clientId);
+    if (current !== expected) return;
+    const remaining = current.expiresAt - Date.now();
+    if (remaining > 0) {
+      current.expiryTimer = setTimeout(() => this.expireRemoteFloorInputTombstone(clientId, current), remaining);
+      current.expiryTimer.unref();
+      return;
+    }
+    this.remoteFloorInputSequences.delete(clientId);
+  }
+
+  private pruneRemoteFloorInputTombstones(now: number): void {
+    for (const [clientId, entry] of this.remoteFloorInputSequences) {
+      if (entry.expiresAt > now) continue;
+      clearTimeout(entry.expiryTimer);
+      this.remoteFloorInputSequences.delete(clientId);
+    }
   }
 
   private publishDisplay(): void {
@@ -1089,6 +1142,15 @@ function normalizeRemoteFloorInputLeaseMillis(value: unknown): number {
   return Math.round(Math.max(
     minimumRemoteFloorInputLeaseMillis,
     Math.min(maximumRemoteFloorInputLeaseMillis, candidate)
+  ));
+}
+
+function normalizeRemoteFloorInputTombstoneMillis(value: unknown): number {
+  const candidate = Number(value ?? defaultRemoteFloorInputTombstoneMillis);
+  if (!Number.isFinite(candidate)) return defaultRemoteFloorInputTombstoneMillis;
+  return Math.round(Math.max(
+    minimumRemoteFloorInputTombstoneMillis,
+    Math.min(maximumRemoteFloorInputTombstoneMillis, candidate)
   ));
 }
 

@@ -187,7 +187,8 @@ test("remote floor clients are isolated and cannot release physical pressure", a
   assert.deepEqual(runtime.status().remoteFloorInput, {
     activeClients: 2,
     heldTiles: 1,
-    leaseMillis: 5_000
+    leaseMillis: 5_000,
+    trackedClients: 2
   });
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
 
@@ -263,6 +264,39 @@ test("remote floor heartbeats renew leases and abandoned input is released", asy
   runtime.control("restart");
   assert.equal(runtime.status().remoteFloorInput.heldTiles, 0);
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 0);
+});
+
+test("remote floor sequence tombstones expire after their safety horizon", async (context) => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    remoteFloorInputTombstoneMillis: 100
+  });
+  context.after(() => runtime.stop());
+  const clientId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  runtime.applyRemoteFloorInput({
+    commandId: "31000000-0000-4000-8000-000000000001",
+    clientId,
+    clientSequence: 1,
+    changes: [{ x: 8, y: 16, pressed: true }]
+  });
+  runtime.applyRemoteFloorInput({
+    commandId: "31000000-0000-4000-8000-000000000002",
+    clientId,
+    clientSequence: 2,
+    releaseAll: true
+  });
+  assert.equal(runtime.status().remoteFloorInput.trackedClients, 1);
+
+  await waitFor(() => runtime.status().remoteFloorInput.trackedClients === 0);
+  const reused = runtime.applyRemoteFloorInput({
+    commandId: "31000000-0000-4000-8000-000000000003",
+    clientId,
+    clientSequence: 1,
+    changes: []
+  });
+  assert.equal(reused.applied, true);
+  assert.equal(reused.lastSequence, 1);
 });
 
 test("selecting salvapantallas stays an idle rotation without a gameplay session", async () => {

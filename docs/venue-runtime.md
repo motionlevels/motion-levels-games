@@ -69,12 +69,14 @@ before applying the batch. A request with an empty change list is a lease
 heartbeat. Command retries with the same `commandId` return the first committed
 result without applying the changes again.
 
-The runtime keeps the highest `clientSequence` as a tombstone for the life of
-the process. A batch at or below that value is ignored and does not renew the
-lease, which prevents an in-flight press arriving after `releaseAll` from
-relatching the floor. Endpoint responses retain the canonical venue status and
-add top-level `applied` and `lastSequence` fields so a client can observe this
-decision.
+The runtime keeps the highest `clientSequence` as a tombstone for five minutes,
+far beyond the input lease and a reasonable keepalive request lifetime. It
+tracks at most 1,024 unexpired client IDs rather than allowing UUID-per-mount
+state to grow without bound. A batch at or below the saved value is ignored and
+does not renew the lease, which prevents an in-flight press arriving after
+`releaseAll` from relatching the floor. Endpoint responses retain the canonical
+venue status and add top-level `applied` and `lastSequence` fields so a client
+can observe this decision.
 
 Each `clientId` owns an independent latch set with a five-second server lease.
 An active client must send a heartbeat or input before the lease expires;
@@ -84,7 +86,7 @@ client sets and physical controller pressure are combined before entering the
 single `GameSession`, so releasing or expiring a browser cannot release a tile
 still held physically or by another browser. Responses are the canonical
 venue status and include `remoteFloorInput.activeClients`, `heldTiles`, and
-`leaseMillis`. The lease may be tuned with
+`leaseMillis`; `trackedClients` reports retained sequence tombstones. The lease may be tuned with
 `MOTION_LEVELS_REMOTE_FLOOR_INPUT_LEASE` (duration such as `5s` or `5000ms`;
 100 ms–30 s).
 
