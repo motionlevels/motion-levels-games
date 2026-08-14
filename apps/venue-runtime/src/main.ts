@@ -1,8 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { createVenueHttpServer } from "./httpServer.ts";
+import { engineTokenFromEnvironment } from "./engineToken.ts";
+import { recordingClientFromEnvironment } from "./httpRecordingClient.ts";
+import { closeVenueHttpSse, createVenueHttpServer } from "./httpServer.ts";
 import { VenueRuntime } from "./venueRuntime.ts";
 
 declare const MOTION_LEVELS_GAMES_REVISION: string;
+
+const recordingClient = recordingClientFromEnvironment();
 
 const runtime = new VenueRuntime({
   sourceRevision: sourceRevision(),
@@ -15,6 +19,8 @@ const runtime = new VenueRuntime({
   localLiveFloorFps: parsePositive(process.env.MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS, 20),
   remoteFloorInputLeaseMillis: parseDurationMillis(process.env.MOTION_LEVELS_REMOTE_FLOOR_INPUT_LEASE, 5_000),
   brightness: parseBrightness(process.env.MOTION_LEVELS_ENGINE_BRIGHTNESS),
+  sessionHistoryDir: process.env.MOTION_LEVELS_SESSION_HISTORY_DIR?.trim() || "/var/lib/motion-levels/session-history",
+  ...(recordingClient ? { recordingClient } : {}),
   log: (message, error) => console.error(`[venue-runtime] ${message}`, error ?? "")
 });
 
@@ -26,7 +32,7 @@ function sourceRevision(): string {
 }
 
 const address = parseHttpAddress(process.env.MOTION_LEVELS_ENGINE_HTTP?.trim() || "127.0.0.1:4102");
-const engineToken = process.env.MOTION_LEVELS_ENGINE_TOKEN?.trim() || "";
+const engineToken = engineTokenFromEnvironment();
 if (!isLoopbackHost(address.host) && !engineToken) {
   throw new Error("MOTION_LEVELS_ENGINE_TOKEN is required for a non-loopback HTTP bind");
 }
@@ -36,12 +42,34 @@ server.listen(address.port, address.host, () => {
   console.log(`[venue-runtime] API listening at http://${address.host}:${address.port}`);
 });
 
+let shuttingDown = false;
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    runtime.stop();
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(1), 5_000).unref();
-  });
+  process.on(signal, () => void shutdown(signal));
+}
+
+async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[venue-runtime] ${signal} received; draining session history and camera recording`);
+  const forcedExit = setTimeout(() => {
+    console.error("[venue-runtime] shutdown drain exceeded 30 seconds");
+    process.exit(1);
+  }, 30_000);
+  const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()));
+  closeVenueHttpSse(server);
+  try {
+    // Wait for ordinary in-flight commands after ending only long-lived SSE.
+    // runtime.stop() is last so no request can enqueue history/camera work
+    // after its drain has completed.
+    await serverClosed;
+    await runtime.stop();
+    clearTimeout(forcedExit);
+    process.exit(0);
+  } catch (error) {
+    clearTimeout(forcedExit);
+    console.error("[venue-runtime] shutdown failed", error);
+    process.exit(1);
+  }
 }
 
 function parseHttpAddress(value: string): { host: string; port: number } {

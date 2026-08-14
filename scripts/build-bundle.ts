@@ -14,6 +14,10 @@ import { DEFAULT_ENGINE_FPS } from "../packages/game-sdk/src/index.ts";
 import { controllerProtocolVersion } from "../apps/venue-runtime/src/controllerProtocol.ts";
 import { venueApiProtocolVersion } from "../apps/venue-runtime/src/apiProtocol.ts";
 import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
+import {
+  SESSION_HISTORY_CONTRACT_VERSION,
+  SESSION_HISTORY_SCHEMA
+} from "../packages/session-history/src/index.ts";
 import { playerMenuAdapterProtocolVersion } from "../apps/player-menu/src/protocol.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 
@@ -24,6 +28,7 @@ const outputRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || pa
 const mediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path.join(repoRoot, "dist/media"));
 const displayCSS = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
 const playerExperienceSchema = await readFile(path.join(repoRoot, "packages/player-experience/schema/player-experience-state.schema.json"), "utf8");
+const sessionHistorySchema = await readFile(path.join(repoRoot, "packages/session-history/schema/session-history-v1.schema.json"), "utf8");
 
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(path.join(outputRoot, "venue"), { recursive: true });
@@ -114,6 +119,7 @@ const animationCatalog = {
 };
 await writeFile(path.join(outputRoot, "animations.json"), `${JSON.stringify(animationCatalog, null, 2)}\n`);
 await writeFile(path.join(outputRoot, "player-experience-state.schema.json"), `${JSON.stringify(JSON.parse(playerExperienceSchema), null, 2)}\n`);
+await writeFile(path.join(outputRoot, "session-history-v1.schema.json"), `${JSON.stringify(JSON.parse(sessionHistorySchema), null, 2)}\n`);
 
 const files = await bundleFiles(outputRoot);
 const artifactDigest = bundleContentDigest(files);
@@ -136,6 +142,11 @@ const manifest = {
   },
   playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
   playerExperience: { contractVersion: 1, schema: "player-experience-state.schema.json" },
+  sessionHistory: {
+    contractVersion: SESSION_HISTORY_CONTRACT_VERSION,
+    schemaId: SESSION_HISTORY_SCHEMA,
+    schema: "session-history-v1.schema.json"
+  },
   playground: { entry: "playground/index.html", basePath: "/games/play/" },
   catalog: "catalog.json",
   animations: "animations.json",

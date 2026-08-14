@@ -517,18 +517,29 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /<GameConfigDialog/);
   });
 
-  it("keeps session camera recording enabled by default with a quiet drawer toggle", () => {
+  it("keeps visit recording as the compatible default and exposes all recording scopes", () => {
     const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
     const apiSource = fs.readFileSync(path.resolve(__dirname, "../src/api.ts"), "utf8");
     const stylesSource = fs.readFileSync(path.resolve(__dirname, "../src/styles.css"), "utf8");
 
     assert.match(apiSource, /recordingEnabled\?: boolean;/);
-    assert.match(appSource, /recordingEnabled: saved\.recordingEnabled !== false/);
+    assert.match(apiSource, /recordingPolicy\?: RecordingPolicy;/);
+    assert.match(appSource, /normalizeRecordingScope\(saved\.recordingPolicy, saved\.recordingEnabled\)/);
     assert.match(appSource, /recordingEnabled: true/);
-    assert.match(appSource, /function setSessionRecordingEnabled\(enabled: boolean\)/);
+    assert.match(appSource, /recordingPolicy: "visit"/);
+    assert.match(appSource, /async function setSessionRecordingScope\(scope: RecordingScope\)/);
     assert.match(appSource, /recording_enabled: menu\.recordingEnabled/);
+    assert.match(appSource, /recording_scope: menu\.recordingPolicy/);
     assert.match(appSource, /recordingEnabled: nextMenu\.recordingEnabled/);
-    assert.match(appSource, /className=\{`recording-switch \$\{menu\.recordingEnabled \? "on" : "off"\}`\}/);
+    assert.match(appSource, /recordingPolicy: \{ scope: nextMenu\.recordingPolicy \}/);
+    assert.match(appSource, /const recordingOperational = menu\.recordingEnabled && recordingAvailable;/);
+    assert.match(appSource, /const recordingConfigured = venueSessionRecordingCanRequest\(status \?\? \{\}\);/);
+    assert.match(appSource, /className=\{`recording-switch \$\{recordingOperational \? "on" : "off"\}/);
+    assert.match(appSource, /aria-label="Alcance de la grabación"/);
+    assert.match(appSource, /<option value="visit" disabled=\{!recordingConfigured\}>Sesión completa<\/option>/);
+    assert.match(appSource, /<option value="selection" disabled=\{!recordingConfigured\}>Cada juego<\/option>/);
+    assert.match(appSource, /<option value="run" disabled=\{!recordingConfigured\}>Cada partida<\/option>/);
+    assert.match(appSource, /Reintentar grabación/);
     assert.match(stylesSource, /\.recording-switch\s*\{/);
     assert.match(stylesSource, /\.recording-switch\.on/);
   });

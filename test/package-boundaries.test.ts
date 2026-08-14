@@ -33,6 +33,7 @@ test("workspace source imports respect package ownership", async () => {
     { directory: "packages/agent-analytics/src", allowed: new Set(["@motion-levels-games/replay-runtime"]) },
     { directory: "packages/replay-runtime/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
     { directory: "packages/player-experience/src", allowed: new Set<string>() },
+    { directory: "packages/session-history/src", allowed: new Set<string>() },
     {
       directory: "packages/published-level-runtime/src",
       allowed: new Set([
@@ -61,7 +62,8 @@ test("workspace source imports respect package ownership", async () => {
       allowed: new Set([
         "@motion-levels-games/game-sdk",
         "@motion-levels-games/player-experience",
-        "@motion-levels-games/runtime"
+        "@motion-levels-games/runtime",
+        "@motion-levels-games/session-history"
       ])
     },
     ...await gameSourceRoots()

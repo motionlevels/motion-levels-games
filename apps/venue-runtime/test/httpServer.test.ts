@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { EventEmitter, once } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import test from "node:test";
-import { authorizeEngineRequest, createLatestSseWriter, createVenueHttpServer, engineTokenHeader } from "../src/httpServer.ts";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
+import type { RecordingBoundary } from "@motion-levels-games/session-history";
+import {
+  authorizeEngineRequest,
+  closeVenueHttpSse,
+  createLatestSseWriter,
+  createVenueHttpServer,
+  engineTokenHeader
+} from "../src/httpServer.ts";
 import { VenueRuntime } from "../src/venueRuntime.ts";
 
 test("loopback peers can use the engine adapter directly", () => {
@@ -46,6 +58,58 @@ test("live floor SSE backpressure retains only the latest pending event", () => 
   assert.equal(response.listenerCount("drain"), 0);
 });
 
+test("shutdown closes SSE, waits for in-flight commands, then drains runtime", async () => {
+  const revision = "1".repeat(40);
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const order: string[] = [];
+  let releaseSelect = () => {};
+  const selectReleased = new Promise<void>((resolve) => { releaseSelect = resolve; });
+  let selectEntered = () => {};
+  const entered = new Promise<void>((resolve) => { selectEntered = resolve; });
+  runtime.select = async () => {
+    order.push("select:start");
+    selectEntered();
+    await selectReleased;
+    order.push("select:end");
+    return runtime.status();
+  };
+  const originalStop = runtime.stop.bind(runtime);
+  runtime.stop = async () => {
+    order.push("runtime:stop");
+    await originalStop();
+  };
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const stream = await fetch(`${base}/api/player-state/events`);
+  const reader = stream.body?.getReader();
+  assert.ok(reader);
+  assert.equal((await reader.read()).done, false);
+
+  const select = fetch(`${base}/api/select`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ commandId: "99999999-9999-4999-8999-999999999999" })
+  });
+  await entered;
+  let closed = false;
+  const serverClosed = new Promise<void>((resolve) => server.close(() => {
+    closed = true;
+    resolve();
+  }));
+  closeVenueHttpSse(server);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(closed, false, "ordinary command must remain connected during shutdown");
+  releaseSelect();
+  assert.equal((await select).status, 200);
+  await serverClosed;
+  await runtime.stop();
+  assert.deepEqual(order, ["select:start", "select:end", "runtime:stop"]);
+});
+
 test("canonical player state and idempotent commands share the venue API", async (context) => {
   const revision = "1".repeat(40);
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
@@ -80,6 +144,199 @@ test("canonical player state and idempotent commands share the venue API", async
   assert.equal(first.revision, retry.revision);
   assert.equal(first.runId, retry.runId);
   assert.equal(first.currentGame, body.game);
+});
+
+test("retrying a conflicted select command cannot restore a stale venue recording policy", async (context) => {
+  const revision = "1".repeat(40);
+  const canonicalGameId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  let releaseContent = () => {};
+  let observeContentRequest = () => {};
+  const contentGate = new Promise<void>((resolve) => { releaseContent = resolve; });
+  const contentRequested = new Promise<void>((resolve) => { observeContentRequest = resolve; });
+  const contentServer = createServer((_request, response) => {
+    observeContentRequest();
+    void contentGate.then(() => {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({
+        ...parkourContent,
+        gameId: canonicalGameId,
+        contentRevision: "d".repeat(64)
+      }));
+    });
+  });
+  contentServer.listen(0, "127.0.0.1");
+  await once(contentServer, "listening");
+  context.after(() => contentServer.close());
+  const contentAddress = contentServer.address();
+  assert.ok(contentAddress && typeof contentAddress === "object");
+
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-http-select-command-conflict-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const cameraCalls: RecordingBoundary[] = [];
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${contentAddress.port}`,
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        cameraCalls.push(boundary);
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(async () => {
+    await runtime.stop();
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const post = (path: string, body: Record<string, unknown>) => fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const venueSessionId = "visit-http-select-command-conflict";
+  assert.equal((await post("/api/venue-session", {
+    action: "start",
+    venueSessionId,
+    recordingPolicy: { scope: "visit" }
+  })).status, 200);
+  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "start"));
+
+  const command = {
+    commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddd01",
+    game: canonicalGameId,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "platform_levels",
+    sourceRevision: revision,
+    venueSessionId,
+    recordingPolicy: { scope: "visit" },
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  };
+  const firstSelect = post("/api/select", command);
+  await contentRequested;
+  assert.equal((await post("/api/venue-session", {
+    action: "start",
+    venueSessionId,
+    recordingPolicy: { scope: "off" }
+  })).status, 200);
+  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "stop"));
+  releaseContent();
+
+  const firstConflict = await firstSelect;
+  assert.equal(firstConflict.status, 409);
+  assert.match(await firstConflict.text(), /venue session changed while selecting/u);
+  const retryConflict = await post("/api/select", command);
+  assert.equal(retryConflict.status, 409);
+  assert.match(await retryConflict.text(), /venue session changed while selecting/u);
+  assert.deepEqual(runtime.status().venueSessionRecordingPolicy, { scope: "off" });
+  assert.deepEqual(cameraCalls.map((boundary) => boundary.type), ["start", "stop"]);
+  assert.deepEqual(runtime.historySession(venueSessionId).session.recordingPolicy, { scope: "off" });
+});
+
+test("a lost failed select response is replayed without reexecuting its command", async (context) => {
+  const revision = "1".repeat(40);
+  const canonicalGameId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  let releaseContent = () => {};
+  let observeContentRequest = () => {};
+  let contentRequests = 0;
+  const contentGate = new Promise<void>((resolve) => { releaseContent = resolve; });
+  const contentRequested = new Promise<void>((resolve) => { observeContentRequest = resolve; });
+  const contentServer = createServer((_request, response) => {
+    contentRequests += 1;
+    observeContentRequest();
+    void contentGate.then(() => {
+      response.writeHead(503, { "Content-Type": "text/plain" });
+      response.end("temporarily unavailable");
+    });
+  });
+  contentServer.listen(0, "127.0.0.1");
+  await once(contentServer, "listening");
+  context.after(() => contentServer.close());
+  const contentAddress = contentServer.address();
+  assert.ok(contentAddress && typeof contentAddress === "object");
+
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-http-lost-select-failure-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const cameraCalls: RecordingBoundary[] = [];
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${contentAddress.port}`,
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        cameraCalls.push(boundary);
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(async () => {
+    await runtime.stop();
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const post = (path: string, body: Record<string, unknown>, signal?: AbortSignal) => fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal
+  });
+
+  const venueSessionId = "visit-http-lost-select-failure";
+  assert.equal((await post("/api/venue-session", {
+    action: "start",
+    venueSessionId,
+    recordingPolicy: { scope: "visit" }
+  })).status, 200);
+  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "start"));
+
+  const command = {
+    commandId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01",
+    game: canonicalGameId,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "platform_levels",
+    sourceRevision: revision,
+    venueSessionId,
+    recordingPolicy: { scope: "visit" },
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  };
+  const abort = new AbortController();
+  const lostSelect = post("/api/select", command, abort.signal);
+  await contentRequested;
+  assert.equal((await post("/api/venue-session", {
+    action: "start",
+    venueSessionId,
+    recordingPolicy: { scope: "off" }
+  })).status, 200);
+  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "stop"));
+  abort.abort();
+  await assert.rejects(lostSelect, (error: unknown) => error instanceof DOMException && error.name === "AbortError");
+  releaseContent();
+
+  const retry = await post("/api/select", command);
+  assert.equal(retry.status, 400);
+  assert.match(await retry.text(), /published level content returned HTTP 503/u);
+  assert.equal(contentRequests, 1);
+  assert.deepEqual(runtime.status().venueSessionRecordingPolicy, { scope: "off" });
+  assert.equal(runtime.status().venueSessionRecordingEnabled, false);
+  assert.deepEqual(cameraCalls.map((boundary) => boundary.type), ["start", "stop"]);
+  assert.deepEqual(runtime.historySession(venueSessionId).session.recordingPolicy, { scope: "off" });
 });
 
 test("venue session lifecycle survives game exit and publishes remote close", async (context) => {
@@ -136,6 +393,167 @@ test("venue session lifecycle survives game exit and publishes remote close", as
   assert.ok(Number(ended.revision) > Number(exited.revision));
 });
 
+test("history API lists visits, pages events, returns detail, and associates recordings", async (context) => {
+  const revision = "1".repeat(40);
+  const historyDirectory = mkdtempSync(join(tmpdir(), "motion-levels-http-history-"));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: historyDirectory
+  });
+  const historyToken = "history-secret";
+  const server = createVenueHttpServer(runtime, historyToken);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(async () => {
+    await runtime.stop();
+    server.close();
+    rmSync(historyDirectory, { recursive: true, force: true });
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const visitId = "history-visit-1";
+  const post = (path: string, body: Record<string, unknown>) => fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", [engineTokenHeader]: historyToken },
+    body: JSON.stringify(body)
+  });
+  const historyGet = (path: string, token = historyToken) => fetch(`${base}${path}`, {
+    headers: { [engineTokenHeader]: token }
+  });
+
+  assert.equal((await fetch(`${base}/api/health`)).status, 200);
+  assert.equal((await fetch(`${base}/api/status`)).status, 200, "non-history loopback APIs remain trusted");
+  assert.equal((await fetch(`${base}/api/history/v1/sessions`)).status, 401);
+  assert.equal((await historyGet("/api/history/v1/sessions", "wrong")).status, 401);
+
+  const overlongSession = await post("/api/venue-session", {
+    action: "start",
+    venueSessionId: "x".repeat(256),
+    teamName: "No debe persistirse"
+  });
+  assert.equal(overlongSession.status, 400);
+  assert.equal(runtime.status().venueSessionId, "");
+
+  const gameBeforeInvalidSelect = runtime.status().currentGame;
+  const overlongSelect = await post("/api/select", {
+    commandId: "70000000-0000-4000-8000-000000000000",
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId: "x".repeat(256),
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  assert.equal(overlongSelect.status, 400);
+  assert.equal(runtime.status().currentGame, gameBeforeInvalidSelect);
+  assert.equal(runtime.status().sessionId, "");
+  assert.equal(runtime.status().venueSessionId, "");
+
+  assert.equal((await post("/api/venue-session", {
+    action: "start",
+    venueSessionId: visitId,
+    teamName: "Equipo historia",
+    recordingEnabled: true,
+    recordingPolicy: { scope: "selection" }
+  })).status, 200);
+  assert.equal((await post("/api/select", {
+    commandId: "70000000-0000-4000-8000-000000000001",
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    gameLabel: "Ping pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId: visitId,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  })).status, 200);
+
+  const list = await historyGet("/api/history/v1/sessions?status=active&limit=1").then((response) => response.json());
+  assert.equal(list.schema, "motion-levels-session-history-v1");
+  assert.equal(list.sessions[0]?.id, visitId);
+  assert.equal(list.sessions[0]?.selectionCount, 1);
+  const detail = await historyGet(`/api/history/v1/sessions/${visitId}`).then((response) => response.json());
+  assert.equal(detail.session.recordingPolicy.scope, "selection");
+  assert.equal(detail.session.selections[0]?.runs.length, 1);
+
+  const firstEvents = await historyGet(`/api/history/v1/sessions/${visitId}/events?limit=1`).then((response) => response.json());
+  assert.equal(firstEvents.events.length, 1);
+  assert.ok(firstEvents.nextCursor);
+  const nextEvents = await historyGet(`/api/history/v1/sessions/${visitId}/events?limit=20&cursor=${encodeURIComponent(firstEvents.nextCursor)}`).then((response) => response.json());
+  assert.ok(nextEvents.events.length > 0);
+  assert.ok(nextEvents.events[0].sequence > firstEvents.events[0].sequence);
+
+  const recording = await post(`/api/history/v1/sessions/${visitId}/recordings`, {
+    id: "uploaded-recording-1",
+    captureId: "capture-1",
+    scope: "selection",
+    status: "complete",
+    selectionId: detail.session.selections[0].id,
+    linkedRunIds: [detail.session.selections[0].runs[0].id],
+    remoteUrl: "https://recordings.example/history-visit-1.mp4",
+    fileName: "history-visit-1.mp4",
+    contentType: "video/mp4",
+    byteSize: 1234
+  }).then((response) => response.json());
+  assert.equal(recording.recording.status, "complete");
+  assert.equal(recording.recording.remoteUrl, "https://recordings.example/history-visit-1.mp4");
+
+  const duplicateCapture = await post(`/api/history/v1/sessions/${visitId}/recordings`, {
+    id: "uploaded-recording-duplicate",
+    captureId: "capture-1",
+    scope: "selection",
+    status: "complete",
+    selectionId: detail.session.selections[0].id,
+    linkedRunIds: [detail.session.selections[0].runs[0].id]
+  });
+  assert.equal(duplicateCapture.status, 400);
+  assert.match(await duplicateCapture.text(), /captureId already belongs to another asset/u);
+
+  const runWithoutSelection = await post(`/api/history/v1/sessions/${visitId}/recordings`, {
+    id: "uploaded-run-without-selection",
+    captureId: "capture-invalid-run",
+    scope: "run",
+    status: "complete",
+    runId: detail.session.selections[0].runs[0].id,
+    linkedRunIds: [detail.session.selections[0].runs[0].id]
+  });
+  assert.equal(runWithoutSelection.status, 400);
+  assert.match(await runWithoutSelection.text(), /requires selectionId and runId/u);
+
+  assert.equal((await historyGet("/api/history/v1/sessions/missing")).status, 404);
+  assert.equal((await historyGet("/api/history/v1/sessions?status=broken")).status, 400);
+
+  assert.equal((await post("/api/venue-session", { action: "end", venueSessionId: visitId })).status, 200);
+  const beforeConflict = runtime.status();
+  const restartEnded = await post("/api/venue-session", {
+    action: "start",
+    venueSessionId: visitId,
+    teamName: "No reabrir"
+  });
+  assert.equal(restartEnded.status, 409);
+  assert.equal(runtime.status().venueSessionId, beforeConflict.venueSessionId);
+  assert.equal(runtime.status().currentGame, beforeConflict.currentGame);
+  const selectEnded = await post("/api/select", {
+    commandId: "70000000-0000-4000-8000-000000000099",
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId: visitId,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  assert.equal(selectEnded.status, 409);
+  assert.equal(runtime.status().sessionId, beforeConflict.sessionId);
+  assert.equal(runtime.status().currentGame, beforeConflict.currentGame);
+});
+
 test("remote floor input is validated, idempotent, and recoverable through the venue API", async (context) => {
   const revision = "1".repeat(40);
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
@@ -151,8 +569,8 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   const server = createVenueHttpServer(runtime);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  context.after(() => {
-    runtime.stop();
+  context.after(async () => {
+    await runtime.stop();
     server.close();
   });
   const address = server.address();
@@ -322,3 +740,11 @@ test("observed floor SSE sends the current snapshot immediately on reconnect", a
   assert.match(text, /event: live-floor/u);
   assert.match(text, /"sequence":27/u);
 });
+
+async function waitFor(predicate: () => boolean, timeoutMillis = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMillis;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("condition was not met before timeout");
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+}

@@ -6,6 +6,10 @@ import {
   animationMediaReferences,
   animationMediaSchema
 } from "../packages/animation-runtime/src/index.ts";
+import {
+  SESSION_HISTORY_CONTRACT_VERSION,
+  SESSION_HISTORY_SCHEMA
+} from "../packages/session-history/src/index.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 
 const root = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(process.cwd(), "dist/bundle"));
@@ -15,6 +19,7 @@ const manifest = JSON.parse(await readFile(path.join(root, "bundle.json"), "utf8
   venueRuntime?: { entry?: string; apiProtocolVersion?: number; controllerProtocolVersion?: number; games?: string[] };
   playerMenu?: { entry?: string; adapterProtocolVersion?: number };
   playerExperience?: { contractVersion?: number; schema?: string };
+  sessionHistory?: { contractVersion?: number; schemaId?: string; schema?: string };
   playerDisplay?: { entry?: string; shellEntry?: string; games?: string[] };
   playground?: { entry?: string; basePath?: string };
   animations?: string;
@@ -36,6 +41,9 @@ assert.equal(manifest.playerMenu?.entry, "menu/index.html");
 assert.equal(manifest.playerMenu?.adapterProtocolVersion, 2);
 assert.equal(manifest.playerExperience?.contractVersion, 1);
 assert.equal(manifest.playerExperience?.schema, "player-experience-state.schema.json");
+assert.equal(manifest.sessionHistory?.contractVersion, SESSION_HISTORY_CONTRACT_VERSION);
+assert.equal(manifest.sessionHistory?.schemaId, SESSION_HISTORY_SCHEMA);
+assert.equal(manifest.sessionHistory?.schema, "session-history-v1.schema.json");
 assert.equal(manifest.playground?.entry, "playground/index.html");
 assert.equal(manifest.playground?.basePath, "/games/play/");
 assert.equal(manifest.animations, "animations.json");
@@ -50,6 +58,20 @@ assert.ok(files.some((file) => file.path === manifest.playerMenu?.entry), "playe
 assert.ok(files.some((file) => file.path === manifest.playground?.entry), "playground entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.animations), "animation catalog is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerExperience?.schema), "player experience schema is missing from bundle files");
+assert.ok(files.some((file) => file.path === manifest.sessionHistory?.schema), "session history schema is missing from bundle files");
+
+const sessionHistorySchema = JSON.parse(
+  await readFile(path.join(root, manifest.sessionHistory!.schema!), "utf8")
+) as {
+  $ref?: string;
+  $defs?: Record<string, { properties?: Record<string, { const?: unknown }> }>;
+};
+assert.equal(sessionHistorySchema.$ref, "#/$defs/visit");
+assert.equal(sessionHistorySchema.$defs?.visit?.properties?.schema?.const, SESSION_HISTORY_SCHEMA);
+assert.equal(
+  sessionHistorySchema.$defs?.visit?.properties?.contractVersion?.const,
+  SESSION_HISTORY_CONTRACT_VERSION
+);
 
 const animationCatalog = JSON.parse(await readFile(path.join(root, manifest.animations!), "utf8")) as {
   schema?: string;

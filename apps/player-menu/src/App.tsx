@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type SelectGameRequest } from "./api";
+import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
 import { PlayerExperienceStateGate, playerExperienceView } from "@motion-levels-games/player-experience";
 import { categories, colors, difficulties, games, playerColorNames, playerColors, type CategoryID, type DifficultyID, type GameCard, type GameConfigVar, type PartyMiniGame } from "./catalog";
 import { partyCatalogIsComplete, partyLaunchGame } from "./party";
@@ -62,13 +62,14 @@ import { migrateLegacyLevelState } from "./levelStateMigration.ts";
 import { isSupportedRuntimeSource } from "./localCatalog.ts";
 import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
 import { resolveMenuMirrorEnvelope } from "./menuMirror.ts";
-import { clearedVenueSessionProjection, venueSessionSyncDecision, type VenueSessionObservation } from "./venueSessionSync.ts";
+import { clearedVenueSessionProjection, commitVenueSessionRecordingScope, venueSessionRecordingCanRequest, venueSessionRecordingScope, venueSessionSyncDecision, type VenueSessionObservation } from "./venueSessionSync.ts";
 
 type MenuState = {
   sessionActive: boolean;
   sessionId: string;
   sessionStartedUnix: number;
   recordingEnabled: boolean;
+  recordingPolicy: RecordingScope;
   teamName: string;
   players: Player[];
   category: CategoryID;
@@ -1134,6 +1135,7 @@ function defaultMenuState(): MenuState {
     sessionId: "",
     sessionStartedUnix: 0,
     recordingEnabled: true,
+    recordingPolicy: "visit",
     teamName: "",
     players: defaultPlayers,
     category: "featured",
@@ -1175,11 +1177,13 @@ function loadMenuState(): MenuState {
       const savedDifficulty = difficulties.some((candidate) => candidate.id === saved.difficulty)
         ? (saved.difficulty as DifficultyID)
         : "easy";
+      const recordingPolicy = normalizeRecordingScope(saved.recordingPolicy, saved.recordingEnabled);
       return {
         sessionActive: Boolean(saved.sessionActive),
         sessionId: isUUID(saved.sessionId) ? saved.sessionId.toLowerCase() : "",
         sessionStartedUnix: Number(saved.sessionStartedUnix) || 0,
-        recordingEnabled: saved.recordingEnabled !== false,
+        recordingEnabled: recordingPolicy !== "off",
+        recordingPolicy,
         teamName: cleanNameWhitespace(String(saved.teamName || ""), maxTeamNameLength),
         players: cleanedPlayers.length ? cleanedPlayers : defaultPlayers,
         category: savedGame?.category || savedCategory,
@@ -1216,6 +1220,11 @@ function clearedMenuSession(current: MenuState, defaultGame: GameCard): MenuStat
     selectedLevels: defaultSelectedLevels,
     levelModes: current.levelModes,
   };
+}
+
+export function normalizeRecordingScope(value: unknown, legacyEnabled?: unknown): RecordingScope {
+  if (value === "off" || value === "visit" || value === "selection" || value === "run") return value;
+  return legacyEnabled === false ? "off" : "visit";
 }
 
 function loadCachedPlatformCatalog(): PlatformGameCatalogEntry[] | null {
@@ -1293,6 +1302,7 @@ function menuSnapshotProperties(menu: MenuState) {
   return {
     team_name: menu.teamName.trim(),
     recording_enabled: menu.recordingEnabled,
+    recording_scope: menu.recordingPolicy,
     players: rosterSnapshot(menu.players),
     player_count: menu.players.filter((player) => player.active).length,
   };
@@ -1327,6 +1337,7 @@ function MenuApp() {
   const [confirmResetSession, setConfirmResetSession] = useState(false);
   const [pendingLevelSwitch, setPendingLevelSwitch] = useState<{ gameID: string; levelID: string } | null>(null);
   const [pendingGameControl, setPendingGameControl] = useState<"exit" | "restart" | null>(null);
+  const [recordingScopeSaving, setRecordingScopeSaving] = useState(false);
   const [gameConfigOpen, setGameConfigOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsUnlocked, setSettingsUnlocked] = useState(false);
@@ -1367,6 +1378,7 @@ function MenuApp() {
   const levelSwitchInFlightRef = useRef(false);
   const sessionStartInFlightRef = useRef(false);
   const sessionCloseInFlightRef = useRef(false);
+  const recordingScopeChangeInFlightRef = useRef(false);
   const teamTriggerRef = useRef<HTMLButtonElement>(null);
   const teamCloseRef = useRef<HTMLButtonElement>(null);
   const teamWasOpenRef = useRef(false);
@@ -1675,12 +1687,14 @@ function MenuApp() {
     const defaultGame = menuGames[0] || games[0];
 
     if (decision.action === "hydrate") {
+      const recordingPolicy = venueSessionRecordingScope(status, menu.recordingPolicy);
       setMenu((current) => ({
         ...current,
         sessionActive: true,
         sessionId: status.venueSessionId,
         sessionStartedUnix: status.venueSessionStartedUnix || current.sessionStartedUnix || Math.floor(Date.now() / 1_000),
-        recordingEnabled: status.venueSessionRecordingEnabled ?? current.recordingEnabled,
+        recordingEnabled: recordingPolicy !== "off",
+        recordingPolicy,
         teamName: status.teamName || current.teamName || defaultTeamName(),
       }));
       return;
@@ -1710,6 +1724,7 @@ function MenuApp() {
           venueSessionId: menu.sessionId,
           teamName: menu.teamName,
           recordingEnabled: menu.recordingEnabled,
+          recordingPolicy: { scope: menu.recordingPolicy },
           kioskId: menuKioskID(),
         });
         if (!cancelled && recovered) acceptStatus(recovered);
@@ -1722,7 +1737,7 @@ function MenuApp() {
       cancelled = true;
       if (retry !== undefined) window.clearTimeout(retry);
     };
-  }, [acceptStatus, menu.sessionActive, menu.sessionId, menu.sessionStartedUnix, menu.teamName, menu.recordingEnabled, menuAccess.publishMirror, menuGames, status]);
+  }, [acceptStatus, menu.sessionActive, menu.sessionId, menu.sessionStartedUnix, menu.teamName, menu.recordingEnabled, menu.recordingPolicy, menuAccess.publishMirror, menuGames, status]);
 
   useEffect(() => {
     if (!status) return;
@@ -1739,12 +1754,14 @@ function MenuApp() {
     }
 
     if (!menu.sessionActive) {
+      const recordingPolicy = venueSessionRecordingScope(status, menu.recordingPolicy);
       setMenu((current) => ({
         ...current,
         sessionActive: true,
         sessionId: current.sessionId || status.venueSessionId || newVenueSessionID(),
         sessionStartedUnix: current.sessionStartedUnix || status.startedUnix || Math.floor(Date.now() / 1000),
-        recordingEnabled: current.recordingEnabled !== false,
+        recordingEnabled: status.venueSessionId ? recordingPolicy !== "off" : current.recordingEnabled !== false,
+        recordingPolicy: status.venueSessionId ? recordingPolicy : current.recordingPolicy,
         teamName: current.teamName || status.teamName || defaultTeamName(),
       }));
     }
@@ -2172,6 +2189,7 @@ function MenuApp() {
         venueSessionId: nextSessionID,
         teamName: nextTeamName,
         recordingEnabled: true,
+        recordingPolicy: { scope: "visit" },
         kioskId: menuKioskID(),
       });
       if (nextStatus) acceptStatus(nextStatus);
@@ -2187,6 +2205,7 @@ function MenuApp() {
       reservation_id: remoteRequest?.reservationId,
       reserved_player_count: remoteRequest?.playerCount,
       recording_enabled: true,
+      recording_scope: "visit",
       venue_session_id: nextSessionID,
     });
     setMenu((current) => ({
@@ -2195,6 +2214,7 @@ function MenuApp() {
       sessionId: nextSessionID,
       sessionStartedUnix: nowUnix,
       recordingEnabled: true,
+      recordingPolicy: "visit",
       teamName: nextTeamName,
       players: nextPlayers,
       category: menuCategoryForGame(defaultGame, "featured"),
@@ -2292,23 +2312,64 @@ function MenuApp() {
     clearRemoteSessionURL();
   }
 
-  function setSessionRecordingEnabled(enabled: boolean) {
-    if (enabled === menu.recordingEnabled) return;
-    captureMenuEvent("session_recording_toggled", {
-      recording_enabled: enabled,
-      venue_session_id: menu.sessionId,
-    });
-    setMenu((current) => ({ ...current, recordingEnabled: enabled }));
-    if (menu.sessionId) {
-      void postVenueSession({
-        action: "start",
-        venueSessionId: menu.sessionId,
-        teamName: menu.teamName,
-        recordingEnabled: enabled,
-        kioskId: menuKioskID(),
-      }).then((nextStatus) => {
-        if (nextStatus) acceptStatus(nextStatus);
-      }).catch(() => {});
+  async function setSessionRecordingScope(scope: RecordingScope) {
+    if (recordingScopeChangeInFlightRef.current || scope === menu.recordingPolicy) return;
+    if (scope !== "off" && !venueSessionRecordingCanRequest(status ?? {})) {
+      setError("La grabación no está disponible en este sistema.");
+      return;
+    }
+    recordingScopeChangeInFlightRef.current = true;
+    setRecordingScopeSaving(true);
+    setError("");
+    const venueSessionId = menu.sessionId;
+    const previousScope = status?.venueSessionId === venueSessionId
+      ? venueSessionRecordingScope(status, menu.recordingPolicy)
+      : menu.recordingPolicy;
+    const enabled = scope !== "off";
+    try {
+      const result = await commitVenueSessionRecordingScope(
+        previousScope,
+        scope,
+        async () => venueSessionId
+          ? postVenueSession({
+              action: "start",
+              venueSessionId,
+              teamName: menu.teamName,
+              recordingEnabled: enabled,
+              recordingPolicy: { scope },
+              kioskId: menuKioskID(),
+            })
+          : null,
+        (err) => friendlyRequestError(err, "No se pudo cambiar el alcance de grabación. Se ha restaurado la configuración anterior."),
+      );
+      if (result.status) acceptStatus(result.status);
+      setMenu((current) => current.sessionId !== venueSessionId
+        ? current
+        : {
+            ...current,
+            recordingEnabled: result.scope !== "off",
+            recordingPolicy: result.scope,
+          });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      captureMenuEvent("session_recording_policy_changed", {
+        recording_configured: result.status?.venueSessionRecordingConfigured,
+        recording_available: result.status?.venueSessionRecordingAvailable,
+        recording_enabled: result.scope !== "off" && result.status?.venueSessionRecordingAvailable !== false,
+        recording_scope: result.scope,
+        requested_recording_scope: scope,
+        venue_session_id: venueSessionId,
+      });
+      if (result.status?.venueSessionRecordingAvailable === false && result.scope !== "off") {
+        setError("El servicio de grabación está degradado. Se reintentará con el alcance guardado.");
+      } else if (result.scope !== scope) {
+        setError("El motor no confirmó el nuevo alcance. Se ha restaurado su configuración autoritativa.");
+      }
+    } finally {
+      recordingScopeChangeInFlightRef.current = false;
+      setRecordingScopeSaving(false);
     }
   }
 
@@ -2910,6 +2971,7 @@ function MenuApp() {
       countdown_floor_overlay: showCountdownOverlay,
       player_count: launchRoster.length,
       recording_enabled: nextMenu.recordingEnabled,
+      recording_scope: nextMenu.recordingPolicy,
       venue_session_id: nextMenu.sessionId,
       ...(launchConfig ? { config_overrides: launchConfig } : {}),
     });
@@ -2935,6 +2997,7 @@ function MenuApp() {
         platformUrl: platformBaseURL() || undefined,
         venueSessionId: nextMenu.sessionId,
         recordingEnabled: nextMenu.recordingEnabled,
+        recordingPolicy: { scope: nextMenu.recordingPolicy },
         playerCount: launchGame.allowAnyPlayers ? 0 : Math.max(1, launchRoster.length),
         allowAnyPlayers: launchGame.allowAnyPlayers === true,
         difficulty: launchDifficulty,
@@ -3108,6 +3171,9 @@ function MenuApp() {
   const countdownValue = screenMode === "game" && status?.phase === "countdown"
     ? Math.max(0, Math.ceil((status.countdownRemainingMillis || 0) / 1000))
     : 0;
+  const recordingConfigured = venueSessionRecordingCanRequest(status ?? {});
+  const recordingAvailable = status?.venueSessionRecordingAvailable !== false;
+  const recordingOperational = menu.recordingEnabled && recordingAvailable;
   function enterBrowserFullscreen() {
     const fullscreenDocument = document as Document & { webkitFullscreenElement?: Element | null };
     if (document.fullscreenElement || fullscreenDocument.webkitFullscreenElement) return;
@@ -3417,17 +3483,27 @@ function MenuApp() {
             </button>
           </section>
 
-          <button
-            className={`recording-switch ${menu.recordingEnabled ? "on" : "off"}`}
-            type="button"
-            onClick={() => setSessionRecordingEnabled(!menu.recordingEnabled)}
-            aria-pressed={menu.recordingEnabled}
-            title={menu.recordingEnabled ? "Grabación de sesión activada" : "Grabación de sesión desactivada"}
+          <label
+            className={`recording-switch ${recordingOperational ? "on" : "off"} ${!recordingConfigured ? "unavailable" : recordingAvailable ? "" : "degraded"} ${recordingScopeSaving ? "saving" : ""}`}
+            title={!recordingConfigured
+              ? "El servicio de grabación no está configurado"
+              : recordingAvailable ? undefined : "El servicio de grabación está degradado; puedes reintentarlo"}
           >
             <span aria-hidden="true" />
-            <b>Grabación de sesión</b>
-            <small>{menu.recordingEnabled ? "Activada" : "Desactivada"}</small>
-          </button>
+            <b>{!recordingConfigured ? "Grabación no disponible" : recordingAvailable ? "Grabación" : "Reintentar grabación"}</b>
+            <select
+              aria-label="Alcance de la grabación"
+              value={menu.recordingPolicy}
+              disabled={recordingScopeSaving}
+              aria-busy={recordingScopeSaving || undefined}
+              onChange={(event) => void setSessionRecordingScope(normalizeRecordingScope(event.currentTarget.value))}
+            >
+              <option value="off">Desactivada</option>
+              <option value="visit" disabled={!recordingConfigured}>Sesión completa</option>
+              <option value="selection" disabled={!recordingConfigured}>Cada juego</option>
+              <option value="run" disabled={!recordingConfigured}>Cada partida</option>
+            </select>
+          </label>
 
           <button className="btn primary drawer-done" type="button" onClick={() => setTeamOpen(false)}>
             <CheckIcon />

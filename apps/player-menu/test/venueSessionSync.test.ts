@@ -3,6 +3,9 @@ import { describe, it } from "node:test";
 import { resolveMenuMirrorEnvelope } from "../src/menuMirror.ts";
 import {
   clearedVenueSessionProjection,
+  commitVenueSessionRecordingScope,
+  venueSessionRecordingCanRequest,
+  venueSessionRecordingScope,
   venueSessionSyncDecision,
   type VenueSessionObservation,
 } from "../src/venueSessionSync.ts";
@@ -57,6 +60,92 @@ describe("venue session synchronization", () => {
     });
 
     assert.equal(decision.action, "none");
+  });
+
+  it("hydrates an authoritative recording-policy change within the same session", () => {
+    const decision = venueSessionSyncDecision({
+      runId: "runtime-a",
+      venueSessionId: "venue-session-a",
+      venueSessionStartedUnix: 123,
+      teamName: "Equipo A",
+      venueSessionRecordingPolicy: { scope: "run" },
+    }, { runId: "runtime-a", venueSessionId: "venue-session-a" }, {
+      ...activeMenu,
+      recordingPolicy: "visit" as const,
+    });
+
+    assert.equal(decision.action, "hydrate");
+  });
+
+  it("does not rehydrate when the session and recording policy already match", () => {
+    const decision = venueSessionSyncDecision({
+      runId: "runtime-a",
+      venueSessionId: "venue-session-a",
+      venueSessionStartedUnix: 123,
+      teamName: "Equipo A",
+      venueSessionRecordingPolicy: { scope: "selection" },
+    }, { runId: "runtime-a", venueSessionId: "venue-session-a" }, {
+      ...activeMenu,
+      recordingPolicy: "selection" as const,
+    });
+
+    assert.equal(decision.action, "none");
+  });
+
+  it("keeps requested policy separate from effective recording availability", () => {
+    assert.equal(venueSessionRecordingScope({
+      venueSessionRecordingAvailable: false,
+      venueSessionRecordingEnabled: false,
+      venueSessionRecordingPolicy: { scope: "run" },
+    }), "run");
+    assert.equal(venueSessionRecordingScope({
+      venueSessionRecordingAvailable: false,
+      venueSessionRecordingEnabled: false,
+    }, "selection"), "selection");
+    assert.equal(venueSessionRecordingScope({
+      venueSessionRecordingEnabled: false,
+    }), "off");
+  });
+
+  it("allows an explicit retry when recording is configured but currently degraded", () => {
+    assert.equal(venueSessionRecordingCanRequest({
+      venueSessionRecordingConfigured: true,
+      venueSessionRecordingAvailable: false,
+      venueSessionRecordingEnabled: false,
+    }), true);
+    assert.equal(venueSessionRecordingCanRequest({
+      venueSessionRecordingConfigured: false,
+      venueSessionRecordingAvailable: false,
+    }), false);
+    assert.equal(venueSessionRecordingCanRequest({ venueSessionRecordingAvailable: false }), false);
+    assert.equal(venueSessionRecordingCanRequest({ venueSessionRecordingAvailable: true }), true);
+  });
+
+  it("uses engine authority on success and restores the previous scope on failure", async () => {
+    const authoritative = await commitVenueSessionRecordingScope(
+      "visit",
+      "run",
+      async () => ({ venueSessionRecordingPolicy: { scope: "selection" as const } }),
+      () => "falló",
+    );
+    assert.deepEqual(authoritative, {
+      ok: true,
+      scope: "selection",
+      status: { venueSessionRecordingPolicy: { scope: "selection" } },
+    });
+
+    const restored = await commitVenueSessionRecordingScope(
+      "off",
+      "visit",
+      async () => { throw new Error("network"); },
+      () => "No se pudo guardar; restaurado",
+    );
+    assert.deepEqual(restored, {
+      error: "No se pudo guardar; restaurado",
+      ok: false,
+      scope: "off",
+      status: null,
+    });
   });
 
   it("clears the kiosk mirror after a remote close in the same runtime", () => {

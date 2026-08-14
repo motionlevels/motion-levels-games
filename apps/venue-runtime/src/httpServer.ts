@@ -1,7 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { RecordingAsset } from "@motion-levels-games/session-history";
 import { venueApiProtocolVersion } from "./apiProtocol.ts";
 import { SerializedCommandExecutor } from "./commandExecutor.ts";
+import {
+  SessionHistoryConflictError,
+  SessionHistoryNotFoundError,
+  SessionHistoryValidationError
+} from "./sessionHistoryStore.ts";
 import { RequestValidationError, RevisionMismatchError, type ObservedFloorFrame, type VenueRuntime, type VenueRuntimeStatus } from "./venueRuntime.ts";
 
 export { venueApiProtocolVersion };
@@ -9,16 +15,19 @@ export { venueApiProtocolVersion };
 /** Local adapter. Loopback is trusted for development; venue-network peers
  * authenticate with the shared engine token injected by the gateway. */
 export const engineTokenHeader = "x-motion-levels-engine-token" as const;
+const venueServerSseResponses = new WeakMap<Server, Set<ServerResponse>>();
 
 export function createVenueHttpServer(runtime: VenueRuntime, engineToken = ""): Server {
   const commands = new SerializedCommandExecutor<VenueRuntimeStatus>();
-  return createServer(async (request, response) => {
+  const sseResponses = new Set<ServerResponse>();
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://venue-runtime.local");
-    if (url.pathname !== "/api/health" && !authorizeEngineRequest(
-      request.socket.remoteAddress,
-      engineToken,
-      request.headers[engineTokenHeader]
-    )) {
+    const historyRequest = url.pathname === "/api/history/v1/sessions"
+      || url.pathname.startsWith("/api/history/v1/sessions/");
+    const authorized = historyRequest
+      ? authorizeEngineToken(engineToken, request.headers[engineTokenHeader])
+      : authorizeEngineRequest(request.socket.remoteAddress, engineToken, request.headers[engineTokenHeader]);
+    if (url.pathname !== "/api/health" && !authorized) {
       response.writeHead(401).end("engine token required");
       return;
     }
@@ -28,30 +37,79 @@ export function createVenueHttpServer(runtime: VenueRuntime, engineToken = ""): 
       return;
     }
     try {
-      await route(runtime, commands, request, response);
+      await route(runtime, commands, request, response, sseResponses);
     } catch (error) {
       if (response.headersSent) {
         response.end();
         return;
       }
-      const status = error instanceof RevisionMismatchError ? 409
-        : error instanceof RequestValidationError || error instanceof SyntaxError || error instanceof TypeError ? 400
+      const status = error instanceof RevisionMismatchError || error instanceof SessionHistoryConflictError ? 409
+        : error instanceof SessionHistoryNotFoundError ? 404
+          : error instanceof RequestValidationError
+            || error instanceof SessionHistoryValidationError
+            || error instanceof SyntaxError
+            || error instanceof TypeError ? 400
           : 500;
       response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
       response.end(error instanceof Error ? error.message : String(error));
     }
   });
+  venueServerSseResponses.set(server, sseResponses);
+  return server;
+}
+
+/** End only long-lived event streams. Ordinary in-flight commands remain
+ * connected so shutdown can wait for them before draining runtime state. */
+export function closeVenueHttpSse(server: Server): void {
+  for (const response of venueServerSseResponses.get(server) ?? []) response.end();
 }
 
 async function route(
   runtime: VenueRuntime,
   commands: SerializedCommandExecutor<VenueRuntimeStatus>,
   request: IncomingMessage,
-  response: ServerResponse
+  response: ServerResponse,
+  sseResponses: Set<ServerResponse>
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://venue-runtime.local");
   if (url.pathname === "/api/health" && (request.method === "GET" || request.method === "HEAD")) {
     json(response, runtime.health(), request.method === "HEAD");
+    return;
+  }
+  if (url.pathname === "/api/history/v1/sessions" && request.method === "GET") {
+    const status = url.searchParams.get("status");
+    if (status && status !== "active" && status !== "ended") {
+      throw new RequestValidationError("status must be active or ended");
+    }
+    json(response, runtime.listHistorySessions({
+      cursor: url.searchParams.get("cursor") || undefined,
+      limit: queryInteger(url, "limit"),
+      status: status as "active" | "ended" | undefined,
+      from: queryInteger(url, "from"),
+      to: queryInteger(url, "to")
+    }));
+    return;
+  }
+  const historyMatch = /^\/api\/history\/v1\/sessions\/([^/]+)(?:\/(events|recordings))?$/u.exec(url.pathname);
+  if (historyMatch) {
+    const id = decodePathSegment(historyMatch[1] ?? "");
+    const child = historyMatch[2];
+    if (!child && request.method === "GET") {
+      json(response, runtime.historySession(id));
+      return;
+    }
+    if (child === "events" && request.method === "GET") {
+      json(response, runtime.historyEvents(id, {
+        cursor: url.searchParams.get("cursor") || undefined,
+        limit: queryInteger(url, "limit")
+      }));
+      return;
+    }
+    if (child === "recordings" && request.method === "POST") {
+      json(response, runtime.addHistoryRecording(id, recordingAsset(await readJson(request, 262_144))));
+      return;
+    }
+    response.writeHead(405, { Allow: child === "recordings" ? "POST, OPTIONS" : "GET, OPTIONS" }).end("method not allowed");
     return;
   }
   if (url.pathname === "/api/status" && request.method === "GET") {
@@ -67,13 +125,14 @@ async function route(
     return;
   }
   if (url.pathname === "/api/display/events" && request.method === "GET") {
-    sse(response, request, "display", runtime.display(), (listener) => runtime.subscribeDisplay(listener));
+    sse(response, request, sseResponses, "display", runtime.display(), (listener) => runtime.subscribeDisplay(listener));
     return;
   }
   if (url.pathname === "/api/live-floor/events" && request.method === "GET") {
     sseOptional<ObservedFloorFrame>(
       response,
       request,
+      sseResponses,
       "live-floor",
       null,
       (listener) => runtime.subscribeObservedFloor(listener)
@@ -81,7 +140,7 @@ async function route(
     return;
   }
   if (url.pathname === "/api/player-state/events" && request.method === "GET") {
-    sse(response, request, "player-state", runtime.status(), (listener) => runtime.subscribeStatus(listener));
+    sse(response, request, sseResponses, "player-state", runtime.status(), (listener) => runtime.subscribeStatus(listener));
     return;
   }
   if (url.pathname === "/api/select" && request.method === "POST") {
@@ -117,7 +176,7 @@ async function route(
     }
   }
   if (url.pathname === "/api/menu-state/events" && request.method === "GET") {
-    sse(response, request, "menu-state", runtime.getMenuState(), (listener) => runtime.subscribeMenuState(listener));
+    sse(response, request, sseResponses, "menu-state", runtime.getMenuState(), (listener) => runtime.subscribeMenuState(listener));
     return;
   }
   if (url.pathname === "/api/venue-session" && request.method === "POST") {
@@ -162,6 +221,117 @@ async function readJson(request: IncomingMessage, limit = 1_000_000): Promise<Re
   return value as Record<string, unknown>;
 }
 
+function queryInteger(url: URL, name: string): number | undefined {
+  const value = url.searchParams.get(name);
+  if (value === null) return undefined;
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    throw new RequestValidationError(`${name} must be a non-negative integer`);
+  }
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) {
+    throw new RequestValidationError(`${name} must be a non-negative integer`);
+  }
+  return number;
+}
+
+function decodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new RequestValidationError("session id is malformed");
+  }
+}
+
+function recordingAsset(body: Record<string, unknown>): RecordingAsset {
+  const id = requiredText(body.id, "recording id");
+  const scope = requiredText(body.scope, "recording scope");
+  const status = requiredText(body.status, "recording status");
+  if (scope !== "visit" && scope !== "selection" && scope !== "run") {
+    throw new RequestValidationError("recording scope is invalid");
+  }
+  if (!["requested", "recording", "finalizing", "pending_upload", "uploading", "complete", "partial", "failed", "missing"].includes(status)) {
+    throw new RequestValidationError("recording status is invalid");
+  }
+  const linkedRunIds = body.linkedRunIds ?? [];
+  if (!Array.isArray(linkedRunIds)
+    || linkedRunIds.some((value) => typeof value !== "string" || !value.trim())) {
+    throw new RequestValidationError("linkedRunIds must be strings");
+  }
+  const metadata = optionalObject(body.metadata, "recording metadata");
+  const sha256 = optionalText(body.sha256, "sha256");
+  if (sha256 && !/^[0-9a-f]{64}$/u.test(sha256)) {
+    throw new RequestValidationError("sha256 is invalid");
+  }
+  const captureId = optionalText(body.captureId, "captureId");
+  const selectionId = optionalText(body.selectionId, "selectionId");
+  const runId = optionalText(body.runId, "runId");
+  const startedAtUnixMillis = optionalInteger(body.startedAtUnixMillis, "startedAtUnixMillis");
+  const endedAtUnixMillis = optionalInteger(body.endedAtUnixMillis, "endedAtUnixMillis");
+  const backend = optionalText(body.backend, "backend");
+  const cameraId = optionalText(body.cameraId, "cameraId");
+  const localPath = optionalText(body.localPath, "localPath");
+  const remoteUrl = optionalText(body.remoteUrl, "remoteUrl");
+  const shareUrl = optionalText(body.shareUrl, "shareUrl");
+  const downloadUrl = optionalText(body.downloadUrl, "downloadUrl");
+  const fileName = optionalText(body.fileName, "fileName");
+  const contentType = optionalText(body.contentType, "contentType");
+  const byteSize = optionalInteger(body.byteSize, "byteSize");
+  return {
+    id,
+    scope,
+    status: status as RecordingAsset["status"],
+    linkedRunIds: [...new Set(linkedRunIds.map((value) => String(value).trim()))],
+    ...(captureId ? { captureId } : {}),
+    ...(selectionId ? { selectionId } : {}),
+    ...(runId ? { runId } : {}),
+    ...(startedAtUnixMillis === undefined ? {} : { startedAtUnixMillis }),
+    ...(endedAtUnixMillis === undefined ? {} : { endedAtUnixMillis }),
+    ...(backend ? { backend } : {}),
+    ...(cameraId ? { cameraId } : {}),
+    ...(localPath ? { localPath } : {}),
+    ...(remoteUrl ? { remoteUrl } : {}),
+    ...(shareUrl ? { shareUrl } : {}),
+    ...(downloadUrl ? { downloadUrl } : {}),
+    ...(fileName ? { fileName } : {}),
+    ...(contentType ? { contentType } : {}),
+    ...(byteSize === undefined ? {} : { byteSize }),
+    ...(sha256 ? { sha256 } : {}),
+    ...(metadata ? { metadata: structuredClone(metadata) as RecordingAsset["metadata"] } : {})
+  };
+}
+
+function requiredText(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new RequestValidationError(`${label} is required`);
+  }
+  return value.trim();
+}
+
+function optionalText(value: unknown, label: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new RequestValidationError(`${label} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function optionalInteger(value: unknown, label: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new RequestValidationError(`${label} must be a non-negative integer`);
+  }
+  return number;
+}
+
+function optionalObject(value: unknown, label: string): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RequestValidationError(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
 function json(response: ServerResponse, value: unknown, head = false): void {
   const body = JSON.stringify(value);
   response.writeHead(200, {
@@ -175,10 +345,12 @@ function json(response: ServerResponse, value: unknown, head = false): void {
 function sse<T>(
   response: ServerResponse,
   request: IncomingMessage,
+  responses: Set<ServerResponse>,
   event: string,
   initial: T,
   subscribe: (listener: (value: T) => void) => () => void
 ): void {
+  responses.add(response);
   response.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-store",
@@ -191,19 +363,27 @@ function sse<T>(
   const unsubscribe = subscribe(write);
   const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 15_000);
   heartbeat.unref();
-  request.on("close", () => {
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
     clearInterval(heartbeat);
     unsubscribe();
-  });
+    responses.delete(response);
+  };
+  request.once("close", close);
+  response.once("close", close);
 }
 
 function sseOptional<T>(
   response: ServerResponse,
   request: IncomingMessage,
+  responses: Set<ServerResponse>,
   event: string,
   initial: T | null,
   subscribe: (listener: (value: T) => void) => () => void
 ): void {
+  responses.add(response);
   response.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-store",
@@ -216,11 +396,17 @@ function sseOptional<T>(
   const unsubscribe = subscribe(writer.write);
   const heartbeat = setInterval(writer.heartbeat, 15_000);
   heartbeat.unref();
-  request.on("close", () => {
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
     clearInterval(heartbeat);
     writer.close();
     unsubscribe();
-  });
+    responses.delete(response);
+  };
+  request.once("close", close);
+  response.once("close", close);
 }
 
 type SseWritable = {
@@ -282,6 +468,13 @@ export function authorizeEngineRequest(
   providedToken: string | string[] | undefined
 ): boolean {
   if (isLoopbackAddress(remoteAddress)) return true;
+  return authorizeEngineToken(expectedToken, providedToken);
+}
+
+export function authorizeEngineToken(
+  expectedToken: string,
+  providedToken: string | string[] | undefined
+): boolean {
   if (!expectedToken || typeof providedToken !== "string") return false;
   const expected = Buffer.from(expectedToken);
   const provided = Buffer.from(providedToken);

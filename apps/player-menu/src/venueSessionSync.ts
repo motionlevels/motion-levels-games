@@ -3,13 +3,20 @@ export type VenueSessionMenuState = {
   sessionId: string;
   sessionStartedUnix: number;
   teamName: string;
+  recordingPolicy?: "off" | "visit" | "selection" | "run";
 };
+
+export type VenueSessionRecordingScope = "off" | "visit" | "selection" | "run";
 
 export type VenueSessionEngineState = {
   runId: string;
   venueSessionId: string;
   venueSessionStartedUnix?: number;
   teamName: string;
+  venueSessionRecordingConfigured?: boolean;
+  venueSessionRecordingAvailable?: boolean;
+  venueSessionRecordingEnabled?: boolean;
+  venueSessionRecordingPolicy?: { scope: VenueSessionRecordingScope };
 };
 
 export type VenueSessionObservation = {
@@ -22,12 +29,27 @@ export type VenueSessionSyncDecision = {
   observation: VenueSessionObservation;
 };
 
+export type VenueSessionRecordingCommitResult<TStatus extends VenueSessionRecordingState> =
+  | { ok: true; scope: VenueSessionRecordingScope; status: TStatus | null }
+  | { error: string; ok: false; scope: VenueSessionRecordingScope; status: null };
+
+type VenueSessionRecordingState = Pick<
+  VenueSessionEngineState,
+  "venueSessionRecordingConfigured" | "venueSessionRecordingAvailable" | "venueSessionRecordingEnabled" | "venueSessionRecordingPolicy"
+>;
+
+export function venueSessionRecordingCanRequest(engine: VenueSessionRecordingState): boolean {
+  if (engine.venueSessionRecordingConfigured !== undefined) return engine.venueSessionRecordingConfigured;
+  return engine.venueSessionRecordingAvailable !== false;
+}
+
 export function clearedVenueSessionProjection<TPlayer>(defaultPlayers: readonly TPlayer[]) {
   return {
     sessionActive: false as const,
     sessionId: "",
     sessionStartedUnix: 0,
     recordingEnabled: true,
+    recordingPolicy: "visit" as const,
     teamName: "",
     players: [...defaultPlayers],
     levelProgress: {},
@@ -37,6 +59,46 @@ export function clearedVenueSessionProjection<TPlayer>(defaultPlayers: readonly 
     narrationArmed: {},
     processedAttemptIDs: [] as string[],
   };
+}
+
+/**
+ * Returns the requested scope reported by the engine. On pre-policy engines,
+ * the legacy boolean is still authoritative. On current engines that expose
+ * availability, `venueSessionRecordingEnabled` is only the effective health
+ * signal, so it must never rewrite the requested policy to `off`.
+ */
+export function venueSessionRecordingScope(
+  engine: VenueSessionRecordingState,
+  fallback: VenueSessionRecordingScope = "visit",
+): VenueSessionRecordingScope {
+  if (engine.venueSessionRecordingPolicy?.scope) return engine.venueSessionRecordingPolicy.scope;
+  if (engine.venueSessionRecordingAvailable !== undefined) return fallback;
+  if (engine.venueSessionRecordingEnabled === false) return "off";
+  if (engine.venueSessionRecordingEnabled === true) return "visit";
+  return fallback;
+}
+
+export async function commitVenueSessionRecordingScope<TStatus extends VenueSessionRecordingState>(
+  previousScope: VenueSessionRecordingScope,
+  requestedScope: VenueSessionRecordingScope,
+  persist: () => Promise<TStatus | null>,
+  describeFailure: (error: unknown) => string,
+): Promise<VenueSessionRecordingCommitResult<TStatus>> {
+  try {
+    const status = await persist();
+    return {
+      ok: true,
+      scope: status ? venueSessionRecordingScope(status, previousScope) : requestedScope,
+      status,
+    };
+  } catch (error) {
+    return {
+      error: describeFailure(error),
+      ok: false,
+      scope: previousScope,
+      status: null,
+    };
+  }
 }
 
 /**
@@ -53,7 +115,9 @@ export function venueSessionSyncDecision(
   const observation = { runId: engine.runId, venueSessionId: engine.venueSessionId };
   if (engine.venueSessionId) {
     const sessionMatches = menu.sessionActive && menu.sessionId === engine.venueSessionId;
-    return { action: sessionMatches ? "none" : "hydrate", observation };
+    const engineRecordingScope = engine.venueSessionRecordingPolicy?.scope;
+    const recordingPolicyMatches = engineRecordingScope === undefined || menu.recordingPolicy === engineRecordingScope;
+    return { action: sessionMatches && recordingPolicyMatches ? "none" : "hydrate", observation };
   }
 
   const sameRuntimeClosed = previous?.runId === engine.runId && Boolean(previous.venueSessionId);

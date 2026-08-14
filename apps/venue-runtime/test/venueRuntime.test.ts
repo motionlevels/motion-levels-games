@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { FLOOR_COLS, FLOOR_ROWS, type Frame } from "@motion-levels-games/game-sdk";
 import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
+import type { RecordingBoundary } from "@motion-levels-games/session-history";
 import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manifest";
 import { floorHeight, floorRgbBytes, floorWidth, pressureBitsetBytes, type PresentedFrame } from "../src/controllerProtocol.ts";
 import { frameToRgb, resolveRuntimeContentPlatformUrl, RevisionMismatchError, VenueRuntime } from "../src/venueRuntime.ts";
@@ -107,6 +111,212 @@ test("idle screensaver keeps game state idle while tracking the venue session", 
   assert.ok(Number(ended.revision) > Number(started.revision));
 });
 
+test("venue history preserves selections and restarts, then restores the active visit after restart", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-history-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const first = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory
+  });
+  first.updateVenueSession({
+    action: "start",
+    venueSessionId: "runtime-history-visit",
+    teamName: "Equipo runtime",
+    recordingPolicy: { scope: "run" }
+  });
+  await selectPingPong(first);
+  first.control("restart");
+  first.control("exit");
+  await first.stop();
+
+  const restored = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory
+  });
+  context.after(async () => { await restored.stop(); });
+  assert.equal(restored.status().venueSessionId, "runtime-history-visit");
+  assert.deepEqual(restored.status().venueSessionRecordingPolicy, { scope: "run" });
+  const visit = restored.historySession("runtime-history-visit").session;
+  assert.equal(visit.status, "active");
+  assert.equal(visit.selections.length, 1);
+  assert.equal(visit.selections[0]?.runs.length, 2);
+  assert.equal(visit.selections[0]?.runs[0]?.status, "abandoned");
+  assert.equal(visit.selections[0]?.runs[1]?.status, "abandoned");
+  assert.ok(restored.historyEvents(visit.id).events.some((event) => event.kind === "visit.recovered"));
+  restored.updateVenueSession({ action: "end", venueSessionId: visit.id });
+});
+
+test("history persistence failures degrade health without exposing local filesystem details", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-health-"));
+  const invalidRoot = join(directory, "not-a-directory");
+  writeFileSync(invalidRoot, "blocked");
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: invalidRoot
+  });
+  context.after(async () => { await runtime.stop(); });
+  const health = runtime.health();
+  assert.equal(health.status, "degraded");
+  assert.deepEqual(health.sessionHistory, {
+    configured: true,
+    healthy: false,
+    persistenceHealthy: false,
+    recordingConfigured: false,
+    recordingHealthy: true,
+    activeSessionId: "",
+    degradedReason: "persistence_unavailable"
+  });
+  assert.doesNotMatch(JSON.stringify(health), /not-a-directory/u);
+});
+
+test("recording is unavailable when its session association cannot be persisted", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-recording-persistence-"));
+  const invalidRoot = join(directory, "not-a-directory");
+  writeFileSync(invalidRoot, "blocked");
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: invalidRoot,
+    recordingClient: {
+      onBoundary: (boundary) => ({ ...boundary.recording, status: "recording" })
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  const status = runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: "visit-without-persistence",
+    recordingPolicy: { scope: "visit" }
+  });
+
+  assert.equal(status.venueSessionRecordingConfigured, false);
+  assert.equal(status.venueSessionRecordingAvailable, false);
+  assert.equal(status.venueSessionRecordingEnabled, false);
+  assert.equal((runtime.health().sessionHistory as { degradedReason?: string }).degradedReason, "persistence_unavailable");
+});
+
+test("requested recording is reported unavailable when no camera adapter is configured", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-camera-unavailable-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory
+  });
+  context.after(async () => { await runtime.stop(); });
+  const status = runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: "visit-camera-unavailable",
+    recordingPolicy: { scope: "visit" }
+  });
+  assert.equal(status.venueSessionRecordingConfigured, false);
+  assert.equal(status.venueSessionRecordingEnabled, false);
+  assert.equal(status.venueSessionRecordingAvailable, false);
+  assert.deepEqual(status.venueSessionRecordingPolicy, { scope: "visit" });
+  assert.deepEqual(runtime.health().sessionHistory, {
+    configured: true,
+    healthy: false,
+    persistenceHealthy: true,
+    recordingConfigured: false,
+    recordingHealthy: true,
+    activeSessionId: "visit-camera-unavailable",
+    degradedReason: "recording_unavailable"
+  });
+});
+
+test("camera failures degrade recording health without degrading persistence", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-camera-unhealthy-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        if (boundary.type === "start") return Promise.reject(new Error("camera offline"));
+        return { ...boundary.recording, status: "complete" };
+      }
+    }
+  });
+  runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: "visit-camera-unhealthy",
+    recordingPolicy: { scope: "visit" }
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await runtime.stop();
+
+  const status = runtime.status();
+  assert.equal(status.venueSessionRecordingConfigured, true);
+  assert.equal(status.venueSessionRecordingEnabled, false);
+  assert.equal(status.venueSessionRecordingAvailable, false);
+  assert.deepEqual(runtime.health().sessionHistory, {
+    configured: true,
+    healthy: false,
+    persistenceHealthy: true,
+    recordingConfigured: true,
+    recordingHealthy: false,
+    activeSessionId: "visit-camera-unhealthy",
+    degradedReason: "recording_unhealthy"
+  });
+});
+
+test("configured degraded recording can be retried without reporting it active before confirmation", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-camera-retry-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  let releaseSecondStart = () => {};
+  const secondStartGate = new Promise<void>((resolve) => { releaseSecondStart = resolve; });
+  const calls: RecordingBoundary[] = [];
+  let startAttempts = 0;
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      async onBoundary(boundary) {
+        calls.push(boundary);
+        if (boundary.type === "start") {
+          startAttempts += 1;
+          if (startAttempts === 1) throw new Error("camera start failed");
+          await secondStartGate;
+          return { ...boundary.recording, status: "recording" };
+        }
+        return { ...boundary.recording, status: "complete" };
+      }
+    }
+  });
+  const venueSessionId = "visit-camera-explicit-retry";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "visit" } });
+  await waitFor(() => runtime.status().venueSessionRecordingAvailable === false);
+  assert.equal(runtime.status().venueSessionRecordingConfigured, true);
+  assert.equal(runtime.status().venueSessionRecordingEnabled, false);
+
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "off" } });
+  await waitFor(() => calls.some((boundary) => boundary.type === "stop"));
+  assert.equal(runtime.status().venueSessionRecordingAvailable, false);
+  const retryStatus = runtime.updateVenueSession({
+    action: "start",
+    venueSessionId,
+    recordingPolicy: { scope: "visit" }
+  });
+  assert.equal(retryStatus.venueSessionRecordingConfigured, true);
+  assert.equal(retryStatus.venueSessionRecordingAvailable, false);
+  assert.equal(retryStatus.venueSessionRecordingEnabled, false);
+  await waitFor(() => startAttempts === 2);
+  assert.equal(runtime.status().venueSessionRecordingAvailable, false);
+  assert.equal(runtime.status().venueSessionRecordingEnabled, false);
+
+  releaseSecondStart();
+  await waitFor(() => runtime.status().venueSessionRecordingAvailable === true);
+  assert.equal(runtime.status().venueSessionRecordingEnabled, true);
+  assert.notEqual(calls[0]?.recording.captureId, calls[2]?.recording.captureId);
+  await runtime.stop();
+});
+
 test("selection fails closed on bundle revision mismatch", async () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   await assert.rejects(runtime.select({
@@ -177,7 +387,7 @@ test("held pressure is applied when a game is selected and restarted", async () 
 
 test("remote floor clients are isolated and cannot release physical pressure", async (context) => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
-  context.after(() => runtime.stop());
+  context.after(async () => { await runtime.stop(); });
   await selectPingPong(runtime);
   const firstClient = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const secondClient = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -251,7 +461,7 @@ test("remote floor heartbeats renew leases and abandoned input is released", asy
     controllerAddress: "127.0.0.1:4201",
     remoteFloorInputLeaseMillis: 200
   });
-  context.after(() => runtime.stop());
+  context.after(async () => { await runtime.stop(); });
   await selectPingPong(runtime);
   runtime.applyRemoteFloorInput({
     commandId: "30000000-0000-4000-8000-000000000001",
@@ -283,7 +493,7 @@ test("remote floor sequence tombstones expire after their safety horizon", async
     controllerAddress: "127.0.0.1:4201",
     remoteFloorInputTombstoneMillis: 100
   });
-  context.after(() => runtime.stop());
+  context.after(async () => { await runtime.stop(); });
   const clientId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   runtime.applyRemoteFloorInput({
     commandId: "31000000-0000-4000-8000-000000000001",
@@ -454,6 +664,117 @@ test("published levels resolve the TS product from engineGame and fetch canonica
   assert.equal(runtime.display().sourceKind, "motion_levels_games");
 });
 
+test("ending a venue session while published content loads aborts selection before mutation", async (context) => {
+  const canonicalGameId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  let releaseResponse = () => {};
+  let observeRequest = () => {};
+  const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+  const requestObserved = new Promise<void>((resolve) => { observeRequest = resolve; });
+  const server = createServer((_request, response) => {
+    observeRequest();
+    void responseGate.then(() => {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ ...parkourContent, gameId: canonicalGameId, contentRevision: "b".repeat(64) }));
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-select-end-race-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${address.port}`,
+    sessionHistoryDir: directory
+  });
+  const venueSessionId = "visit-select-end-race";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "off" } });
+  const selection = runtime.select({
+    game: canonicalGameId,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "platform_levels",
+    sourceRevision: revision,
+    venueSessionId,
+    recordingPolicy: { scope: "off" },
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  await requestObserved;
+  runtime.updateVenueSession({ action: "end", venueSessionId, reason: "remote_end" });
+  releaseResponse();
+
+  await assert.rejects(selection, /venue session changed while selecting/u);
+  const status = runtime.status();
+  assert.equal(status.lifecycle, "idle");
+  assert.equal(status.currentGame, "salvapantallas");
+  assert.equal(status.venueSessionId, "");
+  assert.equal(runtime.historySession(venueSessionId).session.status, "ended");
+  await runtime.stop();
+});
+
+test("turning recording off while published content loads cannot restore stale policy or restart camera", async (context) => {
+  const canonicalGameId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  let releaseResponse = () => {};
+  let observeRequest = () => {};
+  const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+  const requestObserved = new Promise<void>((resolve) => { observeRequest = resolve; });
+  const server = createServer((_request, response) => {
+    observeRequest();
+    void responseGate.then(() => {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ ...parkourContent, gameId: canonicalGameId, contentRevision: "c".repeat(64) }));
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-select-off-race-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const cameraCalls: RecordingBoundary[] = [];
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${address.port}`,
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        cameraCalls.push(boundary);
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  const venueSessionId = "visit-select-off-race";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "visit" } });
+  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "start"));
+  const selection = runtime.select({
+    game: canonicalGameId,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "platform_levels",
+    sourceRevision: revision,
+    venueSessionId,
+    recordingPolicy: { scope: "visit" },
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  await requestObserved;
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "off" } });
+  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "stop"));
+  releaseResponse();
+
+  await assert.rejects(selection, /venue session changed while selecting/u);
+  assert.deepEqual(runtime.status().venueSessionRecordingPolicy, { scope: "off" });
+  assert.deepEqual(cameraCalls.map((boundary) => boundary.type), ["start", "stop"]);
+  assert.deepEqual(runtime.historySession(venueSessionId).session.recordingPolicy, { scope: "off" });
+  await runtime.stop();
+});
+
 test("published-level products use bundled fallback content for direct TypeScript selections", async () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   const status = await runtime.select({
@@ -499,7 +820,7 @@ test("local live floor is latest-value at a configured rate", async () => {
   await waitFor(() => sequences.length === 2);
   assert.deepEqual(sequences, [1, 3]);
   unsubscribe();
-  runtime.stop();
+  await runtime.stop();
 });
 
 test("local live floor defaults to 20 fps and is capped at 25 fps", () => {
@@ -515,7 +836,7 @@ test("local live floor defaults to 20 fps and is capped at 25 fps", () => {
   assert.equal(cappedLiveFloor.localTargetFps, 25);
 });
 
-test("local live floor sends the current snapshot immediately to each new subscriber", () => {
+test("local live floor sends the current snapshot immediately to each new subscriber", async () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   runtime.observePresentedFrame(observedFrame(7n));
 
@@ -528,7 +849,7 @@ test("local live floor sends the current snapshot immediately to each new subscr
   assert.deepEqual(second, [7]);
   unsubscribeFirst();
   unsubscribeSecond();
-  runtime.stop();
+  await runtime.stop();
 });
 
 test("runtime content cannot redirect production fetches to a request-controlled origin", () => {

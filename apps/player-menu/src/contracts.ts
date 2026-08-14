@@ -9,6 +9,14 @@ import type {
 
 export type EngineLevelSummary = PlayerExperienceLevelSummary;
 export type EngineGame = PlayerExperienceGameSummary;
+export type RecordingScope = "off" | "visit" | "selection" | "run";
+export type RecordingPolicy = {
+  scope: RecordingScope;
+  cameraIds?: string[];
+  includeAudio?: boolean;
+  preRollMillis?: number;
+  postRollMillis?: number;
+};
 
 export type PlatformGameCatalogEntry = {
   id: string;
@@ -57,7 +65,10 @@ export type PlatformGameCatalogEntry = {
 export type EnginePlayer = PlayerExperiencePlayer & { color: RGB };
 export type FinishedLevelAttempt = PlayerExperienceFinishedAttempt;
 export type EngineStatus = PlayerExperienceState & {
+  venueSessionRecordingConfigured?: boolean;
+  venueSessionRecordingAvailable?: boolean;
   venueSessionRecordingEnabled?: boolean;
+  venueSessionRecordingPolicy?: RecordingPolicy;
   venueSessionStartedUnix?: number;
 };
 export type DisplayPlayer = EnginePlayer;

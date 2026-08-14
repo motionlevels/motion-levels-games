@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchURL, requestJSON, RequestError, selectGame } from "../src/api.ts";
+import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchURL, postVenueSession, requestJSON, RequestError, selectGame } from "../src/api.ts";
 
 const nativeFetch = globalThis.fetch;
 
@@ -166,6 +166,73 @@ describe("kiosk API requests", () => {
     releaseFirst();
     await Promise.all([selected, controlled]);
     assert.deepEqual(requests.map((url) => new URL(url).pathname), ["/api/select", "/api/control"]);
+  });
+
+  it("serializes venue-session mutations in request order", async () => {
+    let releaseFirst!: () => void;
+    const first = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const bodies: Array<{ recordingPolicy?: { scope?: string } }> = [];
+    globalThis.fetch = (async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as { recordingPolicy?: { scope?: string } });
+      if (bodies.length === 1) await first;
+      return new Response(JSON.stringify({ revision: bodies.length }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    const firstUpdate = postVenueSession({
+      action: "start",
+      venueSessionId: "venue-session-a",
+      recordingPolicy: { scope: "selection" },
+    });
+    const secondUpdate = postVenueSession({
+      action: "start",
+      venueSessionId: "venue-session-a",
+      recordingPolicy: { scope: "run" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(bodies.length, 1);
+    releaseFirst();
+    await Promise.all([firstUpdate, secondUpdate]);
+    assert.deepEqual(bodies.map((body) => body.recordingPolicy?.scope), ["selection", "run"]);
+  });
+
+  it("continues the venue-session queue after a rejected mutation", async () => {
+    let releaseFirst!: () => void;
+    const first = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let requestCount = 0;
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        await first;
+        return new Response("failed", { status: 500 });
+      }
+      return new Response(JSON.stringify({ revision: requestCount }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    const failedUpdate = postVenueSession({
+      action: "start",
+      venueSessionId: "venue-session-a",
+      recordingPolicy: { scope: "off" },
+    });
+    const nextUpdate = postVenueSession({
+      action: "start",
+      venueSessionId: "venue-session-a",
+      recordingPolicy: { scope: "visit" },
+    });
+    const rejection = assert.rejects(
+      failedUpdate,
+      (error: unknown) => error instanceof RequestError && error.kind === "response",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(requestCount, 1);
+    releaseFirst();
+    await Promise.all([rejection, nextUpdate]);
+    assert.equal(requestCount, 2);
   });
 
   it("retries a lost command response with the same id", async () => {

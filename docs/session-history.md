@@ -1,0 +1,115 @@
+# Local session history
+
+The venue runtime owns a durable, local history of player visits. Its public
+contract is `motion-levels-session-history-v1`, defined and JSON-schema backed
+by `@motion-levels-games/session-history`.
+
+## Persistence
+
+Set `MOTION_LEVELS_SESSION_HISTORY_DIR` to the venue-owned data directory. The
+packaged runtime defaults to `/var/lib/motion-levels/session-history`; the
+development runner uses `.runtime/session-history` (ignored by Git).
+
+Each visit has its own directory:
+
+```text
+<history-root>/<visit-id>/manifest.json
+<history-root>/<visit-id>/events.ndjson
+```
+
+`manifest.json` is replaced atomically after an fsync. `events.ndjson` is the
+canonical, append-only, fdatasync'd timeline with stable sequence numbers and
+event IDs. Each logical append is one newline-terminated v1 journal envelope;
+all events in a lifecycle transition are therefore committed as one NDJSON
+record. A torn or non-terminated final record is discarded and durably
+truncated as a whole, while legacy one-event-per-line journals remain readable.
+Lifecycle transitions are committed journal-first and carry a granular
+after-state for the affected visit/selection/run. The manifest's `lastSequence`
+is a checkpoint: startup idempotently reduces every later complete batch and
+rewrites a repaired checkpoint, so a crash between journal sync and manifest
+replacement cannot split the timeline from its state.
+Frames, pressure samples, and elapsed-only ticks are deliberately excluded;
+the runtime keeps elapsed clocks in memory, checkpoints them to the manifest
+at most once every five seconds, and writes the exact final values when a run
+ends.
+
+On process startup, an active visit is restored. Any run or game selection
+that was open when the previous process disappeared is closed as interrupted,
+and recovery is recorded on the timeline. The visit itself remains active so
+the kiosk can continue it.
+
+## Hierarchy and recording policy
+
+History is organized as visit → game selections → runs. Selecting a game adds
+a selection. Restarting it closes the current run and opens another run under
+that same selection.
+
+Recording policy is an object with one of these scopes:
+
+- `off`: do not request camera recording.
+- `visit`: one capture for the complete visit.
+- `selection`: one capture per selected game, including all of its restarts.
+- `run`: one capture per individual run/restart.
+
+Legacy `recordingEnabled: true|false` remains accepted and maps to `visit` or
+`off`. Changing scope while a visit is active closes the prior capture and
+starts the appropriate boundary for the current visit, selection, or run.
+
+The camera adapter is configured with `MOTION_LEVELS_CAMERA_RECORDER_URL` and,
+optionally, `MOTION_LEVELS_CAMERA_RECORDER_TOKEN` or
+`MOTION_LEVELS_CAMERA_RECORDER_TOKEN_FILE`. Boundaries are globally serialized
+because the legacy camera service accepts only one active capture. After a
+stop request, the adapter polls `/status` until that capture disappears before
+starting another. Visit captures are watched against the camera's real
+`maxEndsAt`: before the limit the runtime persists a stop intent, confirms the
+old capture is absent, and opens a new `RecordingAsset`/`captureId`. A run that
+crosses that boundary is linked to both assets. Uncertain stops block every
+new start and are retried independently per capture.
+
+Shutdown stops accepting new HTTP requests, explicitly ends long-lived SSE
+streams, waits for ordinary in-flight commands, and only then drains the
+runtime/camera queue, including stop retries scheduled after the initial drain
+began. Uncertain stops retry on a short shutdown cadence; a permanently
+unreachable camera leaves the durable `finalizing` intent and the supervisor's
+30-second safety timeout terminates the process non-zero.
+
+Start and stop intents are durable. A lost start response stays `requested`
+and is retried idempotently with the same `captureId`; an uncertain stop stays
+`finalizing` and is retried on startup. A graceful runtime restart closes its
+current visit capture, keeps the visit recoverable, and opens a new capture for
+that same active visit in the next process.
+
+Video bytes are not stored in session history. Camera/upload services attach
+or update a `RecordingAsset` containing capture identity, status, local or
+remote URLs, file metadata, and the associated selection/run IDs.
+
+## Authenticated HTTP API
+
+Every history route requires an exact `x-motion-levels-engine-token`, including
+requests arriving over loopback or through the venue Caddy proxy. Health and
+the other local adapter routes keep their existing loopback trust. Configure
+the history credential with `MOTION_LEVELS_ENGINE_TOKEN` or
+`MOTION_LEVELS_ENGINE_TOKEN_FILE`; while venues migrate, the runtime falls back
+to the already provisioned `MOTION_LEVELS_CAMERA_RECORDER_TOKEN` or
+`MOTION_LEVELS_CAMERA_RECORDER_TOKEN_FILE`. Empty values, `#` placeholders,
+oversized values, and header control characters are rejected fail-closed.
+
+Routes:
+
+- `GET /api/history/v1/sessions?status=&from=&to=&limit=&cursor=`
+- `GET /api/history/v1/sessions/:sessionId`
+- `GET /api/history/v1/sessions/:sessionId/events?limit=&cursor=`
+- `POST /api/history/v1/sessions/:sessionId/recordings`
+
+List and event responses use opaque cursors. `from` and `to` are inclusive
+epoch-millisecond visit-overlap filters. Recording POST bodies must conform to
+the v1 `RecordingAsset` shape; unknown fields are not persisted.
+
+`/api/health` distinguishes persistence, camera configuration, and camera
+health. Player state likewise separates `venueSessionRecordingConfigured`
+(the adapter and durable association are configured) from
+`venueSessionRecordingAvailable` (the latest start/observation is healthy) and
+`venueSessionRecordingEnabled` (the requested policy is non-off and currently
+available). This lets the menu offer an explicit retry while degraded without
+claiming that recording is active before the camera confirms it. Filesystem
+paths and raw errors are never exposed.

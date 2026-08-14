@@ -1,7 +1,7 @@
-import type { EngineGame, EngineStatus, PlatformGameCatalogEntry } from "./contracts";
+import type { EngineGame, EngineStatus, PlatformGameCatalogEntry, RecordingPolicy, RecordingScope } from "./contracts";
 import { newPlayerExperienceCommandId } from "@motion-levels-games/player-experience";
 
-export type { EngineGame, EngineStatus, PlatformGameCatalogEntry };
+export type { EngineGame, EngineStatus, PlatformGameCatalogEntry, RecordingPolicy, RecordingScope };
 
 export type RequestFailureKind = "network" | "response" | "timeout";
 
@@ -69,6 +69,7 @@ export type SelectGameRequest = {
   platformUrl?: string;
   venueSessionId?: string;
   recordingEnabled?: boolean;
+  recordingPolicy?: RecordingPolicy;
   playerCount: number;
   allowAnyPlayers?: boolean;
   difficulty?: string;
@@ -295,10 +296,17 @@ export async function fetchAnimationPreview(level: string, frames = 16, revision
 // so launch/control requests cannot overtake one another after double taps,
 // reconnects, or a slow engine response.
 let playerCommandTail: Promise<void> = Promise.resolve();
+let venueSessionCommandTail: Promise<void> = Promise.resolve();
 
 function enqueuePlayerCommand<T>(command: () => Promise<T>): Promise<T> {
   const result = playerCommandTail.then(command, command);
   playerCommandTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+function enqueueVenueSessionCommand<T>(command: () => Promise<T>): Promise<T> {
+  const result = venueSessionCommandTail.then(command, command);
+  venueSessionCommandTail = result.then(() => undefined, () => undefined);
   return result;
 }
 
@@ -335,6 +343,7 @@ export type VenueSessionRequest = {
   venueSessionId: string;
   teamName?: string;
   recordingEnabled?: boolean;
+  recordingPolicy?: RecordingPolicy;
   kioskId?: string;
   reason?: string;
 };
@@ -358,17 +367,17 @@ let pendingMenuStateWrite: { kioskId: string; snapshot: unknown } | null = null;
 let menuStateWriteInFlight = false;
 let menuStateRetryDelayMillis = 500;
 
-// Venue session lifecycle is canonical runtime state. Callers that need to
-// complete a close await this response; start/update callers may explicitly
-// treat a transient failure as best-effort.
+// Venue session lifecycle is canonical runtime state. Keep every mutation in
+// one FIFO so a recording-policy update cannot overtake a close/recovery (or a
+// later policy update) when the engine is slow.
 export async function postVenueSession(request: VenueSessionRequest): Promise<EngineStatus | null> {
   if (localPlaygroundEnabled()) return null;
-  return requestJSON<EngineStatus>(`${engineBaseURL()}/api/venue-session`, {
+  return enqueueVenueSessionCommand(() => requestJSON<EngineStatus>(`${engineBaseURL()}/api/venue-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
     keepalive: true,
-  }, mirrorTimeoutMillis);
+  }, mirrorTimeoutMillis));
 }
 
 export function postMenuEvent(request: MenuEventRequest) {

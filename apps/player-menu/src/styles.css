@@ -1075,16 +1075,18 @@ button.capsule:disabled,
   text-align: left;
 }
 
-.recording-switch small {
-  min-width: 94px;
+.recording-switch select {
+  min-width: 154px;
   padding: 7px 10px;
   border-radius: var(--r-pill);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.055);
+  color: inherit;
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.04em;
   text-align: center;
-  text-transform: uppercase;
+  cursor: pointer;
 }
 
 .recording-switch.on {
@@ -1097,13 +1099,33 @@ button.capsule:disabled,
   color: rgba(174, 188, 209, 0.62);
 }
 
+.recording-switch.unavailable {
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #fcd68a;
+}
+
+.recording-switch.degraded {
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #fcd68a;
+}
+
+.recording-switch.saving {
+  cursor: progress;
+}
+
+.recording-switch select:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
 .recording-switch:hover {
   border-color: rgba(210, 225, 247, 0.34);
   background: rgba(255, 255, 255, 0.055);
 }
 
-.recording-switch:active {
-  transform: scale(0.985);
+.recording-switch select:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .btn {

@@ -29,3 +29,20 @@ test("malformed command IDs fail before mutation", async () => {
   const executor = new SerializedCommandExecutor<number>();
   await assert.rejects(executor.execute("not-a-uuid", () => 1), /commandId must be a UUID/);
 });
+
+test("command failures are cached and retried without running the action", async () => {
+  const executor = new SerializedCommandExecutor<number>();
+  const commandId = "33333333-3333-4333-8333-333333333333";
+  const failure = new Error("transient upstream failure");
+  let calls = 0;
+
+  await assert.rejects(executor.execute(commandId, () => {
+    calls += 1;
+    throw failure;
+  }), (error) => error === failure);
+  await assert.rejects(executor.execute(commandId, () => {
+    calls += 1;
+    return 1;
+  }), (error) => error === failure);
+  assert.equal(calls, 1);
+});

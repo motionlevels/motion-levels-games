@@ -14,6 +14,17 @@ import {
   type PlayerExperienceState
 } from "@motion-levels-games/player-experience";
 import { GameSession, gameCatalog, gameplayRegistry, type GameSessionState } from "@motion-levels-games/runtime";
+import {
+  SESSION_HISTORY_SCHEMA,
+  normalizeRecordingPolicy,
+  type RecordingAsset,
+  type RecordingClient,
+  type RecordingPolicy,
+  type RecordingResponse,
+  type SessionDetailResponse,
+  type SessionEventsResponse,
+  type SessionListResponse
+} from "@motion-levels-games/session-history";
 import { ControllerClient, type PressureInput } from "./controllerClient.ts";
 import {
   floorRgbBytes,
@@ -22,6 +33,14 @@ import {
   type PresentedFrame
 } from "./controllerProtocol.ts";
 import { createLiveFloorPublisher, encodeLiveViewerFrame, type LiveFloorPublisher } from "./liveFloorPublisher.ts";
+import { SessionHistoryRecorder } from "./sessionHistoryRecorder.ts";
+import {
+  assertSessionHistorySessionId,
+  SessionHistoryConflictError,
+  SessionHistoryStore,
+  type SessionEventsQuery,
+  type SessionListQuery
+} from "./sessionHistoryStore.ts";
 
 export type SelectGameRequest = {
   commandId?: string;
@@ -33,6 +52,7 @@ export type SelectGameRequest = {
   platformUrl?: string;
   venueSessionId?: string;
   recordingEnabled?: boolean;
+  recordingPolicy?: unknown;
   playerCount: number;
   allowAnyPlayers?: boolean;
   difficulty?: string;
@@ -62,7 +82,10 @@ export type VenueRuntimeStatus = PlayerExperienceState & {
   controllerId: string;
   floorAdapter: FloorAdapterStatus;
   remoteFloorInput: RemoteFloorInputStatus;
+  venueSessionRecordingConfigured: boolean;
   venueSessionRecordingEnabled: boolean;
+  venueSessionRecordingAvailable: boolean;
+  venueSessionRecordingPolicy: RecordingPolicy;
   venueSessionStartedUnix: number;
 };
 
@@ -79,6 +102,9 @@ export type VenueRuntimeOptions = {
   remoteFloorInputTombstoneMillis?: number;
   screensaverRefreshMillis?: number;
   brightness?: number;
+  sessionHistoryDir?: string;
+  recordingClient?: RecordingClient;
+  now?: () => number;
   log?(message: string, error?: unknown): void;
 };
 
@@ -199,6 +225,7 @@ export class VenueRuntime {
   private readonly localLiveFloorFps: number;
   private readonly remoteFloorInputLeaseMillis: number;
   private readonly remoteFloorInputTombstoneMillis: number;
+  private readonly history: SessionHistoryRecorder | null;
   private readonly liveFloorListeners = new Set<ObservedFloorSubscription>();
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
   private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
@@ -211,10 +238,12 @@ export class VenueRuntime {
   private pauseStartedAt = 0;
   private sessionStartedUnix = 0;
   private gameSessionId = "";
+  private selectionHistoryId = "";
   private venueSessionId = "";
   private venueSessionStartedUnix = 0;
   private venueSessionTeamName = "";
-  private venueSessionRecordingEnabled = true;
+  private venueSessionRecordingPolicy: RecordingPolicy = { scope: "visit" };
+  private venueSessionGeneration = 0;
   private frameSequence = 0n;
   private lastDisplayPublishedAt = 0;
   private timer: NodeJS.Timeout | null = null;
@@ -244,6 +273,20 @@ export class VenueRuntime {
     this.localLiveFloorFps = normalizeLocalLiveFloorFps(options.localLiveFloorFps);
     this.remoteFloorInputLeaseMillis = normalizeRemoteFloorInputLeaseMillis(options.remoteFloorInputLeaseMillis);
     this.remoteFloorInputTombstoneMillis = normalizeRemoteFloorInputTombstoneMillis(options.remoteFloorInputTombstoneMillis);
+    this.history = options.sessionHistoryDir
+      ? new SessionHistoryRecorder(new SessionHistoryStore(options.sessionHistoryDir, options.now), {
+          now: options.now,
+          recordingClient: options.recordingClient,
+          log: options.log
+        })
+      : null;
+    const recoveredVisit = this.history?.currentVisit();
+    if (recoveredVisit) {
+      this.venueSessionId = recoveredVisit.id;
+      this.venueSessionStartedUnix = Math.floor(recoveredVisit.startedAtUnixMillis / 1_000);
+      this.venueSessionTeamName = recoveredVisit.teamName;
+      this.venueSessionRecordingPolicy = { ...recoveredVisit.recordingPolicy };
+    }
     this.liveFloorPublisher = createLiveFloorPublisher({
       platformUrl: options.platformUrl,
       platformToken: options.platformToken,
@@ -284,7 +327,7 @@ export class VenueRuntime {
     }
   }
 
-  stop(): void {
+  stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     if (this.screensaverRefreshTimer) clearInterval(this.screensaverRefreshTimer);
@@ -293,7 +336,9 @@ export class VenueRuntime {
     this.localLiveFloorTimer = null;
     this.localLiveFloorPending = false;
     for (const clientId of [...this.remotePressureClients.keys()]) this.releaseRemoteFloorInputClient(clientId);
+    const historyDrain = this.history?.stop() ?? Promise.resolve();
     this.controller.stop();
+    return historyDrain;
   }
 
   async select(request: SelectGameRequest): Promise<VenueRuntimeStatus> {
@@ -315,14 +360,23 @@ export class VenueRuntime {
     const minimumPlayers = module.manifest.players.allowAny ? 0 : module.manifest.players.min;
     const playerCount = boundedInteger(request.playerCount, minimumPlayers, module.manifest.players.max, "playerCount");
     const players = normalizePlayers(request.players ?? [], playerCount, module.manifest.players.allowAny);
+    const requestedVenueSessionId = cleanText(request.venueSessionId, 256);
+    if (requestedVenueSessionId) {
+      assertSessionHistorySessionId(requestedVenueSessionId);
+      this.history?.assertVisitStartable(requestedVenueSessionId);
+    }
+    const requestedTeamName = cleanText(request.teamName, 256);
     const durationSeconds = Number(request.durationSeconds);
     const durationMillis = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds * 1_000 : undefined;
+    const venueSessionGeneration = this.venueSessionGeneration;
     if (module === gameplayRegistry.get(screensaverGameId) && isScreensaverRequest(request)) {
       const screensaverOptions: Record<string, unknown> = { mode: "rotation", ...(request.config ?? {}) };
       if (screensaverOptions.rotationSeconds === undefined && durationMillis !== undefined) {
         screensaverOptions.rotationSeconds = Math.max(5, Math.min(3600, Math.round(durationSeconds)));
       }
       await this.refreshScreensaverContent(durationMillis === undefined ? undefined : Math.round(durationSeconds));
+      this.assertVenueSessionGeneration(venueSessionGeneration);
+      this.history?.endSelection("screensaver_selected");
       this.activateScreensaver(screensaverOptions);
       this.publishDisplay();
       return this.status();
@@ -330,6 +384,7 @@ export class VenueRuntime {
     const contentResult = request.sourceKind === "platform_levels"
       ? await this.fetchRuntimeContent(request)
       : null;
+    this.assertVenueSessionGeneration(venueSessionGeneration);
     const now = performance.now();
     this.state = this.session.select({
       gameId: module.manifest.id,
@@ -340,16 +395,24 @@ export class VenueRuntime {
       options: request.config ?? {},
       ...(contentResult ? { content: contentResult.content } : {})
     });
-    const requestedVenueSessionId = cleanText(request.venueSessionId, 256);
-    const requestedTeamName = cleanText(request.teamName, 256);
     if (requestedVenueSessionId) {
       const sameVenueSession = requestedVenueSessionId === this.venueSessionId;
+      const recordingPolicy = requestedRecordingPolicy(
+        request.recordingPolicy,
+        request.recordingEnabled,
+        sameVenueSession ? this.venueSessionRecordingPolicy : { scope: "visit" }
+      );
+      const nextTeamName = requestedTeamName || this.venueSessionTeamName;
+      const venueSessionChanged = !sameVenueSession
+        || this.venueSessionTeamName !== nextTeamName
+        || JSON.stringify(this.venueSessionRecordingPolicy) !== JSON.stringify(recordingPolicy);
       this.venueSessionId = requestedVenueSessionId;
       this.venueSessionStartedUnix = sameVenueSession && this.venueSessionStartedUnix > 0
         ? this.venueSessionStartedUnix
         : Math.floor(Date.now() / 1_000);
-      this.venueSessionTeamName = requestedTeamName || this.venueSessionTeamName;
-      this.venueSessionRecordingEnabled = request.recordingEnabled !== false;
+      this.venueSessionTeamName = nextTeamName;
+      this.venueSessionRecordingPolicy = recordingPolicy;
+      if (venueSessionChanged) this.advanceVenueSessionGeneration();
     }
     this.selection = {
       manifest: module.manifest,
@@ -370,6 +433,41 @@ export class VenueRuntime {
     this.pauseStartedAt = 0;
     this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
     this.gameSessionId = randomUUID();
+    this.selectionHistoryId = randomUUID();
+    if (requestedVenueSessionId) {
+      this.history?.startVisit({
+        id: requestedVenueSessionId,
+        controllerId: this.options.controllerId,
+        origin: "platform",
+        teamName: this.venueSessionTeamName,
+        recordingPolicy: this.venueSessionRecordingPolicy
+      });
+    }
+    this.history?.startSelection({
+      id: this.selectionHistoryId,
+      runId: this.gameSessionId,
+      catalogGameId: cleanText(request.game, 256) || undefined,
+      catalogGameLabel: cleanText(request.gameLabel, 256) || undefined,
+      gameId: this.selection.runtimeGameId,
+      engineGame: this.selection.engineGame,
+      manifestId: module.manifest.id,
+      label: cleanText(request.gameLabel, 256) || module.manifest.label,
+      sourceKind: this.selection.sourceKind,
+      sourceRevision: this.options.sourceRevision,
+      contentRevision: this.selection.contentRevision || undefined,
+      difficulty: this.selection.difficulty,
+      level: this.selection.level || undefined,
+      levelSlug: this.selection.levelSlug || undefined,
+      levelMode: this.selection.levelMode || undefined,
+      durationMillis,
+      config: request.config,
+      teamName: this.selection.teamName,
+      players: players.map((player) => ({
+        id: String(player.index),
+        name: player.label,
+        metadata: { color: player.color }
+      }))
+    }, this.state);
     this.applyHeldPressure(0);
     this.publishDisplay();
     return this.status();
@@ -379,6 +477,7 @@ export class VenueRuntime {
     const action = String(actionValue ?? "");
     const now = performance.now();
     if (action === "exit") {
+      this.history?.endSelection("exited");
       this.activateScreensaver();
       this.publishDisplay();
       return this.status();
@@ -387,10 +486,12 @@ export class VenueRuntime {
     if (action === "pause") {
       if (!this.state.paused) this.pauseStartedAt = now;
       this.state = this.session.pause(this.elapsedAt(now));
+      this.history?.observeState(this.state);
     } else if (action === "resume") {
       if (this.state.paused && this.pauseStartedAt > 0) this.gameStartedAt += now - this.pauseStartedAt;
       this.pauseStartedAt = 0;
       this.state = this.session.resume();
+      this.history?.observeState(this.state);
       this.applyHeldPressure(this.state.clockMillis);
     } else if (action === "restart") {
       this.state = this.session.restart(0);
@@ -398,6 +499,7 @@ export class VenueRuntime {
       this.pauseStartedAt = 0;
       this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
       this.gameSessionId = randomUUID();
+      this.history?.restartRun(this.gameSessionId, this.state);
       this.applyHeldPressure(0);
     } else if (action === "narration" || action === "mute" || action === "unmute" || action === "toggle_mute") {
       // Audio is intentionally unavailable until the venue provides a TS-owned adapter.
@@ -462,7 +564,10 @@ export class VenueRuntime {
         controllerId: this.options.controllerId ?? "",
         floorAdapter: { ...this.floorAdapter },
         remoteFloorInput: this.remoteFloorInputStatus(),
-        venueSessionRecordingEnabled: this.venueSessionRecordingEnabled,
+        venueSessionRecordingConfigured: this.recordingConfigured(),
+        venueSessionRecordingEnabled: this.recordingEffectivelyEnabled(),
+        venueSessionRecordingAvailable: this.recordingAvailable(),
+        venueSessionRecordingPolicy: { ...this.venueSessionRecordingPolicy },
         venueSessionStartedUnix: this.venueSessionStartedUnix
       };
     }
@@ -528,7 +633,10 @@ export class VenueRuntime {
       controllerId: this.options.controllerId ?? "",
       floorAdapter: { ...this.floorAdapter },
       remoteFloorInput: this.remoteFloorInputStatus(),
-      venueSessionRecordingEnabled: this.venueSessionRecordingEnabled,
+      venueSessionRecordingConfigured: this.recordingConfigured(),
+      venueSessionRecordingEnabled: this.recordingEffectivelyEnabled(),
+      venueSessionRecordingAvailable: this.recordingAvailable(),
+      venueSessionRecordingPolicy: { ...this.venueSessionRecordingPolicy },
       venueSessionStartedUnix: this.venueSessionStartedUnix
     };
   }
@@ -543,10 +651,61 @@ export class VenueRuntime {
     };
   }
 
+  listHistorySessions(query: SessionListQuery = {}): SessionListResponse {
+    return this.requireHistory().store.listVisits(query);
+  }
+
+  historySession(id: string): SessionDetailResponse {
+    return { schema: SESSION_HISTORY_SCHEMA, session: this.requireHistory().store.getVisit(id) };
+  }
+
+  historyEvents(id: string, query: SessionEventsQuery = {}): SessionEventsResponse {
+    return this.requireHistory().store.listEvents(id, query);
+  }
+
+  addHistoryRecording(id: string, recording: RecordingAsset): RecordingResponse {
+    return {
+      schema: SESSION_HISTORY_SCHEMA,
+      recording: this.requireHistory().store.upsertRecording(id, recording)
+    };
+  }
+
   health(): Record<string, unknown> {
     const liveFloor = this.liveFloorPublisher?.status() ?? { configured: false };
+    const historyHealth = this.history?.health();
+    const recordingRequired = Boolean(this.venueSessionId) && this.venueSessionRecordingPolicy.scope !== "off";
+    const persistenceHealthy = historyHealth?.persistenceHealthy ?? true;
+    const recordingConfigured = historyHealth?.recordingConfigured ?? false;
+    const recordingHealthy = historyHealth?.recordingHealthy ?? true;
+    const historyHealthy = persistenceHealthy
+      && recordingHealthy
+      && (!recordingRequired || recordingConfigured);
+    const sessionHistory = historyHealth
+      ? {
+          configured: true,
+          healthy: historyHealthy,
+          persistenceHealthy,
+          recordingConfigured,
+          recordingHealthy,
+          activeSessionId: historyHealth.activeSessionId,
+          ...(historyHealthy ? {} : {
+            degradedReason: !persistenceHealthy
+              ? "persistence_unavailable"
+              : !recordingConfigured
+                ? "recording_unavailable"
+                : "recording_unhealthy"
+          })
+        }
+      : {
+          configured: false,
+          healthy: true,
+          persistenceHealthy: true,
+          recordingConfigured: false,
+          recordingHealthy: true,
+          activeSessionId: ""
+        };
     return {
-      status: "ok",
+      status: sessionHistory.healthy ? "ok" : "degraded",
       sourceRevision: this.options.sourceRevision,
       controllerProtocolVersion: 2,
       controllerConnected: this.controllerConnected,
@@ -559,9 +718,41 @@ export class VenueRuntime {
         localSubscribers: this.liveFloorListeners.size
       },
       remoteFloorInput: this.remoteFloorInputStatus(),
+      sessionHistory,
       audioEnabled: false,
       displayClient: this.displayClientStatus()
     };
+  }
+
+  private requireHistory(): SessionHistoryRecorder {
+    if (!this.history) throw new RequestValidationError("session history is not configured");
+    return this.history;
+  }
+
+  private recordingAvailable(): boolean {
+    const health = this.history?.health();
+    return Boolean(health?.persistenceHealthy && health.recordingConfigured && health.recordingHealthy);
+  }
+
+  private recordingConfigured(): boolean {
+    const health = this.history?.health();
+    return Boolean(health?.persistenceHealthy && health.recordingConfigured);
+  }
+
+  private recordingEffectivelyEnabled(): boolean {
+    return this.venueSessionRecordingPolicy.scope !== "off" && this.recordingAvailable();
+  }
+
+  private assertVenueSessionGeneration(expected: number): void {
+    if (this.venueSessionGeneration !== expected) {
+      throw new SessionHistoryConflictError("venue session changed while selecting");
+    }
+  }
+
+  private advanceVenueSessionGeneration(): void {
+    this.venueSessionGeneration = this.venueSessionGeneration >= Number.MAX_SAFE_INTEGER
+      ? 1
+      : this.venueSessionGeneration + 1;
   }
 
   subscribeDisplay(listener: (display: Record<string, unknown>) => void): () => void {
@@ -622,41 +813,64 @@ export class VenueRuntime {
     if (action !== "start" && action !== "end") throw new RequestValidationError("action must be start or end");
     const venueSessionId = cleanText(request.venueSessionId, 256);
     if (!venueSessionId) throw new RequestValidationError("venueSessionId is required");
+    assertSessionHistorySessionId(venueSessionId);
     let changed = false;
     if (action === "start") {
+      this.history?.assertVisitStartable(venueSessionId);
       const teamName = cleanText(request.teamName, 256);
-      const recordingEnabled = request.recordingEnabled !== false;
       const sameVenueSession = venueSessionId === this.venueSessionId;
+      const recordingPolicy = requestedRecordingPolicy(
+        request.recordingPolicy,
+        request.recordingEnabled,
+        sameVenueSession ? this.venueSessionRecordingPolicy : { scope: "visit" }
+      );
       changed = !sameVenueSession
         || this.venueSessionTeamName !== teamName
-        || this.venueSessionRecordingEnabled !== recordingEnabled;
+        || JSON.stringify(this.venueSessionRecordingPolicy) !== JSON.stringify(recordingPolicy);
       this.venueSessionId = venueSessionId;
       this.venueSessionStartedUnix = sameVenueSession && this.venueSessionStartedUnix > 0
         ? this.venueSessionStartedUnix
         : Math.floor(Date.now() / 1_000);
       this.venueSessionTeamName = teamName;
-      this.venueSessionRecordingEnabled = recordingEnabled;
+      this.venueSessionRecordingPolicy = recordingPolicy;
       if (this.selection) {
         this.selection.venueSessionId = venueSessionId;
         this.selection.teamName = teamName || this.selection.teamName;
       }
+      this.history?.startVisit({
+        id: venueSessionId,
+        controllerId: this.options.controllerId,
+        kioskId: cleanText(request.kioskId, 256) || undefined,
+        origin: cleanText(request.origin, 64) || "platform",
+        teamName,
+        recordingPolicy
+      });
     } else if (this.venueSessionId === venueSessionId) {
       changed = true;
+      this.history?.endVisit(cleanText(request.reason, 160) || "completed");
       this.venueSessionId = "";
       this.venueSessionStartedUnix = 0;
       this.venueSessionTeamName = "";
-      this.venueSessionRecordingEnabled = true;
+      this.venueSessionRecordingPolicy = { scope: "visit" };
       if (this.selection?.venueSessionId === venueSessionId) this.selection.venueSessionId = "";
     }
-    this.bestEffortCamera(action, request);
-    if (changed) this.publishDisplay();
+    if (changed) {
+      this.advanceVenueSessionGeneration();
+      this.publishDisplay();
+    }
     return this.status();
   }
 
   recordMenuEvent(request: Record<string, unknown>): { ok: true } {
-    if (!cleanText(request.venueSessionId, 256) || !cleanText(request.name, 160)) {
+    const sessionId = cleanText(request.venueSessionId, 256);
+    const name = cleanText(request.name, 160);
+    if (!sessionId || !name) {
       throw new RequestValidationError("venueSessionId and name are required");
     }
+    const properties = request.properties && typeof request.properties === "object" && !Array.isArray(request.properties)
+      ? request.properties as Record<string, unknown>
+      : {};
+    this.history?.recordMenuEvent(sessionId, name, properties, Number(request.occurredAtUnixMillis));
     return { ok: true };
   }
 
@@ -809,7 +1023,10 @@ export class VenueRuntime {
   }
 
   private tick(now: number): void {
-    if (!this.state.paused) this.state = this.session.tick(this.elapsedAt(now));
+    if (!this.state.paused) {
+      this.state = this.session.tick(this.elapsedAt(now));
+      this.history?.observeState(this.state);
+    }
     const frame = this.state.frame;
     this.frameSequence += 1n;
     this.controller.sendFrame({
@@ -832,7 +1049,10 @@ export class VenueRuntime {
   private applyHeldPressure(atMillis: number): void {
     for (const key of this.heldPressure) {
       const [x, y] = key.split(",").map(Number);
-      if (x !== undefined && y !== undefined) this.state = this.session.press(x, y, atMillis);
+      if (x !== undefined && y !== undefined) {
+        this.state = this.session.press(x, y, atMillis);
+        this.history?.observeState(this.state);
+      }
     }
   }
 
@@ -875,6 +1095,7 @@ export class VenueRuntime {
     this.state = isHeld
       ? this.session.press(x, y, atMillis)
       : this.session.release(x, y, atMillis);
+    this.history?.observeState(this.state);
   }
 
   private renewRemoteFloorInputLease(clientId: string, client: RemoteFloorInputClient): void {
@@ -972,6 +1193,7 @@ export class VenueRuntime {
     this.pauseStartedAt = 0;
     this.sessionStartedUnix = 0;
     this.gameSessionId = "";
+    this.selectionHistoryId = "";
     this.applyHeldPressure(0);
   }
 
@@ -1069,22 +1291,6 @@ export class VenueRuntime {
     return { content: content as GameContent, contentRevision };
   }
 
-  private bestEffortCamera(action: string, request: Record<string, unknown>): void {
-    const base = validBaseUrl(process.env.MOTION_LEVELS_CAMERA_RECORDER_URL);
-    if (!base || request.recordingEnabled === false) return;
-    const path = action === "start" ? "/sessions/start" : "/sessions/stop";
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const token = process.env.MOTION_LEVELS_CAMERA_RECORDER_TOKEN?.trim();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    void fetch(new URL(path, base), {
-      method: "POST",
-      headers,
-      body: JSON.stringify(action === "start"
-        ? { ...request, startedUnixNanos: Date.now() * 1_000_000 }
-        : { ...request, endedUnixNanos: Date.now() * 1_000_000 }),
-      signal: AbortSignal.timeout(2_000)
-    }).catch((error) => this.options.log?.("camera hook failed", error));
-  }
 }
 
 export function productionCatalog(): PlayerExperienceGameSummary[] {
@@ -1259,6 +1465,19 @@ function normalizeScreensaverRefreshMillis(value: unknown): number {
 }
 
 function cleanText(value: unknown, max: number): string { return String(value ?? "").trim().slice(0, max); }
+
+function requestedRecordingPolicy(
+  policy: unknown,
+  legacyEnabled: unknown,
+  fallback: RecordingPolicy = { scope: "visit" }
+): RecordingPolicy {
+  if (policy !== undefined) return normalizeRecordingPolicy(policy);
+  if (legacyEnabled !== undefined) return normalizeRecordingPolicy(legacyEnabled);
+  return {
+    ...fallback,
+    ...(fallback.cameraIds ? { cameraIds: [...fallback.cameraIds] } : {})
+  };
+}
 
 function validBaseUrl(value: unknown): URL | null {
   try {

@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.motionlevels.com/session-history/session-history-v1.schema.json",
+  "title": "Motion Levels session history v1",
+  "$ref": "#/$defs/visit",
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "jsonObject": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+    },
+    "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$"
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 14,
+      "maxLength": 268,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}:[0-9]{12}$"
+    },
+    "unixMillis": { "type": "integer", "minimum": 0 },
+    "durationMillis": { "type": "number", "minimum": 0 },
+    "recordingScope": { "enum": ["visit", "selection", "run"] },
+    "recordingPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope"],
+      "properties": {
+        "scope": { "enum": ["off", "visit", "selection", "run"] },
+        "cameraIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" },
+          "uniqueItems": true
+        },
+        "includeAudio": { "type": "boolean" },
+        "preRollMillis": { "$ref": "#/$defs/durationMillis" },
+        "postRollMillis": { "$ref": "#/$defs/durationMillis" }
+      }
+    },
+    "player": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "team": { "type": "string" },
+        "metadata": { "$ref": "#/$defs/jsonObject" }
+      }
+    },
+    "recordingAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "status", "linkedRunIds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "captureId": { "$ref": "#/$defs/id" },
+        "scope": { "$ref": "#/$defs/recordingScope" },
+        "status": {
+          "enum": [
+            "requested",
+            "recording",
+            "finalizing",
+            "pending_upload",
+            "uploading",
+            "complete",
+            "partial",
+            "failed",
+            "missing"
+          ]
+        },
+        "selectionId": { "$ref": "#/$defs/id" },
+        "runId": { "$ref": "#/$defs/id" },
+        "linkedRunIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" },
+          "uniqueItems": true
+        },
+        "startedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "backend": { "type": "string" },
+        "cameraId": { "$ref": "#/$defs/id" },
+        "localPath": { "type": "string" },
+        "remoteUrl": { "type": "string" },
+        "shareUrl": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "contentType": { "type": "string" },
+        "byteSize": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "metadata": { "$ref": "#/$defs/jsonObject" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "scope": { "const": "selection" } }, "required": ["scope"] },
+          "then": { "required": ["selectionId"] }
+        },
+        {
+          "if": { "properties": { "scope": { "const": "run" } }, "required": ["scope"] },
+          "then": { "required": ["selectionId", "runId"] }
+        }
+      ]
+    },
+    "recordingBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "scope", "sessionId", "occurredAtUnixMillis", "policy", "recording"],
+      "properties": {
+        "type": { "enum": ["start", "stop"] },
+        "scope": { "$ref": "#/$defs/recordingScope" },
+        "sessionId": { "$ref": "#/$defs/sessionId" },
+        "selectionId": { "$ref": "#/$defs/id" },
+        "runId": { "$ref": "#/$defs/id" },
+        "occurredAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "policy": { "$ref": "#/$defs/recordingPolicy" },
+        "recording": { "$ref": "#/$defs/recordingAsset" }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ordinal",
+        "reason",
+        "status",
+        "startedAtUnixMillis",
+        "engineElapsedMillis",
+        "gameplayElapsedMillis",
+        "pausedMillis",
+        "phaseDurations"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "reason": { "enum": ["initial", "restart", "recovered"] },
+        "status": {
+          "enum": ["waiting", "starting", "running", "paused", "finished", "abandoned", "interrupted"]
+        },
+        "outcome": { "type": "string" },
+        "startedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "gameplayStartedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "finishedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "engineElapsedMillis": { "$ref": "#/$defs/durationMillis" },
+        "gameplayElapsedMillis": { "$ref": "#/$defs/durationMillis" },
+        "pausedMillis": { "$ref": "#/$defs/durationMillis" },
+        "phaseDurations": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/durationMillis" }
+        },
+        "success": { "type": "boolean" },
+        "score": { "type": "number" },
+        "lives": { "type": "number" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/player" } },
+        "rounds": { "type": "array", "items": { "$ref": "#/$defs/jsonObject" } },
+        "finalSnapshot": { "$ref": "#/$defs/jsonObject" }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ordinal",
+        "gameId",
+        "engineGame",
+        "manifestId",
+        "label",
+        "sourceKind",
+        "sourceRevision",
+        "difficulty",
+        "config",
+        "teamName",
+        "players",
+        "selectedAtUnixMillis",
+        "runs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "catalogGameId": { "$ref": "#/$defs/id" },
+        "catalogGameLabel": { "type": "string" },
+        "gameId": { "$ref": "#/$defs/id" },
+        "engineGame": { "type": "string", "minLength": 1 },
+        "manifestId": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" },
+        "sourceKind": { "type": "string", "minLength": 1 },
+        "sourceRevision": { "type": "string" },
+        "contentRevision": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "level": { "type": "string" },
+        "levelSlug": { "type": "string" },
+        "levelMode": { "type": "string" },
+        "durationMillis": { "$ref": "#/$defs/durationMillis" },
+        "config": { "$ref": "#/$defs/jsonObject" },
+        "teamName": { "type": "string" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/player" } },
+        "selectedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endReason": { "type": "string" },
+        "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sequence", "sessionId", "kind", "occurredAtUnixMillis", "payload"],
+      "properties": {
+        "id": { "$ref": "#/$defs/eventId" },
+        "sequence": { "type": "integer", "minimum": 1, "maximum": 999999999999 },
+        "sessionId": { "$ref": "#/$defs/sessionId" },
+        "selectionId": { "$ref": "#/$defs/id" },
+        "runId": { "$ref": "#/$defs/id" },
+        "kind": { "type": "string", "minLength": 1 },
+        "occurredAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "engineAtMillis": { "$ref": "#/$defs/durationMillis" },
+        "cue": { "type": "string" },
+        "message": { "type": "string" },
+        "payload": { "$ref": "#/$defs/jsonObject" }
+      }
+    },
+    "visit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "contractVersion",
+        "id",
+        "status",
+        "startedAtUnixMillis",
+        "teamName",
+        "players",
+        "recordingPolicy",
+        "selections",
+        "recordings",
+        "lastSequence",
+        "updatedAtUnixMillis"
+      ],
+      "properties": {
+        "schema": { "const": "motion-levels-session-history-v1" },
+        "contractVersion": { "const": 1 },
+        "id": { "$ref": "#/$defs/sessionId" },
+        "status": { "enum": ["active", "ended"] },
+        "origin": { "type": "string" },
+        "startedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endReason": { "type": "string" },
+        "controllerId": { "$ref": "#/$defs/id" },
+        "kioskId": { "$ref": "#/$defs/id" },
+        "teamName": { "type": "string" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/player" } },
+        "recordingPolicy": { "$ref": "#/$defs/recordingPolicy" },
+        "selections": { "type": "array", "items": { "$ref": "#/$defs/selection" } },
+        "recordings": { "type": "array", "items": { "$ref": "#/$defs/recordingAsset" } },
+        "activeSelectionId": { "$ref": "#/$defs/id" },
+        "activeRunId": { "$ref": "#/$defs/id" },
+        "lastSequence": { "type": "integer", "minimum": 0, "maximum": 999999999999 },
+        "updatedAtUnixMillis": { "$ref": "#/$defs/unixMillis" }
+      }
+    },
+    "selectionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "gameId", "label", "selectedAtUnixMillis", "runCount"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "gameId": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" },
+        "selectedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "runCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "startedAtUnixMillis",
+        "updatedAtUnixMillis",
+        "durationMillis",
+        "teamName",
+        "playerCount",
+        "players",
+        "recordingPolicy",
+        "selectionCount",
+        "runCount",
+        "recordingCount"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/sessionId" },
+        "status": { "enum": ["active", "ended"] },
+        "startedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "endedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "updatedAtUnixMillis": { "$ref": "#/$defs/unixMillis" },
+        "durationMillis": { "$ref": "#/$defs/durationMillis" },
+        "controllerId": { "$ref": "#/$defs/id" },
+        "kioskId": { "$ref": "#/$defs/id" },
+        "teamName": { "type": "string" },
+        "playerCount": { "type": "integer", "minimum": 0 },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/player" } },
+        "recordingPolicy": { "$ref": "#/$defs/recordingPolicy" },
+        "selectionCount": { "type": "integer", "minimum": 0 },
+        "runCount": { "type": "integer", "minimum": 0 },
+        "recordingCount": { "type": "integer", "minimum": 0 },
+        "activeSelection": { "$ref": "#/$defs/selectionSummary" },
+        "lastSelection": { "$ref": "#/$defs/selectionSummary" }
+      }
+    },
+    "sessionsEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "sessions", "nextCursor"],
+      "properties": {
+        "schema": { "const": "motion-levels-session-history-v1" },
+        "sessions": { "type": "array", "items": { "$ref": "#/$defs/summary" } },
+        "nextCursor": { "type": ["string", "null"] }
+      }
+    },
+    "sessionEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "session"],
+      "properties": {
+        "schema": { "const": "motion-levels-session-history-v1" },
+        "session": { "$ref": "#/$defs/visit" }
+      }
+    },
+    "eventsEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "sessionId", "events", "nextCursor"],
+      "properties": {
+        "schema": { "const": "motion-levels-session-history-v1" },
+        "sessionId": { "$ref": "#/$defs/sessionId" },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "nextCursor": { "type": ["string", "null"] }
+      }
+    },
+    "recordingEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "recording"],
+      "properties": {
+        "schema": { "const": "motion-levels-session-history-v1" },
+        "recording": { "$ref": "#/$defs/recordingAsset" }
+      }
+    }
+  }
+}
