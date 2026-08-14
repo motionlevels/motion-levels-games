@@ -14,7 +14,7 @@ test("local browser discovers games and native animations", () => {
   assert.match(appSource, /visibleLibraryGames/);
   assert.match(appSource, /visibleLibraryAnimations/);
   assert.match(appSource, /selectAnimation\(animation\.id\)/);
-  assert.match(appSource, /animationMediaURL\(animation\.id, "animation", animationMediaAppBaseURL\)/);
+  assert.match(appSource, /animationMediaURL\(animation\.id, "animation", animationMediaBundleRootURL\)/);
   assert.match(appSource, /onError=\{\(event\) => \{ event\.currentTarget\.hidden = true; \}\}/);
 });
 

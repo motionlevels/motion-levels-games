@@ -347,6 +347,8 @@ use the returned `dataUrl` directly.
 
 `media(gameId?, options?)` returns generated catalog-style assets for any game
 discovered by the playground. Omit `gameId` to use the currently selected game.
+The result also includes the canonical media `schema` and bundle-relative
+`media` references from `@motion-levels-games/game-sdk`.
 
 ```js
 const media = await ml.media("ping-pong");

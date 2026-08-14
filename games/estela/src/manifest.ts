@@ -30,7 +30,15 @@ export const manifest: GameManifest = {
       { atMillis: 100, type: "press", x: 2, y: 2 },
       { atMillis: 100, type: "press", x: 13, y: 29 },
       { atMillis: 100, type: "press", x: 13, y: 2 },
-      { atMillis: 100, type: "press", x: 2, y: 29 }
+      { atMillis: 100, type: "press", x: 2, y: 29 },
+      { atMillis: 3_450, type: "press", x: 3, y: 2 },
+      { atMillis: 3_700, type: "press", x: 12, y: 29 },
+      { atMillis: 3_950, type: "press", x: 12, y: 2 },
+      { atMillis: 4_200, type: "press", x: 3, y: 29 },
+      { atMillis: 4_450, type: "press", x: 4, y: 2 },
+      { atMillis: 4_700, type: "press", x: 11, y: 29 },
+      { atMillis: 4_950, type: "press", x: 11, y: 2 },
+      { atMillis: 5_200, type: "press", x: 4, y: 29 }
     ],
     captureStartMillis: 3_300,
     frameCount: 24,

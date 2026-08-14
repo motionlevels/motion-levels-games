@@ -3,7 +3,18 @@ import { spawn } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
-import { animationLibrary, animationMediaSchema, animationPreviewRecipe } from "../packages/animation-runtime/src/index.ts";
+import {
+  animationLibrary,
+  animationMediaReferences,
+  animationMediaSchema,
+  animationPreviewRecipe
+} from "../packages/animation-runtime/src/index.ts";
+import {
+  gameMediaReferences,
+  gameMediaSchema,
+  type GameConfigOptions,
+  type GameDifficulty
+} from "../packages/game-sdk/src/index.ts";
 import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
 
 const repoRoot = process.cwd();
@@ -28,12 +39,26 @@ try {
     // Chromium retains large canvas and encoded animation allocations after a
     // page closes. A fresh process per game bounds peak memory on the shared
     // CI runner and makes every game's render environment independent.
-    const media = await generateGameMedia(manifest.id);
+    const scenario = manifest.preview;
+    const media = await generateGameMedia(manifest.id, {
+      difficulty: scenario.difficulty,
+      options: scenario.options,
+      playerCount: scenario.playerCount,
+      seed: scenario.seed
+    });
     const gameDir = path.join(outputRoot, manifest.id);
     const assets = await writeMediaAssets(gameDir, media.assets);
     await writeFile(path.join(gameDir, "metadata.json"), `${JSON.stringify({
-      gameId: manifest.id,
-      scenario: manifest.preview,
+      schema: gameMediaSchema,
+      game: { id: manifest.id, label: manifest.label },
+      scenario,
+      configuration: {
+        difficulty: media.difficulty,
+        options: media.options,
+        playerCount: media.playerCount,
+        seed: media.seed
+      },
+      media: gameMediaReferences(manifest.id),
       assets
     }, null, 2)}\n`);
   }
@@ -55,6 +80,7 @@ try {
         tags: media.tags
       },
       recipe: animationPreviewRecipe,
+      media: animationMediaReferences(animation.id),
       assets
     }, null, 2)}\n`);
   }
@@ -73,7 +99,23 @@ type MediaAsset = {
   dataUrl: string;
 };
 
-type MediaBundle = { assets: Record<string, MediaAsset> };
+type GameMediaOptions = {
+  difficulty?: GameDifficulty;
+  options?: GameConfigOptions;
+  playerCount: number;
+  seed: number;
+};
+
+type MediaBundle = {
+  assets: Record<string, MediaAsset>;
+};
+
+type GameMediaBundle = MediaBundle & {
+  difficulty: GameDifficulty;
+  options: GameConfigOptions;
+  playerCount: number;
+  seed: number;
+};
 
 type AnimationMediaBundle = MediaBundle & {
   id: string;
@@ -85,17 +127,19 @@ type AnimationMediaBundle = MediaBundle & {
   tags: readonly string[];
 };
 
-async function generateGameMedia(gameId: string): Promise<MediaBundle> {
+async function generateGameMedia(gameId: string, options: GameMediaOptions): Promise<GameMediaBundle> {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
-    return await page.evaluate(async (id) => {
-      const api = (window as unknown as { ml?: { media(gameId: string): Promise<unknown> } }).ml;
+    return await page.evaluate(async ({ id, mediaOptions }) => {
+      const api = (window as unknown as {
+        ml?: { media(gameId: string, options: GameMediaOptions): Promise<unknown> };
+      }).ml;
       if (!api) throw new Error("playground API is not ready");
-      return api.media(id);
-    }, gameId) as MediaBundle;
+      return api.media(id, mediaOptions);
+    }, { id: gameId, mediaOptions: options }) as GameMediaBundle;
   } finally {
     await browser.close();
   }

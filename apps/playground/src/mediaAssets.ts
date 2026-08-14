@@ -12,25 +12,33 @@ import {
   DEFAULT_GAME_SEED,
   createGameEngine,
   defaultGamePlayerCount,
+  fileNameFromMediaReference,
+  gameMediaAssetSpecs,
+  gameMediaPreviewStillFrameIndex,
+  gameMediaReferences,
+  gameMediaSchema,
   normalizeGameConfig,
-  type Frame,
+  type FloorGameMediaAssetKind,
   type GameConfig,
   type GameConfigOptions,
   type GameConfigPlayer,
   type GameEngine,
-  type GameEngineState,
-  type GameDifficulty
+  type GameDifficulty,
+  type GameMediaAssetKind,
+  type GameMediaReferences
 } from "@motion-levels-games/game-sdk";
 import type { PlaygroundGame } from "./gameRegistry.ts";
 import { rotateFrameClockwise, type RenderableFrame } from "./frameTransforms.ts";
 import { loadDataUrlImage } from "./imageLoading.ts";
+import {
+  collectPreviewFrames,
+  type PlayerDisplayMediaFrame,
+  type PreviewFrame
+} from "./previewCapture.ts";
 
-export type PlaygroundMediaAssetKind =
-  | "thumbnailSmall"
-  | "thumbnail"
-  | "animation"
-  | "playerDisplay"
-  | "playerDisplayAnimation";
+export { collectPreviewFrames, type PlayerDisplayMediaFrame, type PreviewFrame } from "./previewCapture.ts";
+
+export type PlaygroundMediaAssetKind = GameMediaAssetKind;
 
 export type PlaygroundMediaAsset = {
   kind: PlaygroundMediaAssetKind;
@@ -42,6 +50,7 @@ export type PlaygroundMediaAsset = {
 };
 
 export type PlaygroundMediaBundle = {
+  schema: typeof gameMediaSchema;
   gameId: string;
   label: string;
   difficulty: GameDifficulty;
@@ -49,6 +58,7 @@ export type PlaygroundMediaBundle = {
   seed: number;
   playerCount: number;
   generatedAt: string;
+  media: GameMediaReferences;
   assets: Record<PlaygroundMediaAssetKind, PlaygroundMediaAsset>;
 };
 
@@ -73,18 +83,6 @@ export type PlayerDisplayAssetRenderer = (input: {
   game: PlaygroundGame;
 }) => Promise<Pick<PlaygroundMediaBundle["assets"], "playerDisplay" | "playerDisplayAnimation">>;
 
-export type PlayerDisplayMediaFrame = {
-  delayMs: number;
-  frame: Frame;
-  snapshot: GameEngineState["snapshot"];
-};
-
-type PreviewFrame = {
-  display: PlayerDisplayMediaFrame;
-  frame: RenderableFrame;
-  delayMs: number;
-};
-
 type WebPEncoderModule = {
   HEAP8: Int8Array;
   calledRun?: boolean;
@@ -92,12 +90,6 @@ type WebPEncoderModule = {
 };
 
 let webpEncoderModulePromise: Promise<WebPEncoderModule> | null = null;
-
-const thumbnailSmallTilePixels = 8;
-const thumbnailTilePixels = 32;
-const animationTilePixels = 16;
-const animationFrameCount = 18;
-const animationFrameDelayMs = 120;
 
 export async function generateGameMediaBundle(
   game: PlaygroundGame,
@@ -113,17 +105,19 @@ export async function generateGameMediaBundle(
     players: options.players
   }, game.manifest);
   const engine = createPreviewEngine(game, config);
-  const frames = collectPreviewFrames(engine, game);
-  const stillFrame = frames[Math.min(4, frames.length - 1)]?.frame ?? rotateFrameClockwise(engine.state.frame);
-  const baseName = game.manifest.id;
+  const frames = collectPreviewFrames(engine, preview);
+  const stillFrame = frames[Math.min(gameMediaPreviewStillFrameIndex, frames.length - 1)]?.frame
+    ?? rotateFrameClockwise(engine.state.frame);
+  const media = gameMediaReferences(game.manifest.id);
   const playerDisplayAssets = await renderPlayerDisplay({
-    animationFileName: `${baseName}-player-display-animation.webp`,
-    fileName: `${baseName}-player-display.webp`,
+    animationFileName: fileNameFromMediaReference(media.playerDisplayAnimation),
+    fileName: fileNameFromMediaReference(media.playerDisplay),
     frames: frames.map((frame) => frame.display),
     game
   });
 
   return {
+    schema: gameMediaSchema,
     gameId: game.manifest.id,
     label: game.manifest.label,
     difficulty: config.difficulty,
@@ -131,22 +125,19 @@ export async function generateGameMediaBundle(
     seed: config.seed,
     playerCount: config.playerCount,
     generatedAt: new Date().toISOString(),
+    media,
     assets: {
       thumbnailSmall: frameToImageAsset(stillFrame, {
-        fileName: `${baseName}-thumbnail-small.webp`,
+        fileName: fileNameFromMediaReference(media.thumbnailSmall),
         kind: "thumbnailSmall",
-        mimeType: "image/webp",
-        quality: 0.45,
-        tilePixels: thumbnailSmallTilePixels
+        quality: 0.45
       }),
       thumbnail: frameToImageAsset(stillFrame, {
-        fileName: `${baseName}-thumbnail.webp`,
+        fileName: fileNameFromMediaReference(media.thumbnail),
         kind: "thumbnail",
-        mimeType: "image/webp",
-        quality: 0.92,
-        tilePixels: thumbnailTilePixels
+        quality: 0.92
       }),
-      animation: await framesToAnimatedWebpAsset(frames, `${baseName}-preview.webp`),
+      animation: await framesToAnimatedWebpAsset(frames, fileNameFromMediaReference(media.animation)),
       ...playerDisplayAssets
     }
   };
@@ -189,16 +180,12 @@ export async function generateAnimationMediaBundle(animationId: string): Promise
       thumbnailSmall: frameToImageAsset(stillFrame, {
         fileName: fileNameFromMediaReference(references.thumbnailSmall),
         kind: "thumbnailSmall",
-        mimeType: "image/webp",
-        quality: 0.45,
-        tilePixels: thumbnailSmallTilePixels
+        quality: 0.45
       }),
       thumbnail: frameToImageAsset(stillFrame, {
         fileName: fileNameFromMediaReference(references.thumbnail),
         kind: "thumbnail",
-        mimeType: "image/webp",
-        quality: 0.92,
-        tilePixels: thumbnailTilePixels
+        quality: 0.92
       }),
       animation: await framesToAnimatedWebpAsset(
         frames,
@@ -228,49 +215,29 @@ function createPreviewEngine(
   });
 }
 
-function collectPreviewFrames(engine: GameEngine, game: PlaygroundGame): PreviewFrame[] {
-  const preview = game.manifest.preview;
-  const frames: PreviewFrame[] = [];
-
-  for (const action of [...preview.actions].sort((left, right) => left.atMillis - right.atMillis)) {
-    engine.tickTo(action.atMillis);
-    if (action.type === "press") {
-      engine.press(action.x, action.y, action.atMillis);
-    } else {
-      engine.release(action.x, action.y, action.atMillis);
-    }
+function floorTilePixels(frame: RenderableFrame, kind: FloorGameMediaAssetKind): number {
+  const spec = gameMediaAssetSpecs[kind];
+  const horizontalScale = spec.width / frame.width;
+  const verticalScale = spec.height / frame.height;
+  if (!Number.isInteger(horizontalScale) || horizontalScale !== verticalScale) {
+    throw new Error(
+      `${kind} ${spec.width}x${spec.height} is incompatible with frame ${frame.width}x${frame.height}.`
+    );
   }
-  engine.tickTo(preview.captureStartMillis);
-  const frameCount = Math.max(1, Math.min(120, preview.frameCount || animationFrameCount));
-  const frameIntervalMillis = Math.max(1, preview.frameIntervalMillis || animationFrameDelayMs);
-  for (let index = 0; index < frameCount; index += 1) {
-    const state = index === 0 ? engine.state : engine.step(frameIntervalMillis);
-    frames.push({
-      display: {
-        delayMs: frameIntervalMillis,
-        frame: state.frame,
-        snapshot: state.snapshot
-      },
-      frame: rotateFrameClockwise(state.frame),
-      delayMs: frameIntervalMillis
-    });
-  }
-
-  return frames;
+  return horizontalScale;
 }
 
 function frameToImageAsset(
   frame: RenderableFrame,
   options: {
     fileName: string;
-    kind: PlaygroundMediaAssetKind;
-    mimeType: "image/png" | "image/webp";
+    kind: FloorGameMediaAssetKind;
     quality?: number;
-    tilePixels: number;
   }
 ): PlaygroundMediaAsset {
-  const canvas = frameToCanvas(frame, options.tilePixels);
-  const dataUrl = canvas.toDataURL(options.mimeType, options.quality);
+  const spec = gameMediaAssetSpecs[options.kind];
+  const canvas = frameToCanvas(frame, floorTilePixels(frame, options.kind));
+  const dataUrl = canvas.toDataURL(spec.mimeType, options.quality);
   const mimeType = dataUrl.slice(5, dataUrl.indexOf(";"));
 
   return {
@@ -292,12 +259,13 @@ async function framesToAnimatedWebpAsset(
     throw new Error("Cannot render an animation without frames.");
   }
 
-  const width = first.width * animationTilePixels;
-  const height = first.height * animationTilePixels;
+  const spec = gameMediaAssetSpecs.animation;
+  const tilePixels = floorTilePixels(first, "animation");
+  const { width, height } = spec;
   const encoder = GIFEncoder();
 
   for (const frame of frames) {
-    const canvas = frameToCanvas(frame.frame, animationTilePixels);
+    const canvas = frameToCanvas(frame.frame, tilePixels);
     const context = canvas.getContext("2d");
     if (!context) {
       throw new Error("Could not render animation frame.");
@@ -326,22 +294,15 @@ async function framesToAnimatedWebpAsset(
   };
 }
 
-function fileNameFromMediaReference(reference: string): string {
-  const fileName = reference.split("/").at(-1);
-  if (!fileName) throw new Error(`Invalid media reference: ${reference}`);
-  return fileName;
-}
-
 export async function imagesToAnimatedWebpAsset(
   frames: Array<{ dataUrl: string; delayMs: number }>,
-  fileName: string,
-  width: number,
-  height: number
+  fileName: string
 ): Promise<PlaygroundMediaAsset> {
   if (frames.length === 0) {
     throw new Error("Cannot render a player display animation without frames.");
   }
 
+  const { width, height } = gameMediaAssetSpecs.playerDisplayAnimation;
   const encoder = GIFEncoder();
   const canvas = document.createElement("canvas");
   canvas.width = width;

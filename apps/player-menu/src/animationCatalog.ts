@@ -2,8 +2,14 @@ import type { PlatformGameCatalogEntry } from "./api";
 import type { GameCard } from "./catalog";
 import {
   animationLibraryById,
-  animationMediaURL
+  animationMediaReferences,
 } from "@motion-levels-games/animation-runtime";
+import {
+  bundledGamesSourceRevision,
+  revisionedBundleMediaURL,
+  type PlayerMenuLocation,
+} from "./bundleMedia.ts";
+import { catalogDirectAssetSrc, uniquePreviewSources } from "./previews.ts";
 
 const animationColors = ["#36d9ff", "#005af8", "#8dff6e", "#b987ff", "#ff9f45", "#ffd166"];
 
@@ -14,6 +20,7 @@ export function platformAnimationCards(catalog: PlatformGameCatalogEntry[] | nul
       const levelID = String(level.slug || level.id || "").trim();
       const previewRevisionHash = String(level.settings_hash || level.updated_at || entry.revision_hash || "").trim();
       const nativeMedia = nativeAnimationMediaSources(levelID);
+      const media = animationCardMediaSources(level, nativeMedia);
       return {
         id: `animation-${levelID}`,
         label: level.label || levelID,
@@ -27,9 +34,9 @@ export function platformAnimationCards(catalog: PlatformGameCatalogEntry[] | nul
         description: level.description || "Animación visible desde el editor.",
         rules: ["Animación visible desde el editor.", "Se guarda en caché local para abrir el menú más rápido."],
         engineGame: `animation-${levelID}`,
-        previewAnimation: nativeMedia ? undefined : `animation-${levelID}`,
+        previewAnimation: media ? undefined : `animation-${levelID}`,
         previewRevisionHash,
-        ...nativeMedia,
+        ...media,
         featured: false,
         minPlayers: 1,
         maxPlayers: 1,
@@ -39,12 +46,46 @@ export function platformAnimationCards(catalog: PlatformGameCatalogEntry[] | nul
     .filter((game) => game.id !== "animation-");
 }
 
-export function nativeAnimationMediaSources(animationId: string): Pick<GameCard, "previewSrc" | "previewSrcs" | "thumbnailSrc" | "thumbnailSrcs"> | undefined {
+function animationCardMediaSources(
+  level: NonNullable<PlatformGameCatalogEntry["levels"]>[number],
+  nativeMedia: ReturnType<typeof nativeAnimationMediaSources>,
+): Pick<GameCard, "previewSrc" | "previewSrcs" | "thumbnailSrc" | "thumbnailSrcs"> | undefined {
+  const authoredThumbnailSrcs = uniquePreviewSources([
+    catalogDirectAssetSrc(level.catalog_thumbnail_small_url),
+    catalogDirectAssetSrc(level.catalog_thumbnail_url),
+  ]);
+  const authoredPreviewSrcs = uniquePreviewSources([
+    catalogDirectAssetSrc(level.catalog_preview_url),
+  ]);
+  const thumbnailSrcs = uniquePreviewSources([
+    ...authoredThumbnailSrcs,
+    ...(nativeMedia?.thumbnailSrcs || []),
+    nativeMedia?.thumbnailSrc,
+  ]);
+  const previewSrcs = uniquePreviewSources([
+    ...authoredPreviewSrcs,
+    ...(nativeMedia?.previewSrcs || []),
+    nativeMedia?.previewSrc,
+  ]);
+  if (!thumbnailSrcs.length && !previewSrcs.length) return undefined;
+  return {
+    thumbnailSrc: thumbnailSrcs[0] || previewSrcs[0],
+    thumbnailSrcs,
+    previewSrc: previewSrcs[0] || thumbnailSrcs[0],
+    previewSrcs,
+  };
+}
+
+export function nativeAnimationMediaSources(
+  animationId: string,
+  options: { menuLocation?: PlayerMenuLocation; sourceRevision?: string } = {},
+): Pick<GameCard, "previewSrc" | "previewSrcs" | "thumbnailSrc" | "thumbnailSrcs"> | undefined {
   const id = animationId.trim().toLowerCase();
   if (!animationLibraryById.has(id)) return undefined;
-  const appBaseURL = new URL(import.meta.env?.BASE_URL || "/", globalThis.location?.href || "http://localhost/");
-  const thumbnailSrc = animationMediaURL(id, "thumbnailSmall", appBaseURL);
-  const previewSrc = animationMediaURL(id, "animation", appBaseURL);
+  const references = animationMediaReferences(id);
+  const sourceRevision = options.sourceRevision ?? bundledGamesSourceRevision();
+  const thumbnailSrc = revisionedBundleMediaURL(references.thumbnailSmall, sourceRevision, options.menuLocation);
+  const previewSrc = revisionedBundleMediaURL(references.animation, sourceRevision, options.menuLocation);
   return {
     thumbnailSrc,
     thumbnailSrcs: [thumbnailSrc],

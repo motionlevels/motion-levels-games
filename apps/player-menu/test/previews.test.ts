@@ -14,8 +14,10 @@ import {
   levelHasPreviewMedia,
   levelPreviewSrc,
   levelPreviewSrcs,
+  levelThumbnailSrc,
   levelThumbnailSrcs,
   partyPreviewGridSize,
+  richPreviewCandidates,
   uniquePreviewSources,
   webpPreviewRef,
 } from "../src/previews.ts";
@@ -85,14 +87,65 @@ describe("game and level preview resolution", () => {
 
   it("collects ordered, de-duplicated game source lists", () => {
     const game = gameCard({ previewSrc: "p.webp", previewSrcs: ["p.webp", "p2.webp"], thumbnailSrc: "t.webp", thumbnailSrcs: ["t.webp"] });
-    assert.deepEqual(gameThumbnailSrcs(game), ["t.webp", "p.webp"]);
+    assert.deepEqual(gameThumbnailSrcs(game), ["t.webp"]);
     assert.deepEqual(gamePreviewSrcs(game), ["p.webp", "p2.webp", "t.webp"]);
+  });
+
+  it("keeps animated preview candidates out of posters when a thumbnail exists", () => {
+    const game = gameCard({
+      thumbnailSrc: "thumbnail.webp",
+      thumbnailSrcs: ["thumbnail.webp"],
+      previewSrc: "preview.webp",
+      previewSrcs: ["preview.webp"],
+    });
+    const posterCandidates = gameThumbnailSrcs(game);
+    const richCandidates = richPreviewCandidates(posterCandidates, gamePreviewSrcs(game));
+
+    assert.deepEqual(posterCandidates, ["thumbnail.webp"]);
+    assert.deepEqual(richCandidates, ["preview.webp"]);
+  });
+
+  it("uses preview media as the poster only when no thumbnail exists", () => {
+    const game = gameCard({ previewSrc: "preview.webp", previewSrcs: ["preview.webp", "preview-2.webp"] });
+
+    assert.equal(gameThumbnailSrc(game), "preview.webp");
+    assert.deepEqual(gameThumbnailSrcs(game), ["preview.webp", "preview-2.webp"]);
   });
 
   it("falls back to game media when no level is selected", () => {
     const game = gameCard({ previewSrc: "p.webp", thumbnailSrc: "t.webp" });
     assert.equal(levelPreviewSrc(game, undefined, "medium"), "p.webp");
-    assert.deepEqual(levelThumbnailSrcs(undefined, game), ["p.webp", "t.webp"]);
+    assert.equal(levelThumbnailSrc(undefined, game), "t.webp");
+    assert.deepEqual(levelThumbnailSrcs(undefined, game), ["t.webp"]);
+  });
+
+  it("keeps level thumbnails ahead of richer preview media", () => {
+    const level = {
+      id: "l1",
+      label: "L1",
+      description: "",
+      thumbnailSrc: "thumb.webp",
+      thumbnailSrcs: ["thumb.webp", "thumb-2.webp"],
+      previewByDifficulty: { medium: "medium-preview.webp" },
+      previewSrc: "preview.webp",
+      previewSrcs: ["preview.webp", "preview-2.webp"],
+    } as Level;
+    const game = gameCard();
+
+    assert.equal(levelThumbnailSrc(level, game), "thumb.webp");
+    assert.deepEqual(levelThumbnailSrcs(level, game), [
+      "thumb.webp",
+      "thumb-2.webp",
+    ]);
+    assert.deepEqual(levelThumbnailSrcs({
+      ...level,
+      thumbnailSrc: undefined,
+      thumbnailSrcs: undefined,
+    }, game), [
+      "medium-preview.webp",
+      "preview.webp",
+      "preview-2.webp",
+    ]);
   });
 
   it("resolves per-difficulty level previews with fallback chain", () => {

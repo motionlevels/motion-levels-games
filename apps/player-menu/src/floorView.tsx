@@ -29,6 +29,7 @@ type DrawFloorCanvasOptions<TCell extends FloorBoardCell> = DisplayCells<TCell> 
   emptyColor?: string;
   tileSize?: number;
   gapSize?: number;
+  symmetricEdgeGaps?: boolean;
   drawCellOverlay?: (
     context: CanvasRenderingContext2D,
     cell: TCell,
@@ -65,6 +66,7 @@ type CanvasProps<TCell extends FloorBoardCell> = {
   emptyColor?: string;
   tileSize?: number;
   gapSize?: number;
+  symmetricEdgeGaps?: boolean;
   drawCellOverlay?: DrawFloorCanvasOptions<TCell>["drawCellOverlay"];
 };
 
@@ -132,6 +134,7 @@ export function FloorBoardCanvas<TCell extends FloorBoardCell>({
   emptyColor = DEFAULT_FLOOR_EMPTY_COLOR,
   tileSize = 1,
   gapSize = 0,
+  symmetricEdgeGaps = false,
   drawCellOverlay,
 }: CanvasProps<TCell>) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -141,8 +144,8 @@ export function FloorBoardCanvas<TCell extends FloorBoardCell>({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    drawFloorCanvas({ canvas, displayCols, displayRows, displayCells, emptyColor, tileSize, gapSize, drawCellOverlay });
-  }, [displayCells, displayCols, displayRows, drawCellOverlay, emptyColor, gapSize, tileSize]);
+    drawFloorCanvas({ canvas, displayCols, displayRows, displayCells, emptyColor, tileSize, gapSize, symmetricEdgeGaps, drawCellOverlay });
+  }, [displayCells, displayCols, displayRows, drawCellOverlay, emptyColor, gapSize, symmetricEdgeGaps, tileSize]);
 
   return (
     <canvas
@@ -194,14 +197,17 @@ export function drawFloorCanvas<TCell extends FloorBoardCell>({
   emptyColor = DEFAULT_FLOOR_EMPTY_COLOR,
   tileSize = 1,
   gapSize = 0,
+  symmetricEdgeGaps = false,
   drawCellOverlay,
 }: DrawFloorCanvasOptions<TCell>) {
   const context = canvas.getContext("2d");
   if (!context) return;
 
   const pitch = tileSize + gapSize;
-  const width = displayCols * pitch + gapSize;
-  const height = displayRows * pitch + gapSize;
+  const edgeGap = symmetricEdgeGaps ? gapSize / 2 : gapSize;
+  const trailingGap = symmetricEdgeGaps ? 0 : gapSize;
+  const width = displayCols * pitch + trailingGap;
+  const height = displayRows * pitch + trailingGap;
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   context.imageSmoothingEnabled = false;
@@ -210,8 +216,8 @@ export function drawFloorCanvas<TCell extends FloorBoardCell>({
 
   for (let index = 0; index < displayCells.length; index++) {
     const cell = displayCells[index];
-    const x = gapSize + (index % displayCols) * pitch;
-    const y = gapSize + Math.floor(index / displayCols) * pitch;
+    const x = edgeGap + (index % displayCols) * pitch;
+    const y = edgeGap + Math.floor(index / displayCols) * pitch;
     context.fillStyle = cell.color || emptyColor;
     context.fillRect(x, y, tileSize, tileSize);
     drawCellOverlay?.(context, cell, { x, y, size: tileSize });

@@ -1,3 +1,11 @@
+import {
+  gameMediaPreviewStillFrameIndex,
+  mediaAssetFileName,
+  mediaReferenceURL,
+  normalizeMediaId,
+  type FloorGameMediaAssetKind,
+  type GameMediaReferences
+} from "@motion-levels-games/game-sdk";
 import type { NativeAnimation, PressurePoint } from "./core.ts";
 
 export const animationMediaSchema = "motion-levels-animation-media-v1";
@@ -7,15 +15,11 @@ export const animationPreviewRecipe = Object.freeze({
   captureStartMillis: 800,
   frameCount: 24,
   frameIntervalMillis: 100,
-  stillFrameIndex: 4,
+  stillFrameIndex: gameMediaPreviewStillFrameIndex,
   pressure: Object.freeze({ x: 8, y: 16, startedAtMillis: 1_200 }) satisfies PressurePoint
 });
 
-export type AnimationMediaReferences = Readonly<{
-  thumbnailSmall: string;
-  thumbnail: string;
-  animation: string;
-}>;
+export type AnimationMediaReferences = Readonly<Pick<GameMediaReferences, FloorGameMediaAssetKind>>;
 
 export type AnimationMediaKind = keyof AnimationMediaReferences;
 
@@ -31,13 +35,17 @@ export type AnimationMediaCatalogEntry = Readonly<{
 }>;
 
 export function animationMediaReferences(animationId: string): AnimationMediaReferences {
-  const id = normalizeAnimationMediaId(animationId);
+  const id = normalizeMediaId(animationId);
   const root = `media/animations/${id}`;
   return Object.freeze({
-    thumbnailSmall: `${root}/${id}-thumbnail-small.webp`,
-    thumbnail: `${root}/${id}-thumbnail.webp`,
-    animation: `${root}/${id}-preview.webp`
+    thumbnailSmall: `${root}/${mediaAssetFileName(id, "thumbnailSmall")}`,
+    thumbnail: `${root}/${mediaAssetFileName(id, "thumbnail")}`,
+    animation: `${root}/${mediaAssetFileName(id, "animation")}`
   });
+}
+
+export function animationMediaMetadataReference(animationId: string): string {
+  return `media/animations/${normalizeMediaId(animationId)}/metadata.json`;
 }
 
 export function animationMediaCatalogEntry(animation: NativeAnimation): AnimationMediaCatalogEntry {
@@ -53,15 +61,7 @@ export function animationMediaCatalogEntry(animation: NativeAnimation): Animatio
   });
 }
 
-export function animationMediaURL(animationId: string, kind: AnimationMediaKind, appBaseURL: string | URL): string {
+export function animationMediaURL(animationId: string, kind: AnimationMediaKind, bundleRootURL: string | URL): string {
   const reference = animationMediaReferences(animationId)[kind];
-  return new URL(`../${reference}`, appBaseURL).toString();
-}
-
-function normalizeAnimationMediaId(value: string): string {
-  const id = String(value ?? "").trim().toLowerCase();
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id)) {
-    throw new Error(`Invalid animation media id: ${value}`);
-  }
-  return id;
+  return mediaReferenceURL(reference, bundleRootURL);
 }

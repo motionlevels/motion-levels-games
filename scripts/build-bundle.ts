@@ -7,10 +7,15 @@ import { c as createTar } from "tar";
 import {
   animationLibrary,
   animationMediaCatalogEntry,
+  animationMediaMetadataReference,
   animationMediaSchema,
   animationPreviewRecipe
 } from "../packages/animation-runtime/src/index.ts";
-import { DEFAULT_ENGINE_FPS } from "../packages/game-sdk/src/index.ts";
+import {
+  DEFAULT_ENGINE_FPS,
+  gameMediaMetadataReference,
+  gameMediaReferences
+} from "../packages/game-sdk/src/index.ts";
 import { controllerProtocolVersion } from "../apps/venue-runtime/src/controllerProtocol.ts";
 import { venueApiProtocolVersion } from "../apps/venue-runtime/src/apiProtocol.ts";
 import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
@@ -20,6 +25,10 @@ import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 const repoRoot = process.cwd();
 const sourceRevision = String(process.env.MOTION_LEVELS_GAMES_SOURCE_REVISION || execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" })).trim();
 if (!/^[0-9a-f]{40}$/u.test(sourceRevision)) throw new Error(`invalid source revision: ${sourceRevision}`);
+const sourceBuildDate = execFileSync("git", ["show", "-s", "--format=%cI", sourceRevision], {
+  cwd: repoRoot,
+  encoding: "utf8"
+}).trim();
 const outputRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(repoRoot, "dist/bundle"));
 const mediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path.join(repoRoot, "dist/media"));
 const displayCSS = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
@@ -28,7 +37,23 @@ const playerExperienceSchema = await readFile(path.join(repoRoot, "packages/play
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(path.join(outputRoot, "venue"), { recursive: true });
 await mkdir(path.join(outputRoot, "display"), { recursive: true });
+execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
+  "run",
+  "build",
+  "--workspace",
+  "@motion-levels-games/player-menu",
+], {
+  cwd: repoRoot,
+  env: {
+    ...process.env,
+    MOTION_LEVELS_BUILD_DATE: sourceBuildDate,
+    MOTION_LEVELS_BUILD_REVISION: sourceRevision,
+    MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision
+  },
+  stdio: "inherit"
+});
 await stat(path.join(repoRoot, "apps/player-menu/dist/index.html"));
+await stat(path.join(repoRoot, "apps/player-menu/dist/build.json"));
 await cp(path.join(repoRoot, "apps/player-menu/dist"), path.join(outputRoot, "menu"), { recursive: true });
 await stat(path.join(repoRoot, "apps/player-display/dist/index.html"));
 await cp(path.join(repoRoot, "apps/player-display/dist"), path.join(outputRoot, "display"), { recursive: true });
@@ -79,31 +104,25 @@ await build({
   legalComments: "none"
 });
 
-for (const manifest of gameCatalog.filter((game) => game.availability.production)) {
-  await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-thumbnail.webp`));
-  await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-preview.webp`));
-  await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-player-display.webp`));
-  await stat(path.join(mediaRoot, manifest.id, `${manifest.id}-player-display-animation.webp`));
+for (const manifest of gameCatalog) {
+  for (const reference of Object.values(gameMediaReferences(manifest.id))) {
+    await stat(path.join(mediaRoot, path.relative("media", reference)));
+  }
+  await stat(path.join(mediaRoot, path.relative("media", gameMediaMetadataReference(manifest.id))));
 }
 for (const animation of animationLibrary) {
   const media = animationMediaCatalogEntry(animation).media;
   await stat(path.join(mediaRoot, path.relative("media", media.thumbnailSmall)));
   await stat(path.join(mediaRoot, path.relative("media", media.thumbnail)));
   await stat(path.join(mediaRoot, path.relative("media", media.animation)));
-  await stat(path.join(mediaRoot, "animations", animation.id, "metadata.json"));
+  await stat(path.join(mediaRoot, path.relative("media", animationMediaMetadataReference(animation.id))));
 }
 await cp(mediaRoot, path.join(outputRoot, "media"), { recursive: true });
 
 const catalog = gameCatalog.map((manifest) => ({
   ...manifest,
   engineGame: `motion-levels-games:${manifest.id}`,
-  media: {
-    thumbnailSmall: `media/${manifest.id}/${manifest.id}-thumbnail-small.webp`,
-    thumbnail: `media/${manifest.id}/${manifest.id}-thumbnail.webp`,
-    animation: `media/${manifest.id}/${manifest.id}-preview.webp`,
-    playerDisplay: `media/${manifest.id}/${manifest.id}-player-display.webp`,
-    playerDisplayAnimation: `media/${manifest.id}/${manifest.id}-player-display-animation.webp`
-  }
+  media: gameMediaReferences(manifest.id)
 }));
 await writeFile(path.join(outputRoot, "catalog.json"), `${JSON.stringify(catalog, null, 2)}\n`);
 
@@ -134,7 +153,11 @@ const manifest = {
     shellEntry: "display/index.html",
     games: catalog.filter((game) => game.availability.production).map((game) => game.id)
   },
-  playerMenu: { entry: "menu/index.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion },
+  playerMenu: {
+    entry: "menu/index.html",
+    buildManifest: "menu/build.json",
+    adapterProtocolVersion: playerMenuAdapterProtocolVersion
+  },
   playerExperience: { contractVersion: 1, schema: "player-experience-state.schema.json" },
   playground: { entry: "playground/index.html", basePath: "/games/play/" },
   catalog: "catalog.json",

@@ -9,7 +9,8 @@ The required production entries are:
 
 - `venueRuntime: { entry: "venue/runtime.mjs", apiProtocolVersion: 1,
   controllerProtocolVersion: 2, games: [...] }`;
-- `playerMenu: { entry: "menu/index.html", adapterProtocolVersion: 2 }`;
+- `playerMenu: { entry: "menu/index.html", buildManifest: "menu/build.json",
+  adapterProtocolVersion: 2 }`;
 - `playerDisplay: { entry: "display/display.js", shellEntry:
   "display/index.html", games: [...] }`;
 - `playground: { entry: "playground/index.html", basePath: "/games/play/" }`.
@@ -25,7 +26,8 @@ The required production entries are:
 - `display/display.js`: the revision-matched browser player-display registry,
   declared as `playerDisplay.entry` and loaded by the shell;
 - `menu/`: the revision-matched static player menu, including its production
-  entry point declared as `playerMenu.entry`;
+  entry point and human-readable `build.json`; both the manifest and compiled
+  JavaScript declare the bundle's full `sourceRevision`;
 - `playground/`: the complete hosted menu-to-display playground, built for the
   canonical `/games/play/` path and declared as `playground.entry`;
 - `media/<game>/`: small/full thumbnails, animated WebP previews,
@@ -37,12 +39,22 @@ The player-display shell, renderer, menu, and venue runtime are built from this
 repository and shipped in one release. Venue consumers package and serve these
 files but do not keep fallback source builds.
 
-The animation runtime owns the IDs, labels, preview recipe, filenames, and
-bundle-relative media references. Platform and venue consumers should read
-`animations.json` rather than duplicating the TypeScript animation library or
-rendering catalog previews through a separate engine endpoint. The menu,
-playground, display, animation catalog, and gameplay runtime are mandatory and
-revision-matched. There is no legacy JSON-lines process protocol entry.
+`packages/game-sdk/src/media.ts` owns the media dimensions, filename suffixes,
+bundle-relative references, and URL resolution for both games and native
+animations. The five game surfaces are fixed at 256x128 (`thumbnailSmall`),
+1024x512 (`thumbnail`), 512x256 (`animation`), 1280x720 (`playerDisplay`), and
+640x360 (`playerDisplayAnimation`). `mediaReferenceURL` and the game/animation
+URL helpers receive the bundle root URL explicitly; consumers alone resolve an
+app path such as `menu/` or `playground/` back to that root.
+
+The animation runtime owns the animation IDs, labels, and deterministic preview
+recipe while reusing that SDK media contract. Platform and venue consumers
+should read `catalog.json` and `animations.json` rather than duplicating either
+TypeScript registry or rendering catalog previews through a separate endpoint.
+The menu, playground, display, animation catalog, and gameplay runtime are
+mandatory and revision-matched. There is no legacy JSON-lines process protocol
+entry. `npm run verify:bundle` validates every catalog reference, metadata file,
+content digest, actual WebP dimension, and animated-frame chunk before release.
 
 `venueRuntime.games` and `playerDisplay.games` contain only manifests with
 `availability.production: true`. Development games remain in the catalog and

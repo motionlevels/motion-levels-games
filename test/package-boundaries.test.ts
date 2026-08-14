@@ -53,6 +53,14 @@ test("workspace source imports respect package ownership", async () => {
     },
     { directory: "apps/playground/src", allowed: playgroundPackages },
     {
+      directory: "apps/player-menu/src",
+      allowed: new Set([
+        "@motion-levels-games/animation-runtime",
+        "@motion-levels-games/game-sdk",
+        "@motion-levels-games/player-experience"
+      ])
+    },
+    {
       directory: "apps/player-display/src",
       allowed: new Set(["@motion-levels-games/player-experience"])
     },

@@ -43,10 +43,12 @@ import {
   levelThumbnailSrc,
   levelThumbnailSrcs,
   partyPreviewGridSize,
+  richPreviewCandidates,
   uniquePreviewSources,
 } from "./previews";
 import { captureMenuEvent, menuKioskID, setMenuEventForwarder } from "./analytics";
 import { nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
+import { floorPreviewMediaSpec } from "./bundleMedia";
 import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
   closestLevelIDForDifficulty,
@@ -5005,9 +5007,10 @@ function Preview({
   const [loadedPosterSrc, setLoadedPosterSrc] = useState("");
   const [promotedSrc, setPromotedSrc] = useState("");
   const posterCandidates = useMemo(() => uniquePreviewSources([src, ...srcs]), [src, srcs]);
-  const richCandidates = useMemo(() => (
-    uniquePreviewSources([richSrc, ...richSrcs]).filter((candidate) => !posterCandidates.includes(candidate))
-  ), [posterCandidates, richSrc, richSrcs]);
+  const richCandidates = useMemo(
+    () => richPreviewCandidates(posterCandidates, [richSrc, ...richSrcs]),
+    [posterCandidates, richSrc, richSrcs],
+  );
   const sourceCandidates = useMemo(() => uniquePreviewSources([...posterCandidates, ...richCandidates]), [posterCandidates, richCandidates]);
   const posterSrc = posterCandidates.find((candidate) => !failedSrcs.includes(candidate));
   const richCandidate = richCandidates.find((candidate) => !failedSrcs.includes(candidate));
@@ -5023,6 +5026,9 @@ function Preview({
 
   useEffect(() => {
     setLoadedPosterSrc("");
+  }, [posterSrc]);
+
+  useEffect(() => {
     setPromotedSrc("");
   }, [posterSrc, richCandidate]);
 
@@ -5055,11 +5061,20 @@ function Preview({
   const showAnimation = Boolean((promotedToAnimation || !mediaSrc) && anim);
   const showLogoFallback = !mediaSrc && !showAnimation;
   return (
-    <div className={`preview ${compact ? "compact-preview" : ""} ${logoMedia || showLogoFallback ? "logo-preview" : ""}`} data-media-unavailable={mediaUnavailable || undefined}>
+    <div
+      className={`preview ${compact ? "compact-preview" : ""} ${logoMedia || showLogoFallback ? "logo-preview" : ""}`}
+      style={{
+        "--preview-media-width": `${floorPreviewMediaSpec.width}px`,
+        "--preview-media-aspect": `${floorPreviewMediaSpec.width} / ${floorPreviewMediaSpec.height}`,
+      } as CSSProperties}
+      data-media-unavailable={mediaUnavailable || undefined}
+    >
       {mediaSrc ? (
         <img
           className={`preview-media ${logoMedia ? "logo-preview-media" : ""}`}
           src={mediaSrc}
+          width={logoMedia ? undefined : floorPreviewMediaSpec.width}
+          height={logoMedia ? undefined : floorPreviewMediaSpec.height}
           alt=""
           aria-hidden="true"
           decoding="async"

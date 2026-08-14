@@ -30,6 +30,8 @@ import { FloorPreview, PlayerDisplayRuntimeProvider } from "@motion-levels-games
 import {
   createGameEngine,
   defaultGamePlayerCount,
+  gameMediaAssetSpecs,
+  gameMediaPreviewStillFrameIndex,
   gamePlayerCountOptions,
   DEFAULT_GAME_SEED,
   DEFAULT_ENGINE_FPS,
@@ -100,11 +102,9 @@ import { readPlayerJourneyLaunch } from "./playerJourney.ts";
 import { localPlayerMenuUrl, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 
-const playerDisplayMediaWidth = 1280;
-const playerDisplayMediaHeight = 720;
-const playerDisplayAnimationWidth = 640;
-const playerDisplayAnimationHeight = 360;
-const animationMediaAppBaseURL = new URL(import.meta.env.BASE_URL, window.location.href);
+const playerDisplayMediaSpec = gameMediaAssetSpecs.playerDisplay;
+const playerDisplayAnimationSpec = gameMediaAssetSpecs.playerDisplayAnimation;
+const animationMediaBundleRootURL = new URL("../", new URL(import.meta.env.BASE_URL, window.location.href));
 const difficultyLabels: Record<string, string> = {
   easy: "Easy",
   medium: "Medium",
@@ -736,14 +736,14 @@ export function App() {
           });
           await waitForPaint();
           const capture = await captureDisplayElement(host);
-          if (index === Math.min(4, frames.length - 1)) {
+          if (index === Math.min(gameMediaPreviewStillFrameIndex, frames.length - 1)) {
             stillCapture = capture.dataUrl;
           }
           animationFrames.push({
             dataUrl: await downscaleCaptureToPng(
               capture.dataUrl,
-              playerDisplayAnimationWidth,
-              playerDisplayAnimationHeight
+              playerDisplayAnimationSpec.width,
+              playerDisplayAnimationSpec.height
             ),
             delayMs: displayFrame.delayMs
           });
@@ -751,21 +751,24 @@ export function App() {
         if (!stillCapture) {
           throw new Error("Player display media requires at least one preview frame.");
         }
-        const webp = await downscaleCaptureToWebp(stillCapture, playerDisplayMediaWidth, playerDisplayMediaHeight, 0.9);
+        const webp = await downscaleCaptureToWebp(
+          stillCapture,
+          playerDisplayMediaSpec.width,
+          playerDisplayMediaSpec.height,
+          0.9
+        );
         return {
           playerDisplay: {
             kind: "playerDisplay",
-            width: playerDisplayMediaWidth,
-            height: playerDisplayMediaHeight,
+            width: playerDisplayMediaSpec.width,
+            height: playerDisplayMediaSpec.height,
             mimeType: "image/webp",
             fileName,
             dataUrl: webp
           },
           playerDisplayAnimation: await imagesToAnimatedWebpAsset(
             animationFrames,
-            animationFileName,
-            playerDisplayAnimationWidth,
-            playerDisplayAnimationHeight
+            animationFileName
           )
         };
       } finally {
@@ -1577,7 +1580,7 @@ export function App() {
                             decoding="async"
                             loading="lazy"
                             onError={(event) => { event.currentTarget.hidden = true; }}
-                            src={animationMediaURL(animation.id, "animation", animationMediaAppBaseURL)}
+                            src={animationMediaURL(animation.id, "animation", animationMediaBundleRootURL)}
                           />
                           <i />
                         </span>
