@@ -4838,7 +4838,8 @@ function OperatorSettingsDialog({
             <>
               <section className="settings-version-card" aria-label="Versión del menú">
                 <span className="micro">Diagnóstico</span>
-                <strong>menu {__MENU_BUILD_REVISION__}</strong>
+                <strong>{__MOTION_LEVELS_GAMES_BUILD_VERSION__}</strong>
+                <small className="settings-build-revision">Revisión {__MENU_BUILD_REVISION__}</small>
                 <div className="settings-health" aria-label="Estado del sistema">
                   <div className={engineLabel === "Conectado" ? "ok" : "warn"}><span>Motor</span><b>{engineLabel}</b></div>
                   <div className={floorLabel === "Conectado" ? "ok" : "danger"}><span>Suelo</span><b>{floorLabel}</b></div>

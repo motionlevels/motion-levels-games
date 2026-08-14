@@ -5,6 +5,24 @@ by `bundle.json` with schema `motion-levels-games-bundle-v2` and contract
 version `2`. Consumers recompute the sorted file list, every SHA-256, and the
 canonical `artifactDigest` before install.
 
+The manifest keeps two distinct forms of build identity. `sourceRevision` is
+always the full 40-character Git SHA used by the runtime, catalog, and asset
+matching contracts. `buildVersion` is the compact player-facing label shared
+by the menu, display shell, and hosted playground. When the source revision has
+a canonical exact tag `games-vMAJOR.MINOR.PATCH`, the visible value is
+`vMAJOR.MINOR.PATCH` and `releaseTag` records the original tag. Otherwise
+`buildVersion` is exactly the first six characters of `sourceRevision` and
+`releaseTag` is `null`.
+
+`MOTION_LEVELS_GAMES_RELEASE_TAG` is the explicit build-time override for a
+planned immutable release tag. It must use the canonical tag format and takes
+precedence over repository tags. Without that override, the builder considers
+only canonical tags pointing exactly at `sourceRevision`; if several exist,
+the highest version-sorted tag wins. The compact label never replaces or
+weakens the full-SHA contracts. The main release gate resolves this label
+before building its verified artifact, while tag creation remains a later
+promotion step.
+
 The required production entries are:
 
 - `venueRuntime: { entry: "venue/runtime.mjs", apiProtocolVersion: 1,
@@ -23,12 +41,14 @@ The required production entries are:
 - `venue/runtime.mjs`: the in-process TypeScript gameplay runtime and venue API;
 - `display/index.html`, `display/build.json`, and the shell's static assets: the
   complete production TV shell and its full source revision, declared as
-  `playerDisplay.shellEntry` and `playerDisplay.buildManifest`;
+  `playerDisplay.shellEntry` and `playerDisplay.buildManifest`; `build.json`
+  also mirrors the bundle's `buildVersion` and `releaseTag`;
 - `display/display.js`: the revision-matched browser player-display registry,
   declared as `playerDisplay.entry` and loaded by the shell;
 - `menu/`: the revision-matched static player menu, including its production
   entry point and human-readable `build.json`; both the manifest and compiled
-  JavaScript declare the bundle's full `sourceRevision`;
+  JavaScript declare the bundle's full `sourceRevision`, while `build.json`
+  also mirrors the bundle's `buildVersion` and `releaseTag`;
 - `playground/`: the complete hosted menu-to-display playground, built for the
   canonical `/games/play/` path and declared as `playground.entry`;
 - `media/<game>/`: small/full thumbnails, animated WebP previews,
@@ -59,7 +79,8 @@ TypeScript registry or rendering catalog previews through a separate endpoint.
 The menu, playground, display, animation catalog, and gameplay runtime are
 mandatory and revision-matched. There is no legacy JSON-lines process protocol
 entry. `npm run verify:bundle` validates every catalog reference, metadata file,
-content digest, actual WebP dimension, and animated-frame chunk before release.
+content digest, actual WebP dimension, animated-frame chunk, and the shared
+build identity compiled into the player menu and display shell before release.
 
 `venueRuntime.games` and `playerDisplay.games` contain only manifests with
 `availability.production: true`. Development games remain in the catalog and

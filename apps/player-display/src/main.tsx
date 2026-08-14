@@ -6,6 +6,14 @@ import "./styles.css";
 
 const kioskDesignWidth = 1920;
 const kioskDesignHeight = 1080;
+const kioskBuildVersion = (
+  <small
+    className="kiosk-build-version"
+    aria-label={`Versión desplegada: ${__MOTION_LEVELS_GAMES_BUILD_VERSION__}`}
+  >
+    {__MOTION_LEVELS_GAMES_BUILD_VERSION__}
+  </small>
+);
 
 function kioskScale() {
   if (fixedKioskPreviewViewport()) return 1;
@@ -48,7 +56,10 @@ function KioskViewport({ children }: { children: ReactNode }) {
   return (
     <div className="kiosk-viewport">
       <div className="kiosk-stage" style={stageStyle}>
-        <div className="kiosk-frame">{children}</div>
+        <div className="kiosk-frame">
+          {children}
+          {kioskBuildVersion}
+        </div>
       </div>
     </div>
   );

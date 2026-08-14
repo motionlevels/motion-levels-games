@@ -24,11 +24,13 @@ import {
   SESSION_HISTORY_SCHEMA
 } from "../packages/session-history/src/index.ts";
 import { playerMenuAdapterProtocolVersion } from "../apps/player-menu/src/protocol.ts";
+import { resolveGamesBuildIdentity } from "./build-version.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 
 const repoRoot = process.cwd();
 const sourceRevision = String(process.env.MOTION_LEVELS_GAMES_SOURCE_REVISION || execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" })).trim();
 if (!/^[0-9a-f]{40}$/u.test(sourceRevision)) throw new Error(`invalid source revision: ${sourceRevision}`);
+const { buildVersion, releaseTag } = resolveGamesBuildIdentity(sourceRevision, { cwd: repoRoot });
 const sourceBuildDate = execFileSync("git", ["show", "-s", "--format=%cI", sourceRevision], {
   cwd: repoRoot,
   encoding: "utf8"
@@ -51,39 +53,31 @@ const sessionHistorySchema = await readFile(path.join(repoRoot, "packages/sessio
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(path.join(outputRoot, "venue"), { recursive: true });
 await mkdir(path.join(outputRoot, "display"), { recursive: true });
-execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
-  "run",
-  "build",
-  "--workspace",
+const applicationBuildEnvironment = {
+  ...process.env,
+  MOTION_LEVELS_BUILD_DATE: sourceBuildDate,
+  MOTION_LEVELS_BUILD_REVISION: sourceRevision,
+  MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision,
+  ...(releaseTag === null ? {} : { MOTION_LEVELS_GAMES_RELEASE_TAG: releaseTag })
+};
+for (const workspace of [
   "@motion-levels-games/player-menu",
-], {
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    MOTION_LEVELS_BUILD_DATE: sourceBuildDate,
-    MOTION_LEVELS_BUILD_REVISION: sourceRevision,
-    MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision
-  },
-  stdio: "inherit"
-});
+  "@motion-levels-games/player-display"
+]) {
+  execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
+    "run",
+    "build",
+    "--workspace",
+    workspace
+  ], {
+    cwd: repoRoot,
+    env: applicationBuildEnvironment,
+    stdio: "inherit"
+  });
+}
 await stat(path.join(repoRoot, "apps/player-menu/dist/index.html"));
 await stat(path.join(repoRoot, "apps/player-menu/dist/build.json"));
 await cp(path.join(repoRoot, "apps/player-menu/dist"), path.join(outputRoot, "menu"), { recursive: true });
-execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
-  "run",
-  "build",
-  "--workspace",
-  "@motion-levels-games/player-display",
-], {
-  cwd: repoRoot,
-  env: {
-    ...process.env,
-    MOTION_LEVELS_BUILD_DATE: sourceBuildDate,
-    MOTION_LEVELS_BUILD_REVISION: sourceRevision,
-    MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision
-  },
-  stdio: "inherit"
-});
 await stat(path.join(repoRoot, "apps/player-display/dist/index.html"));
 await stat(path.join(repoRoot, "apps/player-display/dist/build.json"));
 await cp(path.join(repoRoot, "apps/player-display/dist"), path.join(outputRoot, "display"), { recursive: true });
@@ -95,9 +89,7 @@ execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", [
 ], {
   cwd: repoRoot,
   env: {
-    ...process.env,
-    MOTION_LEVELS_BUILD_REVISION: sourceRevision,
-    MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision,
+    ...applicationBuildEnvironment,
     VITE_HOSTED_PLAYER_EXPERIENCE: "true",
     VITE_PLAYGROUND_BASE: "/games/play/",
     VITE_POSTHOG_ENABLED: "false",
@@ -171,6 +163,8 @@ const manifest = {
   schema: "motion-levels-games-bundle-v2",
   contractVersion: 2,
   sourceRevision,
+  buildVersion,
+  releaseTag,
   sdkFps: DEFAULT_ENGINE_FPS,
   artifactDigest,
   venueRuntime: {
@@ -207,4 +201,4 @@ const archivePath = path.join(repoRoot, "dist", `motion-levels-games-${sourceRev
 await createTar({ cwd: outputRoot, file: archivePath, gzip: true, portable: true, mtime: new Date(0) }, ["."]);
 const archive = await readFile(archivePath);
 await writeFile(`${archivePath}.sha256`, `${createHash("sha256").update(archive).digest("hex")}  ${path.basename(archivePath)}\n`);
-console.log(JSON.stringify({ archivePath, artifactDigest, files: files.length, sourceRevision }, null, 2));
+console.log(JSON.stringify({ archivePath, artifactDigest, files: files.length, sourceRevision, buildVersion, releaseTag }, null, 2));
