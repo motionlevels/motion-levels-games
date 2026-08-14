@@ -950,16 +950,26 @@ export class VenueRuntime {
     const fresh = seen && ageMillis <= 15_000;
     const lastFeedUnixMillis = Number(report.lastFeedUnixMillis ?? 0);
     const feedFresh = Number.isFinite(lastFeedUnixMillis) && lastFeedUnixMillis > 0 && Date.now() - lastFeedUnixMillis <= 15_000;
+    const lastPaintUnixMillis = Number(report.lastPaintUnixMillis ?? 0);
+    const hasPaint = Number.isFinite(lastPaintUnixMillis) && lastPaintUnixMillis > 0;
+    const paintAgeMillis = hasPaint ? Math.abs(Date.now() - lastPaintUnixMillis) : 0;
+    const paintFresh = hasPaint && paintAgeMillis <= 15_000;
     const connected = report.connected === true || (report.feedTransport === "poll" && feedFresh);
-    const revisionMatches = seen
+    const rendererRevisionMatches = seen
       && report.expectedRevision === this.options.sourceRevision
       && report.loadedRevision === this.options.sourceRevision;
+    const shellRevisionMatches = seen && report.shellRevision === this.options.sourceRevision;
+    const revisionMatches = rendererRevisionMatches && shellRevisionMatches;
     return {
       ...report,
       seen,
       fresh,
-      healthy: fresh && connected && report.renderStatus === "ready" && matchesCurrentGame && revisionMatches,
+      healthy: fresh && connected && paintFresh && report.renderStatus === "ready" && matchesCurrentGame && revisionMatches,
       matchesCurrentGame,
+      paintFresh,
+      paintAgeMillis,
+      rendererRevisionMatches,
+      shellRevisionMatches,
       revisionMatches,
       receivedUnixMillis: this.displayClientReceivedUnixMillis,
       ageMillis

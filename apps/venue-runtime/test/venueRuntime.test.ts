@@ -76,10 +76,12 @@ test("configured TV audio is controllable while idle and reports display output 
     currentGame: "salvapantallas",
     expectedRevision: revision,
     loadedRevision: revision,
+    shellRevision: revision,
     renderStatus: "ready",
     connected: true,
     feedTransport: "eventsource",
     lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
     audioOutputState: "ready",
   });
   assert.equal(runtime.status().audioOutputState, "ready");
@@ -157,13 +159,18 @@ test("idle display health requires the revisioned animations renderer", () => {
     currentGame: "salvapantallas",
     expectedRevision: revision,
     loadedRevision: revision,
+    shellRevision: revision,
     renderStatus: "ready",
     connected: false,
     feedTransport: "poll",
     lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
   });
   const status = runtime.displayClientStatus();
   assert.equal(status.fresh, true);
+  assert.equal(status.paintFresh, true);
+  assert.equal(status.rendererRevisionMatches, true);
+  assert.equal(status.shellRevisionMatches, true);
   assert.equal(status.revisionMatches, true);
   assert.equal(status.healthy, true);
 
@@ -172,12 +179,46 @@ test("idle display health requires the revisioned animations renderer", () => {
     currentGame: "salvapantallas",
     expectedRevision: "",
     loadedRevision: "",
+    shellRevision: revision,
     renderStatus: "ready",
     connected: false,
     feedTransport: "poll",
     lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
   });
   assert.equal(runtime.displayClientStatus().revisionMatches, false);
+  assert.equal(runtime.displayClientStatus().healthy, false);
+
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    shellRevision: "2".repeat(40),
+    renderStatus: "ready",
+    connected: false,
+    feedTransport: "poll",
+    lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
+  });
+  assert.equal(runtime.displayClientStatus().rendererRevisionMatches, true);
+  assert.equal(runtime.displayClientStatus().shellRevisionMatches, false);
+  assert.equal(runtime.displayClientStatus().revisionMatches, false);
+  assert.equal(runtime.displayClientStatus().healthy, false);
+
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    shellRevision: revision,
+    renderStatus: "ready",
+    connected: false,
+    feedTransport: "poll",
+    lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now() - 20_000,
+  });
+  assert.equal(runtime.displayClientStatus().paintFresh, false);
   assert.equal(runtime.displayClientStatus().healthy, false);
 });
 

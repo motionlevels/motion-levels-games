@@ -16,6 +16,7 @@
     "check:fast": "npm run lint && npm run typecheck",
     "test": "npm run test --workspaces --if-present",
     "test:player-menu:browser": "tsx scripts/test-player-menu-browser.ts",
+    "test:player-menu:update-browser": "tsx scripts/test-player-menu-update-browser.ts",
     "test:contracts": "tsx --test test/*.test.ts",
     "test:all": "npm test && npm run test:contracts && npm run test:scaffold",
     "test:coverage:sdk": "tsx --test --experimental-test-coverage --test-coverage-include='packages/game-sdk/src/**' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=80 packages/game-sdk/test/*.test.ts",

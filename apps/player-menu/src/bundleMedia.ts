@@ -37,7 +37,11 @@ export function resolveBundleRootURL(menuLocation: PlayerMenuLocation = browserM
   let bundlePath = menuMatch[1] || "/";
   if (menuKind === "player-menu" && bundlePath.endsWith("/games/play/")) {
     bundlePath = bundlePath.slice(0, -"play/".length);
-  } else if (menuKind === "menu" && !bundlePath.endsWith("/games/")) {
+  } else if (
+    menuKind === "menu"
+    && !bundlePath.endsWith("/games/")
+    && !/\/games\/[^/]+\/$/u.test(bundlePath)
+  ) {
     bundlePath = `${bundlePath}games/`;
   }
 
@@ -53,7 +57,8 @@ export function revisionedBundleMediaURL(
   const revision = String(sourceRevision || "").trim();
   if (!revision) throw new Error("A games source revision is required for bundle media");
 
-  const mediaURL = new URL(mediaReferenceURL(reference, resolveBundleRootURL(menuLocation)));
+  const bundleRoot = revisionedBundleRootURL(revision, menuLocation);
+  const mediaURL = new URL(mediaReferenceURL(reference, bundleRoot));
   mediaURL.searchParams.set("revision", revision);
   return mediaURL.toString();
 }
@@ -78,6 +83,19 @@ function browserMenuLocation(): PlayerMenuLocation {
 function locationHref(menuLocation: PlayerMenuLocation): string {
   if (typeof menuLocation === "string") return menuLocation;
   return menuLocation.href;
+}
+
+function revisionedBundleRootURL(sourceRevision: string, menuLocation: PlayerMenuLocation): URL {
+  const menuURL = new URL(locationHref(menuLocation), "http://localhost/menu/");
+  const menuKind = menuURL.pathname.match(/^(?:.*\/)(player-menu|menu)(?:\/.*)?$/u)?.[1];
+  const bundleRoot = resolveBundleRootURL(menuLocation);
+
+  // Native venue and gateway `/menu/` routes are aliases to the active menu,
+  // while `/games/<revision>/` is the immutable bundle namespace. Embedded
+  // `/player-menu/` builds already live beside their media and stay relative
+  // to their host application.
+  if (menuKind !== "menu" || /\/games\/[^/]+\/$/u.test(bundleRoot.pathname)) return bundleRoot;
+  return withoutSearchOrHash(new URL(`${encodeURIComponent(sourceRevision)}/`, bundleRoot));
 }
 
 function withoutSearchOrHash(url: URL): URL {
