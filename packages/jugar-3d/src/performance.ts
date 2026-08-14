@@ -29,7 +29,10 @@ export const jugarStageQualityBudgets: Readonly<Record<JugarStageQuality, JugarS
     "venue-high": createBudget(60, 18.5, 175, 170, 33_000, 168, 4, 9, 36),
     // Local native capture/desktop p95 was 1.90x. The slowest self-hosted
     // SwiftShader capture measured 1,305.6 ms; 1,400 ms keeps 7% headroom.
-    capture: createBudget(45, 40, 1400, 170, 33_000, 168, 4, 9, 36)
+    // The same eight-avatar capture scene compiles either 9 or 10 programs in
+    // SwiftShader depending on shader readiness; keep one exact variant of
+    // headroom without relaxing any other structural budget.
+    capture: createBudget(45, 40, 1400, 170, 33_000, 168, 4, 10, 36)
   });
 
 export type JugarStagePerformanceSample = Readonly<{

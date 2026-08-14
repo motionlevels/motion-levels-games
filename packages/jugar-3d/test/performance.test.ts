@@ -41,6 +41,7 @@ test("quality tiers expose explicit complete-scene budgets", () => {
   assert.equal(jugarStageQualityBudgets.capture.maxSoftwareP95FrameMillis, 1400);
   assert.equal(jugarStageQualityBudgets.capture.maxP95FrameMillis, 40);
   assert.equal(jugarStageQualityBudgets.capture.maxDrawCalls, 170);
+  assert.equal(jugarStageQualityBudgets.capture.maxPrograms, 10);
 });
 
 test("the performance monitor is bounded and evaluates every structural channel", () => {
