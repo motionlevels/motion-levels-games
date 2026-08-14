@@ -15,7 +15,8 @@ import {
   PlayerReadyOverlay,
   PlayerScorePanel,
   RoundStrip,
-  VersusScoreboard
+  VersusScoreboard,
+  floorTileAfterKeyboardNavigation
 } from "../src/index.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
@@ -140,6 +141,53 @@ test("FloorPreview renders the 16x32 frame with tile metadata", () => {
   assert.match(html, /data-tile-x="3"/);
   assert.match(html, /data-tile-y="4"/);
   assert.match(html, /data-color="#148cff"/);
+});
+
+test("FloorPreview exposes authoritative pressure separately from remote input", () => {
+  const frame = createFrame("#05070a");
+  const pressedCellIndex = 4 * frame.width + 3;
+  const cells = frame.cells.map((cell, index) => index === pressedCellIndex
+    ? { ...cell, pressed: true }
+    : cell);
+  const html = renderToStaticMarkup(React.createElement(FloorPreview, {
+    ariaLabel: "Suelo autoritativo de Sala",
+    frame: { ...frame, cells },
+    interactive: true
+  }));
+
+  assert.match(html, /aria-label="Suelo autoritativo de Sala"/);
+  assert.match(
+    html,
+    /class="ml-floor-tile ml-floor-tile-authoritative-pressed"[^>]*data-tile-x="3"[^>]*data-tile-y="4"/
+  );
+  assert.match(html, /data-authoritative-pressed="true"/);
+  assert.match(html, /aria-label="Baldosa 3, 4; presión física detectada"/);
+  assert.match(styleSource, /\.ml-floor-tile-authoritative-pressed\s*\{[^}]*box-shadow:[^}]*filter:\s*brightness/s);
+  assert.match(
+    html,
+    /data-authoritative-pressed="true"[^>]*data-input-pressed="false"[^>]*aria-pressed="false"/,
+    "physical pressure must not masquerade as the locally latched remote input"
+  );
+});
+
+test("interactive FloorPreview has one roving keyboard stop", () => {
+  const html = renderToStaticMarkup(React.createElement(FloorPreview, {
+    frame: createFrame("#05070a"),
+    interactive: true
+  }));
+
+  assert.equal((html.match(/tabindex="0"/g) ?? []).length, 1);
+  assert.equal((html.match(/tabindex="-1"/g) ?? []).length, 511);
+});
+
+test("FloorPreview keyboard navigation stays within the floor grid", () => {
+  assert.deepEqual(floorTileAfterKeyboardNavigation({ x: 3, y: 4 }, "ArrowLeft", 16, 32), { x: 2, y: 4 });
+  assert.deepEqual(floorTileAfterKeyboardNavigation({ x: 3, y: 4 }, "ArrowDown", 16, 32), { x: 3, y: 5 });
+  assert.deepEqual(floorTileAfterKeyboardNavigation({ x: 0, y: 0 }, "ArrowLeft", 16, 32), { x: 0, y: 0 });
+  assert.deepEqual(floorTileAfterKeyboardNavigation({ x: 15, y: 31 }, "ArrowDown", 16, 32), { x: 15, y: 31 });
+  assert.deepEqual(floorTileAfterKeyboardNavigation({ x: 7, y: 4 }, "Home", 16, 32), { x: 0, y: 4 });
+  assert.deepEqual(floorTileAfterKeyboardNavigation({ x: 7, y: 4 }, "End", 16, 32), { x: 15, y: 4 });
+  assert.equal(floorTileAfterKeyboardNavigation({ x: 3, y: 4 }, "Enter", 16, 32), null);
 });
 
 test("FloorPreview positions tiles by coordinates instead of cell order", () => {

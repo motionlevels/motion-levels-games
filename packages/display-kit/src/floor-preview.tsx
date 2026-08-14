@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Frame, FrameCell } from "@motion-levels-games/game-sdk";
+import type { FrameCell } from "@motion-levels-games/game-sdk";
 import {
   FloorInputPainter,
   floorTileFromClientPoint,
@@ -8,45 +8,66 @@ import {
   type FloorInputTile
 } from "./floor-input-painter.ts";
 
-type PreviewFrame = Frame | { width: number; height: number; cells: FrameCell[] };
+export type FloorPreviewCell = FrameCell & { pressed?: boolean };
+export type FloorPreviewFrame = { width: number; height: number; cells: FloorPreviewCell[] };
+export type FloorPreviewProps = {
+  ariaLabel?: string;
+  className?: string;
+  frame: FloorPreviewFrame;
+  inputResetKey?: string | number;
+  interactive?: boolean;
+  onTilePress?: (x: number, y: number) => void;
+  onTileRelease?: (x: number, y: number) => void;
+};
+
+export function floorTileAfterKeyboardNavigation(
+  tile: FloorInputTile,
+  key: string,
+  columns: number,
+  rows: number
+): FloorInputTile | null {
+  if (columns < 1 || rows < 1) return null;
+  if (key === "ArrowLeft") return { x: Math.max(0, tile.x - 1), y: tile.y };
+  if (key === "ArrowRight") return { x: Math.min(columns - 1, tile.x + 1), y: tile.y };
+  if (key === "ArrowUp") return { x: tile.x, y: Math.max(0, tile.y - 1) };
+  if (key === "ArrowDown") return { x: tile.x, y: Math.min(rows - 1, tile.y + 1) };
+  if (key === "Home") return { x: 0, y: tile.y };
+  if (key === "End") return { x: columns - 1, y: tile.y };
+  return null;
+}
 
 export function FramePreviewPanel({
   frame,
   label = "Vista del suelo",
   className = ""
 }: {
-  frame: PreviewFrame;
+  frame: FloorPreviewFrame;
   label?: string;
   className?: string;
 }) {
   return (
     <section className={`ml-frame-preview-panel ${className}`.trim()}>
       <span>{label}</span>
-      <FloorPreview frame={frame} />
+      <FloorPreview ariaLabel={label} frame={frame} />
     </section>
   );
 }
 
 export function FloorPreview({
+  ariaLabel = "Vista del suelo",
   frame,
   interactive = false,
   inputResetKey,
   onTilePress,
   onTileRelease,
   className = ""
-}: {
-  frame: PreviewFrame;
-  interactive?: boolean;
-  inputResetKey?: string | number;
-  onTilePress?: (x: number, y: number) => void;
-  onTileRelease?: (x: number, y: number) => void;
-  className?: string;
-}) {
+}: FloorPreviewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const inputPainterRef = useRef(new FloorInputPainter());
   const previousInputResetKeyRef = useRef(inputResetKey);
   const [occupiedTileKeys, setOccupiedTileKeys] = useState(() => new Set<string>());
+  const [keyboardTileKey, setKeyboardTileKey] = useState("");
   const style = {
     "--ml-floor-cols": frame.width,
     "--ml-floor-rows": frame.height
@@ -187,6 +208,20 @@ export function FloorPreview({
     applyInputActions(inputPainterRef.current.begin(tile));
     inputPainterRef.current.end();
   }, [applyInputActions]);
+  const firstTile = frame.cells[0];
+  const firstTileKey = firstTile ? `${firstTile.x}:${firstTile.y}` : "";
+  const rovingTileKey = frame.cells.some((cell) => `${cell.x}:${cell.y}` === keyboardTileKey)
+    ? keyboardTileKey
+    : firstTileKey;
+  const focusKeyboardTile = useCallback((tile: FloorInputTile) => {
+    const key = `${tile.x}:${tile.y}`;
+    setKeyboardTileKey(key);
+    window.requestAnimationFrame(() => {
+      rootRef.current
+        ?.querySelector<HTMLButtonElement>(`button[data-tile-x="${tile.x}"][data-tile-y="${tile.y}"]`)
+        ?.focus({ preventScroll: true });
+    });
+  }, []);
 
   return (
     <div
@@ -199,7 +234,9 @@ export function FloorPreview({
       ref={rootRef}
       style={style}
       role="grid"
-      aria-label="Vista del suelo"
+      aria-colcount={frame.width}
+      aria-label={ariaLabel}
+      aria-rowcount={frame.height}
     >
       {frame.cells.map((cell) => {
         const tileStyle = {
@@ -208,20 +245,24 @@ export function FloorPreview({
           gridRowStart: cell.y + 1
         } as CSSProperties;
         const key = `${cell.x}-${cell.y}`;
-        const occupied = occupiedTileKeys.has(`${cell.x}:${cell.y}`);
+        const tileKey = `${cell.x}:${cell.y}`;
+        const occupied = occupiedTileKeys.has(tileKey);
+        const authoritativelyPressed = cell.pressed === true;
         const sharedProps = {
-          className: "ml-floor-tile",
+          className: `ml-floor-tile ${authoritativelyPressed ? "ml-floor-tile-authoritative-pressed" : ""}`.trim(),
           style: tileStyle,
           "data-tile-x": cell.x,
           "data-tile-y": cell.y,
-          "data-color": cell.color
+          "data-color": cell.color,
+          "data-authoritative-pressed": authoritativelyPressed ? "true" : "false",
+          "data-input-pressed": occupied ? "true" : "false"
         };
 
         if (interactive) {
           return (
             <button
               {...sharedProps}
-              aria-label={`Baldosa ${cell.x}, ${cell.y}`}
+              aria-label={`Baldosa ${cell.x}, ${cell.y}; ${authoritativelyPressed ? "presión física detectada" : "sin presión física"}`}
               aria-pressed={occupied}
               key={key}
               onClick={(event) => {
@@ -229,6 +270,14 @@ export function FloorPreview({
                   handleKeyboardActivation(cell);
                 }
               }}
+              onFocus={() => setKeyboardTileKey(tileKey)}
+              onKeyDown={(event) => {
+                const nextTile = floorTileAfterKeyboardNavigation(cell, event.key, frame.width, frame.height);
+                if (!nextTile) return;
+                event.preventDefault();
+                focusKeyboardTile(nextTile);
+              }}
+              tabIndex={tileKey === rovingTileKey ? 0 : -1}
               type="button"
             />
           );

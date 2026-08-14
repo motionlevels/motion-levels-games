@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { GamePlayer, GameSnapshot } from "@motion-levels-games/game-sdk";
 
-export { FloorPreview, FramePreviewPanel } from "./floor-preview.tsx";
+export { FloorPreview, FramePreviewPanel, floorTileAfterKeyboardNavigation } from "./floor-preview.tsx";
+export type { FloorPreviewCell, FloorPreviewFrame, FloorPreviewProps } from "./floor-preview.tsx";
 
 export type Tone = "amber" | "blue" | "cyan" | "green" | "magenta" | "pink" | "red" | "yellow" | "neutral";
 export type DisplayPlayer = Pick<GamePlayer, "label" | "score" | "color">;
