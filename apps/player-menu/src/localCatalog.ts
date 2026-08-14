@@ -1,4 +1,4 @@
-import type { GameManifest } from "@motion-levels-games/game-sdk";
+import { gameManifestSlug, type GameManifest } from "@motion-levels-games/game-sdk";
 import type { PlatformGameCatalogEntry } from "./contracts";
 import {
   bundledGamesSourceRevision,
@@ -55,7 +55,7 @@ function localCatalogEntry(
       : `${manifest.players.min}-${manifest.players.max}`;
   return {
     id: manifest.id,
-    engine_game: `motion-levels-games:${manifest.id}`,
+    engine_game: `motion-levels-games:${gameManifestSlug(manifest)}`,
     label: manifest.label,
     description: manifest.description ?? "",
     catalog_category: manifest.catalog.category,

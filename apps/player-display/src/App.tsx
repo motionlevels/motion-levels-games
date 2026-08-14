@@ -1,12 +1,14 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { PlayerExperienceStateGate } from "@motion-levels-games/player-experience";
 import { displayEventSource, fetchDisplayStatus, type DisplayStatus } from "./api";
 import { audioEventKey, VenueAudioOutput, type AudioOutputState } from "./audio";
 import { reportDisplayClient } from "./displayClient";
-import { acceptedPlayerStateRevision, createCoalescer, isFeedStalled } from "./displayFeed";
+import { createCoalescer, isFeedStalled } from "./displayFeed";
 import { challengeMode, heartMeterSlotCount, levelDisplayAttemptCount, levelDisplayTimeLabel, levelDisplayTimeMillis, levelHeartMeterModel } from "./displayMetrics";
 import { shouldReportDisplayClient, type GamesDisplayRenderState } from "./displayRuntime";
 import { playerLifecycleLabelES } from "./displayText";
+import { claimPlayerDisplayReload, playerDisplayReloadURL, revisionConvergenceDecision } from "./revisionConvergence";
 import { colorCSS, colorRGB, difficultyLabelES, formatClock, gameTitleES, levelLabelES, phaseLabel, playerLabelES } from "./utils";
 import { MotionLevelsGamesDisplay } from "./MotionLevelsGamesDisplay";
 
@@ -17,6 +19,8 @@ const FALLBACK_UPDATE_MS = 250;
 const STALL_MS = 750;
 const STREAM_RECONNECT_MS = 3000;
 const DISPLAY_HEARTBEAT_MS = 5000;
+const REVISION_RELOAD_DELAY_MS = 500;
+const PLAYER_DISPLAY_REVISION = MOTION_LEVELS_PLAYER_DISPLAY_REVISION;
 
 const emptyStatus: DisplayStatus = {
   contractVersion: 1,
@@ -98,7 +102,8 @@ export default function App() {
     const monoNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
     let lastEventAt = monoNow();
     let lastReconnectAt = 0;
-    let acceptedRevision = 0;
+    let acceptedStatus: DisplayStatus | null = null;
+    const statusGate = new PlayerExperienceStateGate();
     let source: EventSource | null = null;
 
     // Render the freshest status at most once per frame so the high-frequency
@@ -115,9 +120,8 @@ export default function App() {
 
     const accept = (next: DisplayStatus, transport: "eventsource" | "poll") => {
       if (cancelled) return;
-      const revision = acceptedPlayerStateRevision(acceptedRevision, next);
-      if (revision === null) return;
-      acceptedRevision = revision;
+      if (!statusGate.accepts(acceptedStatus, next)) return;
+      acceptedStatus = next;
       lastEventAt = monoNow();
       lastFeedAt.current = Date.now();
       feedTransport.current = transport;
@@ -213,6 +217,34 @@ export default function App() {
       };
 
   useEffect(() => {
+    if (!telemetryEnabled) return;
+    const sourceRevision = liveStatus.sourceRevision || "";
+    const decision = revisionConvergenceDecision({
+      shellRevision: PLAYER_DISPLAY_REVISION,
+      sourceRevision,
+      lifecycle: liveStatus.lifecycle,
+      renderStatus: effectiveRenderState.status,
+    });
+    if (decision !== "reload") return;
+    const handle = window.setTimeout(() => {
+      let storage: Storage | undefined;
+      try {
+        storage = window.sessionStorage;
+      } catch {
+        // The URL revision marker still prevents a reload loop.
+      }
+      if (!claimPlayerDisplayReload({
+        currentURL: window.location.href,
+        shellRevision: PLAYER_DISPLAY_REVISION,
+        sourceRevision,
+        storage,
+      })) return;
+      window.location.replace(playerDisplayReloadURL(window.location.href, sourceRevision));
+    }, REVISION_RELOAD_DELAY_MS);
+    return () => window.clearTimeout(handle);
+  }, [effectiveRenderState.status, liveStatus.lifecycle, liveStatus.sourceRevision, telemetryEnabled]);
+
+  useEffect(() => {
     audioOutput.configure(liveStatus.audioEnabled, liveStatus.audioMuted);
   }, [audioOutput, liveStatus.audioEnabled, liveStatus.audioMuted]);
 
@@ -265,6 +297,7 @@ export default function App() {
         currentGame: liveStatus.currentGame,
         expectedRevision: effectiveRenderState.expectedRevision,
         loadedRevision: effectiveRenderState.loadedRevision,
+        shellRevision: PLAYER_DISPLAY_REVISION,
         renderStatus: effectiveRenderState.status,
         renderAttempt: effectiveRenderState.attempt,
         connected: liveConnected,

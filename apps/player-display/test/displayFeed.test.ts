@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { acceptedPlayerStateRevision, createCoalescer, isFeedStalled, type FrameScheduler } from "../src/displayFeed.ts";
+import { createCoalescer, isFeedStalled, type FrameScheduler } from "../src/displayFeed.ts";
 
 function manualScheduler() {
   let pending: (() => void) | null = null;
@@ -104,15 +104,5 @@ describe("isFeedStalled", () => {
     assert.equal(isFeedStalled(1000, 1000 + 2499, 2500), false);
     assert.equal(isFeedStalled(1000, 1000 + 2500, 2500), true);
     assert.equal(isFeedStalled(1000, 1000 + 9000, 2500), true);
-  });
-});
-
-describe("acceptedPlayerStateRevision", () => {
-  it("rejects delayed, duplicate, invalid, and incompatible state", () => {
-    assert.equal(acceptedPlayerStateRevision(7, { contractVersion: 1, revision: 8 }), 8);
-    assert.equal(acceptedPlayerStateRevision(7, { contractVersion: 1, revision: 7 }), null);
-    assert.equal(acceptedPlayerStateRevision(7, { contractVersion: 1, revision: 4 }), null);
-    assert.equal(acceptedPlayerStateRevision(7, { contractVersion: 2, revision: 9 }), null);
-    assert.equal(acceptedPlayerStateRevision(7, { contractVersion: 1, revision: 7.5 }), null);
   });
 });
