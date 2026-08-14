@@ -669,6 +669,7 @@ export class SessionHistoryRecorder {
     const key = recordingKey(scope, selectionId, runId);
     const at = this.now();
     let recording: RecordingAsset;
+    let preserveQueuedStart = false;
     if (type === "start") {
       const id = randomUUID();
       recording = {
@@ -695,15 +696,22 @@ export class SessionHistoryRecorder {
       this.cancelStartRetry(id);
       const current = this.store.getVisit(visit.id).recordings.find((candidate) => candidate.id === id);
       if (!current) return;
+      const terminalRun = scope === "run"
+        ? visit.selections.find((candidate) => candidate.id === selectionId)?.runs.find((candidate) => candidate.id === runId)
+        : undefined;
+      preserveQueuedStart = current.status === "requested" && terminalRun?.status === "finished";
       recording = {
         ...current,
         status: this.options.recordingClient ? "finalizing" : "missing",
-        endedAtUnixMillis: at
+        endedAtUnixMillis: at,
+        metadata: preserveQueuedStart
+          ? { ...(current.metadata ?? {}), startBeforeTerminalStop: true }
+          : current.metadata
       };
       this.activeRecordings.delete(key);
     }
     this.store.upsertRecording(visit.id, recording);
-    this.enqueueBoundary(type, visit, recording, selectionId, runId, afterSuccess);
+    this.enqueueBoundary(type, visit, recording, selectionId, runId, afterSuccess, preserveQueuedStart);
   }
 
   private enqueueBoundary(
@@ -712,14 +720,16 @@ export class SessionHistoryRecorder {
     recording: RecordingAsset,
     selectionId?: string,
     runId?: string,
-    afterSuccess?: () => void
+    afterSuccess?: () => void,
+    preserveQueuedStart = false
   ): void {
     const client = this.options.recordingClient;
     if (!client) return;
     const occurredAtUnixMillis = type === "start"
       ? recording.startedAtUnixMillis ?? this.now()
       : recording.endedAtUnixMillis ?? this.now();
-    const generation = (this.recordingGeneration.get(recording.id) ?? 0) + 1;
+    const previousGeneration = this.recordingGeneration.get(recording.id) ?? 0;
+    const generation = preserveQueuedStart ? Math.max(1, previousGeneration) : previousGeneration + 1;
     this.recordingGeneration.set(recording.id, generation);
     const boundary: RecordingBoundary = {
       type,
@@ -856,10 +866,19 @@ export class SessionHistoryRecorder {
     try {
       const visit = this.store.getVisit(sessionId);
       const current = visit.recordings.find((candidate) => candidate.id === recording.id);
+      const active = this.activeRecordings.get(recordingKey(recording.scope, recording.selectionId, recording.runId)) === recording.id
+        && current?.status === "requested";
+      const terminalRun = recording.scope === "run"
+        ? visit.selections.find((candidate) => candidate.id === recording.selectionId)?.runs.find((candidate) => candidate.id === recording.runId)
+        : undefined;
+      const terminalPair = current?.status === "finalizing"
+        && current.metadata?.startBeforeTerminalStop === true
+        && visit.activeSelectionId === recording.selectionId
+        && visit.activeRunId === recording.runId
+        && terminalRun?.status === "finished";
       return visit.status === "active"
         && visit.recordingPolicy.scope === recording.scope
-        && this.activeRecordings.get(recordingKey(recording.scope, recording.selectionId, recording.runId)) === recording.id
-        && current?.status === "requested";
+        && (active || terminalPair);
     } catch {
       return false;
     }

@@ -41,15 +41,19 @@ the kiosk can continue it.
 ## Hierarchy and recording policy
 
 History is organized as visit → game selections → runs. Selecting a game adds
-a selection. Restarting it closes the current run and opens another run under
-that same selection.
+a selection. An explicit restart, an automatic retry after a failed published
+level, or an automatic advance to the next published level closes the current
+run and opens another run under that same selection. Automatic attempt changes
+keep the game engine's continuous clock, while each persisted run and its
+events use an attempt-relative clock starting at zero.
 
 Recording policy is an object with one of these scopes:
 
 - `off`: do not request camera recording.
 - `visit`: one capture for the complete visit.
 - `selection`: one capture per selected game, including all of its restarts.
-- `run`: one capture per individual run/restart.
+- `run`: one capture per individual run, explicit restart, automatic failed
+  attempt retry, or automatic next-level attempt.
 
 Legacy `recordingEnabled: true|false` remains accepted and maps to `visit` or
 `off`. Changing scope while a visit is active closes the prior capture and

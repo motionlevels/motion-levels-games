@@ -240,6 +240,7 @@ export class VenueRuntime {
   private pauseStartedAt = 0;
   private sessionStartedUnix = 0;
   private gameSessionId = "";
+  private historyRunEngineOriginMillis = 0;
   private selectionHistoryId = "";
   private venueSessionId = "";
   private venueSessionStartedUnix = 0;
@@ -398,6 +399,7 @@ export class VenueRuntime {
       options: request.config ?? {},
       ...(contentResult ? { content: contentResult.content } : {})
     });
+    this.historyRunEngineOriginMillis = this.state.clockMillis;
     if (requestedVenueSessionId) {
       const sameVenueSession = requestedVenueSessionId === this.venueSessionId;
       const recordingPolicy = requestedRecordingPolicy(
@@ -470,7 +472,7 @@ export class VenueRuntime {
         name: player.label,
         metadata: { color: player.color }
       }))
-    }, this.state);
+    }, this.historyState(this.state));
     this.applyHeldPressure(0);
     this.publishDisplay();
     return this.status();
@@ -488,21 +490,20 @@ export class VenueRuntime {
     if (!this.selection) throw new RequestValidationError("no active game");
     if (action === "pause") {
       if (!this.state.paused) this.pauseStartedAt = now;
-      this.state = this.session.pause(this.elapsedAt(now));
-      this.history?.observeState(this.state);
+      this.acceptSessionState(this.session.pause(this.elapsedAt(now)));
     } else if (action === "resume") {
       if (this.state.paused && this.pauseStartedAt > 0) this.gameStartedAt += now - this.pauseStartedAt;
       this.pauseStartedAt = 0;
-      this.state = this.session.resume();
-      this.history?.observeState(this.state);
+      this.acceptSessionState(this.session.resume());
       this.applyHeldPressure(this.state.clockMillis);
     } else if (action === "restart") {
       this.state = this.session.restart(0);
+      this.historyRunEngineOriginMillis = this.state.clockMillis;
       this.gameStartedAt = now;
       this.pauseStartedAt = 0;
       this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
       this.gameSessionId = randomUUID();
-      this.history?.restartRun(this.gameSessionId, this.state);
+      this.history?.restartRun(this.gameSessionId, this.historyState(this.state));
       this.applyHeldPressure(0);
     } else if (action === "narration" || action === "mute" || action === "unmute" || action === "toggle_mute") {
       // Audio is intentionally unavailable until the venue provides a TS-owned adapter.
@@ -591,9 +592,9 @@ export class VenueRuntime {
       label: snapshot.label || this.selection.manifest.label,
       difficulty: this.selection.difficulty,
       difficultyConfigurable: (this.selection.manifest.config?.difficulty?.options?.length ?? 0) > 1,
-      level: this.selection.level,
-      levelSlug: this.selection.levelSlug,
-      levelMode: this.selection.levelMode,
+      level: cleanText((snapshot as unknown as Record<string, unknown>).level, 256) || this.selection.level,
+      levelSlug: cleanText((snapshot as unknown as Record<string, unknown>).levelSlug, 256) || this.selection.levelSlug,
+      levelMode: cleanText((snapshot as unknown as Record<string, unknown>).mode, 32) || this.selection.levelMode,
       teamName: this.venueSessionTeamName || this.selection.teamName,
       playerCount: snapshot.playerCount,
       playerConfigurable: !this.selection.manifest.players.allowAny,
@@ -1027,8 +1028,7 @@ export class VenueRuntime {
 
   private tick(now: number): void {
     if (!this.state.paused) {
-      this.state = this.session.tick(this.elapsedAt(now));
-      this.history?.observeState(this.state);
+      this.acceptSessionState(this.session.tick(this.elapsedAt(now)));
     }
     const frame = this.state.frame;
     this.frameSequence += 1n;
@@ -1048,12 +1048,45 @@ export class VenueRuntime {
     return Math.max(0, (this.pauseStartedAt || now) - this.gameStartedAt);
   }
 
+  private acceptSessionState(next: GameSessionState): void {
+    const previous = this.state;
+    this.state = next;
+    const automaticAttempt = this.selection?.manifest.tags?.includes("published-levels") === true
+      && publishedAttemptStarted(previous, next);
+    if (automaticAttempt) {
+      this.historyRunEngineOriginMillis = next.clockMillis;
+      this.gameSessionId = randomUUID();
+      this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
+      this.history?.restartRun(this.gameSessionId, this.historyState(next));
+      return;
+    }
+    this.history?.observeState(this.historyState(next));
+  }
+
+  private historyState(state: GameSessionState): GameSessionState {
+    const origin = this.historyRunEngineOriginMillis;
+    if (origin <= 0) return state;
+    const snapshot = { ...state.snapshot } as unknown as Record<string, unknown>;
+    for (const key of ["attemptCreatedMillis", "attemptStartedMillis", "attemptEndedMillis", "lastEventMillis"]) {
+      const value = snapshot[key];
+      if (typeof value === "number" && Number.isFinite(value)) snapshot[key] = Math.max(0, value - origin);
+    }
+    return {
+      ...state,
+      clockMillis: Math.max(0, state.clockMillis - origin),
+      snapshot: snapshot as unknown as GameSessionState["snapshot"],
+      events: state.events.map((event) => ({
+        ...event,
+        atMillis: Math.max(0, event.atMillis - origin)
+      }))
+    };
+  }
+
   private applyHeldPressure(atMillis: number): void {
     for (const key of this.heldPressure) {
       const [x, y] = key.split(",").map(Number);
       if (x !== undefined && y !== undefined) {
-        this.state = this.session.press(x, y, atMillis);
-        this.history?.observeState(this.state);
+        this.acceptSessionState(this.session.press(x, y, atMillis));
       }
     }
   }
@@ -1094,10 +1127,9 @@ export class VenueRuntime {
     if (wasHeld === isHeld) return;
     if (isHeld) this.heldPressure.add(key); else this.heldPressure.delete(key);
     const atMillis = this.elapsedAt(performance.now());
-    this.state = isHeld
+    this.acceptSessionState(isHeld
       ? this.session.press(x, y, atMillis)
-      : this.session.release(x, y, atMillis);
-    this.history?.observeState(this.state);
+      : this.session.release(x, y, atMillis));
   }
 
   private renewRemoteFloorInputLease(clientId: string, client: RemoteFloorInputClient): void {
@@ -1194,6 +1226,7 @@ export class VenueRuntime {
       options,
       ...(this.screensaverContent ? { content: this.screensaverContent } : {})
     });
+    this.historyRunEngineOriginMillis = this.state.clockMillis;
     this.selection = null;
     this.gameStartedAt = performance.now();
     this.pauseStartedAt = 0;
@@ -1385,6 +1418,17 @@ function nonNegative(value: unknown): number {
 }
 
 function nonNegativeInteger(value: unknown): number { return Math.floor(nonNegative(value)); }
+
+function publishedAttemptStarted(previous: GameSessionState, next: GameSessionState): boolean {
+  const previousSnapshot = previous.snapshot as unknown as Record<string, unknown>;
+  const nextSnapshot = next.snapshot as unknown as Record<string, unknown>;
+  const previousAttempt = Number(previousSnapshot.attemptCreatedMillis);
+  const nextAttempt = Number(nextSnapshot.attemptCreatedMillis);
+  return String(previous.snapshot.phase) === "finished"
+    && Number.isFinite(previousAttempt)
+    && Number.isFinite(nextAttempt)
+    && nextAttempt > previousAttempt;
+}
 
 function normalizeLocalLiveFloorFps(value: unknown): number {
   const candidate = Number(value ?? defaultLocalLiveFloorFps);

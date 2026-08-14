@@ -278,6 +278,67 @@ test("never starts a queued capture after its run was revoked", async (context) 
   ]);
 });
 
+test("a run that finishes on its first state still starts before its queued stop", async (context) => {
+  const calls: RecordingBoundary[] = [];
+  const client: RecordingClient = {
+    onBoundary(boundary) {
+      calls.push(boundary);
+      return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+    }
+  };
+  const store = temporaryStore(context, () => 1_000);
+  const recorder = new SessionHistoryRecorder(store, { now: () => 1_000, recordingClient: client });
+  recorder.startVisit({ id: "visit-terminal-queued-start", recordingPolicy: { scope: "run" } });
+  startSelection(recorder, "run-1");
+  await waitFor(() => calls.length === 1);
+
+  const terminal = state(0, 0);
+  terminal.snapshot = { ...terminal.snapshot, phase: "finished", success: false };
+  recorder.restartRun("run-2", terminal);
+  await waitFor(() => calls.length === 4);
+
+  assert.deepEqual(calls.map((boundary) => `${boundary.type}:${boundary.runId}`), [
+    "start:run-1",
+    "stop:run-1",
+    "start:run-2",
+    "stop:run-2"
+  ]);
+  const recording = store.getVisit("visit-terminal-queued-start").recordings.find((candidate) => candidate.runId === "run-2");
+  assert.equal(recording?.status, "complete");
+});
+
+test("revoking a terminal run still cancels its preserved queued start", async (context) => {
+  let releaseFirstStart = () => {};
+  const firstStartGate = new Promise<void>((resolve) => { releaseFirstStart = resolve; });
+  const calls: RecordingBoundary[] = [];
+  const client: RecordingClient = {
+    async onBoundary(boundary) {
+      calls.push(boundary);
+      if (boundary.type === "start" && boundary.runId === "run-1") await firstStartGate;
+      return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+    }
+  };
+  const store = temporaryStore(context, () => 1_000);
+  const recorder = new SessionHistoryRecorder(store, { now: () => 1_000, recordingClient: client });
+  recorder.startVisit({ id: "visit-revoked-terminal-start", recordingPolicy: { scope: "run" } });
+  startSelection(recorder, "run-1");
+  await waitFor(() => calls.length === 1);
+
+  const terminal = state(0, 0);
+  terminal.snapshot = { ...terminal.snapshot, phase: "finished", success: false };
+  recorder.restartRun("run-2", terminal);
+  const drain = recorder.stop();
+  releaseFirstStart();
+  await drain;
+
+  assert.equal(calls.some((boundary) => boundary.type === "start" && boundary.runId === "run-2"), false);
+  assert.deepEqual(calls.map((boundary) => `${boundary.type}:${boundary.runId}`), [
+    "start:run-1",
+    "stop:run-1",
+    "stop:run-2"
+  ]);
+});
+
 test("restarts an active visit capture idempotently with its persisted capture id", async (context) => {
   const calls: RecordingBoundary[] = [];
   const client: RecordingClient = {

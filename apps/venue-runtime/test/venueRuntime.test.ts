@@ -805,6 +805,152 @@ test("published-level products use bundled fallback content for direct TypeScrip
   assert.equal(status.currentGame, `motion-levels-games:${parkourGameId}`);
 });
 
+test("failed published-level attempts create a new run and run-scoped recording automatically", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-auto-attempt-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const cameraCalls: RecordingBoundary[] = [];
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        cameraCalls.push(structuredClone(boundary));
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  const venueSessionId = "visit-auto-attempt";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "run" } });
+  const selected = await runtime.select({
+    game: `motion-levels-games:${parkourGameId}`,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId,
+    recordingPolicy: { scope: "run" },
+    difficulty: "medium",
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  await waitFor(() => cameraCalls.length === 1);
+  const initialRunId = selected.sessionId;
+  const internal = runtime as unknown as { gameStartedAt: number; tick(now: number): void };
+  const base = performance.now();
+  internal.gameStartedAt = base - 4_000;
+  internal.tick(base);
+  const lava = (runtime.display().frame as Frame).cells.filter((cell) => {
+    const red = Number.parseInt(cell.color.slice(1, 3), 16);
+    const green = Number.parseInt(cell.color.slice(3, 5), 16);
+    const blue = Number.parseInt(cell.color.slice(5, 7), 16);
+    return red > green * 1.5 && red > blue * 1.5;
+  }).slice(0, 3);
+  assert.equal(lava.length, 3, "Parkour must expose three lava tiles during the running attempt");
+  let pressureSequence = 0n;
+  for (const tile of lava) {
+    pressureSequence += 1n;
+    runtime.applyPressure({ x: tile.x, y: tile.y, pressed: true, unixNanos: pressureSequence, sequence: pressureSequence });
+  }
+  assert.equal(runtime.status().phase, "finished");
+
+  internal.tick(base + 3_100);
+  const retryRunId = runtime.status().sessionId;
+  assert.notEqual(retryRunId, initialRunId);
+  assert.equal(runtime.status().phase, "running");
+  internal.tick(base + 3_120);
+  assert.equal(runtime.status().phase, "finished");
+  await waitFor(() => cameraCalls.length >= 4);
+  assert.deepEqual(cameraCalls.slice(0, 4).map((boundary) => `${boundary.type}:${boundary.runId}`), [
+    `start:${initialRunId}`,
+    `stop:${initialRunId}`,
+    `start:${retryRunId}`,
+    `stop:${retryRunId}`
+  ]);
+
+  const visit = runtime.historySession(venueSessionId).session;
+  assert.equal(visit.selections.length, 1);
+  assert.deepEqual(visit.selections[0]?.runs.map((run) => [run.id, run.reason]), [
+    [initialRunId, "initial"],
+    [retryRunId, "restart"]
+  ]);
+  assert.ok((visit.selections[0]?.runs[1]?.engineElapsedMillis ?? Number.POSITIVE_INFINITY) < 1_000);
+  assert.deepEqual(visit.recordings.map((recording) => recording.runId), [initialRunId, retryRunId]);
+  const retryEvents = runtime.historyEvents(venueSessionId, { limit: 500 }).events
+    .filter((event) => event.runId === retryRunId);
+  assert.ok(retryEvents.length > 0);
+  assert.ok(retryEvents.every((event) => event.engineAtMillis === undefined || event.engineAtMillis < 1_000));
+  const retrySnapshot = visit.selections[0]?.runs[1]?.finalSnapshot;
+  assert.equal(retrySnapshot?.attemptCreatedMillis, 0);
+  assert.equal(retrySnapshot?.attemptStartedMillis, 0);
+  assert.ok(Number(retrySnapshot?.lastEventMillis) < 1_000);
+});
+
+test("successful published-level advances create a new run and expose the actual level", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-level-advance-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const cameraCalls: RecordingBoundary[] = [];
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        cameraCalls.push(structuredClone(boundary));
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  const venueSessionId = "visit-level-advance";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "run" } });
+  const selected = await runtime.select({
+    game: `motion-levels-games:${parkourGameId}`,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId,
+    recordingPolicy: { scope: "run" },
+    difficulty: "medium",
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  await waitFor(() => cameraCalls.length === 1);
+  const initialRunId = selected.sessionId;
+  const initialLevel = selected.level;
+  const internal = runtime as unknown as { gameStartedAt: number; tick(now: number): void };
+  const base = performance.now();
+  internal.gameStartedAt = base - 3_000;
+  internal.tick(base);
+  runtime.applyPressure({ x: 7, y: 5, pressed: true, unixNanos: 1n, sequence: 1n });
+  assert.equal(runtime.status().phase, "finished");
+  assert.equal(runtime.status().success, true);
+
+  internal.tick(base + 1_400);
+  await waitFor(() => cameraCalls.length >= 3);
+  const advanced = runtime.status();
+  const advancedRunId = advanced.sessionId;
+  assert.notEqual(advancedRunId, initialRunId);
+  assert.notEqual(advanced.level, initialLevel);
+  assert.equal(advanced.phase, "countdown");
+  assert.deepEqual(cameraCalls.slice(0, 3).map((boundary) => `${boundary.type}:${boundary.runId}`), [
+    `start:${initialRunId}`,
+    `stop:${initialRunId}`,
+    `start:${advancedRunId}`
+  ]);
+
+  const visit = runtime.historySession(venueSessionId).session;
+  assert.deepEqual(visit.selections[0]?.runs.map((run) => [run.id, run.reason]), [
+    [initialRunId, "initial"],
+    [advancedRunId, "restart"]
+  ]);
+  assert.equal(visit.selections[0]?.runs[0]?.finalSnapshot?.level, initialLevel);
+  assert.equal(visit.selections[0]?.runs[1]?.finalSnapshot?.level, advanced.level);
+  assert.deepEqual(visit.recordings.map((recording) => recording.runId), [initialRunId, advancedRunId]);
+});
+
 test("frame conversion is always one 16x32 RGB frame", () => {
   const frame: Frame = {
     width: FLOOR_COLS,
