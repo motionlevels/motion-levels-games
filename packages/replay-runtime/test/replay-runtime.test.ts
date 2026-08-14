@@ -12,6 +12,13 @@ import {
   runHeadlessReplay,
   stableStringify,
   verifyHeadlessReplay,
+  RUN_REPLAY_CONTRACT_VERSION,
+  RUN_REPLAY_SCHEMA,
+  decodeRunReplayByteField,
+  decodeRunReplayRecords,
+  encodeRunReplayByteField,
+  encodeRunReplayRecord,
+  type RunReplayHeaderRecord,
   type ReplayHeader
 } from "../src/index.ts";
 import {
@@ -35,6 +42,77 @@ const header: ReplayHeader = {
   tickRate: 50,
   startedAt: "2026-08-10T10:00:00.000Z"
 };
+
+test("run replay byte deltas reconstruct exact RGB and pressure payloads", () => {
+  const previous = new Uint8Array(64);
+  const current = previous.slice();
+  current.set([1, 2, 3], 7);
+  current.set([9, 8], 44);
+  const field = encodeRunReplayByteField(current, previous);
+  assert.equal(field.encoding, "delta");
+  assert.deepEqual(decodeRunReplayByteField(field, current.byteLength, previous), current);
+  assert.deepEqual(
+    decodeRunReplayByteField(encodeRunReplayByteField(current, undefined), current.byteLength),
+    current
+  );
+});
+
+test("run replay NDJSON requires a final footer with coherent counts", () => {
+  const runHeader: RunReplayHeaderRecord = {
+    type: "header",
+    schema: RUN_REPLAY_SCHEMA,
+    contractVersion: RUN_REPLAY_CONTRACT_VERSION,
+    sessionId: "visit-1",
+    selectionId: "selection-1",
+    runId: "run-1",
+    gameId: "ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceRevision: "1".repeat(40),
+    width: 16,
+    height: 32,
+    pixelFormat: "rgb24",
+    pressureFormat: "row-major-bitset-lsb0",
+    frameSource: "presented-frame",
+    firstDesiredSequence: "1",
+    startedAtUnixMillis: 1_000
+  };
+  const headerLine = encodeRunReplayRecord(runHeader);
+  assert.throws(() => decodeRunReplayRecords(headerLine), /footer is missing/u);
+  const invalidFooter = encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: 1,
+    endedAtUnixMillis: 2_000,
+    outcome: "finished",
+    partial: false,
+    frameCount: 1,
+    inputCount: 0,
+    eventCount: 0,
+    checkpointCount: 0
+  });
+  assert.throws(() => decodeRunReplayRecords(headerLine + invalidFooter), /counts do not match/u);
+  const outsideInput = encodeRunReplayRecord({
+    type: "input",
+    recordSequence: 1,
+    occurredAtUnixMillis: 1_500,
+    engineAtMillis: 500,
+    source: "physical",
+    x: 16,
+    y: 0,
+    pressed: true
+  });
+  const inputFooter = encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: 2,
+    endedAtUnixMillis: 2_000,
+    outcome: "finished",
+    partial: false,
+    frameCount: 0,
+    inputCount: 1,
+    eventCount: 0,
+    checkpointCount: 0
+  });
+  assert.throws(() => decodeRunReplayRecords(headerLine + outsideInput + inputFooter), /outside the declared floor/u);
+});
 
 test("stable JSON and checksums ignore object insertion order", () => {
   assert.equal(stableStringify({ b: 2, a: 1 }), '{"a":1,"b":2}');

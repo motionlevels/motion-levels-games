@@ -11,10 +11,15 @@ import type { GameSessionState } from "@motion-levels-games/runtime";
 import type { RecordingBoundary } from "@motion-levels-games/session-history";
 import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manifest";
 import { floorHeight, floorRgbBytes, floorWidth, pressureBitsetBytes, type PresentedFrame } from "../src/controllerProtocol.ts";
-import { frameToRgb, resolveRuntimeContentPlatformUrl, RevisionMismatchError, VenueRuntime } from "../src/venueRuntime.ts";
+import { frameToRgb, resolveRuntimeContentPlatformUrl, RevisionMismatchError, runRelativeEngineMillis, VenueRuntime } from "../src/venueRuntime.ts";
 
 const revision = "1".repeat(40);
 const roomControllerId = "01234567-89ab-4def-8123-456789abcdef";
+
+test("replay inputs use the effective input time relative to an automatic run origin", () => {
+  assert.equal(runRelativeEngineMillis(10_137, 10_000), 137);
+  assert.equal(runRelativeEngineMillis(9_999, 10_000), 0);
+});
 
 test("venue runtime runs the revisioned TypeScript screensaver while remaining idle", () => {
   const runtime = new VenueRuntime({
@@ -1031,7 +1036,9 @@ test("failed published-level attempts create a new run and run-scoped recording 
     [retryRunId, "restart"]
   ]);
   assert.ok((visit.selections[0]?.runs[1]?.engineElapsedMillis ?? Number.POSITIVE_INFINITY) < 1_000);
-  assert.deepEqual(visit.recordings.map((recording) => recording.runId), [initialRunId, retryRunId]);
+  assert.deepEqual(visit.recordings
+    .filter((recording) => recording.backend === "camera-recorder")
+    .map((recording) => recording.runId), [initialRunId, retryRunId]);
   const retryEvents = runtime.historyEvents(venueSessionId, { limit: 500 }).events
     .filter((event) => event.runId === retryRunId);
   assert.ok(retryEvents.length > 0);
@@ -1103,7 +1110,9 @@ test("successful published-level advances create a new run and expose the actual
   ]);
   assert.equal(visit.selections[0]?.runs[0]?.finalSnapshot?.level, initialLevel);
   assert.equal(visit.selections[0]?.runs[1]?.finalSnapshot?.level, advanced.level);
-  assert.deepEqual(visit.recordings.map((recording) => recording.runId), [initialRunId, advancedRunId]);
+  assert.deepEqual(visit.recordings
+    .filter((recording) => recording.backend === "camera-recorder")
+    .map((recording) => recording.runId), [initialRunId, advancedRunId]);
 });
 
 test("frame conversion is always one 16x32 RGB frame", () => {

@@ -477,6 +477,8 @@ test("history API lists visits, pages events, returns detail, and associates rec
   assert.equal(list.schema, "motion-levels-session-history-v1");
   assert.equal(list.sessions[0]?.id, visitId);
   assert.equal(list.sessions[0]?.selectionCount, 1);
+  const unfiltered = await historyGet("/api/history/v1/sessions?limit=1").then((response) => response.json());
+  assert.equal(unfiltered.sessions[0]?.id, visitId, "an absent status query must not become a null status filter");
   const detail = await historyGet(`/api/history/v1/sessions/${visitId}`).then((response) => response.json());
   assert.equal(detail.session.recordingPolicy.scope, "selection");
   assert.equal(detail.session.selections[0]?.runs.length, 1);
@@ -524,6 +526,27 @@ test("history API lists visits, pages events, returns detail, and associates rec
   });
   assert.equal(runWithoutSelection.status, 400);
   assert.match(await runWithoutSelection.text(), /requires selectionId and runId/u);
+
+  const replayRunId = detail.session.selections[0].runs[0].id as string;
+  runtime.observePresentedFrame({
+    presentationSequence: 1n,
+    desiredSequence: 1n,
+    presentedUnixNanos: 1_000_000n,
+    width: 16,
+    height: 32,
+    rgb: new Uint8Array(16 * 32 * 3),
+    pressureBits: new Uint8Array(16 * 32 / 8),
+    fadeRatio: 0
+  });
+  runtime.control("exit");
+  await waitFor(() => runtime.historySession(visitId).session.recordings
+    .some((asset) => asset.runId === replayRunId && asset.status === "pending_upload"));
+  const replayPath = `/api/history/v1/sessions/${visitId}/runs/${replayRunId}/replay`;
+  assert.equal((await historyGet(replayPath, "wrong")).status, 401);
+  const replayDownload = await historyGet(replayPath);
+  assert.equal(replayDownload.status, 200);
+  assert.match(replayDownload.headers.get("content-type") ?? "", /motion-levels\.run-replay/u);
+  assert.deepEqual([...new Uint8Array(await replayDownload.arrayBuffer()).slice(0, 2)], [0x1f, 0x8b]);
 
   assert.equal((await historyGet("/api/history/v1/sessions/missing")).status, 404);
   assert.equal((await historyGet("/api/history/v1/sessions?status=broken")).status, 400);

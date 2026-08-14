@@ -15,6 +15,7 @@ Each visit has its own directory:
 ```text
 <history-root>/<visit-id>/manifest.json
 <history-root>/<visit-id>/events.ndjson
+<history-root>/<visit-id>/replays/<run-id>.mlrun.jsonl.gz
 ```
 
 `manifest.json` is replaced atomically after an fsync. `events.ndjson` is the
@@ -28,15 +29,60 @@ after-state for the affected visit/selection/run. The manifest's `lastSequence`
 is a checkpoint: startup idempotently reduces every later complete batch and
 rewrites a repaired checkpoint, so a crash between journal sync and manifest
 replacement cannot split the timeline from its state.
-Frames, pressure samples, and elapsed-only ticks are deliberately excluded;
-the runtime keeps elapsed clocks in memory, checkpoints them to the manifest
-at most once every five seconds, and writes the exact final values when a run
-ends.
+The lifecycle journal deliberately excludes high-frequency frames, pressure
+samples, and elapsed-only ticks. Every run instead owns the separate automatic
+gameplay artifact described below. The runtime keeps elapsed clocks in memory,
+checkpoints them to the manifest at most once every five seconds, and writes
+the exact final values when a run ends.
 
 On process startup, an active visit is restored. Any run or game selection
 that was open when the previous process disappeared is closed as interrupted,
 and recovery is recorded on the timeline. The visit itself remains active so
 the kiosk can continue it.
+
+## Automatic gameplay replay
+
+Every run records `motion-levels-run-replay-v1`, independently of camera
+policy. Frames come from the controller's authoritative `PresentedFrame`
+callback—not a rendering reconstructed from game state—so the exact RGB,
+pressure bitset, fade/watchdog result, presentation sequence, desired source
+sequence, and presentation time are retained. Effective physical/remote
+inputs, game events, and periodic or material snapshots form a causal timeline
+alongside those visual frames. Frame pressure is authoritative for playback;
+input records are diagnostic markers and must not be reapplied as an overlay.
+
+The active journal is `replays/<run-id>.mlrun.jsonl.partial`. RGB and pressure
+use periodic keyframes plus binary replacement-run deltas. The runtime appends
+a durable footer at the run boundary, streams the journal through gzip without
+loading the complete replay into memory, and atomically renames the result to
+`<run-id>.mlrun.jsonl.gz`. Startup truncates a torn final record and publishes
+the surviving journal with a `partial` footer. If a valid final gzip and its
+pre-rename journal both survive a crash, the gzip wins and the duplicate is
+removed durably.
+
+The visit's `recordings` collection links the replay through stable asset ID
+`run-replay-<run-id>`, backend `venue-runtime-replay`, explicit selection/run
+IDs, relative path, bytes, SHA-256, record counts and sequence bounds. Normal
+local completion is `pending_upload`; the venue-owned uploader can
+idempotently update the same asset to `complete` with remote object metadata.
+This repository has no cloud-storage or deployment coupling.
+
+Local replay cache is bounded by `MOTION_LEVELS_REPLAY_MAX_LOCAL_BYTES`
+(512 MiB by default; zero or invalid values fail closed to that default). The
+runtime counts every local replay and prunes oldest files only after the same
+asset is `complete`, retains valid bytes/SHA-256, and has an HTTPS download on
+the configured Platform origin. Partial artifacts are never eligible, even if
+an uploader later marks their asset complete. Pruning rejects symlinks and path
+escapes, fsyncs the replay directory, clears `localPath`, and preserves the
+remote asset plus `localPruned` audit metadata. Offline, pending, failed and
+unverified files can temporarily exceed the bound rather than lose the only
+copy.
+
+This contract supersedes automatic production `.mlreplay.zst` capture. That
+legacy file remains historical input only and must not be regenerated. The
+older `GameReplay` API in `@motion-levels-games/replay-runtime` remains useful
+for deterministic playground/agent diagnostics; it is not the venue session
+visual replay contract.
 
 ## Hierarchy and recording policy
 
@@ -103,11 +149,15 @@ Routes:
 - `GET /api/history/v1/sessions?status=&from=&to=&limit=&cursor=`
 - `GET /api/history/v1/sessions/:sessionId`
 - `GET /api/history/v1/sessions/:sessionId/events?limit=&cursor=`
+- `GET|HEAD /api/history/v1/sessions/:sessionId/runs/:runId/replay`
 - `POST /api/history/v1/sessions/:sessionId/recordings`
 
 List and event responses use opaque cursors. `from` and `to` are inclusive
 epoch-millisecond visit-overlap filters. Recording POST bodies must conform to
 the v1 `RecordingAsset` shape; unknown fields are not persisted.
+Replay downloads return the stored gzip bytes with the run-replay vendor media
+type and no HTTP `Content-Encoding`, so an uploader verifies the persisted
+SHA-256 without transparent client decompression.
 
 `/api/health` distinguishes persistence, camera configuration, and camera
 health. Player state likewise separates `venueSessionRecordingConfigured`

@@ -1203,7 +1203,8 @@ function recordingPoliciesEqual(left: RecordingPolicy, right: RecordingPolicy): 
 }
 
 function isOpenRecording(asset: RecordingAsset): boolean {
-  return asset.status === "requested" || asset.status === "recording" || asset.status === "finalizing";
+  return asset.backend !== "venue-runtime-replay"
+    && (asset.status === "requested" || asset.status === "recording" || asset.status === "finalizing");
 }
 
 function runStatus(phase: string): SessionHistoryRun["status"] {

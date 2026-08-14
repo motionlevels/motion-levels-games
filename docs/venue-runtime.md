@@ -145,6 +145,10 @@ also accepting 0–1). Local observation and remote-input tuning use
 `MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS` and
 `MOTION_LEVELS_REMOTE_FLOOR_INPUT_LEASE`. Optional camera start/stop hooks use
 `MOTION_LEVELS_CAMERA_RECORDER_URL` and `_TOKEN`.
+Automatic gameplay replay retention uses
+`MOTION_LEVELS_REPLAY_MAX_LOCAL_BYTES`; invalid or zero values retain the
+fail-closed 512 MiB default, and only remotely verified complete artifacts are
+eligible for pruning.
 
 For local integration, `npm run dev:venue` runs the source directly. It reads
 the current Git revision automatically; `MOTION_LEVELS_GAMES_SOURCE_REVISION`
@@ -155,4 +159,7 @@ HTTP bind/token use `MOTION_LEVELS_ENGINE_HTTP` and
 
 Semantic `.mlreplay`, animation-preview, performance diagnostics, legacy game
 sources, platform ingest queues, and Go-game compatibility are deliberately
-not part of this breaking runtime.
+not part of this breaking runtime. Automatic production playback instead uses
+the session-owned `motion-levels-run-replay-v1` artifact documented in
+`docs/session-history.md`; it records exact controller-presented RGB/pressure
+and does not revive the semantic `.mlreplay.zst` pipeline.

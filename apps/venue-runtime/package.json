@@ -11,6 +11,7 @@
   "dependencies": {
     "@motion-levels-games/game-sdk": "0.1.0",
     "@motion-levels-games/player-experience": "0.1.0",
+    "@motion-levels-games/replay-runtime": "0.1.0",
     "@motion-levels-games/runtime": "0.1.0",
     "@motion-levels-games/session-history": "0.1.0"
   },
