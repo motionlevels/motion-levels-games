@@ -99,7 +99,7 @@ describe("catalog metadata sync", () => {
       maxPlayers: 2,
       minPlayers: 2,
       players: "Sin requisito",
-    }), { minPlayers: 1, maxPlayers: 99 });
+    }), { minPlayers: 0, maxPlayers: 99 });
     assert.equal(platformPlayerRangeLabel(legacy), "2");
   });
 
@@ -213,14 +213,14 @@ describe("catalog metadata sync", () => {
     assert.deepEqual(rosterForGame(game, players), []);
   });
 
-  it("falls back to eight-player authored duel bounds when catalog metadata is unavailable", () => {
+  it("does not special-case retired engine aliases when catalog metadata is unavailable", () => {
     const game = {
       id: "duel",
       engineGame: "authored-duel",
       category: "versus",
     } as Pick<GameCard, "category" | "engineGame" | "id" | "maxPlayers" | "minPlayers">;
 
-    assert.deepEqual(playerBoundsForGame(game), { minPlayers: 2, maxPlayers: 8 });
+    assert.deepEqual(playerBoundsForGame(game), { minPlayers: 1, maxPlayers: 6 });
   });
 
   it("does not expose the internal animations storage launcher", () => {
@@ -229,8 +229,7 @@ describe("catalog metadata sync", () => {
       .slice(catalogSource.indexOf("export const games: GameCard[] = ["))
       .split("\n];")[0];
 
-    assert.equal(/id:\s*"animations"/.test(staticGamesSource), false);
-    assert.match(staticGamesSource, /id:\s*"salvapantallas"[\s\S]*?engineGame:\s*"salvapantallas"/);
+    assert.doesNotMatch(staticGamesSource, /id:\s*"(?:animations|salvapantallas)"/);
   });
 
   it("expands published animations into Ambiente cards without drafts", () => {
@@ -319,8 +318,9 @@ describe("catalog metadata sync", () => {
     for (const id of ["memory-lights", "niveles", "temporada1-niveles", "temporada2", "patrones"]) {
       assert.equal(new RegExp(`id:\\s*"${id}"`).test(staticGamesSource), false);
     }
-    assert.match(staticGamesSource, /id:\s*"featured-lava"/);
-    assert.match(staticGamesSource, /id:\s*"salvapantallas"/);
+    assert.match(staticGamesSource, /id:\s*"lava"/);
+    assert.match(staticGamesSource, /sourceKind:\s*"motion_levels_games"/);
+    assert.doesNotMatch(staticGamesSource, /featured-lava|authored-lava|salvapantallas/);
   });
 
   it("keeps catalog preview media cheap to decode", () => {
@@ -587,7 +587,7 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /<GameConfigDialog/);
   });
 
-  it("keeps visit recording as the compatible default and exposes all recording scopes", () => {
+  it("keeps visit recording as the compatible default and exposes four kiosk recording modes", () => {
     const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
     const apiSource = fs.readFileSync(path.resolve(__dirname, "../src/api.ts"), "utf8");
     const stylesSource = fs.readFileSync(path.resolve(__dirname, "../src/styles.css"), "utf8");
@@ -602,16 +602,19 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /recording_scope: menu\.recordingPolicy/);
     assert.match(appSource, /recordingEnabled: nextMenu\.recordingEnabled/);
     assert.match(appSource, /recordingPolicy: \{ scope: nextMenu\.recordingPolicy \}/);
-    assert.match(appSource, /const recordingOperational = menu\.recordingEnabled && recordingAvailable;/);
     assert.match(appSource, /const recordingConfigured = venueSessionRecordingCanRequest\(status \?\? \{\}\);/);
-    assert.match(appSource, /className=\{`recording-switch \$\{recordingOperational \? "on" : "off"\}/);
-    assert.match(appSource, /aria-label="Alcance de la grabación"/);
-    assert.match(appSource, /<option value="visit" disabled=\{!recordingConfigured\}>Sesión completa<\/option>/);
-    assert.match(appSource, /<option value="selection" disabled=\{!recordingConfigured\}>Cada juego<\/option>/);
-    assert.match(appSource, /<option value="run" disabled=\{!recordingConfigured\}>Cada partida<\/option>/);
+    assert.match(appSource, /scope: "off", label: "Desactivada"/);
+    assert.match(appSource, /scope: "visit", label: "Sesión completa"/);
+    assert.match(appSource, /scope: "selection", label: "Cada juego"/);
+    assert.match(appSource, /scope: "run", label: "Cada intento"/);
+    assert.match(appSource, /data-recording-scope=\{option\.scope\}/);
+    assert.match(appSource, /recordingEnabled: nextRecordingEnabled/);
+    assert.match(appSource, /recordingPolicy: \{ scope: nextRecordingPolicy \}/);
+    assert.match(appSource, /recordingPolicy: current\.recordingPolicy/);
     assert.match(appSource, /Reintentar grabación/);
-    assert.match(stylesSource, /\.recording-switch\s*\{/);
-    assert.match(stylesSource, /\.recording-switch\.on/);
+    assert.match(stylesSource, /\.recording-picker\s*\{/);
+    assert.match(stylesSource, /\.recording-options\s*\{/);
+    assert.match(stylesSource, /\.recording-option\.selected/);
   });
 
   it("does not preserve unknown retired menu state keys from localStorage", () => {

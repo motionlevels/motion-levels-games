@@ -79,6 +79,14 @@ describe("runtime screen flow", () => {
     assert.match(source, /floorBlocked \? "Suelo sin señal"/);
   });
 
+  it("restarts the current runtime run without creating a new game selection", () => {
+    const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+    const restartBody = source.match(/async function restartLaunchedGame\(\) \{([\s\S]*?)\n  \}/)?.[1] || "";
+
+    assert.match(restartBody, /await sendGameControl\("restart"\)/);
+    assert.doesNotMatch(restartBody, /await launch\(/);
+  });
+
   it("schedules the inactivity deadline instead of waiting for another pressure update", () => {
     const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 
@@ -100,7 +108,8 @@ describe("runtime screen flow", () => {
     const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 
     assert.match(source, /const categorySelectionValid = visibleGames\.some/);
-    assert.match(source, /if \(categoryGames\.length === 0\) return current/);
+    assert.match(source, /if \(!preservedSelection && categoryGames\.length === 0\) return current/);
+    assert.match(source, /const selectedGameID = first\?\.id \|\| ""/);
     assert.match(source, /className="empty-category"/);
     assert.match(source, /\{categorySelectionValid \? \(/);
     assert.match(source, /title=\{pendingGameControl === "restart" \? "¿Reiniciar partida\?"/);

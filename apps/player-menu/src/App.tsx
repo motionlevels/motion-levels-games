@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
+import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, localPlaygroundEnabled, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
 import { PlayerExperienceStateGate, playerExperienceView } from "@motion-levels-games/player-experience";
 import { categories, colors, difficulties, games, playerColorNames, playerColors, type CategoryID, type DifficultyID, type GameCard, type GameConfigVar, type PartyMiniGame } from "./catalog";
 import { partyCatalogIsComplete, partyLaunchGame } from "./party";
@@ -64,6 +64,7 @@ import { migrateLegacyLevelState } from "./levelStateMigration.ts";
 import { isSupportedRuntimeSource } from "./localCatalog.ts";
 import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
 import { resolveMenuMirrorEnvelope } from "./menuMirror.ts";
+import { cleanNameDraft, cleanNameWhitespace } from "./nameEditing.ts";
 import { clearedVenueSessionProjection, commitVenueSessionRecordingScope, venueSessionRecordingCanRequest, venueSessionRecordingScope, venueSessionSyncDecision, type VenueSessionObservation } from "./venueSessionSync.ts";
 
 type MenuState = {
@@ -173,6 +174,12 @@ const operatorSettingsPin = /^\d{6}$/.test(import.meta.env.VITE_DEV_SETTINGS_PIN
 const defaultPlayers: Player[] = [{ id: 1, name: "", color: playerColors[0], active: true }];
 const teamNameStarts = ["Rayo", "Neón", "Pulso", "Láser", "Cumbre", "Órbita", "Turbo", "Brillo", "Salto", "Ritmo", "Chispa", "Fuego"];
 const teamNameFinishes = ["Verde", "Azul", "Solar", "Norte", "Sur", "Lima", "Rojo", "Claro", "Pista", "Nivel", "Flash", "Veloz"];
+const recordingModeOptions: Array<{ description: string; label: string; scope: RecordingScope }> = [
+  { scope: "off", label: "Desactivada", description: "Sin vídeo" },
+  { scope: "visit", label: "Sesión completa", description: "Grabación continua toda la sesión" },
+  { scope: "selection", label: "Cada juego", description: "Los reinicios siguen juntos" },
+  { scope: "run", label: "Cada intento", description: "Separa cada reinicio" },
+];
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -284,10 +291,6 @@ function defaultTeamName(date = new Date()): string {
   const finish = teamNameFinishes[Math.floor(seed / teamNameStarts.length) % teamNameFinishes.length];
   const code = 100 + (seed % 900);
   return `${start} ${finish} ${code}`;
-}
-
-function cleanNameWhitespace(value: string, maxLength: number): string {
-  return value.replace(/\s+/g, " ").trim().slice(0, maxLength).trim();
 }
 
 function engineGameID(game: Pick<GameCard, "engineGame" | "id">): string {
@@ -416,8 +419,8 @@ function liveAnimationCards(catalog: EngineGame[] | undefined, existingGames: Ga
         duration: "Bucle",
         mode: "Ambiente",
         audio: entry.music ? "Música" : "Suave",
-        description: entry.description || "Animación visible desde el editor.",
-        rules: ["Animación visible desde el editor.", "Se actualiza desde el motor sin reiniciar el menú."],
+        description: entry.description || "Animación ambiental para la pista.",
+        rules: ["Pisa la pista para interactuar.", "Puedes cambiar de animación en cualquier momento."],
         engineGame: entry.game,
         previewAnimation: nativeMedia ? undefined : entry.game,
         ...nativeMedia,
@@ -580,7 +583,7 @@ function platformEntryToGameCard(entry: PlatformGameCatalogEntry, fallback: Game
     mode: entry.mode_label || fallback?.mode || "",
     audio: entry.audio_label || fallback?.audio || "",
     description: entry.description || fallback?.description || "Juego visible desde el catálogo.",
-    rules: entry.catalog_rules?.length ? entry.catalog_rules : fallback?.rules || ["Configurable desde la página Juegos."],
+    rules: entry.catalog_rules?.length ? entry.catalog_rules : fallback?.rules || ["Sigue las indicaciones que aparecen al comenzar."],
     featured: typeof entry.catalog_featured === "boolean" ? entry.catalog_featured : fallback?.featured === true || entry.catalog_category === "featured",
     levels,
     partyMiniGames,
@@ -645,18 +648,26 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
   if (!catalog) return applyDerivedPartyPlayerRanges(baseGames);
   const fallbackByID = new Map(baseGames.map((game) => [game.id, game]));
   const fallbackByEngine = new Map(baseGames.map((game) => [engineGameID(game), game]));
+  const fallbackForEntry = (entry: PlatformGameCatalogEntry) => (
+    fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry))
+  );
   const baseOrder = new Map(baseGames.map((game, index) => [game.id, index]));
   const catalogOrderByID = new Map(catalog.map((entry) => [entry.id, entry.catalog_order]));
   const catalogOrderByEngine = new Map(catalog.map((entry) => [platformEntryEngineGame(entry), entry.catalog_order]));
-  const enabledCatalog = catalog.filter((entry) => entry.catalog_enabled !== false && !isInternalAnimationsAggregate(entry));
+  const enabledCatalog = catalog.filter((entry) => (
+    entry.catalog_enabled !== false
+    && !isInternalAnimationsAggregate(entry)
+    && isSupportedRuntimeCatalogEntry(entry, fallbackForEntry(entry))
+  ));
   const platformGames = enabledCatalog
     .map((entry, index) => platformEntryToGameCard(
       entry,
-      fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry)),
+      fallbackForEntry(entry),
       index,
     ));
   const remainingBaseGames = baseGames.filter((game) => (
     !isInternalAnimationsAggregate(game)
+    && isSupportedRuntimeGame(game)
     && !catalog.some((entry) => platformEntryMatchesGame(entry, game) && entry.catalog_enabled === false)
     && !enabledCatalog.some((entry) => platformEntryMatchesGame(entry, game))
   ));
@@ -669,16 +680,36 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
   return applyDerivedPartyPlayerRanges(orderedGames);
 }
 
+function platformCatalogMenuSignature(catalog: PlatformGameCatalogEntry[]): string {
+  return catalog
+    .map((entry) => JSON.stringify([
+      entry.id,
+      entry.engine_game || "",
+      entry.catalog_category || "",
+      entry.catalog_enabled !== false,
+      entry.catalog_featured === true,
+      entry.source_kind || "",
+      entry.source_game_id || "",
+    ]))
+    .sort()
+    .join("\n");
+}
+
 function isPlatformLaunchableSource(game: Pick<GameCard, "sourceKind">): boolean {
   return game.sourceKind === "motion_levels_games" || game.sourceKind === "platform_levels";
 }
 
 function isSupportedRuntimeCatalogEntry(entry: PlatformGameCatalogEntry, fallback?: GameCard): boolean {
-  return isSupportedRuntimeSource(entry.source_kind, entry.source_game_id || fallback?.sourceGameId);
+  return isSupportedRuntimeSource(
+    entry.source_kind || fallback?.sourceKind,
+    entry.source_game_id || fallback?.sourceGameId,
+  );
 }
 
 function isSupportedRuntimeGame(game: GameCard): boolean {
-  return isSupportedRuntimeSource(game.sourceKind, game.sourceGameId);
+  return (
+    isAmbientCard(game) && engineGameID(game).startsWith("animation-")
+  ) || isSupportedRuntimeSource(game.sourceKind, game.sourceGameId);
 }
 
 function canLaunchWhileCatalogRefreshes(game: GameCard): boolean {
@@ -1141,7 +1172,7 @@ function defaultMenuState(): MenuState {
     teamName: "",
     players: defaultPlayers,
     category: "featured",
-    selectedGame: "featured-lava",
+    selectedGame: "",
     difficulty: "easy",
     selectedLevels: {},
     levelModes: {},
@@ -1166,15 +1197,17 @@ function loadMenuState(): MenuState {
       const levelProgress = saved.levelProgress && typeof saved.levelProgress === "object" ? saved.levelProgress : {};
       const challengeRuns = normalizeChallengeRuns(saved.challengeRuns);
       const freeRuns = normalizeFreeRuns(saved.freeRuns);
-      const savedPlayers = Array.isArray(saved.players) ? saved.players : [];
+      const hasSavedPlayers = Array.isArray(saved.players);
+      const savedPlayers = hasSavedPlayers ? saved.players as Player[] : [];
       const cleanedPlayers = savedPlayers.map((player, index) => ({
         id: Number(player?.id) || index + 1,
         name: cleanNameWhitespace(String(player?.name || ""), maxPlayerNameLength),
         color: typeof player?.color === "string" ? player.color : playerColors[index % playerColors.length],
         active: Boolean(player?.active),
       }));
-      const requestedGameID = String(saved.selectedGame || "featured-lava");
-      const savedGame = games.find((game) => game.id === requestedGameID);
+      // Live catalog IDs are revision-matched and may not exist in the static
+      // offline fallback. Preserve the requested ID until catalog hydration.
+      const requestedGameID = String(saved.selectedGame || "");
       const savedCategory: CategoryID = categories.some((category) => category.id === saved.category) ? (saved.category as CategoryID) : "featured";
       const savedDifficulty = difficulties.some((candidate) => candidate.id === saved.difficulty)
         ? (saved.difficulty as DifficultyID)
@@ -1187,9 +1220,9 @@ function loadMenuState(): MenuState {
         recordingEnabled: recordingPolicy !== "off",
         recordingPolicy,
         teamName: cleanNameWhitespace(String(saved.teamName || ""), maxTeamNameLength),
-        players: cleanedPlayers.length ? cleanedPlayers : defaultPlayers,
-        category: savedGame?.category || savedCategory,
-        selectedGame: savedGame?.id || "featured-lava",
+        players: hasSavedPlayers ? cleanedPlayers : defaultPlayers,
+        category: savedCategory,
+        selectedGame: requestedGameID,
         difficulty: savedDifficulty,
         selectedLevels,
         levelModes,
@@ -1216,6 +1249,8 @@ function clearedMenuSession(current: MenuState, defaultGame: GameCard): MenuStat
   return {
     ...current,
     ...clearedVenueSessionProjection(defaultPlayers),
+    recordingEnabled: current.recordingPolicy !== "off",
+    recordingPolicy: current.recordingPolicy,
     category: menuCategoryForGame(defaultGame, "featured"),
     selectedGame: defaultGame.id,
     difficulty: "easy",
@@ -1321,6 +1356,7 @@ function MenuApp() {
   );
   const readOnlyMirror = menuAccess.readOnly;
   const followsMenuMirror = menuAccess.followMirror;
+  const localPlayground = useMemo(() => localPlaygroundEnabled(), []);
   const [menu, setMenu] = useState<MenuState>(() => menuAccess.persistLocalState ? loadMenuState() : defaultMenuState());
   const [status, setStatus] = useState<PlayerMenuEngineStatus | null>(null);
   const statusGate = useRef(new PlayerExperienceStateGate());
@@ -1340,6 +1376,7 @@ function MenuApp() {
   const [pendingLevelSwitch, setPendingLevelSwitch] = useState<{ gameID: string; levelID: string } | null>(null);
   const [pendingGameControl, setPendingGameControl] = useState<"exit" | "restart" | null>(null);
   const [recordingScopeSaving, setRecordingScopeSaving] = useState(false);
+  const [sessionStarting, setSessionStarting] = useState(false);
   const [gameConfigOpen, setGameConfigOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsUnlocked, setSettingsUnlocked] = useState(false);
@@ -1368,6 +1405,7 @@ function MenuApp() {
   const catalogRefreshInFlight = useRef(false);
   const catalogRefreshDelayRef = useRef(platformCatalogRefreshMillis);
   const platformCatalogRef = useRef(platformCatalog);
+  const reconciledPlatformCatalogSignatureRef = useRef("");
   const syncedEngineSession = useRef("");
   const mirroredMenuVersion = useRef(0);
   const mirroredMenuUpdatedUnixMillis = useRef(0);
@@ -1381,8 +1419,11 @@ function MenuApp() {
   const sessionStartInFlightRef = useRef(false);
   const sessionCloseInFlightRef = useRef(false);
   const recordingScopeChangeInFlightRef = useRef(false);
+  const nameEditStartRef = useRef<{ target: KeyboardTarget; value: string } | null>(null);
+  const touchKeyboardTargetRef = useRef<KeyboardTarget | null>(null);
   const teamTriggerRef = useRef<HTMLButtonElement>(null);
   const teamCloseRef = useRef<HTMLButtonElement>(null);
+  const teamDrawerFocusFallback = useCallback(() => teamCloseRef.current, []);
   const teamWasOpenRef = useRef(false);
   const [menuMirrorReady, setMenuMirrorReady] = useState(!followsMenuMirror);
 
@@ -1414,6 +1455,10 @@ function MenuApp() {
   useEffect(() => {
     menuRef.current = menu;
   }, [menu]);
+
+  useEffect(() => {
+    if (!keyboardTarget) touchKeyboardTargetRef.current = null;
+  }, [keyboardTarget]);
 
   useEffect(() => {
     for (const attemptID of menu.processedAttemptIDs) processedFinishedSessions.current.add(attemptID);
@@ -1478,13 +1523,23 @@ function MenuApp() {
 
   useEffect(() => {
     if (!platformCatalog || !menuGames.length) return;
+    const catalogSignature = platformCatalogMenuSignature(platformCatalog);
+    const catalogChanged = reconciledPlatformCatalogSignatureRef.current !== catalogSignature;
+    reconciledPlatformCatalogSignatureRef.current = catalogSignature;
+    const selectedGameToPreserve = catalogChanged ? menuRef.current.selectedGame : "";
     setMenu((current) => {
       const categoryGames = gamesForCategory(menuGames, current.category);
+      const preservedSelection = selectedGameToPreserve
+        ? menuGames.find((game) => game.id === selectedGameToPreserve)
+        : undefined;
       // An empty category is a valid catalog view. Keep it selected so the
       // recovery surface remains stable instead of snapping back to the stale
       // game that happened to be selected in the previous category.
-      if (categoryGames.length === 0) return current;
-      const selected = categoryGames.find((game) => game.id === current.selectedGame) || categoryGames[0];
+      if (!preservedSelection && categoryGames.length === 0) return current;
+      const selected = preservedSelection
+        || categoryGames.find((game) => game.id === current.selectedGame)
+        || categoryGames[0];
+      const category = preservedSelection ? menuCategoryForGame(selected, current.category) : current.category;
       const difficulty = normalizedDifficultyForGame(selected, current.difficulty);
       const levelID = selected.levels?.length
         ? closestLevelIDForDifficulty(selected, current.selectedLevels[selected.id] || defaultLevelIDForDifficulty(selected, difficulty), difficulty)
@@ -1494,6 +1549,7 @@ function MenuApp() {
         : current.selectedLevels;
       if (
         current.selectedGame === selected.id
+        && current.category === category
         && current.difficulty === difficulty
         && current.selectedLevels === selectedLevels
       ) {
@@ -1501,6 +1557,7 @@ function MenuApp() {
       }
       return {
         ...current,
+        category,
         difficulty,
         selectedGame: selected.id,
         selectedLevels,
@@ -1600,6 +1657,7 @@ function MenuApp() {
       setConnectionState("connection-on");
     };
     const attach = () => {
+      if (localPlayground) return;
       source?.close();
       source = playerExperienceEventSource();
       source.addEventListener("player-state", (event) => {
@@ -1622,7 +1680,7 @@ function MenuApp() {
         if (!cancelled) setConnectionState("connection-off");
       } finally {
         if (!cancelled) {
-          if (Date.now() - streamFreshAt > 5_000 && source?.readyState === EventSource.CLOSED) attach();
+          if (!localPlayground && Date.now() - streamFreshAt > 5_000 && source?.readyState === EventSource.CLOSED) attach();
           nextRefresh = window.setTimeout(refresh, 2500);
         }
       }
@@ -1634,7 +1692,7 @@ function MenuApp() {
       source?.close();
       if (nextRefresh !== undefined) window.clearTimeout(nextRefresh);
     };
-  }, [acceptStatus]);
+  }, [acceptStatus, localPlayground]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1682,7 +1740,9 @@ function MenuApp() {
   }, [menu.sessionActive, menu.sessionStartedUnix, status?.lastPressureUnix]);
 
   useEffect(() => {
-    if (!status || !menuAccess.publishMirror) return;
+    // The embedded playground intentionally has no canonical venue-session
+    // service. Its synthetic idle snapshot must not close the local menu state.
+    if (!status || !menuAccess.publishMirror || localPlayground) return;
     const decision = venueSessionSyncDecision(status, venueSessionObservationRef.current, menu);
     venueSessionObservationRef.current = decision.observation;
     persistVenueSessionObservation(decision.observation);
@@ -1739,7 +1799,7 @@ function MenuApp() {
       cancelled = true;
       if (retry !== undefined) window.clearTimeout(retry);
     };
-  }, [acceptStatus, menu.sessionActive, menu.sessionId, menu.sessionStartedUnix, menu.teamName, menu.recordingEnabled, menu.recordingPolicy, menuAccess.publishMirror, menuGames, status]);
+  }, [acceptStatus, localPlayground, menu.sessionActive, menu.sessionId, menu.sessionStartedUnix, menu.teamName, menu.recordingEnabled, menu.recordingPolicy, menuAccess.publishMirror, menuGames, status]);
 
   useEffect(() => {
     if (!status) return;
@@ -1949,13 +2009,8 @@ function MenuApp() {
   // Esc closes the topmost overlay (keyboard first, then dialogs, then the team drawer).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Enter" && keyboardTarget) {
-        event.preventDefault();
-        setKeyboardTarget(null);
-        return;
-      }
       if (event.key !== "Escape") return;
-      if (keyboardTarget) setKeyboardTarget(null);
+      if (keyboardTarget) finishNameEdit(keyboardTarget, true);
       else if (colorPickerFor !== null) setColorPickerFor(null);
       else if (confirmRemove !== null) setConfirmRemove(null);
       else if (confirmResetSession) setConfirmResetSession(false);
@@ -2036,8 +2091,8 @@ function MenuApp() {
   const pendingLevelSwitchLevel = logicalLevelForGame(pendingLevelSwitchGame || undefined, pendingLevelSwitch?.levelID) || null;
   const pickerPlayer = menu.players.find((player) => player.id === colorPickerFor) || null;
   const removePlayer = menu.players.find((player) => player.id === confirmRemove) || null;
-  const menuPlayerCount = activePlayers.length || 1;
-  const headerPlayerCount = headerPlayers.length || 1;
+  const menuPlayerCount = activePlayers.length;
+  const headerPlayerCount = headerPlayers.length;
   const playerCountLabel = `${headerPlayerCount} ${headerPlayerCount === 1 ? "jugador" : "jugadores"}`;
   const selectedGamePlayerRangeLabel = playerRangeLabel(selectedGame);
   const rosterIssue = useMemo(() => gameRosterIssue(selectedGame, menu.players), [selectedGame, menu.players]);
@@ -2052,22 +2107,35 @@ function MenuApp() {
   }, []);
 
   useEffect(() => {
+    if (catalogLoading) return;
     setMenu((current) => {
+      const currentCategoryGames = gamesForCategory(menuGames, current.category);
+      if (!current.selectedGame && currentCategoryGames.length === 0) return current;
       const game = menuGames.find((candidate) => candidate.id === current.selectedGame) || selectedGame;
+      const category = currentCategoryGames.length === 0
+        ? current.category
+        : menuCategoryForGame(game, current.category);
       const difficulty = normalizedDifficultyForGame(game, current.difficulty);
       const currentLevelID = game.levels?.length ? current.selectedLevels[game.id] || defaultLevelIDForDifficulty(game, difficulty) : "";
       const nextLevelID = game.levels?.length ? closestLevelIDForDifficulty(game, currentLevelID, difficulty) : "";
       const selectedLevels = game.levels?.length && current.selectedLevels[game.id] !== nextLevelID
         ? { ...current.selectedLevels, [game.id]: nextLevelID }
         : current.selectedLevels;
-      if (current.difficulty === difficulty && selectedLevels === current.selectedLevels) return current;
+      if (
+        current.selectedGame === game.id
+        && current.category === category
+        && current.difficulty === difficulty
+        && selectedLevels === current.selectedLevels
+      ) return current;
       return {
         ...current,
+        category,
+        selectedGame: game.id,
         difficulty,
         selectedLevels,
       };
     });
-  }, [menu.difficulty, menu.selectedGame, menu.selectedLevels, menuGames, selectedGame]);
+  }, [catalogLoading, menu.difficulty, menu.selectedGame, menu.selectedLevels, menuGames, selectedGame]);
 
   function addPlayer() {
     setError("");
@@ -2177,10 +2245,13 @@ function MenuApp() {
   async function beginSession(remoteRequest?: RemoteSessionRequest) {
     if (sessionStartInFlightRef.current) return;
     sessionStartInFlightRef.current = true;
+    setSessionStarting(true);
     const defaultGame = menuGames[0] || games[0];
     const defaultSelectedLevels = defaultGame.levels?.length ? { [defaultGame.id]: defaultLevelID(defaultGame) } : {};
     const nextTeamName = remoteRequest?.teamName || defaultTeamName();
     const nextSessionID = remoteRequest?.venueSessionId || newVenueSessionID();
+    const nextRecordingPolicy = menu.recordingPolicy;
+    const nextRecordingEnabled = nextRecordingPolicy !== "off";
     const nowUnix = Math.floor(Date.now() / 1000);
     const nextPlayers = remoteRequest ? playersForCount(remoteRequest.configuredPlayerCount) : defaultPlayers;
     setMessage("Preparando sesión");
@@ -2190,8 +2261,8 @@ function MenuApp() {
         action: "start",
         venueSessionId: nextSessionID,
         teamName: nextTeamName,
-        recordingEnabled: true,
-        recordingPolicy: { scope: "visit" },
+        recordingEnabled: nextRecordingEnabled,
+        recordingPolicy: { scope: nextRecordingPolicy },
         kioskId: menuKioskID(),
       });
       if (nextStatus) acceptStatus(nextStatus);
@@ -2199,6 +2270,7 @@ function MenuApp() {
       setMessage("");
       setError(friendlyRequestError(err, "No se pudo iniciar la sesión. Inténtalo de nuevo."));
       sessionStartInFlightRef.current = false;
+      setSessionStarting(false);
       return;
     }
     captureMenuEvent("session_started", {
@@ -2206,8 +2278,8 @@ function MenuApp() {
       remote_reservation: Boolean(remoteRequest),
       reservation_id: remoteRequest?.reservationId,
       reserved_player_count: remoteRequest?.playerCount,
-      recording_enabled: true,
-      recording_scope: "visit",
+      recording_enabled: nextRecordingEnabled,
+      recording_scope: nextRecordingPolicy,
       venue_session_id: nextSessionID,
     });
     setMenu((current) => ({
@@ -2215,8 +2287,8 @@ function MenuApp() {
       sessionActive: true,
       sessionId: nextSessionID,
       sessionStartedUnix: nowUnix,
-      recordingEnabled: true,
-      recordingPolicy: "visit",
+      recordingEnabled: nextRecordingEnabled,
+      recordingPolicy: nextRecordingPolicy,
       teamName: nextTeamName,
       players: nextPlayers,
       category: menuCategoryForGame(defaultGame, "featured"),
@@ -2247,6 +2319,7 @@ function MenuApp() {
     setPendingLevelSwitch(null);
     setPartyRun(null);
     sessionStartInFlightRef.current = false;
+    setSessionStarting(false);
   }
 
   async function closeSession(reason = "manual") {
@@ -2315,7 +2388,8 @@ function MenuApp() {
   }
 
   async function setSessionRecordingScope(scope: RecordingScope) {
-    if (recordingScopeChangeInFlightRef.current || scope === menu.recordingPolicy) return;
+    const recordingHealthy = status?.venueSessionRecordingAvailable !== false;
+    if (recordingScopeChangeInFlightRef.current || (scope === menu.recordingPolicy && recordingHealthy)) return;
     if (scope !== "off" && !venueSessionRecordingCanRequest(status ?? {})) {
       setError("La grabación no está disponible en este sistema.");
       return;
@@ -2458,22 +2532,83 @@ function MenuApp() {
     return keyboardTarget?.kind === "team" ? maxTeamNameLength : maxPlayerNameLength;
   }
 
-  function setKeyboardValue(value: string) {
-    if (!keyboardTarget) return;
-    const next = cleanNameWhitespace(value, keyboardMaxLength());
-    if (keyboardTarget.kind === "team") {
-      captureMenuEvent("team_renamed", {
-        team_name: next,
-      });
-      setMenu((current) => ({ ...current, teamName: next }));
-      return;
+  function keyboardTargetsMatch(left: KeyboardTarget | null, right: KeyboardTarget | null) {
+    if (!left || !right) return false;
+    if (left.kind === "team") return right.kind === "team";
+    return right.kind === "player" && left.id === right.id;
+  }
+
+  function nameValue(target: KeyboardTarget, state: MenuState = menuRef.current) {
+    if (target.kind === "team") return state.teamName;
+    return state.players.find((player) => player.id === target.id)?.name || "";
+  }
+
+  function beginNameEdit(target: KeyboardTarget) {
+    if (keyboardTargetsMatch(nameEditStartRef.current?.target || null, target)) return;
+    nameEditStartRef.current = { target, value: nameValue(target) };
+  }
+
+  function openTouchKeyboard(target: KeyboardTarget) {
+    beginNameEdit(target);
+    touchKeyboardTargetRef.current = target;
+    setKeyboardTarget(target);
+  }
+
+  function setNameDraft(target: KeyboardTarget, value: string) {
+    const maxLength = target.kind === "team" ? maxTeamNameLength : maxPlayerNameLength;
+    const next = cleanNameDraft(value, maxLength);
+    setMenu((current) => target.kind === "team"
+      ? { ...current, teamName: next }
+      : {
+          ...current,
+          players: current.players.map((player) => player.id === target.id ? { ...player, name: next } : player),
+        });
+  }
+
+  function finishNameEdit(target: KeyboardTarget, closeKeyboard = false) {
+    const maxLength = target.kind === "team" ? maxTeamNameLength : maxPlayerNameLength;
+    const next = cleanNameWhitespace(nameValue(target), maxLength);
+    const initial = keyboardTargetsMatch(nameEditStartRef.current?.target || null, target)
+      ? cleanNameWhitespace(nameEditStartRef.current?.value || "", maxLength)
+      : next;
+
+    if (target.kind === "team") {
+      if (next !== initial) captureMenuEvent("team_renamed", { team_name: next });
+      setMenu((current) => current.teamName === next ? current : { ...current, teamName: next });
+    } else {
+      const currentMenu = menuRef.current;
+      const currentPlayer = currentMenu.players.find((player) => player.id === target.id);
+      if (currentPlayer && next !== initial) {
+        const nextPlayers = currentMenu.players.map((player) => player.id === target.id ? { ...player, name: next } : player);
+        captureMenuEvent("player_renamed", {
+          player_index: currentMenu.players.filter((player) => player.active).findIndex((player) => player.id === target.id),
+          player_name: playerLabel(nextPlayers, nextPlayers.find((player) => player.id === target.id) || currentPlayer),
+          players: rosterSnapshot(nextPlayers),
+        });
+      }
+      setMenu((current) => ({
+        ...current,
+        players: current.players.map((player) => player.id === target.id && player.name !== next ? { ...player, name: next } : player),
+      }));
     }
-    updatePlayer(keyboardTarget.id, { name: next });
+
+    nameEditStartRef.current = null;
+    if (closeKeyboard) {
+      touchKeyboardTargetRef.current = null;
+      setKeyboardTarget(null);
+      window.requestAnimationFrame(() => teamCloseRef.current?.focus({ preventScroll: true }));
+    }
+  }
+
+  function setKeyboardValue(value: string) {
+    if (keyboardTarget) setNameDraft(keyboardTarget, value.slice(0, keyboardMaxLength()));
   }
 
   function regenerateTeamName() {
-    setMenu((current) => ({ ...current, teamName: defaultTeamName() }));
-    setKeyboardTarget({ kind: "team" });
+    const next = defaultTeamName();
+    captureMenuEvent("team_renamed", { generated: true, team_name: next });
+    setMenu((current) => ({ ...current, teamName: next }));
+    nameEditStartRef.current = null;
   }
 
   function typeKey(key: string) {
@@ -2807,7 +2942,7 @@ function MenuApp() {
       });
       return false;
     }
-    let nextMenu = ensurePlayers({ ...menu, selectedGame: game.id });
+    let nextMenu = { ...menu, selectedGame: game.id };
     const partyIndex = isPartyCard(game) ? Math.max(0, Math.min((game.partyMiniGames?.length || 1) - 1, options.partyIndex || 0)) : 0;
     const launchGame = partyLaunchGame(game, menuGames, partyIndex);
     if (!launchGame) {
@@ -2821,6 +2956,7 @@ function MenuApp() {
       setError("Este juego del Party ya no está disponible");
       return false;
     }
+    if (!launchGame.allowAnyPlayers) nextMenu = ensurePlayers(nextMenu);
     const partyFirstMiniGame = isPartyCard(game) ? game.partyMiniGames?.[partyIndex] : undefined;
     const levelOverride = options.levelID && launchGame.levels?.some((level) => level.id === options.levelID) ? options.levelID : undefined;
     if (levelOverride) {
@@ -3057,8 +3193,16 @@ function MenuApp() {
       game: launchedGame.id,
       level: status?.level || selectedLevelFor(launchedGame) || undefined,
     });
-    const restarted = await launch(launchedGame.id, { resetChallengeRun: true });
-    if (restarted) setMessage("Reiniciando");
+    if (launchedGame.levels?.length && levelModeFor(launchedGame, menu) === "challenge") {
+      setMenu((current) => {
+        const { [launchedGame.id]: _discardedRun, ...challengeRuns } = current.challengeRuns;
+        return { ...current, challengeRuns };
+      });
+    }
+    // Restart the current runtime selection instead of selecting the game
+    // again. This keeps "Cada juego" as one video while "Cada intento" gets
+    // a fresh run/capture boundary from the runtime.
+    await sendGameControl("restart");
   }
 
   function requestActiveLevelSwitch(levelID: string) {
@@ -3175,7 +3319,6 @@ function MenuApp() {
     : 0;
   const recordingConfigured = venueSessionRecordingCanRequest(status ?? {});
   const recordingAvailable = status?.venueSessionRecordingAvailable !== false;
-  const recordingOperational = menu.recordingEnabled && recordingAvailable;
   function enterBrowserFullscreen() {
     const fullscreenDocument = document as Document & { webkitFullscreenElement?: Element | null };
     if (document.fullscreenElement || fullscreenDocument.webkitFullscreenElement) return;
@@ -3195,10 +3338,18 @@ function MenuApp() {
         floorReady={floorReady}
         previewGames={menuGames}
         readOnly
+        message={message}
+        error={error}
+        starting={sessionStarting}
+        recordingScope={menu.recordingPolicy}
+        recordingConfigured={recordingConfigured}
+        recordingAvailable={recordingAvailable}
+        recordingSaving={recordingScopeSaving}
         remoteSessionRequest={null}
         onCancelRemoteStart={() => {}}
         onConfirmRemoteStart={() => {}}
         onStart={() => {}}
+        onRecordingScopeChange={() => {}}
         onFullscreen={enterBrowserFullscreen}
       />
     );
@@ -3211,10 +3362,18 @@ function MenuApp() {
         floorReady={floorReady}
         previewGames={menuGames}
         readOnly={readOnlyMirror}
+        message={message}
+        error={error}
+        starting={sessionStarting}
+        recordingScope={menu.recordingPolicy}
+        recordingConfigured={recordingConfigured}
+        recordingAvailable={recordingAvailable}
+        recordingSaving={recordingScopeSaving}
         remoteSessionRequest={remoteSessionRequest}
         onCancelRemoteStart={dismissRemoteSessionStart}
         onConfirmRemoteStart={confirmRemoteSessionStart}
         onStart={() => void beginSession()}
+        onRecordingScopeChange={(scope) => void setSessionRecordingScope(scope)}
         onFullscreen={enterBrowserFullscreen}
       />
     );
@@ -3248,7 +3407,10 @@ function MenuApp() {
                   selected_game: first?.id,
                 });
                 setMenu((current) => {
-                  const selectedGameID = first?.id || current.selectedGame;
+                  // Empty categories keep an explicit empty selection. This
+                  // distinguishes deliberate navigation from a stale saved
+                  // game whose platform category changed during hydration.
+                  const selectedGameID = first?.id || "";
                   const difficulty = first ? normalizedDifficultyForGame(first, current.difficulty) : current.difficulty;
                   const levelID = first?.levels?.length
                     ? closestLevelIDForDifficulty(first, current.selectedLevels[selectedGameID] || defaultLevelIDForDifficulty(first, difficulty), difficulty)
@@ -3408,10 +3570,7 @@ function MenuApp() {
           </div>
           <section className={`team-name ${keyboardTarget?.kind === "team" ? "editing" : ""}`}>
             <div className="team-name-head">
-              <div>
-                <div className="micro">Equipo</div>
-                <strong>Alias de partida</strong>
-              </div>
+              <strong>Nombre del equipo</strong>
               <button className="btn compact name-refresh" type="button" onClick={regenerateTeamName}>
                 <RestartIcon />
                 Nuevo
@@ -3425,14 +3584,28 @@ function MenuApp() {
               spellCheck={false}
               placeholder="Nombre del equipo"
               inputMode="none"
-              onFocus={() => setKeyboardTarget({ kind: "team" })}
-              onClick={() => setKeyboardTarget({ kind: "team" })}
-              onChange={(event) => setMenu((current) => ({ ...current, teamName: cleanNameWhitespace(event.target.value, maxTeamNameLength) }))}
+              data-name-field="team"
+              onFocus={() => beginNameEdit({ kind: "team" })}
+              onClick={() => openTouchKeyboard({ kind: "team" })}
+              onBlur={() => {
+                const target: KeyboardTarget = { kind: "team" };
+                if (!keyboardTargetsMatch(touchKeyboardTargetRef.current, target)) finishNameEdit(target);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                openTouchKeyboard({ kind: "team" });
+              }}
+              onChange={(event) => setNameDraft({ kind: "team" }, event.target.value)}
             />
           </section>
 
           <section className="roster" aria-label="Jugadores">
-            {menu.players.length === 0 ? <div className="message">Añade un jugador o usa el inicio rápido.</div> : null}
+            {menu.players.length === 0 ? (
+              <div className="message roster-empty">
+                {selectedGame.allowAnyPlayers ? "Este juego no necesita jugadores configurados." : "Añade un jugador para continuar."}
+              </div>
+            ) : null}
             {menu.players.map((player, index) => {
               const invalidPlayer = Boolean(rosterIssue?.playerIds.has(player.id));
               const editingPlayer = keyboardTarget?.kind === "player" && keyboardTarget.id === player.id;
@@ -3450,10 +3623,21 @@ function MenuApp() {
                     spellCheck={false}
                     inputMode="none"
                     aria-invalid={invalidPlayer || undefined}
+                    aria-describedby={invalidPlayer && rosterIssue ? "roster-issue" : undefined}
                     placeholder={`Jugador ${index + 1}`}
-                    onFocus={() => setKeyboardTarget({ kind: "player", id: player.id })}
-                    onClick={() => setKeyboardTarget({ kind: "player", id: player.id })}
-                    onChange={(event) => updatePlayer(player.id, { name: event.target.value })}
+                    data-name-field={`player-${player.id}`}
+                    onFocus={() => beginNameEdit({ kind: "player", id: player.id })}
+                    onClick={() => openTouchKeyboard({ kind: "player", id: player.id })}
+                    onBlur={() => {
+                      const target: KeyboardTarget = { kind: "player", id: player.id };
+                      if (!keyboardTargetsMatch(touchKeyboardTargetRef.current, target)) finishNameEdit(target);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      openTouchKeyboard({ kind: "player", id: player.id });
+                    }}
+                    onChange={(event) => setNameDraft({ kind: "player", id: player.id }, event.target.value)}
                   />
                   <div className="player-actions">
                     <button
@@ -3474,6 +3658,13 @@ function MenuApp() {
             })}
           </section>
 
+          {rosterIssue ? (
+            <div className="roster-issue" id="roster-issue" role="alert" aria-live="polite">
+              <span aria-hidden="true">!</span>
+              {rosterIssue.message}
+            </div>
+          ) : null}
+
           <section className="team-actions">
             <button className="btn" type="button" onClick={addPlayer} disabled={menu.players.length >= maxPlayers}>
               <PlusIcon />
@@ -3485,27 +3676,13 @@ function MenuApp() {
             </button>
           </section>
 
-          <label
-            className={`recording-switch ${recordingOperational ? "on" : "off"} ${!recordingConfigured ? "unavailable" : recordingAvailable ? "" : "degraded"} ${recordingScopeSaving ? "saving" : ""}`}
-            title={!recordingConfigured
-              ? "El servicio de grabación no está configurado"
-              : recordingAvailable ? undefined : "El servicio de grabación está degradado; puedes reintentarlo"}
-          >
-            <span aria-hidden="true" />
-            <b>{!recordingConfigured ? "Grabación no disponible" : recordingAvailable ? "Grabación" : "Reintentar grabación"}</b>
-            <select
-              aria-label="Alcance de la grabación"
-              value={menu.recordingPolicy}
-              disabled={recordingScopeSaving}
-              aria-busy={recordingScopeSaving || undefined}
-              onChange={(event) => void setSessionRecordingScope(normalizeRecordingScope(event.currentTarget.value))}
-            >
-              <option value="off">Desactivada</option>
-              <option value="visit" disabled={!recordingConfigured}>Sesión completa</option>
-              <option value="selection" disabled={!recordingConfigured}>Cada juego</option>
-              <option value="run" disabled={!recordingConfigured}>Cada partida</option>
-            </select>
-          </label>
+          <RecordingModePicker
+            scope={menu.recordingPolicy}
+            configured={recordingConfigured}
+            available={recordingAvailable}
+            saving={recordingScopeSaving}
+            onChange={(scope) => void setSessionRecordingScope(scope)}
+          />
 
           <button className="btn primary drawer-done" type="button" onClick={() => setTeamOpen(false)}>
             <CheckIcon />
@@ -3523,7 +3700,6 @@ function MenuApp() {
                 </div>
                 {browsingLevels ? (
                   <div className="level-browser-actions">
-                    {levelsUnlocked ? <span className="dev-unlock-pill">Dev: niveles abiertos</span> : null}
                     <button className="btn compact back-to-games" type="button" onClick={() => setLevelBrowserGameID(null)}>
                       <ArrowLeftIcon />
                       Juegos
@@ -3543,7 +3719,7 @@ function MenuApp() {
                     <div className="empty-category" role="status">
                       <span className="empty-category-icon" aria-hidden="true"><GamepadIcon /></span>
                       <strong>Aún no hay juegos aquí</strong>
-                      <p>El catálogo puede estar actualizándose. Prueba otra categoría o vuelve a sincronizar.</p>
+                      <p>Prueba otra categoría o vuelve a intentarlo.</p>
                       <div className="empty-category-actions">
                         <button className="btn" type="button" onClick={() => {
                           const featured = gamesForCategory(menuGames, "featured")[0] || menuGames[0];
@@ -3555,7 +3731,7 @@ function MenuApp() {
                         </button>
                         <button className="btn primary" type="button" disabled={catalogRefreshing} onClick={() => refreshPlatformCatalog({ manual: true })}>
                           <RefreshIcon />
-                          {catalogRefreshing ? "Actualizando" : "Actualizar catálogo"}
+                          {catalogRefreshing ? "Actualizando" : "Volver a intentar"}
                         </button>
                       </div>
                     </div>
@@ -3611,21 +3787,6 @@ function MenuApp() {
                     <section className="season-summary" aria-label="Juego actual">
                       <div className="detail-heading-row">
                         <span className="micro">Juego actual</span>
-                        {selectedGame.revisionHash ? (
-                          <span className="game-revision-row">
-                            <span className="game-revision">rev {selectedGame.revisionHash}</span>
-                            <button
-                              className="game-revision-refresh"
-                              type="button"
-                              disabled={catalogRefreshing}
-                              title="Actualizar catálogo"
-                              aria-label="Actualizar catálogo"
-                              onClick={() => refreshPlatformCatalog({ manual: true })}
-                            >
-                              <RefreshIcon />
-                            </button>
-                          </span>
-                        ) : null}
                       </div>
                       <div className="season-title-row">
                         <span className="season-title-main">
@@ -3680,21 +3841,6 @@ function MenuApp() {
                   <>
                     <div className="detail-heading-row">
                       <span className="micro">Seleccionado</span>
-                      {selectedGame.revisionHash ? (
-                        <span className="game-revision-row">
-                          <span className="game-revision">rev {selectedGame.revisionHash}</span>
-                          <button
-                            className="game-revision-refresh"
-                            type="button"
-                            disabled={catalogRefreshing}
-                            title="Actualizar catálogo"
-                            aria-label="Actualizar catálogo"
-                            onClick={() => refreshPlatformCatalog({ manual: true })}
-                          >
-                            <RefreshIcon />
-                          </button>
-                        </span>
-                      ) : null}
                     </div>
                     <h2>{selectedGame.label}</h2>
                     <p>{selectedGame.description}</p>
@@ -3717,15 +3863,15 @@ function MenuApp() {
                             <strong>{selectedGamePlayerRangeLabel}</strong>
                           </div>
                           <div>
-                            <span>Mejor</span>
-                            <strong>Sin superar</strong>
+                            <span>Duración</span>
+                            <strong>{selectedGame.duration}</strong>
                           </div>
                         </>
                       )}
                     </section>
                     {isPartyCard(selectedGame) ? (
                       <div className="detail-rules">
-                        <span className="micro">Orden party</span>
+                        <span className="micro">Orden de juegos</span>
                         <ul>
                           {selectedPartyMiniGames.length ? selectedPartyMiniGames.map((item, index) => {
                             const miniGame = menuGames.find((candidate) => candidate.id === item.gameId || engineGameID(candidate) === item.gameId);
@@ -3772,8 +3918,7 @@ function MenuApp() {
             {usesDifficulty(selectedGame) ? (
               <div className="launch-difficulty-deck">
                 <div className="launch-deck-label">
-                  <span className="micro">Preparado</span>
-                  <strong>{selectedGame.label}</strong>
+                  <span className="micro">Elige dificultad</span>
                 </div>
                 <div className="launch-difficulty" role="group" aria-label="Dificultad">
                   {difficulties.map((difficulty) => (
@@ -3811,8 +3956,7 @@ function MenuApp() {
             ) : (
               <div className="launch-difficulty-deck launch-difficulty-deck--summary">
                 <div className="launch-deck-label">
-                  <span className="micro">Preparado</span>
-                  <strong>{selectedGame.label}</strong>
+                  <span className="micro">Listo para jugar</span>
                 </div>
                 <span className="launch-summary-pill">{selectedGame.players || "Listo"}</span>
               </div>
@@ -3942,6 +4086,7 @@ function MenuApp() {
           cancelLabel="Cancelar"
           onConfirm={() => deletePlayer(removePlayer.id)}
           onCancel={() => setConfirmRemove(null)}
+          restoreFocusFallback={teamDrawerFocusFallback}
         />
       ) : null}
 
@@ -4040,7 +4185,7 @@ function MenuApp() {
           onType={typeKey}
           onBackspace={() => setKeyboardValue(keyboardValue().slice(0, -1))}
           onClear={() => setKeyboardValue("")}
-          onDone={() => setKeyboardTarget(null)}
+          onDone={() => finishNameEdit(keyboardTarget, true)}
         />
       ) : null}
     </main>
@@ -4060,9 +4205,17 @@ function WelcomeScreen({
   floorReady,
   previewGames,
   readOnly,
+  message,
+  error,
+  starting,
+  recordingScope,
+  recordingConfigured,
+  recordingAvailable,
+  recordingSaving,
   remoteSessionRequest,
   onCancelRemoteStart,
   onConfirmRemoteStart,
+  onRecordingScopeChange,
   onStart,
   onFullscreen,
 }: {
@@ -4070,9 +4223,17 @@ function WelcomeScreen({
   floorReady: boolean;
   previewGames?: GameCard[];
   readOnly?: boolean;
+  message: string;
+  error: string;
+  starting: boolean;
+  recordingScope: RecordingScope;
+  recordingConfigured: boolean;
+  recordingAvailable: boolean;
+  recordingSaving: boolean;
   remoteSessionRequest: RemoteSessionRequest | null;
   onCancelRemoteStart: () => void;
   onConfirmRemoteStart: () => void;
+  onRecordingScopeChange: (scope: RecordingScope) => void;
   onStart: () => void;
   onFullscreen: () => void;
 }) {
@@ -4085,6 +4246,12 @@ function WelcomeScreen({
   const connectionLabel = systemStatusLabel(connectionState, floorReady);
   return (
     <main className={`app welcome-app ${systemStatusClass} ${readOnly ? "read-only-mirror" : ""}`} inert={readOnly}>
+      {error || message ? (
+        <div className={`kiosk-toast ${error ? "error" : ""}`} role="status" aria-live="polite">
+          <span aria-hidden="true">{error ? "!" : "✓"}</span>
+          {error || message}
+        </div>
+      ) : null}
       <section className="welcome-screen" aria-label="Inicio">
         <div className="welcome-copy">
           <button className="welcome-mark" type="button" aria-label="Pantalla completa" title="Pantalla completa" onClick={onFullscreen} />
@@ -4111,23 +4278,98 @@ function WelcomeScreen({
               </p>
             </div>
             <div className="remote-session-card__actions">
-              <button className="btn compact" type="button" onClick={onCancelRemoteStart}>
+              <button className="btn compact" type="button" onClick={onCancelRemoteStart} disabled={starting}>
                 Ignorar
               </button>
-              <button className="btn primary" type="button" onClick={onConfirmRemoteStart}>
+              <button className="btn primary" type="button" onClick={onConfirmRemoteStart} disabled={starting} aria-busy={starting || undefined}>
                 <PlayIcon />
-                Confirmar sesión
+                {starting ? "Preparando sesión" : "Confirmar sesión"}
               </button>
             </div>
           </section>
         ) : (
-          <button className="btn primary welcome-start" type="button" onClick={onStart} disabled={readOnly}>
-            <PlayIcon />
-            {readOnly ? "Esperando menú" : "Comenzar"}
-          </button>
+          <section className="welcome-session-controls" aria-label="Nueva sesión">
+            <RecordingModePicker
+              scope={recordingScope}
+              configured={recordingConfigured}
+              available={recordingAvailable}
+              saving={recordingSaving}
+              disabled={readOnly || starting}
+              variant="welcome"
+              onChange={onRecordingScopeChange}
+            />
+            <button className="btn primary welcome-start" type="button" onClick={onStart} disabled={readOnly || starting} aria-busy={starting || undefined}>
+              <PlayIcon />
+              {readOnly ? "Esperando menú" : starting ? "Preparando sesión" : "Comenzar"}
+            </button>
+          </section>
         )}
       </section>
     </main>
+  );
+}
+
+function RecordingModePicker({
+  scope,
+  configured,
+  available,
+  saving,
+  disabled = false,
+  variant = "drawer",
+  onChange,
+}: {
+  scope: RecordingScope;
+  configured: boolean;
+  available: boolean;
+  saving: boolean;
+  disabled?: boolean;
+  variant?: "drawer" | "welcome";
+  onChange: (scope: RecordingScope) => void;
+}) {
+  const canRetryActiveMode = variant === "drawer" && configured && !available && scope !== "off";
+  const status = !configured
+    ? "Servicio no configurado"
+    : available
+      ? "Elige cuándo empieza un vídeo nuevo"
+      : canRetryActiveMode
+        ? "Servicio sin conexión · toca el modo activo para reintentar"
+        : variant === "welcome"
+          ? "Elige un modo; se intentará al iniciar la sesión"
+          : "Elige un modo para activar y reintentar";
+  const labelID = `recording-mode-label-${variant}`;
+
+  return (
+    <section
+      className={`recording-picker recording-picker--${variant} ${scope === "off" ? "off" : "on"} ${!configured ? "unavailable" : available ? "" : "degraded"} ${saving ? "saving" : ""}`}
+      aria-busy={saving || undefined}
+    >
+      <div className="recording-picker__head" id={labelID}>
+        <span className="recording-status-dot" aria-hidden="true" />
+        <span>
+          <strong>{available ? "Grabación" : canRetryActiveMode ? "Reintentar grabación" : configured ? "Grabación sin conexión" : "Grabación no disponible"}</strong>
+          <small>{status}</small>
+        </span>
+      </div>
+      <div className="recording-options" role="group" aria-labelledby={labelID}>
+        {recordingModeOptions.map((option) => {
+          const selected = scope === option.scope;
+          return (
+            <button
+              key={option.scope}
+              className={`recording-option ${selected ? "selected" : ""}`}
+              type="button"
+              data-recording-scope={option.scope}
+              aria-pressed={selected}
+              disabled={disabled || saving || (option.scope !== "off" && !configured)}
+              onClick={() => onChange(option.scope)}
+            >
+              <span>{option.label}</span>
+              <small>{option.description}</small>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -4153,7 +4395,7 @@ function trapKioskFocus(event: ReactKeyboardEvent<HTMLElement>, onDismiss?: () =
     return;
   }
   if (event.key !== "Tab") return;
-  const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex='-1'])"));
+  const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"));
   if (focusable.length === 0) {
     event.preventDefault();
     return;
@@ -4174,13 +4416,15 @@ function KioskDialogLayer({
   className = "modal-overlay",
   label,
   onDismiss,
-  preservePointerFocus = false,
+  restoreFocus = true,
+  restoreFocusFallback,
 }: {
   children: ReactNode;
   className?: string;
   label: string;
   onDismiss?: () => void;
-  preservePointerFocus?: boolean;
+  restoreFocus?: boolean;
+  restoreFocusFallback?: () => HTMLElement | null;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
 
@@ -4188,21 +4432,37 @@ function KioskDialogLayer({
     const layer = layerRef.current;
     if (!layer) return;
     const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const parent = layer.parentElement;
-    const background = parent
-      ? Array.from(parent.children).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== layer)
-      : [];
-    const priorInert = background.map((element) => ({ element, inert: element.inert }));
-    for (const { element } of priorInert) element.inert = true;
+    // The full-screen layer, aria-modal contract and focus trap isolate the
+    // dialog. Sibling inert state remains React-owned so cleanup cannot restore
+    // a stale snapshot after a simultaneous session or drawer transition.
     const frame = window.requestAnimationFrame(() => {
-      layer.querySelector<HTMLElement>("button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex='-1'])")?.focus({ preventScroll: true });
+      layer.querySelector<HTMLElement>("button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])")?.focus({ preventScroll: true });
     });
     return () => {
       window.cancelAnimationFrame(frame);
-      for (const item of priorInert) item.element.inert = item.inert;
-      returnFocus?.focus({ preventScroll: true });
+      if (!restoreFocus) return;
+      window.requestAnimationFrame(() => {
+        const canReceiveFocus = (element: HTMLElement | null): element is HTMLElement => Boolean(
+          element
+          && element.isConnected
+          && !element.matches(":disabled")
+          && !element.closest("[inert], [aria-hidden='true']")
+          && element.getClientRects().length > 0
+        );
+        const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        if (active !== document.body && canReceiveFocus(active)) return;
+        const fallback = restoreFocusFallback?.() || null;
+        const requested = canReceiveFocus(returnFocus)
+          ? returnFocus
+          : canReceiveFocus(fallback)
+            ? fallback
+            : Array.from(document.querySelectorAll<HTMLElement>(
+              "button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"
+            )).find((element) => canReceiveFocus(element)) || null;
+        requested?.focus({ preventScroll: true });
+      });
     };
-  }, []);
+  }, [restoreFocus, restoreFocusFallback]);
 
   return (
     <div
@@ -4215,7 +4475,6 @@ function KioskDialogLayer({
       onClick={(event) => {
         if (event.target === event.currentTarget) onDismiss?.();
       }}
-      onMouseDown={preservePointerFocus ? (event) => event.preventDefault() : undefined}
     >
       {children}
     </div>
@@ -4479,49 +4738,36 @@ function OperatorSettingsDialog({
         </div>
 
         <div className="settings-content">
-          <section className="settings-version-card" aria-label="Versión del menú">
-            <span className="micro">Versión del menú</span>
-            <strong>menu {__MENU_BUILD_REVISION__}</strong>
-            <div className="settings-health" aria-label="Estado del sistema">
-              <div className={engineLabel === "Conectado" ? "ok" : "warn"}>
-                <span>Motor</span>
-                <b>{engineLabel}</b>
-              </div>
-              <div className={floorLabel === "Conectado" ? "ok" : "danger"}>
-                <span>Suelo</span>
-                <b>{floorLabel}</b>
-              </div>
-              <div className={audioLabel === "Activo" ? "ok" : "warn"}>
-                <span>Audio</span>
-                <b>{audioLabel}</b>
-              </div>
-              <div className={catalogLabel === "Actualizando" ? "warn" : "ok"}>
-                <span>Catálogo</span>
-                <b>{catalogLabel}</b>
-              </div>
-            </div>
-          </section>
-
           {unlocked ? (
-            <section className="settings-section" aria-label="Opciones de operador">
-              <div className="operator-unlocked-banner">
-                <CheckIcon />
-                <span>Modo operador desbloqueado</span>
-              </div>
-              <div className="settings-copy">
-                <span className="micro">Operador</span>
-                <p>Opciones protegidas para mantenimiento y pruebas.</p>
-              </div>
-              <button className={`settings-toggle ${levelsUnlocked ? "active" : ""}`} type="button" onClick={onToggleLevels} disabled={envUnlockLevels} aria-pressed={levelsUnlocked}>
-                <span>
-                  <strong>Dev: niveles abiertos</strong>
-                  <small>{envUnlockLevels ? "Activado por entorno" : levelsUnlocked ? "Todos los niveles visibles" : "Progreso normal"}</small>
-                </span>
-                <span className="switch-track" aria-hidden="true">
-                  <span />
-                </span>
-              </button>
-            </section>
+            <>
+              <section className="settings-version-card" aria-label="Versión del menú">
+                <span className="micro">Diagnóstico</span>
+                <strong>menu {__MENU_BUILD_REVISION__}</strong>
+                <div className="settings-health" aria-label="Estado del sistema">
+                  <div className={engineLabel === "Conectado" ? "ok" : "warn"}><span>Motor</span><b>{engineLabel}</b></div>
+                  <div className={floorLabel === "Conectado" ? "ok" : "danger"}><span>Suelo</span><b>{floorLabel}</b></div>
+                  <div className={audioLabel === "Activo" ? "ok" : "warn"}><span>Audio</span><b>{audioLabel}</b></div>
+                  <div className={catalogLabel === "Actualizando" ? "warn" : "ok"}><span>Catálogo</span><b>{catalogLabel}</b></div>
+                </div>
+              </section>
+              <section className="settings-section" aria-label="Opciones de operador">
+                <div className="operator-unlocked-banner">
+                  <CheckIcon />
+                  <span>Modo operador desbloqueado</span>
+                </div>
+                <div className="settings-copy">
+                  <span className="micro">Operador</span>
+                  <p>Opciones protegidas para mantenimiento y pruebas.</p>
+                </div>
+                <button className={`settings-toggle ${levelsUnlocked ? "active" : ""}`} type="button" onClick={onToggleLevels} disabled={envUnlockLevels} aria-pressed={levelsUnlocked}>
+                  <span>
+                    <strong>Mostrar todos los niveles</strong>
+                    <small>{envUnlockLevels ? "Activado por entorno" : levelsUnlocked ? "Todos los niveles visibles" : "Progreso normal"}</small>
+                  </span>
+                  <span className="switch-track" aria-hidden="true"><span /></span>
+                </button>
+              </section>
+            </>
           ) : (
             <section className="pin-panel" aria-label="PIN operador">
               <div className="settings-copy">
@@ -4569,6 +4815,7 @@ function ConfirmDialog({
   cancelLabel,
   onConfirm,
   onCancel,
+  restoreFocusFallback,
 }: {
   title: string;
   body: string;
@@ -4576,9 +4823,10 @@ function ConfirmDialog({
   cancelLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
+  restoreFocusFallback?: () => HTMLElement | null;
 }) {
   return (
-    <KioskDialogLayer label={title} onDismiss={onCancel}>
+    <KioskDialogLayer label={title} onDismiss={onCancel} restoreFocusFallback={restoreFocusFallback}>
       <div className="modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <strong>{title}</strong>
@@ -4926,7 +5174,6 @@ function TouchKeyboard({
 }) {
   const [mode, setMode] = useState<"letters" | "numbers" | "accents">("letters");
   const [shiftActive, setShiftActive] = useState(true);
-  const [spacePending, setSpacePending] = useState(false);
   const rows = mode === "numbers" ? keyboardNumberRows : mode === "accents" ? keyboardAccentRows : keyboardLetterRows;
   const shifted = mode !== "numbers" && shiftActive;
 
@@ -4935,9 +5182,7 @@ function TouchKeyboard({
   }
 
   function pressKey(key: string) {
-    const visibleKey = showKey(key);
-    onType(`${spacePending && value ? " " : ""}${visibleKey}`);
-    setSpacePending(false);
+    onType(showKey(key));
   }
 
   function setKeyboardMode(nextMode: "letters" | "numbers" | "accents") {
@@ -4946,24 +5191,21 @@ function TouchKeyboard({
   }
 
   function pressSpace() {
-    if (value) setSpacePending(true);
+    if (value && !value.endsWith(" ")) onType(" ");
   }
 
   function pressBackspace() {
-    if (spacePending) {
-      setSpacePending(false);
-      return;
-    }
     onBackspace();
   }
 
   function pressClear() {
-    setSpacePending(false);
     onClear();
   }
 
+  const composeFontSize = Math.max(32, Math.min(62, Math.floor(840 / Math.max(1, value.length))));
+
   return (
-    <KioskDialogLayer className="keyboard-modal-layer" label="Editar nombre" onDismiss={onDone} preservePointerFocus>
+    <KioskDialogLayer className="keyboard-modal-layer" label="Editar nombre" onDismiss={onDone} restoreFocus={false}>
       <section className="touch-keyboard" aria-label="Teclado táctil">
         <div className="kb-title-tab">
           <span aria-hidden="true">●</span>
@@ -4972,7 +5214,7 @@ function TouchKeyboard({
 
         <div className="kb-compose">
           <div className="kb-field ph-mask">
-            <div className="kb-value ph-mask">
+            <div className="kb-value ph-mask" style={{ "--kb-value-size": `${composeFontSize}px` } as CSSProperties}>
               {value ? <span>{value}</span> : <span className="kb-placeholder">{placeholder}</span>}
               <span className="kb-caret" />
             </div>
@@ -5010,7 +5252,7 @@ function TouchKeyboard({
             <button className={`key mode ${mode === "accents" ? "active" : ""}`} type="button" aria-pressed={mode === "accents"} onClick={() => setKeyboardMode("accents")}>
               Acentos
             </button>
-            <button className={`key space ${spacePending ? "pending" : ""}`} type="button" aria-pressed={spacePending} onClick={pressSpace}>
+            <button className="key space" type="button" onClick={pressSpace}>
               Espacio
             </button>
             <button className="key clear" type="button" aria-label="Borrar todo" onClick={pressClear} disabled={!value}>

@@ -1,5 +1,4 @@
 import { allDifficultyIDs, type DifficultyID } from "./difficulties";
-import { publicAssetURL } from "./utils";
 
 export type { DifficultyID } from "./difficulties";
 
@@ -141,41 +140,26 @@ export type GameLevel = {
 
 export const games: GameCard[] = [
   {
-    id: "featured-lava",
+    id: "lava",
     label: "El suelo es lava",
     category: "featured",
     color: colors.red,
-    players: "1-6",
+    players: "Sin requisito",
     difficulty: "Fácil-Experto",
-    duration: "Sin límite",
-    estimatedDurationSeconds: 180,
-    minPlayers: 1,
-    maxPlayers: 6,
-    difficulties: [...allDifficultyIDs],
-    mode: "Niveles",
-    audio: "Narración + música",
-    description: "Evitad las baldosas rojas, descubrid plataformas seguras nuevas y cuidad las vidas del equipo.",
-    rules: ["Pisa zonas seguras.", "Evita la lava.", "Sube la dificultad para reducir el margen."],
-    engineGame: "authored-lava",
-    previewAnimation: "lava",
-    featured: true,
-  },
-  {
-    id: "salvapantallas",
-    label: "Salvapantallas",
-    category: "attract",
-    color: colors.cyan,
-    players: "Todos",
-    difficulty: "Ambiente",
     duration: "60s",
     estimatedDurationSeconds: 60,
     minPlayers: 1,
-    maxPlayers: 1,
-    mode: "Ambiente",
-    audio: "Suave",
-    description: "Modo reposo que rota entre animaciones destacadas.",
-    rules: ["Rota automáticamente.", "Usa animaciones destacadas.", "Se puede cambiar en cualquier momento."],
-    engineGame: "salvapantallas",
-    thumbnailSrc: publicAssetURL("motion-levels-icon.webp"),
+    maxPlayers: 6,
+    allowAnyPlayers: true,
+    difficulties: [...allDifficultyIDs],
+    mode: "Plataformas",
+    audio: "Música + efectos",
+    description: "Moveos en equipo, evitad la lava y conquistad plataformas seguras durante un minuto.",
+    rules: ["Espera en la zona azul.", "Pisa las plataformas verdes.", "Evita la lava roja durante un minuto."],
+    engineGame: "motion-levels-games:lava",
+    sourceKind: "motion_levels_games",
+    sourceGameId: "lava",
+    previewAnimation: "lava",
+    featured: true,
   },
 ];

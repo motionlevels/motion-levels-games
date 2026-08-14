@@ -216,19 +216,14 @@ export function closestSupportedDifficulty(requested: DifficultyID, supported: D
 export function playerBoundsForGame(
   game: Pick<GameCard, "allowAnyPlayers" | "engineGame" | "id" | "category" | "maxPlayers" | "minPlayers" | "players">,
 ): PlayerBounds {
-  if (game.allowAnyPlayers || (typeof game.players === "string" && !gameRequiresPlayerCount(game))) return { minPlayers: 1, maxPlayers: 99 };
+  if (game.allowAnyPlayers) return { minPlayers: 0, maxPlayers: 99 };
+  if (typeof game.players === "string" && !gameRequiresPlayerCount(game)) return { minPlayers: 1, maxPlayers: 99 };
   if (Number.isFinite(game.minPlayers) && Number.isFinite(game.maxPlayers)) {
     const minPlayers = clampInteger(game.minPlayers, 1, 99, 1);
     const maxPlayers = Math.max(minPlayers, clampInteger(game.maxPlayers, 1, 99, minPlayers));
     return { maxPlayers, minPlayers };
   }
   if (game.category === "individual") return { minPlayers: 1, maxPlayers: 1 };
-  if ((game.engineGame || game.id) === "duel" || (game.engineGame || game.id) === "authored-duel") {
-    return { minPlayers: 2, maxPlayers: 8 };
-  }
-  if ((game.engineGame || game.id) === "memory") {
-    return { minPlayers: 2, maxPlayers: 4 };
-  }
   return { minPlayers: 1, maxPlayers: 6 };
 }
 

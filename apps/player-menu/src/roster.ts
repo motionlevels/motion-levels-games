@@ -118,6 +118,9 @@ export function activeRosterIssue(players: Player[]): RosterIssue | null {
 }
 
 export function gameRosterIssue(game: GameCard, players: Player[]): RosterIssue | null {
+  // Allow-any launches deliberately send playerCount 0 and omit the configured
+  // roster, so neither an empty roster nor duplicate local drafts can block it.
+  if (game.allowAnyPlayers) return null;
   const duplicateIssue = activeRosterIssue(players);
   if (duplicateIssue) return duplicateIssue;
   const active = players.filter((player) => player.active);

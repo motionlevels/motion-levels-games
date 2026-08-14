@@ -152,4 +152,13 @@ describe("roster validation", () => {
     assert.ok(duplicate);
     assert.match(duplicate.message, /ya está en uso/);
   });
+
+  it("does not block allow-any games on an empty or draft roster", () => {
+    const game = gameCard({ allowAnyPlayers: true, minPlayers: 1, maxPlayers: 6, players: "Sin requisito" });
+    assert.equal(gameRosterIssue(game, []), null);
+    assert.equal(gameRosterIssue(game, [
+      player({ id: 1, name: "Ana", color: "#ff0000" }),
+      player({ id: 2, name: "Ana", color: "#ff0000" }),
+    ]), null);
+  });
 });
