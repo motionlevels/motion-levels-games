@@ -20,5 +20,6 @@ interface ImportMeta {
 
 declare const __MENU_BUILD_REVISION__: string;
 declare const __MENU_BUILD_DATE__: string;
+declare const __MOTION_LEVELS_GAMES_BUILD_VERSION__: string;
 
 declare module "@fontsource-variable/inter";
