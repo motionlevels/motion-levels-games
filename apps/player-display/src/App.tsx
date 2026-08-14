@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { displayEventSource, fetchDisplayStatus, type DisplayStatus } from "./api";
+import { audioEventKey, VenueAudioOutput, type AudioOutputState } from "./audio";
 import { reportDisplayClient } from "./displayClient";
 import { acceptedPlayerStateRevision, createCoalescer, isFeedStalled } from "./displayFeed";
 import { challengeMode, heartMeterSlotCount, levelDisplayAttemptCount, levelDisplayTimeLabel, levelDisplayTimeMillis, levelHeartMeterModel } from "./displayMetrics";
@@ -50,6 +51,7 @@ const emptyStatus: DisplayStatus = {
   rounds: [],
   audioEnabled: false,
   audioMuted: false,
+  audioOutputState: "disabled",
   paused: false,
   success: false,
   music: "",
@@ -84,6 +86,10 @@ export default function App() {
   const lastFeedAt = useRef(0);
   const lastPaintAt = useRef(0);
   const feedTransport = useRef<"eventsource" | "poll" | "none">("none");
+  const lastAudioEventKey = useRef("");
+  const audioEventBaselineReady = useRef(false);
+  const [audioOutputState, setAudioOutputState] = useState<AudioOutputState>("disabled");
+  const audioOutput = useMemo(() => new VenueAudioOutput(setAudioOutputState), []);
 
   useEffect(() => {
     if (demoStatus) return;
@@ -207,6 +213,42 @@ export default function App() {
       };
 
   useEffect(() => {
+    audioOutput.configure(liveStatus.audioEnabled, liveStatus.audioMuted);
+  }, [audioOutput, liveStatus.audioEnabled, liveStatus.audioMuted]);
+
+  useEffect(() => {
+    if (audioOutputState !== "suspended" || !liveStatus.audioEnabled) return;
+    const retry = window.setTimeout(() => {
+      audioOutput.configure(liveStatus.audioEnabled, liveStatus.audioMuted);
+    }, 1_000);
+    return () => window.clearTimeout(retry);
+  }, [audioOutput, audioOutputState, liveStatus.audioEnabled, liveStatus.audioMuted]);
+
+  useEffect(() => {
+    const eventKey = audioEventKey({
+      lastEventCue: liveStatus.lastEventCue,
+      lastEventMessage: liveStatus.lastEventMessage,
+      lastEventSequence: liveStatus.lastEventSequence,
+      lastEventUnixNanos: liveStatus.lastEventUnixNanos,
+      runId: liveStatus.runId,
+      sessionId: liveStatus.sessionId,
+    });
+    if (!audioEventBaselineReady.current) {
+      if (!demoStatus && liveStatus.revision <= 0) return;
+      audioEventBaselineReady.current = true;
+      lastAudioEventKey.current = eventKey || "";
+      return;
+    }
+    if (!eventKey || eventKey === lastAudioEventKey.current) return;
+    lastAudioEventKey.current = eventKey;
+    audioOutput.playCue(liveStatus.lastEventCue);
+  }, [audioOutput, demoStatus, liveStatus.lastEventCue, liveStatus.lastEventMessage, liveStatus.lastEventSequence, liveStatus.lastEventUnixNanos, liveStatus.revision, liveStatus.runId, liveStatus.sessionId]);
+
+  useEffect(() => () => {
+    void audioOutput.dispose();
+  }, [audioOutput]);
+
+  useEffect(() => {
     const handle = window.requestAnimationFrame(() => {
       lastPaintAt.current = Date.now();
     });
@@ -234,6 +276,7 @@ export default function App() {
         viewportHeight: Math.round(window.visualViewport?.height || window.innerHeight || 0),
         devicePixelRatio: window.devicePixelRatio || 1,
         error: effectiveRenderState.error || liveError,
+        audioOutputState,
       }).catch(() => {
         // Telemetry must never replace or disturb the player-facing display.
       });
@@ -244,7 +287,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [demoStatus, effectiveRenderState.attempt, effectiveRenderState.error, effectiveRenderState.expectedRevision, effectiveRenderState.loadedRevision, effectiveRenderState.status, liveConnected, liveError, liveStatus.currentGame, telemetryEnabled]);
+  }, [audioOutputState, demoStatus, effectiveRenderState.attempt, effectiveRenderState.error, effectiveRenderState.expectedRevision, effectiveRenderState.loadedRevision, effectiveRenderState.status, liveConnected, liveError, liveStatus.currentGame, telemetryEnabled]);
 
   if (gamesDisplayActive) {
     return (
@@ -310,7 +353,7 @@ function ClassicDisplay({ status, connected, error }: DisplayProps) {
         </div>
         <div className="connection">
           <strong>{connected ? "En directo" : "Sin conexión"}</strong>
-          <span>{error || (!status.audioEnabled ? "Audio no disponible" : status.audioMuted ? "Audio silenciado" : "Audio listo")}</span>
+          <span>{error || audioDisplayLabel(status)}</span>
         </div>
       </header>
 
@@ -931,6 +974,14 @@ function displayGameTitle(status: Pick<DisplayStatus, "currentGame" | "label">):
   return gameTitleES(status.currentGame, status.label);
 }
 
+function audioDisplayLabel(status: Pick<DisplayStatus, "audioEnabled" | "audioMuted" | "audioOutputState">): string {
+  if (!status.audioEnabled || status.audioOutputState === "disabled") return "Audio no disponible";
+  if (status.audioOutputState === "failed") return "Salida de audio no disponible";
+  if (status.audioOutputState === "checking") return "Comprobando audio";
+  if (status.audioOutputState === "suspended") return "Audio en espera";
+  return status.audioMuted ? "Audio silenciado" : "Audio listo";
+}
+
 function isTeamScoreboardGame(status: Pick<DisplayStatus, "currentGame" | "label">): boolean {
   const text = normalizedDisplayText(`${status.currentGame} ${status.label}`);
   return text.includes("tira") || text.includes("afloja") || text.includes("baldosas") || text.includes("tug");
@@ -1118,6 +1169,7 @@ function demoDisplayStatus(options: DisplayOptions): DisplayStatus | null {
     remainingMillis: 137000,
     activeTargets: 17,
     audioEnabled: true,
+    audioOutputState: "ready",
     lastEventCue: "hit",
     lastEventMessage: "Red +5",
   };

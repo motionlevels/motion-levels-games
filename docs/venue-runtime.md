@@ -40,9 +40,12 @@ at 25 fps. `MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS` can select a value in that
 range. The cloud live-floor publisher remains independent and defaults to 5
 fps. Both live-floor paths retain only the latest pending frame under
 backpressure.
-Idle output is an all-black 16x32 frame. Audio reports `audioEnabled: false`:
-command-backed audio can be added as a narrow adapter later, without putting
-audio state back into gameplay.
+Audio capability is enabled explicitly with `MOTION_LEVELS_AUDIO_ENABLED=1`.
+The runtime owns the canonical mute state and stable cue sequence; the physical
+player display owns Web Audio playback and reports `ready`, `suspended`, or
+`failed` through the existing display-client heartbeat. This keeps HDMI/ALSA
+selection in the venue layer while letting the menu distinguish configured
+audio from an actually running TV output.
 
 ## Venue session lifecycle
 

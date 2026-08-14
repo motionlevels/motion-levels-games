@@ -123,6 +123,7 @@ export type PlayerExperienceState = {
   musicVolume: number;
   audioEnabled: boolean;
   audioMuted: boolean;
+  audioOutputState?: PlayerExperienceAudioOutputState;
   paused: boolean;
   success: boolean;
   startedUnix: number;
@@ -143,6 +144,7 @@ export type PlayerExperienceState = {
   lastRoundWinner?: string;
   rounds?: PlayerExperienceRound[];
   lastEventUnixNanos: number;
+  lastEventSequence?: number;
   lastEventCue: string;
   lastEventMessage: string;
   levelNumber?: number;
@@ -155,6 +157,8 @@ export type PlayerExperienceState = {
   finishedLevelAttempts?: PlayerExperienceFinishedAttempt[];
   catalog: PlayerExperienceGameSummary[];
 };
+
+export type PlayerExperienceAudioOutputState = "disabled" | "checking" | "ready" | "suspended" | "failed";
 
 const idleGames = new Set(["salvapantallas", "screensaver", "loop"]);
 

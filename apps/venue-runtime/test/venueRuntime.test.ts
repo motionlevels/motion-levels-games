@@ -5,8 +5,9 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { FLOOR_COLS, FLOOR_ROWS, type Frame } from "@motion-levels-games/game-sdk";
+import { FLOOR_COLS, FLOOR_ROWS, gameEvent, type Frame } from "@motion-levels-games/game-sdk";
 import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
+import type { GameSessionState } from "@motion-levels-games/runtime";
 import type { RecordingBoundary } from "@motion-levels-games/session-history";
 import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manifest";
 import { floorHeight, floorRgbBytes, floorWidth, pressureBitsetBytes, type PresentedFrame } from "../src/controllerProtocol.ts";
@@ -47,6 +48,101 @@ test("venue runtime runs the revisioned TypeScript screensaver while remaining i
   assert.ok(frameToRgb(frame, 1).some((channel) => channel > 0), "the idle floor must not be black");
   assert.equal(snapshot.phase, "running");
   assert.equal(snapshot.rotationSize, 24);
+});
+
+test("configured TV audio is controllable while idle and reports display output health", () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    controllerId: roomControllerId,
+    audioEnabled: true,
+  });
+
+  assert.equal(runtime.status().audioEnabled, true);
+  assert.equal(runtime.status().audioMuted, false);
+  assert.equal(runtime.status().audioOutputState, "checking");
+
+  assert.equal(runtime.control("mute").audioMuted, true);
+  assert.equal(runtime.control("toggle_mute").audioMuted, false);
+  assert.equal(runtime.control("unmute").audioMuted, false);
+
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    renderStatus: "ready",
+    connected: true,
+    feedTransport: "eventsource",
+    lastFeedUnixMillis: Date.now(),
+    audioOutputState: "ready",
+  });
+  assert.equal(runtime.status().audioOutputState, "ready");
+  assert.equal(runtime.health().audioOutputState, "ready");
+});
+
+test("game audio event identity remains stable across status reads and unrelated publishes", async () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  await selectPingPong(runtime);
+  runtime.applyRemoteFloorInput({
+    commandId: "90000000-0000-4000-8000-000000000001",
+    clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    clientSequence: 1,
+    changes: [
+      { x: 0, y: 4, pressed: true },
+      { x: 0, y: 27, pressed: true },
+    ],
+  });
+
+  const first = runtime.status();
+  assert.equal(first.lastEventCue, "start");
+  assert.ok(Number(first.lastEventSequence) > 0);
+  assert.ok(first.lastEventUnixNanos > 0);
+  assert.equal(runtime.status().lastEventSequence, first.lastEventSequence);
+  assert.equal(runtime.status().lastEventUnixNanos, first.lastEventUnixNanos);
+
+  runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: "audio-event-visit",
+    recordingEnabled: false,
+  });
+  assert.equal(runtime.status().lastEventSequence, first.lastEventSequence);
+  assert.equal(runtime.status().lastEventUnixNanos, first.lastEventUnixNanos);
+});
+
+test("tick audio survives a following empty tick before the display publishes", async () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  await selectPingPong(runtime);
+  const beforeSequence = Number(runtime.status().lastEventSequence);
+  const internals = runtime as unknown as {
+    lastDisplayPublishedAt: number;
+    session: { tick: (atMillis: number) => GameSessionState };
+    state: GameSessionState;
+    tick: (now: number) => void;
+  };
+  let ticks = 0;
+  internals.session.tick = (atMillis) => ({
+    ...internals.state,
+    events: ticks++ === 0 ? [gameEvent("tick", "Pulso temporal", atMillis)] : [],
+  });
+  const now = performance.now() + 1_000;
+  internals.lastDisplayPublishedAt = now;
+
+  internals.tick(now);
+  internals.tick(now + 1);
+
+  const status = runtime.status();
+  assert.equal(status.lastEventCue, "tick");
+  assert.equal(status.lastEventMessage, "Pulso temporal");
+  assert.equal(status.lastEventSequence, beforeSequence + 1);
 });
 
 test("idle display health requires the revisioned animations renderer", () => {
