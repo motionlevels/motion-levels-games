@@ -23,7 +23,7 @@ export function normalizeAnimationRuntimeContent(value: unknown): AnimationRunti
       .filter(Boolean))].slice(0, 100)
     : [];
   const rotationSeconds = typeof content.rotationSeconds === "number" && Number.isFinite(content.rotationSeconds)
-    ? Math.min(120, Math.max(5, Math.round(content.rotationSeconds)))
+    ? Math.min(3600, Math.max(5, Math.round(content.rotationSeconds)))
     : undefined;
 
   return Object.freeze({

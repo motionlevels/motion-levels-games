@@ -34,6 +34,21 @@ test("rotation uses the immutable host content snapshot", () => {
   assert.equal(game.snapshot().rotationSize, 2);
 });
 
+test("rotation ignores platform ids that are not in the native library", () => {
+  const game = createGame({
+    options: { mode: "rotation", rotationSeconds: 5 },
+    content: {
+      schema: animationContentSchema,
+      contentRevision: "sha256:platform",
+      rotationIds: ["missing-authored-animation", "prism-tunnel", "missing-again"],
+      rotationSeconds: 5
+    }
+  });
+  game.init(0);
+  assert.equal(game.snapshot().animationId, "prism-tunnel");
+  assert.equal(game.snapshot().rotationSize, 1);
+});
+
 test("every library entry can be selected and rendered", () => {
   for (const animation of animationLibrary) {
     const game = createGame({ options: { animation: animation.id, mode: "single", speed: 1, rotationSeconds: 20 } });

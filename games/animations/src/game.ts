@@ -1,6 +1,7 @@
 import {
   animationContentSchema,
   animationLibrary,
+  animationLibraryById,
   findAnimation,
   normalizeAnimationRuntimeContent,
   renderAnimationFrame,
@@ -146,7 +147,10 @@ class AnimationGame implements AnimationGameInstance {
 
   private rotation(): NativeAnimation[] {
     const ids = this.content().rotationIds;
-    const selected = ids.map((id) => findAnimation(id)).filter((animation, index, all) => all.findIndex((candidate) => candidate.id === animation.id) === index);
+    const selected = ids
+      .map((id) => animationLibraryById.get(id))
+      .filter((animation): animation is NativeAnimation => animation !== undefined)
+      .filter((animation, index, all) => all.findIndex((candidate) => candidate.id === animation.id) === index);
     return selected.length ? selected : [...animationLibrary];
   }
 

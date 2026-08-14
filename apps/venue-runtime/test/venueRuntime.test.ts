@@ -183,6 +183,86 @@ test("selecting salvapantallas stays an idle rotation without a gameplay session
   assert.throws(() => runtime.control("pause"), /no active game/);
 });
 
+test("screensaver uses and retains the last good platform rotation", async (context) => {
+  let fail = false;
+  let authorization = "";
+  const contentRevision = "a".repeat(64);
+  const server = createServer((request, response) => {
+    authorization = String(request.headers.authorization ?? "");
+    if (fail) {
+      response.writeHead(503).end("unavailable");
+      return;
+    }
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({
+      schema: "motion-levels-animation-content-v1",
+      contentRevision,
+      selectedAnimationId: "aurora",
+      rotationIds: ["aurora", "prism-tunnel"],
+      rotationSeconds: 5
+    }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${address.port}`,
+    platformToken: "platform-token"
+  });
+
+  assert.equal(await runtime.refreshScreensaverContent(), true);
+  assert.equal(authorization, "Bearer platform-token");
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).contentRevision, contentRevision);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 2);
+
+  fail = true;
+  assert.equal(await runtime.refreshScreensaverContent(), false);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).contentRevision, contentRevision);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 2);
+});
+
+test("canonical animation selection remains an idle screensaver and requests platform duration", async (context) => {
+  let requestedUrl = "";
+  const server = createServer((request, response) => {
+    requestedUrl = request.url ?? "";
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({
+      schema: "motion-levels-animation-content-v1",
+      contentRevision: "b".repeat(64),
+      selectedAnimationId: "aurora",
+      rotationIds: ["aurora"],
+      rotationSeconds: 35
+    }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    platformUrl: `http://127.0.0.1:${address.port}`
+  });
+  const status = await runtime.select({
+    game: "a861f0dc-3e2e-4fe9-b487-33194af75b68",
+    engineGame: "motion-levels-games:a861f0dc-3e2e-4fe9-b487-33194af75b68",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    durationSeconds: 35,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  assert.equal(status.lifecycle, "idle");
+  assert.match(requestedUrl, /\/api\/level-games\/salvapantallas\/runtime-content\?rotationSeconds=35/u);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 1);
+});
+
 test("published levels resolve the TS product from engineGame and fetch canonical request.game content", async (context) => {
   const canonicalGameId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   let responseGameId = parkourGameId;

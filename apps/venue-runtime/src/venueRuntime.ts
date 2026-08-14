@@ -72,6 +72,7 @@ export type VenueRuntimeOptions = {
   liveFloorFps?: number;
   liveFloorTimeoutMillis?: number;
   localLiveFloorFps?: number;
+  screensaverRefreshMillis?: number;
   brightness?: number;
   log?(message: string, error?: unknown): void;
 };
@@ -123,6 +124,9 @@ type SelectionMetadata = {
 };
 
 const screensaverGameId = "salvapantallas";
+const screensaverContentSchema = "motion-levels-animation-content-v1";
+const defaultScreensaverRefreshMillis = 60_000;
+const maximumScreensaverContentBytes = 1_048_576;
 const defaultLocalLiveFloorFps = 10;
 const minimumLocalLiveFloorFps = 5;
 const maximumLocalLiveFloorFps = 10;
@@ -150,6 +154,10 @@ export class VenueRuntime {
   private frameSequence = 0n;
   private lastDisplayPublishedAt = 0;
   private timer: NodeJS.Timeout | null = null;
+  private screensaverRefreshTimer: NodeJS.Timeout | null = null;
+  private screensaverContent: GameContent | undefined;
+  private screensaverContentRevision = "builtin";
+  private screensaverRefreshInFlight: Promise<boolean> | null = null;
   private lastPressureUnix = 0;
   private controllerConnected = false;
   private adapterRevision = "";
@@ -196,11 +204,21 @@ export class VenueRuntime {
     if (this.timer) return;
     this.controller.start();
     this.timer = setInterval(() => this.tick(performance.now()), 20);
+    if (this.options.platformUrl) {
+      void this.refreshScreensaverContent();
+      const refreshMillis = normalizeScreensaverRefreshMillis(this.options.screensaverRefreshMillis);
+      if (refreshMillis > 0) {
+        this.screensaverRefreshTimer = setInterval(() => void this.refreshScreensaverContent(), refreshMillis);
+        this.screensaverRefreshTimer.unref();
+      }
+    }
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.screensaverRefreshTimer) clearInterval(this.screensaverRefreshTimer);
+    this.screensaverRefreshTimer = null;
     if (this.localLiveFloorTimer) clearTimeout(this.localLiveFloorTimer);
     this.localLiveFloorTimer = null;
     this.localLiveFloorPending = false;
@@ -231,8 +249,9 @@ export class VenueRuntime {
     if (module === gameplayRegistry.get(screensaverGameId) && isScreensaverRequest(request)) {
       const screensaverOptions: Record<string, unknown> = { mode: "rotation", ...(request.config ?? {}) };
       if (screensaverOptions.rotationSeconds === undefined && durationMillis !== undefined) {
-        screensaverOptions.rotationSeconds = Math.max(5, Math.min(120, Math.round(durationSeconds)));
+        screensaverOptions.rotationSeconds = Math.max(5, Math.min(3600, Math.round(durationSeconds)));
       }
+      await this.refreshScreensaverContent(durationMillis === undefined ? undefined : Math.round(durationSeconds));
       this.activateScreensaver(screensaverOptions);
       this.publishDisplay();
       return this.status();
@@ -687,7 +706,8 @@ export class VenueRuntime {
       playerCount: 0,
       difficulty: "medium",
       seed: 137,
-      options
+      options,
+      ...(this.screensaverContent ? { content: this.screensaverContent } : {})
     });
     this.selection = null;
     this.gameStartedAt = performance.now();
@@ -695,6 +715,57 @@ export class VenueRuntime {
     this.sessionStartedUnix = 0;
     this.gameSessionId = "";
     this.applyHeldPressure(0);
+  }
+
+  async refreshScreensaverContent(rotationSeconds?: number): Promise<boolean> {
+    if (!this.options.platformUrl) return false;
+    if (this.screensaverRefreshInFlight) return this.screensaverRefreshInFlight;
+    const refresh = this.fetchScreensaverContent(rotationSeconds)
+      .then(({ content, contentRevision }) => {
+        if (contentRevision === this.screensaverContentRevision) return false;
+        this.screensaverContent = content;
+        this.screensaverContentRevision = contentRevision;
+        if (!this.selection) {
+          this.activateScreensaver();
+          this.publishDisplay();
+        }
+        return true;
+      })
+      .catch((error) => {
+        this.options.log?.("screensaver content refresh failed; keeping the last good rotation", error);
+        return false;
+      })
+      .finally(() => {
+        this.screensaverRefreshInFlight = null;
+      });
+    this.screensaverRefreshInFlight = refresh;
+    return refresh;
+  }
+
+  private async fetchScreensaverContent(rotationSeconds?: number): Promise<{ content: GameContent; contentRevision: string }> {
+    const platform = resolveRuntimeContentPlatformUrl(this.options.platformUrl, undefined);
+    if (!platform) throw new RequestValidationError("platform URL is invalid");
+    const endpoint = new URL(platform);
+    endpoint.pathname = `${endpoint.pathname.replace(/\/$/u, "")}/api/level-games/${screensaverGameId}/runtime-content`;
+    if (rotationSeconds !== undefined) endpoint.searchParams.set("rotationSeconds", String(rotationSeconds));
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (this.options.platformToken) headers.Authorization = `Bearer ${this.options.platformToken.trim()}`;
+    const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(4_000) });
+    if (!response.ok) throw new RequestValidationError(`screensaver content returned HTTP ${response.status}`);
+    const text = await response.text();
+    if (Buffer.byteLength(text) > maximumScreensaverContentBytes) {
+      throw new RequestValidationError("screensaver content is too large");
+    }
+    const content = JSON.parse(text) as Record<string, unknown>;
+    const contentRevision = String(content.contentRevision ?? "").trim().toLowerCase();
+    if (content.schema !== screensaverContentSchema
+      || !/^[0-9a-f]{64}$/u.test(contentRevision)
+      || !Array.isArray(content.rotationIds)
+      || content.rotationIds.length < 1
+      || content.rotationIds.length > 100) {
+      throw new RequestValidationError("screensaver content is invalid");
+    }
+    return { content: content as GameContent, contentRevision };
   }
 
   private async fetchRuntimeContent(request: SelectGameRequest): Promise<{ content: GameContent; contentRevision: string }> {
@@ -781,9 +852,10 @@ function runtimeGameId(request: SelectGameRequest): string {
 }
 
 function isScreensaverRequest(request: SelectGameRequest): boolean {
+  const screensaver = gameplayRegistry.get(screensaverGameId);
   return [request.engineGame, request.game].some((value) => {
-    const candidate = String(value ?? "").trim().toLowerCase();
-    return candidate === screensaverGameId || candidate === `motion-levels-games:${screensaverGameId}`;
+    const candidate = String(value ?? "").trim().toLowerCase().replace(/^motion-levels-games:/u, "");
+    return gameplayRegistry.get(candidate) === screensaver;
   });
 }
 
@@ -848,6 +920,13 @@ function normalizeLocalLiveFloorFps(value: unknown): number {
   const candidate = Number(value ?? defaultLocalLiveFloorFps);
   if (!Number.isFinite(candidate)) return defaultLocalLiveFloorFps;
   return Math.max(minimumLocalLiveFloorFps, Math.min(maximumLocalLiveFloorFps, candidate));
+}
+
+function normalizeScreensaverRefreshMillis(value: unknown): number {
+  const candidate = Number(value ?? defaultScreensaverRefreshMillis);
+  if (!Number.isFinite(candidate)) return defaultScreensaverRefreshMillis;
+  if (candidate <= 0) return 0;
+  return Math.max(5_000, Math.min(60 * 60_000, Math.round(candidate)));
 }
 
 function cleanText(value: unknown, max: number): string { return String(value ?? "").trim().slice(0, max); }
