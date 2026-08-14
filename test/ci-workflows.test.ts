@@ -96,8 +96,10 @@ test("reusable CI separates quality, compatibility, coverage, bundle, and browse
   assert.equal((checks.match(/timeout-minutes:/g) ?? []).length, 5, "every reusable job needs a timeout");
 });
 
-test("release tags pass the shared quality gate and identify current main exactly", () => {
+test("manual release recovery passes the shared quality gate and identifies current main exactly", () => {
   assert.match(release, /workflow_dispatch:/);
+  assert.doesNotMatch(release, /^\s{2}push:/m, "the tag created by main CI must not start a duplicate release gate");
+  assert.doesNotMatch(release, /^\s{4}tags:/m);
   assert.match(release, /^\s{2}release-policy:/m);
   const releasePolicy = release.match(/^  release-policy:[\s\S]*?(?=^  checks:)/m)?.[0] || "";
   assert.match(releasePolicy, /defaults:[\s\S]*?working-directory: source/);
@@ -147,7 +149,7 @@ test("published release assets are immutable and dispatch their exact identity t
   assert.match(release, /ref:\$ref,inputs:\{release_tag:\$release_tag,source_revision:\$source_revision\}/);
   assert.match(release, /repos\/motionlevels\/motion-levels-platform\/actions\/workflows\/sync-games-bundle\.yml\/dispatches/);
   assert.match(release, /^  notify-platform:[\s\S]*?needs:[\s\S]*?- bundle/m);
-  assert.match(release, /^  notify-venue:[\s\S]*?needs:[\s\S]*?- bundle/m);
+  assert.doesNotMatch(release, /motion-levels-venue|VENUE_SYNC_TOKEN|notify-venue/);
   assert.match(release, /--retry 3/);
   assert.match(release, /group: games-bundle-release/);
   assert.match(release, /cancel-in-progress: false/);

@@ -1,15 +1,27 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   animationLibrary,
+  animationMediaMetadataReference,
   animationMediaReferences,
-  animationMediaSchema
+  animationMediaSchema,
+  animationPreviewRecipe
 } from "../packages/animation-runtime/src/index.ts";
 import {
   SESSION_HISTORY_CONTRACT_VERSION,
   SESSION_HISTORY_SCHEMA
 } from "../packages/session-history/src/index.ts";
+import {
+  gameMediaAssetSpecs,
+  gameMediaMetadataReference,
+  gameMediaReferences,
+  gameMediaSchema,
+  normalizeGameConfig,
+  type GameMediaAssetKind
+} from "../packages/game-sdk/src/index.ts";
+import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 
 const root = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(process.cwd(), "dist/bundle"));
@@ -17,11 +29,12 @@ const manifest = JSON.parse(await readFile(path.join(root, "bundle.json"), "utf8
   schema?: string;
   contractVersion?: number;
   venueRuntime?: { entry?: string; apiProtocolVersion?: number; controllerProtocolVersion?: number; games?: string[] };
-  playerMenu?: { entry?: string; adapterProtocolVersion?: number };
+  playerMenu?: { entry?: string; buildManifest?: string; adapterProtocolVersion?: number };
   playerExperience?: { contractVersion?: number; schema?: string };
   sessionHistory?: { contractVersion?: number; schemaId?: string; schema?: string };
   playerDisplay?: { entry?: string; shellEntry?: string; games?: string[] };
   playground?: { entry?: string; basePath?: string };
+  catalog?: string;
   animations?: string;
   sourceRevision?: string;
   sdkFps?: number;
@@ -38,6 +51,7 @@ assert.equal(manifest.playerDisplay?.entry, "display/display.js");
 assert.equal(manifest.playerDisplay?.shellEntry, "display/index.html");
 assert.deepEqual(manifest.playerDisplay?.games, manifest.venueRuntime?.games);
 assert.equal(manifest.playerMenu?.entry, "menu/index.html");
+assert.equal(manifest.playerMenu?.buildManifest, "menu/build.json");
 assert.equal(manifest.playerMenu?.adapterProtocolVersion, 2);
 assert.equal(manifest.playerExperience?.contractVersion, 1);
 assert.equal(manifest.playerExperience?.schema, "player-experience-state.schema.json");
@@ -46,6 +60,7 @@ assert.equal(manifest.sessionHistory?.schemaId, SESSION_HISTORY_SCHEMA);
 assert.equal(manifest.sessionHistory?.schema, "session-history-v1.schema.json");
 assert.equal(manifest.playground?.entry, "playground/index.html");
 assert.equal(manifest.playground?.basePath, "/games/play/");
+assert.equal(manifest.catalog, "catalog.json");
 assert.equal(manifest.animations, "animations.json");
 assert.equal(manifest.sdkFps, 50);
 assert.match(String(manifest.sourceRevision), /^[0-9a-f]{40}$/u);
@@ -55,8 +70,10 @@ assert.ok(files.some((file) => file.path === manifest.venueRuntime?.entry), "ven
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.entry), "player display entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.shellEntry), "player display shell is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerMenu?.entry), "player menu entry is missing from bundle files");
+assert.ok(files.some((file) => file.path === manifest.playerMenu?.buildManifest), "player menu build manifest is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playground?.entry), "playground entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.animations), "animation catalog is missing from bundle files");
+assert.ok(files.some((file) => file.path === manifest.catalog), "game catalog is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerExperience?.schema), "player experience schema is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.sessionHistory?.schema), "session history schema is missing from bundle files");
 
@@ -73,11 +90,91 @@ assert.equal(
   SESSION_HISTORY_CONTRACT_VERSION
 );
 
+const menuBuild = JSON.parse(await readFile(path.join(root, manifest.playerMenu!.buildManifest!), "utf8")) as {
+  schema?: string;
+  menuBuildRevision?: string;
+  menuBuildDate?: string;
+  gamesSourceRevision?: string;
+};
+assert.equal(menuBuild.schema, "motion-levels-player-menu-build-v1");
+assert.equal(menuBuild.menuBuildRevision, manifest.sourceRevision);
+assert.equal(menuBuild.gamesSourceRevision, manifest.sourceRevision);
+assert.ok(Boolean(menuBuild.menuBuildDate), "player menu build date is missing");
+const compiledMenuEntries = files.filter((file) => /^menu\/assets\/.*\.js$/u.test(file.path));
+assert.ok(compiledMenuEntries.length > 0, "player menu has no compiled JavaScript");
+assert.ok(
+  (await Promise.all(compiledMenuEntries.map(async (file) => (
+    await readFile(path.join(root, file.path))
+  ).includes(Buffer.from(manifest.sourceRevision!))))).some(Boolean),
+  "player menu JavaScript does not contain its declared games source revision"
+);
+for (const [label, entry] of [
+  ["venue runtime", manifest.venueRuntime!.entry!],
+  ["player display", manifest.playerDisplay!.entry!]
+] as const) {
+  const compiled = await readFile(path.join(root, entry));
+  assert.ok(compiled.includes(Buffer.from(manifest.sourceRevision!)), `${label} does not contain its source revision`);
+}
+
+type MediaAssetMetadata = {
+  file?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  bytes?: number;
+  sha256?: string;
+};
+
+const catalog = JSON.parse(await readFile(path.join(root, manifest.catalog!), "utf8")) as Array<{
+  id?: string;
+  media?: Partial<Record<GameMediaAssetKind, string>>;
+}>;
+assert.deepEqual(catalog.map((game) => game.id), gameCatalog.map((game) => game.id));
+const productionGameIds = gameCatalog.filter((game) => game.availability.production).map((game) => game.id);
+assert.deepEqual(manifest.venueRuntime?.games, productionGameIds);
+for (const game of gameCatalog) {
+  const catalogEntry = catalog.find((entry) => entry.id === game.id);
+  const expectedMedia = gameMediaReferences(game.id);
+  assert.deepEqual(catalogEntry?.media, expectedMedia, `${game.id} catalog media does not match the SDK contract`);
+  const metadataPath = gameMediaMetadataReference(game.id);
+  assert.ok(files.some((file) => file.path === metadataPath), `${game.id} metadata is missing`);
+  const metadata = JSON.parse(await readFile(path.join(root, metadataPath), "utf8")) as {
+    schema?: string;
+    game?: { id?: string; label?: string };
+    scenario?: unknown;
+    configuration?: { difficulty?: string; options?: unknown; playerCount?: number; seed?: number };
+    media?: Partial<Record<GameMediaAssetKind, string>>;
+    assets?: Partial<Record<GameMediaAssetKind, MediaAssetMetadata>>;
+  };
+  const expectedConfiguration = normalizeGameConfig({
+    difficulty: game.preview.difficulty,
+    options: game.preview.options,
+    playerCount: game.preview.playerCount,
+    seed: game.preview.seed
+  }, game);
+  assert.equal(metadata.schema, gameMediaSchema);
+  assert.deepEqual(metadata.game, { id: game.id, label: game.label });
+  assert.deepEqual(metadata.scenario, game.preview);
+  assert.deepEqual(metadata.configuration, {
+    difficulty: expectedConfiguration.difficulty,
+    options: expectedConfiguration.options,
+    playerCount: expectedConfiguration.playerCount,
+    seed: expectedConfiguration.seed
+  });
+  assert.deepEqual(metadata.media, expectedMedia);
+  assert.deepEqual(Object.keys(metadata.assets ?? {}).sort(), Object.keys(gameMediaAssetSpecs).sort());
+  for (const kind of Object.keys(gameMediaAssetSpecs) as GameMediaAssetKind[]) {
+    await verifyMediaAsset(game.id, kind, expectedMedia[kind], metadata.assets?.[kind]);
+  }
+}
+
 const animationCatalog = JSON.parse(await readFile(path.join(root, manifest.animations!), "utf8")) as {
   schema?: string;
+  recipe?: unknown;
   animations?: Array<{ id?: string; media?: Record<string, string> }>;
 };
 assert.equal(animationCatalog.schema, animationMediaSchema);
+assert.deepEqual(animationCatalog.recipe, animationPreviewRecipe);
 assert.deepEqual(animationCatalog.animations?.map((animation) => animation.id), animationLibrary.map((animation) => animation.id));
 for (const animation of animationLibrary) {
   const catalogEntry: { id?: string; media?: Record<string, string> } | undefined = animationCatalog.animations?.find((entry) => entry.id === animation.id);
@@ -86,32 +183,82 @@ for (const animation of animationLibrary) {
   for (const mediaPath of Object.values(expectedMedia)) {
     assert.ok(files.some((file) => file.path === mediaPath), `${animation.id} media is missing: ${mediaPath}`);
   }
-  const metadataPath = `media/animations/${animation.id}/metadata.json`;
+  const metadataPath = animationMediaMetadataReference(animation.id);
+  assert.ok(files.some((file) => file.path === metadataPath), `${animation.id} metadata is missing`);
   const metadata = JSON.parse(await readFile(path.join(root, metadataPath), "utf8")) as {
+    schema?: string;
     animation?: { id?: string };
-    assets?: Record<string, { width?: number; height?: number; mimeType?: string; bytes?: number }>;
+    recipe?: unknown;
+    media?: Record<string, string>;
+    assets?: Record<string, MediaAssetMetadata>;
   };
+  assert.equal(metadata.schema, animationMediaSchema);
   assert.equal(metadata.animation?.id, animation.id);
-  assert.deepEqual(
-    Object.fromEntries(Object.entries(metadata.assets ?? {}).map(([kind, asset]) => [kind, [asset.width, asset.height]])),
-    { thumbnailSmall: [256, 128], thumbnail: [1024, 512], animation: [512, 256] }
-  );
-  assert.ok(Object.values(metadata.assets ?? {}).every((asset) => asset.mimeType === "image/webp" && Number(asset.bytes) > 0));
-  const animatedWebP = await readFile(path.join(root, expectedMedia.animation));
-  assert.ok(animatedWebP.includes(Buffer.from("ANIM")), `${animation.id} preview is not an animated WebP`);
-  assert.ok(countChunks(animatedWebP, "ANMF") > 1, `${animation.id} preview needs more than one frame`);
+  assert.deepEqual(metadata.recipe, animationPreviewRecipe);
+  assert.deepEqual(metadata.media, expectedMedia);
+  assert.deepEqual(Object.keys(metadata.assets ?? {}).sort(), ["animation", "thumbnail", "thumbnailSmall"]);
+  for (const kind of ["thumbnailSmall", "thumbnail", "animation"] as const) {
+    await verifyMediaAsset(animation.id, kind, expectedMedia[kind], metadata.assets?.[kind]);
+  }
 }
 assert.deepEqual(files, manifest.files);
 assert.equal(bundleContentDigest(files), manifest.artifactDigest);
 console.log(`Verified ${files.length} bundle files at ${manifest.artifactDigest}`);
 
-function countChunks(buffer: Buffer, chunk: string): number {
-  const marker = Buffer.from(chunk);
-  let count = 0;
-  let offset = 0;
-  while ((offset = buffer.indexOf(marker, offset)) >= 0) {
-    count += 1;
-    offset += marker.length;
+async function verifyMediaAsset(
+  ownerId: string,
+  kind: GameMediaAssetKind,
+  reference: string,
+  metadata: MediaAssetMetadata | undefined
+): Promise<void> {
+  const spec = gameMediaAssetSpecs[kind];
+  assert.ok(files.some((file) => file.path === reference), `${ownerId} media is missing: ${reference}`);
+  assert.equal(metadata?.file, path.basename(reference), `${ownerId} ${kind} filename does not match its reference`);
+  assert.equal(metadata?.width, spec.width, `${ownerId} ${kind} metadata width is invalid`);
+  assert.equal(metadata?.height, spec.height, `${ownerId} ${kind} metadata height is invalid`);
+  assert.equal(metadata?.mimeType, spec.mimeType, `${ownerId} ${kind} metadata MIME type is invalid`);
+  const contents = await readFile(path.join(root, reference));
+  assert.equal(metadata?.bytes, contents.length, `${ownerId} ${kind} byte count is stale`);
+  assert.equal(
+    metadata?.sha256,
+    createHash("sha256").update(contents).digest("hex"),
+    `${ownerId} ${kind} digest is stale`
+  );
+  const webp = inspectWebP(contents);
+  assert.deepEqual([webp.width, webp.height], [spec.width, spec.height], `${ownerId} ${kind} dimensions are invalid`);
+  if (spec.animated) {
+    assert.ok(webp.chunks.includes("ANIM"), `${ownerId} ${kind} is not an animated WebP`);
+    assert.ok(webp.chunks.filter((chunk) => chunk === "ANMF").length > 1, `${ownerId} ${kind} needs more than one frame`);
+  } else {
+    assert.equal(webp.chunks.includes("ANIM"), false, `${ownerId} ${kind} must be a still WebP`);
   }
-  return count;
+}
+
+function inspectWebP(buffer: Buffer): { width: number; height: number; chunks: string[] } {
+  assert.equal(buffer.subarray(0, 4).toString("ascii"), "RIFF", "media is not a RIFF file");
+  assert.equal(buffer.subarray(8, 12).toString("ascii"), "WEBP", "media is not a WebP file");
+  const chunks: string[] = [];
+  let width = 0;
+  let height = 0;
+  for (let offset = 12; offset + 8 <= buffer.length;) {
+    const chunk = buffer.subarray(offset, offset + 4).toString("ascii");
+    const size = buffer.readUInt32LE(offset + 4);
+    const payload = offset + 8;
+    assert.ok(payload + size <= buffer.length, `truncated WebP ${chunk} chunk`);
+    chunks.push(chunk);
+    if (chunk === "VP8X" && size >= 10) {
+      width = 1 + buffer.readUIntLE(payload + 4, 3);
+      height = 1 + buffer.readUIntLE(payload + 7, 3);
+    } else if (chunk === "VP8 " && size >= 10 && width === 0) {
+      width = buffer.readUInt16LE(payload + 6) & 0x3fff;
+      height = buffer.readUInt16LE(payload + 8) & 0x3fff;
+    } else if (chunk === "VP8L" && size >= 5 && width === 0) {
+      const bits = buffer.readUInt32LE(payload + 1);
+      width = 1 + (bits & 0x3fff);
+      height = 1 + ((bits >>> 14) & 0x3fff);
+    }
+    offset = payload + size + (size % 2);
+  }
+  assert.ok(width > 0 && height > 0, "WebP dimensions are missing");
+  return { width, height, chunks };
 }

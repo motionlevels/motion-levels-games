@@ -17,6 +17,11 @@ import {
   frameCell,
   gameEvent,
   gameDifficultyOptions,
+  gameMediaAssetSpecs,
+  gameMediaFileNames,
+  gameMediaMetadataReference,
+  gameMediaReferences,
+  gameMediaURL,
   gameManifestLookupKeys,
   gameManifestSlug,
   gamePlayerCountOptions,
@@ -61,6 +66,39 @@ const testManifestFields = {
     frameIntervalMillis: 20
   }
 } as const;
+
+test("game media contract owns dimensions, names, references, and bundle-root URLs", () => {
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(gameMediaAssetSpecs).map(([kind, spec]) => [kind, [spec.width, spec.height]])),
+    {
+      thumbnailSmall: [256, 128],
+      thumbnail: [1_024, 512],
+      animation: [512, 256],
+      playerDisplay: [1_280, 720],
+      playerDisplayAnimation: [640, 360]
+    }
+  );
+  assert.deepEqual(gameMediaFileNames(" Hello-World "), {
+    thumbnailSmall: "hello-world-thumbnail-small.webp",
+    thumbnail: "hello-world-thumbnail.webp",
+    animation: "hello-world-preview.webp",
+    playerDisplay: "hello-world-player-display.webp",
+    playerDisplayAnimation: "hello-world-player-display-animation.webp"
+  });
+  assert.deepEqual(gameMediaReferences("hello-world"), {
+    thumbnailSmall: "media/hello-world/hello-world-thumbnail-small.webp",
+    thumbnail: "media/hello-world/hello-world-thumbnail.webp",
+    animation: "media/hello-world/hello-world-preview.webp",
+    playerDisplay: "media/hello-world/hello-world-player-display.webp",
+    playerDisplayAnimation: "media/hello-world/hello-world-player-display-animation.webp"
+  });
+  assert.equal(gameMediaMetadataReference("hello-world"), "media/hello-world/metadata.json");
+  assert.equal(
+    gameMediaURL("hello-world", "animation", "https://example.test/games"),
+    "https://example.test/games/media/hello-world/hello-world-preview.webp"
+  );
+  assert.throws(() => gameMediaReferences("../hello-world"));
+});
 
 test("stable identities stay separate from renameable game slugs", () => {
   const manifest = {

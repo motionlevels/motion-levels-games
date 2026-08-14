@@ -196,6 +196,23 @@ describe("catalog metadata sync", () => {
     assert.deepEqual(rosterForGame(game, players).map((player) => player.id), [1, 2, 3]);
   });
 
+  it("omits the configured roster when an allow-any game launches with playerCount zero", () => {
+    const game = {
+      allowAnyPlayers: true,
+      id: "allow-any",
+      category: "individual",
+      minPlayers: 1,
+      maxPlayers: 1,
+      players: "Sin requisito",
+    } as Pick<GameCard, "allowAnyPlayers" | "category" | "id" | "maxPlayers" | "minPlayers" | "players">;
+    const players = [
+      { active: true, id: 1 },
+      { active: true, id: 2 },
+    ];
+
+    assert.deepEqual(rosterForGame(game, players), []);
+  });
+
   it("falls back to eight-player authored duel bounds when catalog metadata is unavailable", () => {
     const game = {
       id: "duel",
@@ -250,8 +267,12 @@ describe("catalog metadata sync", () => {
     assert.equal(cards[0].category, "attract");
     assert.equal(cards[0].engineGame, "animation-aurora");
     assert.equal(cards[0].previewAnimation, undefined);
-    assert.match(cards[0].thumbnailSrc || "", /\/media\/animations\/aurora\/aurora-thumbnail-small\.webp$/);
-    assert.match(cards[0].previewSrc || "", /\/media\/animations\/aurora\/aurora-preview\.webp$/);
+    const thumbnailURL = new URL(cards[0].thumbnailSrc || "");
+    const previewURL = new URL(cards[0].previewSrc || "");
+    assert.equal(thumbnailURL.pathname, "/games/media/animations/aurora/aurora-thumbnail-small.webp");
+    assert.equal(previewURL.pathname, "/games/media/animations/aurora/aurora-preview.webp");
+    assert.equal(thumbnailURL.searchParams.get("revision"), "dev");
+    assert.equal(previewURL.searchParams.get("revision"), "dev");
     assert.equal(cards[0].previewRevisionHash, "level-rev");
   });
 
@@ -261,6 +282,32 @@ describe("catalog metadata sync", () => {
     assert.equal(/\|\s*"party"/.test(catalogSource), false);
     assert.equal(/id:\s*"party"/.test(catalogSource), false);
     assert.match(catalogSource, /id:\s*"versus"[\s\S]*?label:\s*"Competitivos"/);
+  });
+
+  it("prefers authored animation media and keeps native bundle media as fallback", () => {
+    const [card] = platformAnimationCards([
+      catalogEntry({
+        source_kind: "animation",
+        levels: [{
+          id: "11111111-1111-4111-8111-111111111111",
+          slug: "aurora",
+          label: "Aurora editada",
+          description: "Loop publicado",
+          status: "published",
+          catalog_thumbnail_small_url: "https://cdn.test/aurora-thumbnail.webp?revision=authored",
+          catalog_thumbnail_url: "https://cdn.test/aurora-thumbnail-large.webp?revision=authored",
+          catalog_preview_url: "https://cdn.test/aurora-preview.webp?revision=authored",
+        }],
+      }),
+    ]);
+
+    assert.equal(card.thumbnailSrc, "https://cdn.test/aurora-thumbnail.webp?revision=authored");
+    assert.equal(card.previewSrc, "https://cdn.test/aurora-preview.webp?revision=authored");
+    assert.equal(card.thumbnailSrcs?.[0], card.thumbnailSrc);
+    assert.equal(card.previewSrcs?.[0], card.previewSrc);
+    assert.match(card.thumbnailSrcs?.at(-1) || "", /\/games\/media\/animations\/aurora\/aurora-thumbnail-small\.webp\?revision=dev$/);
+    assert.match(card.previewSrcs?.at(-1) || "", /\/games\/media\/animations\/aurora\/aurora-preview\.webp\?revision=dev$/);
+    assert.equal(card.previewAnimation, undefined);
   });
 
   it("keeps the player-facing fallback catalog minimal", () => {
@@ -285,10 +332,32 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /richSrc=\{rich \? game\.previewSrc : undefined\}/);
     assert.match(appSource, /richSrcs=\{rich \? gamePreviewSrcs\(game\) : emptyPreviewSources\}/);
     assert.match(appSource, /promoteAnimation=\{rich\}/);
+    assert.match(appSource, /richPreviewCandidates\(posterCandidates, \[richSrc, \.\.\.richSrcs\]\)/);
     assert.match(appSource, /renderPartyPreview\(game, \{ compact: true, rich: selected \|\| active \}\)/);
     assert.match(styleSource, /--preview-board-max-width: min\(78%, 560px\);/);
-    assert.match(styleSource, /\.floor-canvas\s*\{[\s\S]*?max-width: var\(--preview-board-max-width\);[\s\S]*?max-height: var\(--preview-board-max-height\);/);
-    assert.match(styleSource, /\.party-preview-tile \.preview\s*\{\s*--preview-board-max-height: calc\(100% - 4px\);\s*--preview-board-max-width: calc\(100% - 4px\);/);
+    assert.match(styleSource, /\.preview\s*\{[\s\S]*?--preview-board-height-inset: 18px;[\s\S]*?container-type: size;/);
+    assert.match(styleSource, /\.floor-canvas,\s*\.preview-media\s*\{[\s\S]*?width: min\([\s\S]*?var\(--preview-media-width\),[\s\S]*?var\(--preview-board-max-width\),[\s\S]*?100cqh[\s\S]*?\);[\s\S]*?aspect-ratio: var\(--preview-media-aspect\);/);
+    assert.match(styleSource, /\.party-preview-tile \.preview\s*\{\s*--preview-board-height-inset: 4px;\s*--preview-board-max-width: calc\(100% - 4px\);/);
+
+    const floorPreviewSource = fs.readFileSync(path.resolve(__dirname, "../src/FloorPreview.tsx"), "utf8");
+    assert.match(floorPreviewSource, /const PITCH = floorPreviewMediaSpec\.height \/ FLOOR_COLS;/);
+    assert.match(floorPreviewSource, /width=\{canvasWidth\}/);
+    assert.match(floorPreviewSource, /height=\{canvasHeight\}/);
+    assert.doesNotMatch(floorPreviewSource, /ResizeObserver|style\.width|clientWidth|clientHeight/);
+    assert.match(appSource, /width=\{logoMedia \? undefined : floorPreviewMediaSpec\.width\}/);
+    assert.match(appSource, /height=\{logoMedia \? undefined : floorPreviewMediaSpec\.height\}/);
+    assert.match(appSource, /setLoadedPosterSrc\(""\);\s*\}, \[posterSrc\]\);/);
+    assert.match(appSource, /setPromotedSrc\(""\);\s*\}, \[posterSrc, richCandidate\]\);/);
+  });
+
+  it("publishes revisioned canonical bundle media in the local catalog", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../src/localCatalog.ts"), "utf8");
+
+    assert.match(source, /const media = gameBundleMediaSources\(manifest\.id, sourceRevision, menuLocation\);/);
+    assert.match(source, /catalog_thumbnail_small_url: media\.thumbnailSmall/);
+    assert.match(source, /catalog_thumbnail_url: media\.thumbnail/);
+    assert.match(source, /catalog_preview_url: media\.animation/);
+    assert.match(source, /source_revision: sourceRevision/);
   });
 
   it("can lock the menu app to the fixed TV design viewport for scaled embeds", () => {
@@ -509,6 +578,7 @@ describe("catalog metadata sync", () => {
     const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
 
     assert.match(appSource, /const launchConfig = menuConfigOverridesFor\(launchGame, nextMenu\);/);
+    assert.match(appSource, /const launchRoster = rosterForGame\(launchGame, nextMenu\.players\);/);
     assert.match(appSource, /config: launchConfig,/);
     assert.match(appSource, /playerCount: launchGame\.allowAnyPlayers \? 0 : Math\.max\(1, launchRoster\.length\),/);
     assert.match(appSource, /allowAnyPlayers: launchGame\.allowAnyPlayers === true,/);

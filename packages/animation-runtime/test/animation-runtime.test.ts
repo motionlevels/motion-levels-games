@@ -55,7 +55,7 @@ test("animation media uses one stable recipe and bundle-relative contract", () =
     animation: "media/animations/aurora/aurora-preview.webp"
   });
   assert.equal(
-    animationMediaURL("aurora", "animation", "https://example.test/games/play/"),
+    animationMediaURL("aurora", "animation", "https://example.test/games/"),
     "https://example.test/games/media/animations/aurora/aurora-preview.webp"
   );
   assert.deepEqual(animationMediaCatalogEntry(findAnimation("aurora")).media, animationMediaReferences("aurora"));

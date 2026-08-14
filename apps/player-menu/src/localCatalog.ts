@@ -1,9 +1,13 @@
 import type { GameManifest } from "@motion-levels-games/game-sdk";
 import type { PlatformGameCatalogEntry } from "./contracts";
+import {
+  bundledGamesSourceRevision,
+  gameBundleMediaSources,
+  type PlayerMenuLocation,
+} from "./bundleMedia.ts";
 import { isSupportedRuntimeSourceFromProducts } from "./runtimeSourcePolicy.ts";
 
 type ManifestModule = { manifest: GameManifest };
-declare const MOTION_LEVELS_GAMES_SOURCE_REVISION: string;
 const manifestModules = import.meta.glob<ManifestModule>("../../../games/*/src/manifest.ts", { eager: true });
 const publishedLevelProductIds = new Set(
   Object.values(manifestModules)
@@ -16,15 +20,22 @@ export function isSupportedRuntimeSource(sourceKind: string | undefined, sourceG
   return isSupportedRuntimeSourceFromProducts(sourceKind, sourceGameId, publishedLevelProductIds);
 }
 
-export function localPlayerExperienceCatalog(): PlatformGameCatalogEntry[] {
+export function localPlayerExperienceCatalog(menuLocation?: PlayerMenuLocation): PlatformGameCatalogEntry[] {
+  const sourceRevision = bundledGamesSourceRevision();
   return Object.values(manifestModules)
     .map((module) => module.manifest)
     .sort((left, right) => left.label.localeCompare(right.label))
-    .map(localCatalogEntry);
+    .map((manifest, index) => localCatalogEntry(manifest, index, sourceRevision, menuLocation));
 }
 
-function localCatalogEntry(manifest: GameManifest, index: number): PlatformGameCatalogEntry {
+function localCatalogEntry(
+  manifest: GameManifest,
+  index: number,
+  sourceRevision: string,
+  menuLocation?: PlayerMenuLocation,
+): PlatformGameCatalogEntry {
   const difficulties = manifest.config?.difficulty?.options ?? ["easy", "medium", "hard", "expert"];
+  const media = gameBundleMediaSources(manifest.id, sourceRevision, menuLocation);
   const playersLabel = manifest.players.allowAny
     ? "Sin requisito"
     : manifest.players.min === manifest.players.max
@@ -41,6 +52,9 @@ function localCatalogEntry(manifest: GameManifest, index: number): PlatformGameC
     catalog_color: manifest.catalog.color,
     catalog_order: index,
     catalog_rules: [...manifest.catalog.rules],
+    catalog_thumbnail_small_url: media.thumbnailSmall,
+    catalog_thumbnail_url: media.thumbnail,
+    catalog_preview_url: media.animation,
     players_label: playersLabel,
     difficulty_label: difficulties.join("-"),
     duration_label: manifest.catalog.durationLabel,
@@ -55,7 +69,7 @@ function localCatalogEntry(manifest: GameManifest, index: number): PlatformGameC
     default_music_ref: "",
     default_music_volume: 1,
     source_kind: "motion_levels_games",
-    source_revision: MOTION_LEVELS_GAMES_SOURCE_REVISION,
+    source_revision: sourceRevision,
     source_contract_version: 2,
     source_game_id: manifest.id,
     source_available: true,

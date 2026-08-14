@@ -11,12 +11,26 @@ export function levelHasPreviewMedia(level?: NonNullable<GameCard["levels"]>[num
 }
 
 export function levelThumbnailSrc(level: NonNullable<GameCard["levels"]>[number] | undefined, game: GameCard): string | undefined {
-  return levelPreviewSrc(game, level, "medium");
+  if (!level) return gameThumbnailSrc(game);
+  return level.thumbnailSrc
+    || level.thumbnailSrcs?.[0]
+    || level.previewByDifficulty?.medium
+    || level.previewSrc
+    || level.previewSrcs?.[0];
 }
 
 export function levelThumbnailSrcs(level: NonNullable<GameCard["levels"]>[number] | undefined, game: GameCard): string[] {
-  if (!level) return uniquePreviewSources([game.previewSrc, game.thumbnailSrc]);
-  return uniquePreviewSources([level.previewSrc, ...(level.previewSrcs || []), level.thumbnailSrc, ...(level.thumbnailSrcs || [])]);
+  if (!level) return gameThumbnailSrcs(game);
+  const thumbnails = uniquePreviewSources([
+    level.thumbnailSrc,
+    ...(level.thumbnailSrcs || []),
+  ]);
+  if (thumbnails.length) return thumbnails;
+  return uniquePreviewSources([
+    level.previewByDifficulty?.medium,
+    level.previewSrc,
+    ...(level.previewSrcs || []),
+  ]);
 }
 
 export function levelPreviewSrcs(game: GameCard, level: NonNullable<GameCard["levels"]>[number] | undefined, difficulty: DifficultyID): string[] {
@@ -29,11 +43,20 @@ export function gameThumbnailSrc(game: GameCard): string | undefined {
 }
 
 export function gameThumbnailSrcs(game: GameCard): string[] {
-  return uniquePreviewSources([...(game.thumbnailSrcs || []), game.thumbnailSrc, game.previewSrc]);
+  const thumbnails = uniquePreviewSources([game.thumbnailSrc, ...(game.thumbnailSrcs || [])]);
+  if (thumbnails.length) return thumbnails;
+  return uniquePreviewSources([game.previewSrc, ...(game.previewSrcs || [])]);
 }
 
 export function gamePreviewSrcs(game: GameCard): string[] {
   return uniquePreviewSources([game.previewSrc, ...(game.previewSrcs || []), ...(game.thumbnailSrcs || []), game.thumbnailSrc]);
+}
+
+export function richPreviewCandidates(
+  posterCandidates: string[],
+  richCandidates: Array<string | undefined>,
+): string[] {
+  return uniquePreviewSources(richCandidates).filter((candidate) => !posterCandidates.includes(candidate));
 }
 
 export function levelPreviewSrc(game: GameCard, level: NonNullable<GameCard["levels"]>[number] | undefined, difficulty: DifficultyID): string | undefined {

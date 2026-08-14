@@ -169,12 +169,10 @@ jobs:
           CREATE_TAG: ${{ steps.release.outputs.create_tag }}
           PLATFORM_SYNC_TOKEN: ${{ secrets.PLATFORM_SYNC_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
-          VENUE_SYNC_TOKEN: ${{ secrets.VENUE_SYNC_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "$PLATFORM_SYNC_TOKEN"
-          test -n "$VENUE_SYNC_TOKEN"
           archive="motion-levels-games-${GITHUB_SHA}.tgz"
           test -f "dist/$archive"
           test -f "dist/$archive.sha256"
@@ -199,17 +197,15 @@ jobs:
           files: |
             source/dist/motion-levels-games-${{ github.sha }}.tgz
             source/dist/motion-levels-games-${{ github.sha }}.tgz.sha256
-      - name: Notify platform and venue consumers
+      - name: Notify the platform consumer
         if: steps.release.outputs.notify == 'true'
         env:
           PLATFORM_SYNC_TOKEN: ${{ secrets.PLATFORM_SYNC_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
-          VENUE_SYNC_TOKEN: ${{ secrets.VENUE_SYNC_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "$PLATFORM_SYNC_TOKEN"
-          test -n "$VENUE_SYNC_TOKEN"
           payload="$(jq -n \
             --arg ref "main" \
             --arg release_tag "$RELEASE_TAG" \
@@ -230,4 +226,3 @@ jobs:
               "$GITHUB_API_URL/repos/$repository/actions/workflows/sync-games-bundle.yml/dispatches"
           }
           dispatch motionlevels/motion-levels-platform "$PLATFORM_SYNC_TOKEN"
-          dispatch motionlevels/motion-levels-venue "$VENUE_SYNC_TOKEN"

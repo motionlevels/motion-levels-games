@@ -16,6 +16,25 @@ export {
   type FloorEffectColor
 } from "./effects.ts";
 
+export {
+  fileNameFromMediaReference,
+  gameMediaAssetSpecs,
+  gameMediaFileNames,
+  gameMediaMetadataReference,
+  gameMediaPreviewStillFrameIndex,
+  gameMediaReferences,
+  gameMediaSchema,
+  gameMediaURL,
+  mediaAssetFileName,
+  mediaReferenceURL,
+  normalizeMediaId,
+  type FloorGameMediaAssetKind,
+  type GameMediaAssetKind,
+  type GameMediaFileNames,
+  type GameMediaReferences,
+  type PlayerDisplayMediaAssetKind
+} from "./media.ts";
+
 export type HexColor = `#${string}`;
 export type RgbColor = {
   r: number;

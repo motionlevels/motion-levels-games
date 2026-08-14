@@ -22,7 +22,15 @@ export const manifest: GameManifest = {
     seed: 137,
     playerCount: 0,
     difficulty: "medium",
-    actions: [{ atMillis: 100, type: "press", x: 8, y: 16 }],
+    actions: [
+      { atMillis: 100, type: "press", x: 8, y: 16 },
+      { atMillis: 2_400, type: "press", x: 7, y: 8 },
+      { atMillis: 2_760, type: "press", x: 8, y: 8 },
+      { atMillis: 3_120, type: "press", x: 6, y: 10 },
+      { atMillis: 3_480, type: "press", x: 9, y: 10 },
+      { atMillis: 3_840, type: "press", x: 5, y: 12 },
+      { atMillis: 4_200, type: "press", x: 10, y: 12 }
+    ],
     captureStartMillis: 2_300,
     frameCount: 24,
     frameIntervalMillis: 120
