@@ -170,6 +170,7 @@ export async function generateAnimationMediaBundle(animationId: string): Promise
     id: animation.id,
     label: animation.label,
     description: animation.description,
+    animated: animation.animated,
     category: animation.category,
     durationMillis: animation.durationMillis,
     palette: animation.palette,

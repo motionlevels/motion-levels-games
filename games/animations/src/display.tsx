@@ -9,7 +9,7 @@ const styles = `
 `;
 
 export function PlayerDisplay({ snapshot }: { snapshot: AnimationSnapshot; frame?: Frame }) {
-  const accent = snapshot.palette[1] ?? snapshot.palette[0] ?? "#42ffd2";
+  const accent = readableAccent(snapshot.palette);
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
       <section className="animation-display is-live" style={{ "--animation-accent": accent } as CSSProperties}>
@@ -27,4 +27,13 @@ export function PlayerDisplay({ snapshot }: { snapshot: AnimationSnapshot; frame
       </section>
     </GameDisplayShell>
   );
+}
+
+function readableAccent(palette: readonly string[]): string {
+  const accent = palette[1] ?? palette[0] ?? "#42ffd2";
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(accent);
+  if (!match) return accent;
+  const [, red = "ff", green = "ff", blue = "ff"] = match;
+  const brightness = (Number.parseInt(red, 16) * 299 + Number.parseInt(green, 16) * 587 + Number.parseInt(blue, 16) * 114) / 1_000;
+  return brightness < 48 ? "#8fa2bd" : accent;
 }

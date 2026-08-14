@@ -1574,7 +1574,10 @@ export function App() {
                         style={{ "--library-accent": animation.palette[1] ?? animation.palette[0] } as CSSProperties}
                         type="button"
                       >
-                        <span className="library-animation-preview" style={{ background: `linear-gradient(135deg, ${animation.palette.join(", ")})` }}>
+                        <span
+                          className="library-animation-preview"
+                          style={{ background: animation.palette.length > 1 ? `linear-gradient(135deg, ${animation.palette.join(", ")})` : animation.palette[0] }}
+                        >
                           <img
                             alt=""
                             decoding="async"

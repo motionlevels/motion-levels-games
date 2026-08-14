@@ -74,6 +74,7 @@ try {
         id: media.id,
         label: media.label,
         description: media.description,
+        animated: media.animated,
         category: media.category,
         durationMillis: media.durationMillis,
         palette: media.palette,
@@ -121,6 +122,7 @@ type AnimationMediaBundle = MediaBundle & {
   id: string;
   label: string;
   description: string;
+  animated: boolean;
   category: string;
   durationMillis: number;
   palette: readonly string[];

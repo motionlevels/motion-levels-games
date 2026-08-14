@@ -32,8 +32,10 @@ The required production entries are:
   canonical `/games/play/` path and declared as `playground.entry`;
 - `media/<game>/`: small/full thumbnails, animated WebP previews,
   player-display captures, and generation metadata.
-- `media/animations/<animation>/`: small/full floor thumbnails, animated WebP
-  previews, and generation metadata for every native animation.
+- `media/animations/<animation>/`: small/full floor thumbnails, WebP previews,
+  and generation metadata for every native animation. Catalog entries declare
+  `animated`; deliberately static entries use a one-frame WebP while animated
+  entries must retain multiple encoded frames.
 
 The player-display shell, renderer, menu, and venue runtime are built from this
 repository and shipped in one release. Venue consumers package and serve these
