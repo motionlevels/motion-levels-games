@@ -1,9 +1,6 @@
 name: Release games bundle
 
 on:
-  push:
-    tags:
-      - "games-v*"
   workflow_dispatch:
 
 permissions:
