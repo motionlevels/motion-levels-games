@@ -3,12 +3,13 @@ import type { CSSProperties } from "react";
 import { displayEventSource, fetchDisplayStatus, type DisplayStatus } from "./api";
 import { audioEventKey, VenueAudioOutput, type AudioOutputState } from "./audio";
 import { reportDisplayClient } from "./displayClient";
-import { acceptedPlayerStateRevision, createCoalescer, isFeedStalled } from "./displayFeed";
+import { createCoalescer, isFeedStalled } from "./displayFeed";
 import { challengeMode, heartMeterSlotCount, levelDisplayAttemptCount, levelDisplayTimeLabel, levelDisplayTimeMillis, levelHeartMeterModel } from "./displayMetrics";
 import { shouldReportDisplayClient, type GamesDisplayRenderState } from "./displayRuntime";
 import { playerLifecycleLabelES } from "./displayText";
 import { colorCSS, colorRGB, difficultyLabelES, formatClock, gameTitleES, levelLabelES, phaseLabel, playerLabelES } from "./utils";
 import { MotionLevelsGamesDisplay } from "./MotionLevelsGamesDisplay";
+import { PlayerExperienceStateGate, type PlayerExperienceOutputTestState } from "@motion-levels-games/player-experience";
 
 // If no stream event arrives, keep the display fresh with a 250ms fallback
 // poll. Some kiosk/browser combinations can silently lose EventSource delivery;
@@ -88,7 +89,16 @@ export default function App() {
   const feedTransport = useRef<"eventsource" | "poll" | "none">("none");
   const lastAudioEventKey = useRef("");
   const audioEventBaselineReady = useRef(false);
+  const lastAudioTestID = useRef("");
+  const audioTestBaselineReady = useRef(false);
+  const audioTestRuntimeRunID = useRef("");
+  const activeAudioTest = useRef<{ id: string; token: symbol } | null>(null);
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState>("disabled");
+  const [audioTestReport, setAudioTestReport] = useState<{ id: string; sequence: number; state: PlayerExperienceOutputTestState }>({
+    id: "",
+    sequence: 0,
+    state: "idle",
+  });
   const audioOutput = useMemo(() => new VenueAudioOutput(setAudioOutputState), []);
 
   useEffect(() => {
@@ -98,7 +108,9 @@ export default function App() {
     const monoNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
     let lastEventAt = monoNow();
     let lastReconnectAt = 0;
-    let acceptedRevision = 0;
+    let acceptedStatus: DisplayStatus | null = null;
+    const statusGate = new PlayerExperienceStateGate();
+    let pollInFlight = false;
     let source: EventSource | null = null;
 
     // Render the freshest status at most once per frame so the high-frequency
@@ -115,9 +127,8 @@ export default function App() {
 
     const accept = (next: DisplayStatus, transport: "eventsource" | "poll") => {
       if (cancelled) return;
-      const revision = acceptedPlayerStateRevision(acceptedRevision, next);
-      if (revision === null) return;
-      acceptedRevision = revision;
+      if (!statusGate.accepts(acceptedStatus, next)) return;
+      acceptedStatus = next;
       lastEventAt = monoNow();
       lastFeedAt.current = Date.now();
       feedTransport.current = transport;
@@ -127,13 +138,16 @@ export default function App() {
     };
 
     const pollOnce = () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       fetchDisplayStatus()
         .then((next) => accept(next, "poll"))
         .catch((err) => {
           if (cancelled) return;
           setConnected(false);
           setError(err instanceof Error ? err.message : "Sin conexión con el motor");
-        });
+        })
+        .finally(() => { pollInFlight = false; });
     };
 
     const onDisplay = (event: Event) => {
@@ -191,6 +205,11 @@ export default function App() {
   }, [demoStatus]);
 
   const liveStatus = demoStatus || status;
+  const outputTestID = liveStatus.outputTest?.id ?? "";
+  const outputTestTarget = liveStatus.outputTest?.target;
+  const outputTestState = liveStatus.outputTest?.state;
+  const outputTestSequence = liveStatus.outputTest?.sequence ?? 0;
+  const outputTestStartedUnixMillis = liveStatus.outputTest?.startedUnixMillis ?? 0;
   const liveConnected = demoStatus ? true : connected;
   const liveError = demoStatus ? "" : error;
   const gamesDisplayActive = liveStatus.sourceKind === "motion_levels_games" && Boolean(liveStatus.sourceRevision && liveStatus.gameSnapshot);
@@ -244,6 +263,60 @@ export default function App() {
     audioOutput.playCue(liveStatus.lastEventCue);
   }, [audioOutput, demoStatus, liveStatus.lastEventCue, liveStatus.lastEventMessage, liveStatus.lastEventSequence, liveStatus.lastEventUnixNanos, liveStatus.revision, liveStatus.runId, liveStatus.sessionId]);
 
+  useEffect(() => {
+    if (!liveStatus.runId) return;
+    if (audioTestRuntimeRunID.current && audioTestRuntimeRunID.current !== liveStatus.runId) {
+      audioOutput.cancelTestPhrase();
+      activeAudioTest.current = null;
+      lastAudioTestID.current = "";
+      audioTestBaselineReady.current = false;
+      setAudioTestReport({ id: "", sequence: 0, state: "idle" });
+    }
+    audioTestRuntimeRunID.current = liveStatus.runId;
+  }, [audioOutput, liveStatus.runId]);
+
+  useEffect(() => {
+    if (!demoStatus && liveStatus.revision <= 0) return;
+    const freshPendingTest = outputTestTarget === "audio"
+      && (outputTestState === "pending" || outputTestState === "playing")
+      && Date.now() - outputTestStartedUnixMillis < 10_000;
+    if (!audioTestBaselineReady.current) {
+      audioTestBaselineReady.current = true;
+      lastAudioTestID.current = freshPendingTest ? "" : outputTestID;
+    }
+    if (activeAudioTest.current && (
+      activeAudioTest.current.id !== outputTestID
+      || !freshPendingTest
+    )) {
+      audioOutput.cancelTestPhrase();
+      activeAudioTest.current = null;
+    }
+    if (!freshPendingTest) {
+      setAudioTestReport((current) => current.id
+        ? { id: "", sequence: 0, state: "idle" }
+        : current);
+      return;
+    }
+    if (!outputTestID || outputTestID === lastAudioTestID.current) return;
+    lastAudioTestID.current = outputTestID;
+    setAudioTestReport({ id: outputTestID, sequence: outputTestSequence, state: "pending" });
+    const token = Symbol(outputTestID);
+    activeAudioTest.current = { id: outputTestID, token };
+    void audioOutput.playTestPhrase(() => {
+      if (activeAudioTest.current?.token !== token) return;
+      setAudioTestReport((current) => current.id === outputTestID
+        ? { id: outputTestID, sequence: outputTestSequence, state: "playing" }
+        : current);
+    }).then((played) => {
+      if (activeAudioTest.current?.token !== token) return;
+      setAudioTestReport((current) => current.id === outputTestID
+        ? { id: outputTestID, sequence: outputTestSequence, state: played ? "passed" : "failed" }
+        : current);
+    }).finally(() => {
+      if (activeAudioTest.current?.token === token) activeAudioTest.current = null;
+    });
+  }, [audioOutput, demoStatus, liveStatus.revision, outputTestID, outputTestSequence, outputTestStartedUnixMillis, outputTestState, outputTestTarget]);
+
   useEffect(() => () => {
     void audioOutput.dispose();
   }, [audioOutput]);
@@ -277,6 +350,9 @@ export default function App() {
         devicePixelRatio: window.devicePixelRatio || 1,
         error: effectiveRenderState.error || liveError,
         audioOutputState,
+        outputTestId: audioTestReport.id,
+        outputTestSequence: audioTestReport.sequence,
+        outputTestState: audioTestReport.state,
       }).catch(() => {
         // Telemetry must never replace or disturb the player-facing display.
       });
@@ -287,7 +363,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [audioOutputState, demoStatus, effectiveRenderState.attempt, effectiveRenderState.error, effectiveRenderState.expectedRevision, effectiveRenderState.loadedRevision, effectiveRenderState.status, liveConnected, liveError, liveStatus.currentGame, telemetryEnabled]);
+  }, [audioOutputState, audioTestReport.id, audioTestReport.sequence, audioTestReport.state, demoStatus, effectiveRenderState.attempt, effectiveRenderState.error, effectiveRenderState.expectedRevision, effectiveRenderState.loadedRevision, effectiveRenderState.status, liveConnected, liveError, liveStatus.currentGame, telemetryEnabled]);
 
   if (gamesDisplayActive) {
     return (

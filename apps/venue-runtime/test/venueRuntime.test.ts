@@ -11,7 +11,15 @@ import type { GameSessionState } from "@motion-levels-games/runtime";
 import type { RecordingBoundary } from "@motion-levels-games/session-history";
 import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manifest";
 import { floorHeight, floorRgbBytes, floorWidth, pressureBitsetBytes, type PresentedFrame } from "../src/controllerProtocol.ts";
-import { frameToRgb, resolveRuntimeContentPlatformUrl, RevisionMismatchError, VenueRuntime } from "../src/venueRuntime.ts";
+import {
+  floorOutputTestDurationMillis,
+  floorOutputTestRgb,
+  frameToRgb,
+  outputTestResultRetentionMillis,
+  resolveRuntimeContentPlatformUrl,
+  RevisionMismatchError,
+  VenueRuntime
+} from "../src/venueRuntime.ts";
 
 const revision = "1".repeat(40);
 const roomControllerId = "01234567-89ab-4def-8123-456789abcdef";
@@ -79,6 +87,150 @@ test("configured TV audio is controllable while idle and reports display output 
   });
   assert.equal(runtime.status().audioOutputState, "ready");
   assert.equal(runtime.health().audioOutputState, "ready");
+});
+
+test("audio output test starts pending on a healthy display and accepts only its matching lifecycle", () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  runtime.updateDisplayClient(readyDisplayReport());
+  assert.equal(runtime.status().audioOutputState, "ready");
+
+  const pending = runtime.runOutputTest("audio").outputTest;
+  assert.match(pending?.id ?? "", /^[0-9a-f-]{36}$/u);
+  assert.equal(pending?.target, "audio");
+  assert.equal(pending?.sequence, 1);
+  assert.equal(pending?.state, "pending");
+  assert.equal(typeof pending?.startedUnixMillis, "number");
+  assert.equal(pending?.finishedUnixMillis, undefined);
+
+  runtime.updateDisplayClient(readyDisplayReport({ outputTestId: pending?.id, outputTestSequence: 2, outputTestState: "playing" }));
+  assert.equal(runtime.status().outputTest?.state, "pending", "a report for another sequence must be ignored");
+  runtime.updateDisplayClient(readyDisplayReport({ outputTestId: "00000000-0000-4000-8000-000000000000", outputTestSequence: 1, outputTestState: "playing" }));
+  assert.equal(runtime.status().outputTest?.state, "pending", "a report for another test id must be ignored");
+  runtime.updateDisplayClient(readyDisplayReport({ outputTestId: pending?.id, outputTestSequence: 1, outputTestState: "ready" }));
+  assert.equal(runtime.status().outputTest?.state, "pending", "an unknown lifecycle state must be ignored");
+
+  runtime.updateDisplayClient(readyDisplayReport({ outputTestId: pending?.id, outputTestSequence: 1, outputTestState: "playing" }));
+  const playing = runtime.status().outputTest;
+  assert.equal(playing?.state, "playing");
+  assert.equal(playing?.startedUnixMillis, pending?.startedUnixMillis);
+  assert.equal(playing?.finishedUnixMillis, undefined);
+  runtime.updateDisplayClient(readyDisplayReport({ outputTestId: pending?.id, outputTestSequence: 9, outputTestState: "passed" }));
+  assert.equal(runtime.status().outputTest?.state, "playing", "a terminal report for another sequence must be ignored");
+
+  runtime.updateDisplayClient(readyDisplayReport({ outputTestId: pending?.id, outputTestSequence: 1, outputTestState: "passed" }));
+  const passed = runtime.status().outputTest;
+  assert.equal(passed?.target, "audio");
+  assert.equal(passed?.sequence, 1);
+  assert.equal(passed?.state, "passed");
+  assert.equal(passed?.error, undefined);
+  assert.ok((passed?.finishedUnixMillis ?? 0) >= (passed?.startedUnixMillis ?? Number.POSITIVE_INFINITY));
+});
+
+test("audio output test exposes a matching display playback failure", () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  runtime.updateDisplayClient(readyDisplayReport());
+  const pending = runtime.runOutputTest("audio").outputTest;
+
+  runtime.updateDisplayClient(readyDisplayReport({ outputTestId: pending?.id, outputTestSequence: 1, outputTestState: "failed" }));
+
+  const failed = runtime.status().outputTest;
+  assert.equal(failed?.target, "audio");
+  assert.equal(failed?.sequence, 1);
+  assert.equal(failed?.state, "failed");
+  assert.equal(failed?.startedUnixMillis, pending?.startedUnixMillis);
+  assert.equal(failed?.error, "La pantalla no pudo reproducir la prueba de audio");
+  assert.ok((failed?.finishedUnixMillis ?? 0) >= (failed?.startedUnixMillis ?? Number.POSITIVE_INFINITY));
+});
+
+test("mute cancels an audio output test and a late display ack cannot revive it", () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  runtime.updateDisplayClient(readyDisplayReport());
+  const pending = runtime.runOutputTest("audio").outputTest;
+
+  const muted = runtime.control("mute");
+
+  assert.equal(muted.audioMuted, true);
+  assert.equal(muted.outputTest?.state, "failed");
+  assert.equal(muted.outputTest?.error, "Prueba cancelada por otro control");
+  runtime.updateDisplayClient(readyDisplayReport({
+    outputTestId: pending?.id,
+    outputTestSequence: pending?.sequence,
+    outputTestState: "passed",
+  }));
+  assert.equal(runtime.status().outputTest?.state, "failed");
+});
+
+test("terminal output test results expire on the runtime clock", () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  runtime.updateDisplayClient(readyDisplayReport());
+  const pending = runtime.runOutputTest("audio").outputTest;
+  runtime.updateDisplayClient(readyDisplayReport({
+    outputTestId: pending?.id,
+    outputTestSequence: pending?.sequence,
+    outputTestState: "passed",
+  }));
+  const finishedUnixMillis = runtime.status().outputTest?.finishedUnixMillis ?? 0;
+  const expire = (runtime as unknown as { expireOutputTestResult(nowUnixMillis: number): void })
+    .expireOutputTestResult.bind(runtime);
+
+  expire(finishedUnixMillis + outputTestResultRetentionMillis - 1);
+  assert.equal(runtime.status().outputTest?.state, "passed");
+  expire(finishedUnixMillis + outputTestResultRetentionMillis);
+  assert.equal(runtime.status().outputTest, null);
+});
+
+test("audio output test fails when the display does not confirm it before the deadline", () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  runtime.updateDisplayClient(readyDisplayReport());
+  const pending = runtime.runOutputTest("audio").outputTest;
+  assert.equal(pending?.state, "pending");
+  const expire = (runtime as unknown as { expireAudioOutputTest(nowUnixMillis: number): void })
+    .expireAudioOutputTest.bind(runtime);
+  const startedUnixMillis = pending?.startedUnixMillis ?? 0;
+
+  expire(startedUnixMillis + 6_999);
+  assert.equal(runtime.status().outputTest?.state, "pending");
+  expire(startedUnixMillis + 7_000);
+
+  const failed = runtime.status().outputTest;
+  assert.equal(failed?.state, "failed");
+  assert.equal(failed?.finishedUnixMillis, startedUnixMillis + 7_000);
+  assert.equal(failed?.error, "La pantalla no confirmó la reproducción de audio");
+});
+
+test("configured audio becomes failed when the player-display heartbeat is stale", () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  runtime.updateDisplayClient(readyDisplayReport());
+  assert.equal(runtime.status().audioOutputState, "ready");
+  (runtime as unknown as { displayClientReceivedUnixMillis: number }).displayClientReceivedUnixMillis = Date.now() - 20_000;
+
+  assert.equal(runtime.status().audioOutputState, "failed");
+  assert.equal(runtime.health().audioOutputState, "failed");
+  assert.equal(runtime.displayClientStatus().fresh, false);
 });
 
 test("game audio event identity remains stable across status reads and unrelated publishes", async () => {
@@ -1121,6 +1273,173 @@ test("frame conversion is always one 16x32 RGB frame", () => {
   assert.ok(rgb.every((channel) => channel === 0));
 });
 
+test("floor output test frames are bounded four-pulse 16x32 RGB output", () => {
+  const dark = floorOutputTestRgb(0, 1);
+  const firstPeak = floorOutputTestRgb(floorOutputTestDurationMillis / 8, 1);
+  const secondPeak = floorOutputTestRgb(floorOutputTestDurationMillis * 3 / 8, 1);
+  const halfBrightness = floorOutputTestRgb(floorOutputTestDurationMillis / 8, 0.5);
+
+  assert.equal(dark.byteLength, floorRgbBytes);
+  assert.ok(dark.every((channel) => channel === 0));
+  assert.ok(firstPeak.some((channel) => channel > 0));
+  assert.notDeepEqual(firstPeak.slice(0, 3), secondPeak.slice(0, 3));
+  assert.ok(halfBrightness.every((channel, index) => channel <= Math.ceil((firstPeak[index] ?? 0) / 2)));
+  assert.ok(floorOutputTestRgb(floorOutputTestDurationMillis / 8, 0).every((channel) => channel === 0));
+  assert.ok(floorOutputTestRgb(floorOutputTestDurationMillis, 1).every((channel) => channel === 0));
+  assert.ok(floorOutputTestRgb(floorOutputTestDurationMillis + 100, 1).every((channel) => channel === 0));
+});
+
+test("floor output test overlays only controller RGB and follows presented desired sequences", async () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    brightness: 0.5
+  });
+  await selectPingPong(runtime);
+  runtime.control("pause");
+  const beforeStatus = runtime.status();
+  const beforeSnapshot = structuredClone(runtime.display().gameSnapshot);
+  const beforeFrame = runtime.display().frame as Frame;
+  const sent: Array<{ sequence: bigint; rgb: Uint8Array }> = [];
+  const internals = runtime as unknown as {
+    controller: { sendFrame(frame: { sequence: bigint; rgb: Uint8Array }): void };
+    controllerConnected: boolean;
+    floorOutputTestRun: { startedAtMillis: number } | null;
+    tick(now: number): void;
+  };
+  internals.controllerConnected = true;
+  internals.controller.sendFrame = (frame) => sent.push({ sequence: frame.sequence, rgb: frame.rgb.slice() });
+
+  const pending = runtime.runOutputTest("floor");
+  assert.equal(pending.outputTest?.target, "floor");
+  assert.equal(pending.outputTest?.sequence, 1);
+  assert.equal(pending.outputTest?.state, "pending");
+  assert.equal(typeof pending.outputTest?.startedUnixMillis, "number");
+  assert.equal(pending.outputTest?.finishedUnixMillis, undefined);
+  assert.equal(pending.currentGame, beforeStatus.currentGame);
+  assert.equal(pending.sessionId, beforeStatus.sessionId);
+  assert.equal(pending.phase, beforeStatus.phase);
+  const startedAtMillis = internals.floorOutputTestRun?.startedAtMillis;
+  assert.equal(typeof startedAtMillis, "number");
+
+  internals.tick((startedAtMillis ?? 0) + floorOutputTestDurationMillis / 8);
+  const diagnostic = sent.at(-1);
+  assert.ok(diagnostic);
+  assert.deepEqual(
+    diagnostic.rgb,
+    floorOutputTestRgb(floorOutputTestDurationMillis / 8, 0.5)
+  );
+  runtime.observePresentedFrame({
+    ...observedFrame(1n),
+    desiredSequence: diagnostic.sequence,
+    rgb: diagnostic.rgb
+  });
+  assert.equal(runtime.status().outputTest?.state, "playing");
+
+  internals.tick((startedAtMillis ?? 0) + floorOutputTestDurationMillis + 1);
+  const restored = sent.at(-1);
+  assert.ok(restored);
+  assert.deepEqual(restored.rgb, frameToRgb(beforeFrame, 0.5));
+  runtime.observePresentedFrame({
+    ...observedFrame(2n),
+    desiredSequence: restored.sequence,
+    rgb: restored.rgb
+  });
+  const passed = runtime.status().outputTest;
+  assert.equal(passed?.target, "floor");
+  assert.equal(passed?.sequence, 1);
+  assert.equal(passed?.state, "passed");
+  assert.ok((passed?.finishedUnixMillis ?? 0) >= (passed?.startedUnixMillis ?? Number.POSITIVE_INFINITY));
+  assert.deepEqual(runtime.display().gameSnapshot, beforeSnapshot);
+  assert.equal(runtime.status().currentGame, beforeStatus.currentGame);
+  assert.equal(runtime.status().sessionId, beforeStatus.sessionId);
+  await runtime.stop();
+});
+
+test("floor output test rejects a black diagnostic frame", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const internals = runtime as unknown as {
+    controller: { sendFrame(frame: { sequence: bigint; rgb: Uint8Array }): void };
+    controllerConnected: boolean;
+    floorOutputTestRun: { startedAtMillis: number } | null;
+    tick(now: number): void;
+  };
+  internals.controllerConnected = true;
+  const sent: Array<{ sequence: bigint; rgb: Uint8Array }> = [];
+  internals.controller.sendFrame = (frame) => sent.push({ sequence: frame.sequence, rgb: frame.rgb.slice() });
+  runtime.runOutputTest("floor");
+  const startedAtMillis = internals.floorOutputTestRun?.startedAtMillis ?? 0;
+  internals.tick(startedAtMillis + floorOutputTestDurationMillis / 8);
+  const diagnostic = sent.at(-1);
+  assert.ok(diagnostic);
+  runtime.observePresentedFrame({
+    ...observedFrame(1n),
+    desiredSequence: diagnostic.sequence,
+    rgb: new Uint8Array(floorRgbBytes)
+  });
+  assert.equal(runtime.status().outputTest?.state, "pending", "a black presented frame is not a visible pulse");
+  internals.tick(startedAtMillis + floorOutputTestDurationMillis + 1);
+  const restored = sent.at(-1);
+  assert.ok(restored);
+  runtime.observePresentedFrame({
+    ...observedFrame(2n),
+    desiredSequence: restored.sequence,
+    rgb: restored.rgb
+  });
+  const failed = runtime.status().outputTest;
+  assert.equal(failed?.target, "floor");
+  assert.equal(failed?.sequence, 1);
+  assert.equal(failed?.state, "failed");
+  assert.equal(failed?.error, "El suelo no presentó la animación de prueba");
+  assert.ok((failed?.finishedUnixMillis ?? 0) >= (failed?.startedUnixMillis ?? Number.POSITIVE_INFINITY));
+});
+
+test("floor output test times out without a presented frame", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const internals = runtime as unknown as {
+    controller: { sendFrame(frame: { sequence: bigint; rgb: Uint8Array }): void };
+    controllerConnected: boolean;
+    floorOutputTestRun: { startedAtMillis: number } | null;
+    tick(now: number): void;
+  };
+  internals.controllerConnected = true;
+  internals.controller.sendFrame = () => {};
+  runtime.runOutputTest("floor");
+  const startedAtMillis = internals.floorOutputTestRun?.startedAtMillis ?? 0;
+  internals.tick(startedAtMillis + 1);
+  internals.tick(startedAtMillis + 2_001);
+  assert.equal(runtime.status().outputTest?.state, "failed");
+  assert.equal(runtime.status().outputTest?.error, "El suelo no confirmó la animación de prueba");
+});
+
+test("output tests cannot obscure an active game and a new selection cancels an idle test", async () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const internals = runtime as unknown as {
+    controllerConnected: boolean;
+    floorOutputTestRun: unknown;
+  };
+  internals.controllerConnected = true;
+
+  const pending = runtime.runOutputTest("floor").outputTest;
+  assert.equal(pending?.state, "pending");
+  await selectPingPong(runtime);
+  assert.equal(runtime.status().outputTest?.state, "failed");
+  assert.equal(runtime.status().outputTest?.error, "Prueba cancelada al iniciar la partida");
+  assert.equal(internals.floorOutputTestRun, null);
+  assert.throws(
+    () => runtime.runOutputTest("floor"),
+    /output tests require an idle or paused game/u
+  );
+
+  runtime.control("pause");
+  const pausedTest = runtime.runOutputTest("floor").outputTest;
+  assert.equal(pausedTest?.state, "pending");
+  assert.throws(() => runtime.control("unknown"), /unknown control action/u);
+  assert.equal(runtime.status().outputTest?.id, pausedTest?.id);
+  assert.equal(runtime.status().outputTest?.state, "pending", "an invalid command must not cancel a running test");
+  await runtime.stop();
+});
+
 test("local live floor is latest-value at a configured rate", async () => {
   const runtime = new VenueRuntime({
     sourceRevision: revision,
@@ -1209,4 +1528,19 @@ async function selectPingPong(runtime: VenueRuntime): Promise<void> {
     allowAnyPlayers: true,
     players: []
   });
+}
+
+function readyDisplayReport(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    renderStatus: "ready",
+    connected: true,
+    feedTransport: "eventsource",
+    lastFeedUnixMillis: Date.now(),
+    audioOutputState: "ready",
+    ...overrides
+  };
 }

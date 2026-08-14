@@ -12,6 +12,8 @@ import {
   lifecycleFromRuntime,
   playerExperienceContractVersion,
   type PlayerExperienceGameSummary,
+  type PlayerExperienceOutputTest,
+  type PlayerExperienceOutputTestState,
   type PlayerExperienceState
 } from "@motion-levels-games/player-experience";
 import { GameSession, gameCatalog, gameplayRegistry, type GameSessionState } from "@motion-levels-games/runtime";
@@ -77,7 +79,8 @@ export type MenuStateEnvelope = {
   snapshot: unknown;
 };
 
-export type VenueRuntimeStatus = PlayerExperienceState & {
+export type VenueRuntimeStatus = Omit<PlayerExperienceState, "outputTest"> & {
+  outputTest: OutputTestStatus | null;
   pressureStreamConnected: boolean;
   roomControllerId: string;
   controllerId: string;
@@ -88,6 +91,13 @@ export type VenueRuntimeStatus = PlayerExperienceState & {
   venueSessionRecordingAvailable: boolean;
   venueSessionRecordingPolicy: RecordingPolicy;
   venueSessionStartedUnix: number;
+};
+
+export type OutputTestTarget = PlayerExperienceOutputTest["target"];
+export type OutputTestState = Exclude<PlayerExperienceOutputTestState, "idle">;
+
+export type OutputTestStatus = Omit<PlayerExperienceOutputTest, "state"> & {
+  state: OutputTestState;
 };
 
 export type VenueRuntimeOptions = {
@@ -184,6 +194,17 @@ type NormalizedRemoteFloorInputRequest = {
   releaseAll: boolean;
 };
 
+type FloorOutputTestRun = {
+  sequence: number;
+  startedAtMillis: number;
+  stopsSendingAtMillis: number;
+  deadlineAtMillis: number;
+  firstDesiredSequence: bigint | null;
+  lastDesiredSequence: bigint | null;
+  sendingComplete: boolean;
+  observedDiagnosticFrame: boolean;
+};
+
 type SelectionMetadata = {
   manifest: GameManifest;
   runtimeGameId: string;
@@ -207,6 +228,10 @@ const maximumScreensaverContentBytes = 1_048_576;
 const defaultLocalLiveFloorFps = 20;
 const displayPublishIntervalMillis = 50;
 const statusPublishIntervalMillis = 250;
+export const floorOutputTestDurationMillis = 840;
+const floorOutputTestResultTimeoutMillis = 2_000;
+const audioOutputTestResultTimeoutMillis = 7_000;
+export const outputTestResultRetentionMillis = 30_000;
 const minimumLocalLiveFloorFps = 5;
 const maximumLocalLiveFloorFps = 25;
 const defaultRemoteFloorInputLeaseMillis = 5_000;
@@ -280,6 +305,9 @@ export class VenueRuntime {
   private lastEventUnixNanos = 0;
   private lastEventCue = "";
   private lastEventMessage = "";
+  private outputTestSequence = 0;
+  private outputTest: OutputTestStatus | null = null;
+  private floorOutputTestRun: FloorOutputTestRun | null = null;
 
   constructor(private readonly options: VenueRuntimeOptions) {
     if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
@@ -322,6 +350,9 @@ export class VenueRuntime {
         this.floorAdapter = connected && hello
           ? connectedFloorAdapter(revision, hello)
           : { ...this.floorAdapter, connected: false };
+        if (!connected && this.floorOutputTestRun) {
+          this.finishFloorOutputTest("failed", "Se perdió la conexión con el suelo");
+        }
       },
       log: options.log
     });
@@ -400,6 +431,7 @@ export class VenueRuntime {
       ? await this.fetchRuntimeContent(request)
       : null;
     this.assertVenueSessionGeneration(venueSessionGeneration);
+    this.cancelRunningOutputTest("Prueba cancelada al iniciar la partida");
     const now = performance.now();
     this.state = this.session.select({
       gameId: module.manifest.id,
@@ -495,17 +527,23 @@ export class VenueRuntime {
     const now = performance.now();
     if (action === "mute" || action === "unmute" || action === "toggle_mute") {
       if (!this.audioEnabled) throw new RequestValidationError("audio is not configured");
+      this.cancelRunningOutputTest("Prueba cancelada por otro control");
       this.audioMuted = action === "mute" ? true : action === "unmute" ? false : !this.audioMuted;
       this.publishDisplay();
       return this.status();
     }
     if (action === "exit") {
+      this.cancelRunningOutputTest("Prueba cancelada al salir de la partida");
       this.history?.endSelection("exited");
       this.activateScreensaver();
       this.publishDisplay();
       return this.status();
     }
     if (!this.selection) throw new RequestValidationError("no active game");
+    if (action !== "pause" && action !== "resume" && action !== "restart" && action !== "narration") {
+      throw new RequestValidationError(`unknown control action: ${action}`);
+    }
+    this.cancelRunningOutputTest("Prueba cancelada por otro control");
     if (action === "pause") {
       if (!this.state.paused) this.pauseStartedAt = now;
       this.acceptSessionState(this.session.pause(this.elapsedAt(now)));
@@ -523,11 +561,74 @@ export class VenueRuntime {
       this.gameSessionId = randomUUID();
       this.history?.restartRun(this.gameSessionId, this.historyState(this.state));
       this.applyHeldPressure(0);
-    } else if (action === "narration") {
-      // Narration remains a separate media concern; cue audio is owned by the TV display.
     } else {
-      throw new RequestValidationError(`unknown control action: ${action}`);
+      // Narration remains a separate media concern; cue audio is owned by the TV display.
     }
+    this.publishDisplay();
+    return this.status();
+  }
+
+  runOutputTest(targetValue: unknown): VenueRuntimeStatus {
+    const target = String(targetValue ?? "").trim().toLowerCase();
+    if (target !== "floor" && target !== "audio") {
+      throw new RequestValidationError("output test target must be floor or audio");
+    }
+    if (this.outputTest && (this.outputTest.state === "pending" || this.outputTest.state === "playing")) {
+      throw new RequestValidationError("another output test is already running");
+    }
+    if (this.selection && !this.state.paused) {
+      throw new RequestValidationError("output tests require an idle or paused game");
+    }
+    if (target === "audio") {
+      const sequence = ++this.outputTestSequence;
+      const id = randomUUID();
+      const startedUnixMillis = Date.now();
+      this.outputTest = this.audioEnabled
+        ? { id, target, sequence, state: "pending", startedUnixMillis }
+        : {
+            id,
+            target,
+            sequence,
+            state: "failed",
+            startedUnixMillis,
+            finishedUnixMillis: startedUnixMillis,
+            error: "Audio no configurado"
+          };
+      this.floorOutputTestRun = null;
+      this.publishDisplay();
+      return this.status();
+    }
+
+    const sequence = ++this.outputTestSequence;
+    const id = randomUUID();
+    const startedUnixMillis = Date.now();
+    if (!this.controllerConnected) {
+      this.outputTest = {
+        id,
+        target,
+        sequence,
+        state: "failed",
+        startedUnixMillis,
+        finishedUnixMillis: startedUnixMillis,
+        error: "Suelo sin conexión"
+      };
+      this.floorOutputTestRun = null;
+      this.publishDisplay();
+      return this.status();
+    }
+
+    const startedAtMillis = performance.now();
+    this.outputTest = { id, target, sequence, state: "pending", startedUnixMillis };
+    this.floorOutputTestRun = {
+      sequence,
+      startedAtMillis,
+      stopsSendingAtMillis: startedAtMillis + floorOutputTestDurationMillis,
+      deadlineAtMillis: startedAtMillis + floorOutputTestResultTimeoutMillis,
+      firstDesiredSequence: null,
+      lastDesiredSequence: null,
+      sendingComplete: false,
+      observedDiagnosticFrame: false
+    };
     this.publishDisplay();
     return this.status();
   }
@@ -583,6 +684,7 @@ export class VenueRuntime {
       };
       return {
         ...status,
+        outputTest: cloneOutputTestStatus(this.outputTest),
         pressureStreamConnected: this.controllerConnected,
         roomControllerId: this.options.controllerId ?? "",
         controllerId: this.options.controllerId ?? "",
@@ -654,6 +756,7 @@ export class VenueRuntime {
     status.allowedControls = controlsForState(status);
     return {
       ...status,
+      outputTest: cloneOutputTestStatus(this.outputTest),
       pressureStreamConnected: this.controllerConnected,
       roomControllerId: this.options.controllerId ?? "",
       controllerId: this.options.controllerId ?? "",
@@ -905,9 +1008,13 @@ export class VenueRuntime {
   updateDisplayClient(report: Record<string, unknown>): Record<string, unknown> {
     if (report.clientId !== "player-display") throw new RequestValidationError("clientId must be player-display");
     const previousAudioOutputState = this.audioOutputState();
+    const previousOutputTest = JSON.stringify(this.outputTest);
     this.displayClientReport = structuredClone(report);
     this.displayClientReceivedUnixMillis = Date.now();
-    if (this.audioOutputState() !== previousAudioOutputState) this.publishDisplay();
+    this.acceptAudioOutputTestReport(report);
+    if (this.audioOutputState() !== previousAudioOutputState || JSON.stringify(this.outputTest) !== previousOutputTest) {
+      this.publishDisplay();
+    }
     return this.displayClientStatus();
   }
 
@@ -941,9 +1048,33 @@ export class VenueRuntime {
     const ageMillis = this.displayClientReceivedUnixMillis > 0
       ? Math.max(0, Date.now() - this.displayClientReceivedUnixMillis)
       : Number.POSITIVE_INFINITY;
-    if (!this.displayClientReport || ageMillis > 15_000) return "checking";
+    if (!this.displayClientReport) return "checking";
+    if (ageMillis > 15_000) return "failed";
     const state = this.displayClientReport.audioOutputState;
     return state === "ready" || state === "suspended" || state === "failed" ? state : "checking";
+  }
+
+  private acceptAudioOutputTestReport(report: Record<string, unknown>): void {
+    const test = this.outputTest;
+    if (!test || test.target !== "audio" || (test.state !== "pending" && test.state !== "playing")) return;
+    if (report.outputTestId !== test.id) return;
+    const sequence = Number(report.outputTestSequence);
+    if (!Number.isSafeInteger(sequence) || sequence !== test.sequence) return;
+    const reportedState = String(report.outputTestState ?? "");
+    if (reportedState === "playing") {
+      if (test.state === "pending") this.outputTest = { ...test, state: "playing" };
+      return;
+    }
+    if (reportedState !== "passed" && reportedState !== "failed") return;
+    this.outputTest = {
+      id: test.id,
+      target: "audio",
+      sequence: test.sequence,
+      state: reportedState,
+      startedUnixMillis: test.startedUnixMillis,
+      finishedUnixMillis: Date.now(),
+      ...(reportedState === "failed" ? { error: "La pantalla no pudo reproducir la prueba de audio" } : {})
+    };
   }
 
   /** Controller input boundary; public to permit deterministic host tests. */
@@ -1008,6 +1139,7 @@ export class VenueRuntime {
       lastPresentedUnixNanos: observed.presentedUnixNanos,
       fadeRatio: frame.fadeRatio
     };
+    this.observeFloorOutputTestFrame(frame);
     this.scheduleObservedFloor(observedAt);
     this.liveFloorPublisher?.observe(frame, this.gameSessionId, observedAt, encoded);
   }
@@ -1068,13 +1200,17 @@ export class VenueRuntime {
     }
     const frame = this.state.frame;
     this.frameSequence += 1n;
+    const outputTestRgb = this.floorOutputTestFrame(this.frameSequence, now);
     this.controller.sendFrame({
       sequence: this.frameSequence,
       unixNanos: BigInt(Date.now()) * 1_000_000n,
       width: FLOOR_COLS,
       height: FLOOR_ROWS,
-      rgb: frameToRgb(frame, this.options.brightness ?? 1)
+      rgb: outputTestRgb ?? frameToRgb(frame, this.options.brightness ?? 1)
     });
+    this.expireFloorOutputTest(now);
+    this.expireAudioOutputTest();
+    this.expireOutputTestResult();
     if (now - this.lastDisplayPublishedAt >= displayPublishIntervalMillis) {
       this.publishDisplay(now - this.lastStatusPublishedAt >= statusPublishIntervalMillis, now);
     }
@@ -1082,6 +1218,97 @@ export class VenueRuntime {
 
   private elapsedAt(now: number): number {
     return Math.max(0, (this.pauseStartedAt || now) - this.gameStartedAt);
+  }
+
+  private floorOutputTestFrame(sequence: bigint, now: number): Uint8Array | null {
+    const run = this.floorOutputTestRun;
+    if (!run || run.sendingComplete) return null;
+    if (now >= run.stopsSendingAtMillis) {
+      run.sendingComplete = true;
+      return null;
+    }
+    run.firstDesiredSequence ??= sequence;
+    run.lastDesiredSequence = sequence;
+    return floorOutputTestRgb(now - run.startedAtMillis, this.options.brightness ?? 1);
+  }
+
+  private observeFloorOutputTestFrame(frame: PresentedFrame): void {
+    const run = this.floorOutputTestRun;
+    if (!run || run.firstDesiredSequence === null || run.lastDesiredSequence === null) return;
+    const desiredSequence = frame.desiredSequence;
+    if (desiredSequence >= run.firstDesiredSequence && desiredSequence <= run.lastDesiredSequence) {
+      if (!frame.rgb.some((channel) => channel > 0)) return;
+      run.observedDiagnosticFrame = true;
+      if (this.outputTest?.sequence === run.sequence && this.outputTest.state === "pending") {
+        this.outputTest = { ...this.outputTest, state: "playing" };
+        this.publishDisplay();
+      }
+      return;
+    }
+    if (!run.sendingComplete || desiredSequence <= run.lastDesiredSequence) return;
+    this.finishFloorOutputTest(
+      run.observedDiagnosticFrame ? "passed" : "failed",
+      run.observedDiagnosticFrame ? undefined : "El suelo no presentó la animación de prueba"
+    );
+  }
+
+  private expireFloorOutputTest(now: number): void {
+    const run = this.floorOutputTestRun;
+    if (!run || now < run.deadlineAtMillis) return;
+    this.finishFloorOutputTest("failed", "El suelo no confirmó la animación de prueba");
+  }
+
+  private expireAudioOutputTest(nowUnixMillis = Date.now()): void {
+    const test = this.outputTest;
+    if (!test || test.target !== "audio" || (test.state !== "pending" && test.state !== "playing")) return;
+    if (nowUnixMillis - test.startedUnixMillis < audioOutputTestResultTimeoutMillis) return;
+    this.outputTest = {
+      id: test.id,
+      target: "audio",
+      sequence: test.sequence,
+      state: "failed",
+      startedUnixMillis: test.startedUnixMillis,
+      finishedUnixMillis: nowUnixMillis,
+      error: "La pantalla no confirmó la reproducción de audio"
+    };
+    this.publishDisplay();
+  }
+
+  private expireOutputTestResult(nowUnixMillis = Date.now()): void {
+    const test = this.outputTest;
+    if (!test || test.state === "pending" || test.state === "playing" || test.finishedUnixMillis === undefined) return;
+    if (nowUnixMillis - test.finishedUnixMillis < outputTestResultRetentionMillis) return;
+    this.outputTest = null;
+    this.publishDisplay();
+  }
+
+  private finishFloorOutputTest(state: "passed" | "failed", error?: string): void {
+    const run = this.floorOutputTestRun;
+    if (!run || this.outputTest?.sequence !== run.sequence) return;
+    this.floorOutputTestRun = null;
+    this.outputTest = {
+      id: this.outputTest.id,
+      target: "floor",
+      sequence: run.sequence,
+      state,
+      startedUnixMillis: this.outputTest.startedUnixMillis,
+      finishedUnixMillis: Date.now(),
+      ...(error ? { error } : {})
+    };
+    this.publishDisplay();
+  }
+
+  private cancelRunningOutputTest(error: string): void {
+    const test = this.outputTest;
+    if (!test || (test.state !== "pending" && test.state !== "playing")) return;
+    this.floorOutputTestRun = null;
+    this.outputTest = {
+      ...test,
+      state: "failed",
+      finishedUnixMillis: Date.now(),
+      error
+    };
+    this.publishDisplay();
   }
 
   private acceptSessionState(next: GameSessionState): void {
@@ -1450,6 +1677,30 @@ export function frameToRgb(frame: Frame, brightnessValue: number): Uint8Array {
     rgb[offset + 2] = Math.round(color.b * brightness);
   }
   return rgb;
+}
+
+/** Four short, whole-floor pulses. This is an output-only diagnostic frame:
+ * it never enters game state, display state, or session history. */
+export function floorOutputTestRgb(elapsedMillisValue: number, brightnessValue: number): Uint8Array {
+  const elapsedMillis = Math.max(0, Number.isFinite(elapsedMillisValue) ? elapsedMillisValue : 0);
+  const brightness = Math.max(0, Math.min(1, Number.isFinite(brightnessValue) ? brightnessValue : 1));
+  const rgb = new Uint8Array(floorRgbBytes);
+  if (elapsedMillis >= floorOutputTestDurationMillis || brightness === 0) return rgb;
+  const pulseDurationMillis = floorOutputTestDurationMillis / 4;
+  const pulseIndex = Math.min(3, Math.floor(elapsedMillis / pulseDurationMillis));
+  const pulseProgress = (elapsedMillis % pulseDurationMillis) / pulseDurationMillis;
+  const intensity = Math.sin(Math.PI * pulseProgress) ** 2 * 0.86 * brightness;
+  const color = pulseIndex % 2 === 0 ? [32, 174, 255] : [210, 235, 255];
+  for (let offset = 0; offset < rgb.byteLength; offset += 3) {
+    rgb[offset] = Math.round((color[0] ?? 0) * intensity);
+    rgb[offset + 1] = Math.round((color[1] ?? 0) * intensity);
+    rgb[offset + 2] = Math.round((color[2] ?? 0) * intensity);
+  }
+  return rgb;
+}
+
+function cloneOutputTestStatus(status: OutputTestStatus | null): OutputTestStatus | null {
+  return status ? { ...status } : null;
 }
 
 function rgbToHex(color: { r: number; g: number; b: number }): `#${string}` {

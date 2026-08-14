@@ -146,6 +146,93 @@ test("canonical player state and idempotent commands share the venue API", async
   assert.equal(first.currentGame, body.game);
 });
 
+test("output tests are validated, idempotent, and reject concurrent commands through the venue API", async (context) => {
+  const revision = "1".repeat(40);
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true
+  });
+  (runtime as unknown as { controllerConnected: boolean }).controllerConnected = true;
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    renderStatus: "ready",
+    connected: true,
+    feedTransport: "eventsource",
+    lastFeedUnixMillis: Date.now(),
+    audioOutputState: "ready"
+  });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(async () => {
+    server.close();
+    await runtime.stop();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/api/output-test`;
+  const post = (body: Record<string, unknown>) => fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const missingCommand = await post({ target: "floor" });
+  assert.equal(missingCommand.status, 400);
+  assert.match(await missingCommand.text(), /commandId is required/u);
+  const invalidTarget = await post({
+    commandId: "22222222-2222-4222-8222-222222222220",
+    target: "lights"
+  });
+  assert.equal(invalidTarget.status, 400);
+  assert.match(await invalidTarget.text(), /target must be floor or audio/u);
+
+  const command = {
+    commandId: "22222222-2222-4222-8222-222222222221",
+    target: "audio"
+  };
+  const firstResponse = await post(command);
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(first.outputTest.target, "audio");
+  assert.equal(first.outputTest.sequence, 1);
+  assert.equal(first.outputTest.state, "pending");
+  assert.equal(typeof first.outputTest.startedUnixMillis, "number");
+
+  const retryResponse = await post(command);
+  assert.equal(retryResponse.status, 200);
+  const retry = await retryResponse.json();
+  assert.deepEqual(retry.outputTest, first.outputTest);
+
+  const concurrentResponse = await post({
+    commandId: "22222222-2222-4222-8222-222222222222",
+    target: "floor"
+  });
+  assert.equal(concurrentResponse.status, 400);
+  assert.match(await concurrentResponse.text(), /another output test is already running/u);
+
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    audioOutputState: "ready",
+    outputTestId: first.outputTest.id,
+    outputTestSequence: 1,
+    outputTestState: "passed"
+  });
+  const nextResponse = await post({
+    commandId: "22222222-2222-4222-8222-222222222223",
+    target: "floor"
+  });
+  assert.equal(nextResponse.status, 200);
+  const next = await nextResponse.json();
+  assert.equal(next.outputTest.sequence, 2);
+  assert.equal(next.outputTest.target, "floor");
+  assert.equal(next.outputTest.state, "pending");
+});
+
 test("retrying a conflicted select command cannot restore a stale venue recording policy", async (context) => {
   const revision = "1".repeat(40);
   const canonicalGameId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";

@@ -15,6 +15,7 @@ type MockEngineStatus = Record<string, unknown> & {
 type BrowserScenario = {
   context: BrowserContext;
   page: Page;
+  outputTestRequests: Array<Record<string, unknown>>;
   platformCatalog: Array<Record<string, unknown>>;
   selectRequests: Array<Record<string, unknown>>;
   status: MockEngineStatus;
@@ -171,7 +172,7 @@ try {
     assert.equal((await launch.textContent())?.trim(), "Empezar partida");
     assert.equal(await launch.isEnabled(), true);
     await launch.tap();
-    await waitForCondition(() => selectRequests.length === 1, "allow-any /api/select request");
+    await waitForCondition(() => selectRequests.length === 1, "allow-any /api/select request", 5_000);
     const request = selectRequests[0];
     assert.ok(request, "allow-any launch must send a selection request");
     assert.equal(request.game, "motion-levels-games:lava");
@@ -275,6 +276,61 @@ try {
       toast: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>(".kiosk-toast.error")!).zIndex, 10),
     }));
     assert.ok(layers.toast > layers.drawer, `error toast must layer above the open drawer: ${JSON.stringify(layers)}`);
+  });
+
+  await scenario("operator settings run floor and audio diagnostics with authoritative feedback", async ({ page, outputTestRequests, status }) => {
+    Object.assign(status, {
+      audioEnabled: true,
+      audioMuted: false,
+      audioOutputState: "ready",
+      pressureStreamConnected: true,
+    });
+    await startSession(page);
+    await page.locator(".team-drawer .drawer-done").tap();
+    await waitForAttribute(page.locator(".team-drawer"), "aria-hidden", "true");
+    await page.locator('.topbar button[aria-label="Ajustes"]').tap();
+    const settings = page.getByRole("dialog", { name: "Ajustes" });
+    await settings.waitFor({ state: "visible" });
+    const compactRevision = (await settings.locator(".settings-version-card > strong").textContent())?.trim() ?? "";
+    assert.match(compactRevision, /^[0-9a-f]{7,8}$/u);
+    assert.equal(compactRevision.startsWith("menu"), false);
+
+    const floor = settings.getByRole("button", { name: /^Suelo:/u });
+    const audio = settings.getByRole("button", { name: /^Audio:/u });
+    assert.equal(await floor.isEnabled(), true, `floor diagnostic must be enabled: ${(await floor.textContent())?.trim()}`);
+    await floor.tap();
+    await waitForCondition(
+      async () => outputTestRequests.length === 1 || (await floor.textContent())?.includes("No se pudo") === true,
+      "floor output-test result",
+      8_000,
+    );
+    assert.equal(outputTestRequests.length, 1, `floor diagnostic failed before the request: ${(await floor.textContent())?.trim()}`);
+    assert.equal(outputTestRequests[0]?.target, "floor");
+    assert.match(String(outputTestRequests[0]?.commandId ?? ""), /^[0-9a-f-]{36}$/u);
+    await waitForCondition(async () => (await floor.textContent())?.includes("Pulso confirmado") === true, "confirmed floor pulse", 5_000);
+    status.pressureStreamConnected = false;
+    status.revision += 1;
+    await waitForCondition(async () => (await floor.textContent())?.includes("Sin señal") === true, "disconnected floor health", 5_000);
+    assert.equal(await floor.isDisabled(), true, "a previous pass must not mask a floor disconnect");
+    status.pressureStreamConnected = true;
+    status.revision += 1;
+    await waitForCondition(() => floor.isEnabled(), "reconnected floor diagnostic", 5_000);
+
+    await audio.tap();
+    await waitForCondition(() => outputTestRequests.length === 2, "audio output-test request");
+    assert.equal(outputTestRequests[1]?.target, "audio");
+    await waitForCondition(async () => (await audio.textContent())?.includes("Reproducido") === true, "completed audio playback", 5_000);
+    assert.match((await audio.locator("small").textContent()) ?? "", /La reproducción terminó/u);
+    if (captureScreenshots) {
+      await page.screenshot({ path: `/private/tmp/player-menu-settings-passed-${viewportWidth}.png` });
+    }
+    status.audioOutputState = "failed";
+    status.revision += 1;
+    await waitForCondition(async () => (await audio.textContent())?.includes("Error de salida") === true, "failed audio health", 5_000);
+    await waitForCondition(() => audio.isEnabled(), "retryable failed audio diagnostic", 5_000);
+    if (captureScreenshots) {
+      await page.screenshot({ path: `/private/tmp/player-menu-settings-failed-${viewportWidth}.png` });
+    }
   });
 
   await scenario("saved live catalog selection follows category moves and hides unsupported authored entries", async ({ page, platformCatalog, status }) => {
@@ -385,6 +441,7 @@ async function scenario(name: string, run: (fixture: BrowserScenario) => Promise
     viewport: { width: viewportWidth, height: viewportHeight },
   });
   const selectRequests: Array<Record<string, unknown>> = [];
+  const outputTestRequests: Array<Record<string, unknown>> = [];
   const venueSessionFailures: string[] = [];
   const venueSessionRequests: Array<Record<string, unknown>> = [];
   const platformCatalog: Array<Record<string, unknown>> = [];
@@ -393,9 +450,9 @@ async function scenario(name: string, run: (fixture: BrowserScenario) => Promise
   page.setDefaultTimeout(8_000);
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.stack ?? error.message));
-  await installMockAPIs(context, status, platformCatalog, selectRequests, venueSessionFailures, venueSessionRequests);
+  await installMockAPIs(context, status, platformCatalog, selectRequests, outputTestRequests, venueSessionFailures, venueSessionRequests);
   try {
-    await run({ context, page, platformCatalog, selectRequests, status, venueSessionFailures, venueSessionRequests });
+    await run({ context, page, outputTestRequests, platformCatalog, selectRequests, status, venueSessionFailures, venueSessionRequests });
     assert.deepEqual(pageErrors, [], "the rendered menu must not raise browser errors");
     assert.equal(await page.locator("vite-error-overlay, [data-nextjs-dialog], #webpack-dev-server-client-overlay").count(), 0, "the rendered menu must not show a framework error overlay");
     assert.equal((await page.locator("body").innerText()).trim().length > 0, true, "the rendered menu must not be blank");
@@ -414,6 +471,7 @@ async function installMockAPIs(
   status: MockEngineStatus,
   platformCatalog: Array<Record<string, unknown>>,
   selectRequests: Array<Record<string, unknown>>,
+  outputTestRequests: Array<Record<string, unknown>>,
   venueSessionFailures: string[],
   venueSessionRequests: Array<Record<string, unknown>>,
 ): Promise<void> {
@@ -459,6 +517,37 @@ async function installMockAPIs(
     selectRequests.push(route.request().postDataJSON() as Record<string, unknown>);
     status.revision += 1;
     await json(route, status);
+  });
+  await context.route("**/api/output-test", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-headers": "content-type",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-origin": "*",
+        },
+      });
+      return;
+    }
+    const request = route.request().postDataJSON() as Record<string, unknown>;
+    outputTestRequests.push(structuredClone(request));
+    const sequence = outputTestRequests.length;
+    status.revision += 1;
+    status.outputTest = {
+      id: crypto.randomUUID(),
+      target: request.target,
+      sequence,
+      state: "passed",
+      startedUnixMillis: Date.now() - 100,
+      finishedUnixMillis: Date.now(),
+    };
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await route.fulfill({
+      status: 200,
+      headers: { "access-control-allow-origin": "*", "content-type": "application/json" },
+      body: JSON.stringify(status),
+    });
   });
 }
 

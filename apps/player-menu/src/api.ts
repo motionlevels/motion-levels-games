@@ -332,10 +332,16 @@ export async function selectGame(request: SelectGameRequest): Promise<EngineStat
 }
 
 export type ControlGameAction = "pause" | "resume" | "restart" | "exit" | "narration" | "mute" | "unmute" | "toggle_mute";
+export type OutputTestTarget = "floor" | "audio";
 
 export async function controlGame(action: ControlGameAction): Promise<EngineStatus> {
   const commandId = newPlayerExperienceCommandId(globalThis.crypto);
   return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/control`, { action, commandId }));
+}
+
+export async function testOutput(target: OutputTestTarget): Promise<EngineStatus> {
+  const commandId = newPlayerExperienceCommandId(globalThis.crypto);
+  return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/output-test`, { commandId, target }));
 }
 
 export type VenueSessionRequest = {

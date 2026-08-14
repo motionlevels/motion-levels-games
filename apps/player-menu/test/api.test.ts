@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchURL, postVenueSession, requestJSON, RequestError, selectGame } from "../src/api.ts";
+import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchURL, postVenueSession, requestJSON, RequestError, selectGame, testOutput } from "../src/api.ts";
 
 const nativeFetch = globalThis.fetch;
 
@@ -166,6 +166,26 @@ describe("kiosk API requests", () => {
     releaseFirst();
     await Promise.all([selected, controlled]);
     assert.deepEqual(requests.map((url) => new URL(url).pathname), ["/api/select", "/api/control"]);
+  });
+
+  it("sends hardware output tests through the ordered command stream", async () => {
+    const requests: Array<{ body: { commandId?: string; target?: string }; path: string }> = [];
+    globalThis.fetch = (async (url, init) => {
+      requests.push({
+        body: JSON.parse(String(init?.body)) as { commandId?: string; target?: string },
+        path: new URL(String(url)).pathname,
+      });
+      return new Response(JSON.stringify({ revision: requests.length }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    await testOutput("audio");
+
+    assert.equal(requests[0]?.path, "/api/output-test");
+    assert.equal(requests[0]?.body.target, "audio");
+    assert.match(requests[0]?.body.commandId ?? "", /^[0-9a-f-]{36}$/u);
   });
 
   it("serializes venue-session mutations in request order", async () => {

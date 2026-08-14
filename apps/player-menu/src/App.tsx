@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, localPlaygroundEnabled, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
+import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, localPlaygroundEnabled, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, testOutput, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
 import { PlayerExperienceStateGate, playerExperienceView } from "@motion-levels-games/player-experience";
 import { categories, colors, difficulties, games, playerColorNames, playerColors, type CategoryID, type DifficultyID, type GameCard, type GameConfigVar, type PartyMiniGame } from "./catalog";
 import { partyCatalogIsComplete, partyLaunchGame } from "./party";
@@ -127,6 +127,8 @@ type ChallengeCompletion = {
 type PlayerMenuEngineStatus = EngineStatus;
 type FinishedLevelAttempt = NonNullable<PlayerMenuEngineStatus["finishedLevelAttempts"]>[number] & { venueSessionId?: string };
 type ConnectionState = "connection-off" | "connection-on" | "connection-pending";
+type OutputTestTarget = "floor" | "audio";
+type OutputTestState = "idle" | "pending" | "playing" | "passed" | "failed";
 type KeyboardTarget = { kind: "team" } | { kind: "player"; id: number };
 type PartyRunState = {
   cumulativeScore: number;
@@ -1384,6 +1386,8 @@ function MenuApp() {
   const [settingsError, setSettingsError] = useState("");
   const [settingsPinFailures, setSettingsPinFailures] = useState(0);
   const [settingsLockoutUntil, setSettingsLockoutUntil] = useState(0);
+  const [settingsTestPending, setSettingsTestPending] = useState<OutputTestTarget | null>(null);
+  const [settingsTestError, setSettingsTestError] = useState<{ target: OutputTestTarget; message: string; baselineOutputTestId: string } | null>(null);
   const [teamOpen, setTeamOpen] = useState(false);
   // This fallback exists only before the first engine snapshot (and in the
   // read-only mirror). Once connected, canonical runtime state owns routing.
@@ -1419,6 +1423,7 @@ function MenuApp() {
   const sessionStartInFlightRef = useRef(false);
   const sessionCloseInFlightRef = useRef(false);
   const recordingScopeChangeInFlightRef = useRef(false);
+  const outputTestInFlightRef = useRef<OutputTestTarget | null>(null);
   const nameEditStartRef = useRef<{ target: KeyboardTarget; value: string } | null>(null);
   const touchKeyboardTargetRef = useRef<KeyboardTarget | null>(null);
   const teamTriggerRef = useRef<HTMLButtonElement>(null);
@@ -2457,6 +2462,7 @@ function MenuApp() {
     setSettingsUnlocked(false);
     setSettingsPin("");
     setSettingsError(Date.now() < settingsLockoutUntil ? "Demasiados intentos. Espera unos segundos." : "");
+    setSettingsTestError(null);
   }
 
   function closeSettings() {
@@ -2464,7 +2470,41 @@ function MenuApp() {
     setSettingsUnlocked(false);
     setSettingsPin("");
     setSettingsError("");
+    setSettingsTestError(null);
   }
+
+  async function runOutputTest(target: OutputTestTarget) {
+    if (outputTestInFlightRef.current) return;
+    const baselineOutputTestId = status?.outputTest?.id ?? "";
+    outputTestInFlightRef.current = target;
+    setSettingsTestPending(target);
+    setSettingsTestError(null);
+    try {
+      const nextStatus = await testOutput(target);
+      acceptStatus(nextStatus);
+    } catch (err) {
+      setSettingsTestError({
+        target,
+        baselineOutputTestId,
+        message: friendlyRequestError(
+          err,
+          target === "floor"
+            ? "No se pudo iniciar la prueba del suelo. Inténtalo de nuevo."
+            : "No se pudo reproducir la prueba de audio. Inténtalo de nuevo."
+        ),
+      });
+    } finally {
+      outputTestInFlightRef.current = null;
+      setSettingsTestPending(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!settingsTestError || !status?.outputTest) return;
+    if (status.outputTest.target !== settingsTestError.target) return;
+    if (status.outputTest.id === settingsTestError.baselineOutputTestId) return;
+    setSettingsTestError(null);
+  }, [settingsTestError, status?.outputTest]);
 
   function setOperatorUnlockLevels(enabled: boolean) {
     captureMenuEvent("operator_unlock_levels_changed", {
@@ -4158,10 +4198,12 @@ function MenuApp() {
           lockedOut={Date.now() < settingsLockoutUntil}
           levelsUnlocked={levelsUnlocked}
           envUnlockLevels={envUnlockLevels}
+          status={status}
+          connectionState={connectionState}
           engineLabel={engineLabel}
-          floorLabel={floorReady ? "Conectado" : "Sin señal"}
-          audioLabel={audioStatusLabel(status)}
           catalogLabel={catalogRefreshing ? "Actualizando" : `${menuGames.length} ${menuGames.length === 1 ? "modo" : "modos"}`}
+          testPending={settingsTestPending}
+          testError={settingsTestError}
           onTypeDigit={typeSettingsPinDigit}
           onBackspace={() => {
             setSettingsError("");
@@ -4173,6 +4215,7 @@ function MenuApp() {
           }}
           onSubmit={() => submitSettingsPin()}
           onToggleLevels={() => setOperatorUnlockLevels(!menu.operatorUnlockLevels)}
+          onTestOutput={(target) => void runOutputTest(target)}
           onClose={closeSettings}
         />
       ) : null}
@@ -4689,6 +4732,117 @@ function audioStatusLabel(status: EngineStatus | null | undefined): string {
   return status.audioMuted ? "Silenciado" : "Activo";
 }
 
+function floorStatusLabel(connectionState: ConnectionState, status: EngineStatus | null): string {
+  if (connectionState === "connection-pending") return "Conectando";
+  if (connectionState === "connection-off") return "Sin conexión";
+  if (status?.pressureStreamConnected === true) return "Conectado";
+  if (status?.pressureStreamConnected === false) return "Sin señal";
+  return "Comprobando";
+}
+
+function outputTestBusy(state: OutputTestState): boolean {
+  return state === "pending" || state === "playing";
+}
+
+function outputTestLabel(target: OutputTestTarget, state: OutputTestState, fallback: string): string {
+  if (state === "pending") return "Preparando";
+  if (state === "playing") return "Probando";
+  if (state === "passed") return target === "floor" ? "Pulso confirmado" : "Reproducido";
+  if (state === "failed") return "Error";
+  return fallback;
+}
+
+function outputTestHint(
+  target: OutputTestTarget,
+  state: OutputTestState,
+  canTest: boolean,
+  blockedByOtherTest: boolean,
+  unavailableHint: string,
+  error: string,
+): string {
+  if (error) return error;
+  if (blockedByOtherTest) return "Espera a que termine la otra prueba.";
+  if (!canTest) return unavailableHint;
+  if (state === "pending") return "Preparando la prueba…";
+  if (state === "playing") {
+    return target === "floor"
+      ? "El suelo está ejecutando el pulso."
+      : "Los altavoces están diciendo «probando».";
+  }
+  if (state === "passed") {
+    return target === "floor"
+      ? "El controlador confirmó el pulso. Pulsa para repetir."
+      : "La reproducción terminó. Confirma que se oyó y pulsa para repetir.";
+  }
+  if (state === "failed") return "La prueba no se completó. Pulsa para reintentar.";
+  return target === "floor"
+    ? "Pulsa para enviar un pulso rápido al suelo."
+    : "Pulsa para oír «probando» en los altavoces.";
+}
+
+function outputTestTone(state: OutputTestState, fallbackTone: "ok" | "warn" | "danger"): "ok" | "warn" | "danger" {
+  if (state === "failed") return "danger";
+  if (outputTestBusy(state)) return "warn";
+  if (state === "passed") return "ok";
+  return fallbackTone;
+}
+
+function DiagnosticTestButton({
+  target,
+  canTest,
+  currentHealthy,
+  fallbackTone,
+  fallbackLabel,
+  state,
+  sequence,
+  error,
+  blockedByOtherTest,
+  unavailableHint,
+  onTest,
+}: {
+  target: OutputTestTarget;
+  canTest: boolean;
+  currentHealthy: boolean;
+  fallbackTone: "ok" | "warn" | "danger";
+  fallbackLabel: string;
+  state: OutputTestState;
+  sequence: number;
+  error: string;
+  blockedByOtherTest: boolean;
+  unavailableHint: string;
+  onTest: (target: OutputTestTarget) => void;
+}) {
+  const currentState = state === "passed" && !currentHealthy ? "idle" : state;
+  const effectiveState = error ? "failed" : currentState;
+  const busy = outputTestBusy(effectiveState);
+  const label = outputTestLabel(target, effectiveState, fallbackLabel);
+  const hint = outputTestHint(target, effectiveState, canTest, blockedByOtherTest, unavailableHint, error);
+  const name = target === "floor" ? "Suelo" : "Audio";
+  const hintID = `settings-${target}-test-hint`;
+  return (
+    <button
+      className={`settings-health-item settings-test-action ${outputTestTone(effectiveState, fallbackTone)} ${busy ? "testing" : ""} ${effectiveState === "passed" ? "tested" : ""}`}
+      type="button"
+      disabled={!canTest || busy || blockedByOtherTest}
+      aria-label={`${name}: ${label}. ${hint}`}
+      aria-describedby={hintID}
+      aria-busy={busy || undefined}
+      title={hint}
+      onClick={() => onTest(target)}
+    >
+      <span className="settings-health-copy">
+        <span className="settings-health-label">{name}</span>
+        <b>{label}</b>
+        <small id={hintID} role={effectiveState === "failed" ? "alert" : undefined}>{hint}</small>
+      </span>
+      <span className="settings-test-glyph" aria-hidden="true">
+        {target === "floor" ? <SparkIcon /> : <VolumeIcon />}
+      </span>
+      <span key={`${sequence}-${effectiveState}`} className="settings-test-pulse" aria-hidden="true" />
+    </button>
+  );
+}
+
 function OperatorSettingsDialog({
   unlocked,
   pin,
@@ -4696,15 +4850,18 @@ function OperatorSettingsDialog({
   lockedOut,
   levelsUnlocked,
   envUnlockLevels,
+  status,
+  connectionState,
   engineLabel,
-  floorLabel,
-  audioLabel,
   catalogLabel,
+  testPending,
+  testError,
   onTypeDigit,
   onBackspace,
   onClear,
   onSubmit,
   onToggleLevels,
+  onTestOutput,
   onClose,
 }: {
   unlocked: boolean;
@@ -4713,17 +4870,48 @@ function OperatorSettingsDialog({
   lockedOut: boolean;
   levelsUnlocked: boolean;
   envUnlockLevels: boolean;
+  status: EngineStatus | null;
+  connectionState: ConnectionState;
   engineLabel: string;
-  floorLabel: string;
-  audioLabel: string;
   catalogLabel: string;
+  testPending: OutputTestTarget | null;
+  testError: { target: OutputTestTarget; message: string; baselineOutputTestId: string } | null;
   onTypeDigit: (digit: string) => void;
   onBackspace: () => void;
   onClear: () => void;
   onSubmit: () => void;
   onToggleLevels: () => void;
+  onTestOutput: (target: OutputTestTarget) => void;
   onClose: () => void;
 }) {
+  const visibleOutputTest = status?.outputTest ?? null;
+  const testModeAvailable = status?.lifecycle === "idle" || status?.lifecycle === "paused";
+  const floorHealthy = connectionState === "connection-on" && status?.pressureStreamConnected === true;
+  const floorCanTest = floorHealthy && testModeAvailable;
+  const audioConfigured = status?.audioEnabled === true;
+  const audioCanTest = connectionState === "connection-on" && audioConfigured && testModeAvailable;
+  const audioHealthy = audioConfigured && status?.audioOutputState === "ready";
+  const audioTone = connectionState !== "connection-on" || !audioConfigured
+    || status?.audioOutputState === "failed" || status?.audioOutputState === "disabled"
+    ? "danger"
+    : status?.audioOutputState === "ready" ? "ok" : "warn";
+  const modeUnavailableHint = "Pausa o termina la partida para ejecutar pruebas.";
+  const floorTestState: OutputTestState = testPending === "floor"
+    ? "pending"
+    : visibleOutputTest?.target === "floor" ? visibleOutputTest.state : "idle";
+  const audioTestState: OutputTestState = testPending === "audio"
+    ? "pending"
+    : visibleOutputTest?.target === "audio" ? visibleOutputTest.state : "idle";
+  const floorTestError = testError?.target === "floor"
+    ? testError.message
+    : visibleOutputTest?.target === "floor" ? visibleOutputTest.error || "" : "";
+  const audioTestError = testError?.target === "audio"
+    ? testError.message
+    : visibleOutputTest?.target === "audio" ? visibleOutputTest.error || "" : "";
+  const activeTestTarget = testPending
+    ?? (visibleOutputTest && outputTestBusy(visibleOutputTest.state) ? visibleOutputTest.target : null);
+  const floorLabel = floorStatusLabel(connectionState, status);
+  const audioLabel = audioStatusLabel(status);
   return (
     <KioskDialogLayer label="Ajustes" onDismiss={onClose}>
       <div className="modal settings-modal" onClick={(event) => event.stopPropagation()}>
@@ -4738,36 +4926,68 @@ function OperatorSettingsDialog({
         </div>
 
         <div className="settings-content">
+          <section className="settings-version-card" aria-label="Diagnóstico del sistema y versión del menú">
+            <span className="micro">Versión del menú</span>
+            <strong title={__MENU_BUILD_REVISION__}>{__MENU_BUILD_REVISION__.slice(0, 8)}</strong>
+            <div className="settings-health" aria-label="Estado del sistema">
+              <div className={`settings-health-item ${engineLabel === "Conectado" ? "ok" : "warn"}`}>
+                <span className="settings-health-copy">
+                  <span className="settings-health-label">Motor</span>
+                  <b>{engineLabel}</b>
+                </span>
+              </div>
+              <DiagnosticTestButton
+                target="floor"
+                canTest={floorCanTest}
+                currentHealthy={floorHealthy}
+                fallbackTone={connectionState === "connection-pending" ? "warn" : floorHealthy ? "ok" : "danger"}
+                fallbackLabel={floorLabel}
+                state={floorTestState}
+                sequence={visibleOutputTest?.target === "floor" ? visibleOutputTest.sequence : 0}
+                error={floorTestError}
+                blockedByOtherTest={activeTestTarget !== null && activeTestTarget !== "floor"}
+                unavailableHint={testModeAvailable ? "Conecta el motor y el flujo de presión para probarlo." : modeUnavailableHint}
+                onTest={onTestOutput}
+              />
+              <DiagnosticTestButton
+                target="audio"
+                canTest={audioCanTest}
+                currentHealthy={audioHealthy}
+                fallbackTone={audioTone}
+                fallbackLabel={audioLabel}
+                state={audioTestState}
+                sequence={visibleOutputTest?.target === "audio" ? visibleOutputTest.sequence : 0}
+                error={audioTestError}
+                blockedByOtherTest={activeTestTarget !== null && activeTestTarget !== "audio"}
+                unavailableHint={testModeAvailable ? "Configura el audio y conecta el motor para probarlo." : modeUnavailableHint}
+                onTest={onTestOutput}
+              />
+              <div className={`settings-health-item ${catalogLabel === "Actualizando" ? "warn" : "ok"}`}>
+                <span className="settings-health-copy">
+                  <span className="settings-health-label">Catálogo</span>
+                  <b>{catalogLabel}</b>
+                </span>
+              </div>
+            </div>
+          </section>
           {unlocked ? (
-            <>
-              <section className="settings-version-card" aria-label="Versión del menú">
-                <span className="micro">Diagnóstico</span>
-                <strong>menu {__MENU_BUILD_REVISION__}</strong>
-                <div className="settings-health" aria-label="Estado del sistema">
-                  <div className={engineLabel === "Conectado" ? "ok" : "warn"}><span>Motor</span><b>{engineLabel}</b></div>
-                  <div className={floorLabel === "Conectado" ? "ok" : "danger"}><span>Suelo</span><b>{floorLabel}</b></div>
-                  <div className={audioLabel === "Activo" ? "ok" : "warn"}><span>Audio</span><b>{audioLabel}</b></div>
-                  <div className={catalogLabel === "Actualizando" ? "warn" : "ok"}><span>Catálogo</span><b>{catalogLabel}</b></div>
-                </div>
-              </section>
-              <section className="settings-section" aria-label="Opciones de operador">
-                <div className="operator-unlocked-banner">
-                  <CheckIcon />
-                  <span>Modo operador desbloqueado</span>
-                </div>
-                <div className="settings-copy">
-                  <span className="micro">Operador</span>
-                  <p>Opciones protegidas para mantenimiento y pruebas.</p>
-                </div>
-                <button className={`settings-toggle ${levelsUnlocked ? "active" : ""}`} type="button" onClick={onToggleLevels} disabled={envUnlockLevels} aria-pressed={levelsUnlocked}>
-                  <span>
-                    <strong>Mostrar todos los niveles</strong>
-                    <small>{envUnlockLevels ? "Activado por entorno" : levelsUnlocked ? "Todos los niveles visibles" : "Progreso normal"}</small>
-                  </span>
-                  <span className="switch-track" aria-hidden="true"><span /></span>
-                </button>
-              </section>
-            </>
+            <section className="settings-section" aria-label="Opciones de operador">
+              <div className="operator-unlocked-banner">
+                <CheckIcon />
+                <span>Modo operador desbloqueado</span>
+              </div>
+              <div className="settings-copy">
+                <span className="micro">Operador</span>
+                <p>Opciones protegidas para mantenimiento y pruebas.</p>
+              </div>
+              <button className={`settings-toggle ${levelsUnlocked ? "active" : ""}`} type="button" onClick={onToggleLevels} disabled={envUnlockLevels} aria-pressed={levelsUnlocked}>
+                <span>
+                  <strong>Mostrar todos los niveles</strong>
+                  <small>{envUnlockLevels ? "Activado por entorno" : levelsUnlocked ? "Todos los niveles visibles" : "Progreso normal"}</small>
+                </span>
+                <span className="switch-track" aria-hidden="true"><span /></span>
+              </button>
+            </section>
           ) : (
             <section className="pin-panel" aria-label="PIN operador">
               <div className="settings-copy">

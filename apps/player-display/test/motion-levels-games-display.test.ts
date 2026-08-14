@@ -39,3 +39,13 @@ test("the kiosk reports the rendered revision, feed, paint, and viewport to the 
   assert.match(clientSource, /\/api\/display-client/u);
   assert.match(appSource, /!telemetryEnabled/u);
 });
+
+test("a live display accepts a restarted runtime and correlates audio diagnostics by unique id", () => {
+  assert.match(appSource, /new PlayerExperienceStateGate\(\)/u);
+  assert.match(appSource, /audioTestRuntimeRunID\.current !== liveStatus\.runId/u);
+  assert.match(appSource, /audioOutput\.cancelTestPhrase\(\)/u);
+  assert.match(appSource, /activeAudioTest\.current\.id !== outputTestID/u);
+  assert.match(appSource, /\|\| !freshPendingTest/u);
+  assert.match(appSource, /outputTestId: audioTestReport\.id/u);
+  assert.match(clientSource, /outputTestId: string/u);
+});
