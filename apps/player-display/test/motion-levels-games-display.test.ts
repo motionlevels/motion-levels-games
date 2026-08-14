@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const apiSource = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
 const displaySource = readFileSync(new URL("../src/MotionLevelsGamesDisplay.tsx", import.meta.url), "utf8");
 const clientSource = readFileSync(new URL("../src/displayClient.ts", import.meta.url), "utf8");
 
@@ -15,6 +16,14 @@ test("new games load their revision-matched display while legacy games retain th
   assert.match(displaySource, /safelyUnmount\(mountedRuntime, host\)/u);
   assert.match(displaySource, /runtimeRetryDelayMillis\(attempt\)/u);
   assert.match(displaySource, /motion-levels-games-display-fallback/u);
+});
+
+test("the display consumes the full render feed instead of the menu status feed", () => {
+  assert.match(apiSource, /\/api\/display/u);
+  assert.match(apiSource, /\/api\/display\/events/u);
+  assert.doesNotMatch(apiSource, /\/api\/player-state/u);
+  assert.match(appSource, /addEventListener\("display", onDisplay\)/u);
+  assert.doesNotMatch(appSource, /addEventListener\("player-state", onDisplay\)/u);
 });
 
 test("gateway display previews keep game assets on the proxied venue origin", () => {

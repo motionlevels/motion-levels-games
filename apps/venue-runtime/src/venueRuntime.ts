@@ -203,6 +203,8 @@ const screensaverContentSchema = "motion-levels-animation-content-v1";
 const defaultScreensaverRefreshMillis = 60_000;
 const maximumScreensaverContentBytes = 1_048_576;
 const defaultLocalLiveFloorFps = 20;
+const displayPublishIntervalMillis = 50;
+const statusPublishIntervalMillis = 250;
 const minimumLocalLiveFloorFps = 5;
 const maximumLocalLiveFloorFps = 25;
 const defaultRemoteFloorInputLeaseMillis = 5_000;
@@ -246,6 +248,7 @@ export class VenueRuntime {
   private venueSessionGeneration = 0;
   private frameSequence = 0n;
   private lastDisplayPublishedAt = 0;
+  private lastStatusPublishedAt = 0;
   private timer: NodeJS.Timeout | null = null;
   private screensaverRefreshTimer: NodeJS.Timeout | null = null;
   private screensaverContent: GameContent | undefined;
@@ -1036,9 +1039,8 @@ export class VenueRuntime {
       height: FLOOR_ROWS,
       rgb: frameToRgb(frame, this.options.brightness ?? 1)
     });
-    if (now - this.lastDisplayPublishedAt >= 250) {
-      this.lastDisplayPublishedAt = now;
-      this.publishDisplay();
+    if (now - this.lastDisplayPublishedAt >= displayPublishIntervalMillis) {
+      this.publishDisplay(now - this.lastStatusPublishedAt >= statusPublishIntervalMillis, now);
     }
   }
 
@@ -1170,10 +1172,14 @@ export class VenueRuntime {
     }
   }
 
-  private publishDisplay(): void {
+  private publishDisplay(publishStatus = true, publishedAt = performance.now()): void {
+    this.lastDisplayPublishedAt = publishedAt;
+    if (publishStatus) this.lastStatusPublishedAt = publishedAt;
     this.stateRevision = this.stateRevision >= Number.MAX_SAFE_INTEGER ? 1 : this.stateRevision + 1;
     const status = this.status();
-    for (const listener of this.statusListeners) listener(status);
+    if (publishStatus) {
+      for (const listener of this.statusListeners) listener(status);
+    }
     if (this.displayListeners.size === 0) return;
     const display = { ...status, sourceKind: "motion_levels_games", gameSnapshot: this.state.snapshot, frame: this.state.frame };
     for (const listener of this.displayListeners) listener(display);
