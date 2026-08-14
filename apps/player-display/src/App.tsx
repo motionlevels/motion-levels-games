@@ -150,7 +150,7 @@ export default function App() {
     };
     const closeSource = () => {
       if (!source) return;
-      source.removeEventListener("player-state", onDisplay);
+      source.removeEventListener("display", onDisplay);
       source.close();
       source = null;
     };
@@ -165,7 +165,7 @@ export default function App() {
         setError("Sin conexión con el motor");
         return;
       }
-      source.addEventListener("player-state", onDisplay);
+      source.addEventListener("display", onDisplay);
       source.onerror = onError;
     };
     attach();

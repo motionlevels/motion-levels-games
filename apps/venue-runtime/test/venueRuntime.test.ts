@@ -176,6 +176,22 @@ test("idle display health requires the revisioned animations renderer", () => {
   assert.equal(runtime.displayClientStatus().healthy, false);
 });
 
+test("publishes the renderer feed at 20 Hz without increasing the menu feed cadence", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const displays: number[] = [];
+  const statuses: number[] = [];
+  runtime.subscribeDisplay((display) => displays.push(Number(display.revision)));
+  runtime.subscribeStatus((status) => statuses.push(Number(status.revision)));
+  const tick = (runtime as unknown as { tick(now: number): void }).tick.bind(runtime);
+
+  tick(49);
+  for (const now of [50, 100, 150, 200, 250]) tick(now);
+
+  assert.equal(displays.length, 5);
+  assert.equal(statuses.length, 1);
+  assert.deepEqual(displays, [...displays].sort((left, right) => left - right));
+});
+
 test("idle screensaver keeps game state idle while tracking the venue session", () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   const before = (runtime.display().frame as Frame).cells.map((cell) => cell.color);

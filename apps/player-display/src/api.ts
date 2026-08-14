@@ -31,7 +31,7 @@ export function venueRuntimeBaseURL(): string {
 }
 
 export async function fetchDisplayStatus(): Promise<DisplayStatus> {
-  const response = await fetch(`${venueRuntimeBaseURL()}/api/player-state`, { cache: "no-store" });
+  const response = await fetch(`${venueRuntimeBaseURL()}/api/display`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(await response.text());
   }
@@ -39,5 +39,5 @@ export async function fetchDisplayStatus(): Promise<DisplayStatus> {
 }
 
 export function displayEventSource(): EventSource {
-  return new EventSource(`${venueRuntimeBaseURL()}/api/player-state/events`);
+  return new EventSource(`${venueRuntimeBaseURL()}/api/display/events`);
 }
