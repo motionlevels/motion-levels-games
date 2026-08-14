@@ -18,7 +18,12 @@ test("player experience apps are source-independent from venue and platform repo
 test("production bundle declares the static menu and adapter protocol", async () => {
   const source = await readFile(path.join(repoRoot, "scripts/build-bundle.ts"), "utf8");
   assert.match(source, /apps\/player-menu\/dist/u);
-  assert.match(source, /playerMenu:\s*\{ entry: "menu\/index\.html", adapterProtocolVersion: playerMenuAdapterProtocolVersion \}/u);
+  assert.match(
+    source,
+    /playerMenu:\s*\{[\s\S]*?entry: "menu\/index\.html",[\s\S]*?buildManifest: "menu\/build\.json",[\s\S]*?adapterProtocolVersion: playerMenuAdapterProtocolVersion[\s\S]*?\}/u,
+  );
+  assert.match(source, /MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision/u);
+  assert.match(source, /apps\/player-menu\/dist\/build\.json/u);
   assert.match(source, /schema: "motion-levels-games-bundle-v2"/u);
   assert.match(source, /entry: "venue\/runtime\.mjs"/u);
   assert.match(source, /apiProtocolVersion: venueApiProtocolVersion/u);
@@ -36,10 +41,15 @@ test("offline menu catalog carries the exact bundled games revision", async () =
   const vite = await readFile(path.join(menuRoot, "vite.config.ts"), "utf8");
   const playgroundVite = await readFile(path.join(repoRoot, "apps/playground/vite.config.ts"), "utf8");
   const catalog = await readFile(path.join(menuRoot, "src/localCatalog.ts"), "utf8");
+  const bundleMedia = await readFile(path.join(menuRoot, "src/bundleMedia.ts"), "utf8");
   assert.match(vite, /git rev-parse HEAD/u);
   assert.match(vite, /MOTION_LEVELS_GAMES_SOURCE_REVISION/u);
   assert.match(playgroundVite, /MOTION_LEVELS_GAMES_SOURCE_REVISION/u);
-  assert.match(catalog, /source_revision: MOTION_LEVELS_GAMES_SOURCE_REVISION/u);
+  assert.match(bundleMedia, /declare const MOTION_LEVELS_GAMES_SOURCE_REVISION: string/u);
+  assert.match(bundleMedia, /mediaURL\.searchParams\.set\("revision", revision\)/u);
+  assert.match(catalog, /const sourceRevision = bundledGamesSourceRevision\(\)/u);
+  assert.match(catalog, /gameBundleMediaSources\(manifest\.id, sourceRevision, menuLocation\)/u);
+  assert.match(catalog, /source_revision: sourceRevision/u);
 });
 
 test("the menu consumes only the canonical revisioned player state", async () => {
