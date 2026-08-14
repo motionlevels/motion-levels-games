@@ -56,6 +56,16 @@ Additive response fields do not require a protocol bump. Removing or changing
 a field, endpoint, action, URL-resolution rule, or binary-frame meaning does.
 Venue bundle import must validate the declared version before deployment.
 
+## Embedded menu modes
+
+`?readOnly=1` follows the kiosk-owned `/api/menu-state` mirror and makes the
+embedded menu inert. `?remoteControl=1` follows and hydrates from that same
+canonical mirror but keeps the normal menu handlers and engine commands
+enabled. The remote controller never writes `/api/menu-state` or persists its
+menu/Party state to local storage, so it cannot become a second kiosk that
+overwrites recovery state. Explicit read-only mode still wins when both query
+parameters are present.
+
 ## Local full playthrough
 
 `npm run dev` starts one Vite service at `http://127.0.0.1:4104`. It serves the

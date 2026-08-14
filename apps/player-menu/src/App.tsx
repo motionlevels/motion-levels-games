@@ -60,6 +60,7 @@ import { lifeMeterModel, teamLivesFromPlayers, type LifeMeterModel } from "./lif
 import { isCanonicalEntityID } from "./identity.ts";
 import { migrateLegacyLevelState } from "./levelStateMigration.ts";
 import { isSupportedRuntimeSource } from "./localCatalog.ts";
+import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
 
 type MenuState = {
   sessionActive: boolean;
@@ -250,12 +251,6 @@ function clearRemoteSessionURL() {
     url.searchParams.delete(key);
   }
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-}
-
-function menuReadOnlyFromURL(): boolean {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  return params.get("readOnly") === "1" || params.get("readonly") === "1" || params.get("mode") === "readonly";
 }
 
 function floorOnlyFromURL(): boolean {
@@ -1268,7 +1263,12 @@ export default function App() {
 }
 
 function MenuApp() {
-  const readOnlyMirror = useMemo(() => menuReadOnlyFromURL(), []);
+  const menuAccess = useMemo(
+    () => menuAccessPolicyFromSearch(typeof window === "undefined" ? "" : window.location.search),
+    []
+  );
+  const readOnlyMirror = menuAccess.readOnly;
+  const followsMenuMirror = menuAccess.followMirror;
   const [menu, setMenu] = useState<MenuState>(() => loadMenuState());
   const [status, setStatus] = useState<PlayerMenuEngineStatus | null>(null);
   const acceptStatus = useCallback((next: PlayerMenuEngineStatus) => {
@@ -1326,23 +1326,23 @@ function MenuApp() {
   const teamWasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (readOnlyMirror) return;
+    if (!menuAccess.persistLocalState) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(menu));
     } catch {
       // Storage is a convenience, never a reason for the kiosk to stop working.
     }
-  }, [menu, readOnlyMirror]);
+  }, [menu, menuAccess.persistLocalState]);
 
   useEffect(() => {
-    if (readOnlyMirror) return;
+    if (!menuAccess.persistLocalState) return;
     try {
       if (partyRun) localStorage.setItem(partyRunStorageKey, JSON.stringify(partyRun));
       else localStorage.removeItem(partyRunStorageKey);
     } catch {
       // The Party still runs in memory if kiosk storage is unavailable.
     }
-  }, [partyRun, readOnlyMirror]);
+  }, [partyRun, menuAccess.persistLocalState]);
 
   useEffect(() => {
     venueSessionIDRef.current = menu.sessionId;
@@ -1471,7 +1471,7 @@ function MenuApp() {
   }, [readOnlyMirror]);
 
   useEffect(() => {
-    if (readOnlyMirror) return;
+    if (!menuAccess.publishMirror) return;
     const snapshot: MenuMirrorSnapshot = {
       menu,
     };
@@ -1479,10 +1479,10 @@ function MenuApp() {
       postMenuState({ kioskId: menuKioskID(), snapshot });
     }, 150);
     return () => window.clearTimeout(timeout);
-  }, [menu, readOnlyMirror]);
+  }, [menu, menuAccess.publishMirror]);
 
   useEffect(() => {
-    if (!readOnlyMirror) return;
+    if (!followsMenuMirror) return;
     let cancelled = false;
     let nextRefresh: number | undefined;
 
@@ -1522,7 +1522,7 @@ function MenuApp() {
       cancelled = true;
       if (nextRefresh !== undefined) window.clearTimeout(nextRefresh);
     };
-  }, [readOnlyMirror]);
+  }, [followsMenuMirror]);
 
   useEffect(() => {
     let cancelled = false;

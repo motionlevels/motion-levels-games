@@ -115,4 +115,14 @@ describe("runtime screen flow", () => {
     assert.match(source, /<section className="main-panel" inert=\{teamOpen\}>/);
     assert.match(source, /onKeyDown=\{\(event\) => trapKioskFocus\(event, \(\) => setTeamOpen\(false\)\)\}/);
   });
+
+  it("hydrates remote control without making it a second kiosk or disabling handlers", () => {
+    const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+
+    assert.match(source, /if \(!menuAccess\.persistLocalState\) return;\s*try \{\s*localStorage\.setItem\(storageKey/u);
+    assert.match(source, /if \(!menuAccess\.publishMirror\) return;\s*const snapshot: MenuMirrorSnapshot/u);
+    assert.match(source, /if \(!followsMenuMirror\) return;\s*let cancelled = false/u);
+    assert.match(source, /inert=\{readOnlyMirror\}/u);
+    assert.doesNotMatch(source, /inert=\{followsMenuMirror\}/u);
+  });
 });
