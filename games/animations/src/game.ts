@@ -25,6 +25,7 @@ import { animationOption, manifest, modeOption, rotationSecondsOption, speedOpti
 
 export { animationContentSchema } from "@motion-levels-games/animation-runtime";
 const pressureLifetimeMillis = 900;
+const defaultRotation = Object.freeze(animationLibrary.filter((animation) => animation.automaticRotation));
 
 export type AnimationSnapshot = GameSnapshot & {
   animationId: string;
@@ -70,6 +71,7 @@ class AnimationGame implements AnimationGameInstance {
   press(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
     if (!event.pressed) return [];
+    if (this.currentAnimation().pressure === "none") return [];
     this.pressure.set(`${event.x}:${event.y}`, { x: event.x, y: event.y, startedAtMillis: event.atMillis });
     this.lastEvent = gameEvent("effect", "La pista responde a tu paso", event.atMillis);
     return [this.lastEvent];
@@ -166,7 +168,7 @@ class AnimationGame implements AnimationGameInstance {
       .map((id) => animationLibraryById.get(id))
       .filter((animation): animation is NativeAnimation => animation !== undefined)
       .filter((animation, index, all) => all.findIndex((candidate) => candidate.id === animation.id) === index);
-    return selected.length ? selected : [...animationLibrary];
+    return selected.length ? selected : [...defaultRotation];
   }
 
   private content() {
