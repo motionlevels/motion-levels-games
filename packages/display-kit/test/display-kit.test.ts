@@ -162,7 +162,11 @@ test("FloorPreview exposes authoritative pressure separately from remote input",
   );
   assert.match(html, /data-authoritative-pressed="true"/);
   assert.match(html, /aria-label="Baldosa 3, 4; presión física detectada"/);
-  assert.match(styleSource, /\.ml-floor-tile-authoritative-pressed\s*\{[^}]*box-shadow:[^}]*filter:\s*brightness/s);
+  assert.match(
+    styleSource,
+    /\.ml-floor-tile-authoritative-pressed,\s*\.ml-floor-tile\[data-input-pressed="true"\]\s*\{[^}]*inset 0 0 0 2px rgba\(255, 74, 96, 0\.98\)[^}]*filter:\s*brightness/s,
+    "physical and local input pressure must share the clear red inset border"
+  );
   assert.match(
     html,
     /data-authoritative-pressed="true"[^>]*data-input-pressed="false"[^>]*aria-pressed="false"/,
@@ -216,6 +220,12 @@ test("FloorPreview keeps pointer hover separate from persistent focus", () => {
     /@media \(hover: hover\) and \(pointer: fine\)[\s\S]*?\.ml-floor-interactive \.ml-floor-tile:hover/,
     "tile hover styling must require a device with real hover support"
   );
+  assert.match(
+    styleSource,
+    /\.ml-floor-interactive \.ml-floor-tile:focus-visible\s*\{[^}]*outline:\s*2px solid rgba\(54, 217, 255, 0\.9\);[^}]*outline-offset:\s*-5px;/s,
+    "the cyan keyboard focus ring must remain visibly separate from the red pressure border"
+  );
+  assert.doesNotMatch(styleSource, /\[aria-pressed="true"\]/, "pressure styling must use the explicit input data contract");
 });
 
 test("GameDisplayShell renders title and phase", () => {
