@@ -115,6 +115,15 @@ for (const [label, entry] of [
   const compiled = await readFile(path.join(root, entry));
   assert.ok(compiled.includes(Buffer.from(manifest.sourceRevision!)), `${label} does not contain its source revision`);
 }
+const compiledPlayerDisplay = await readFile(path.join(root, manifest.playerDisplay!.entry!));
+assert.ok(
+  compiledPlayerDisplay.includes(Buffer.from("data:image/png;base64,")),
+  "player display does not embed the Motion Levels logo"
+);
+assert.ok(
+  !compiledPlayerDisplay.includes(Buffer.from("./assets/motion-levels-icon.png")),
+  "player display contains an unresolved Motion Levels logo reference"
+);
 
 type MediaAssetMetadata = {
   file?: string;

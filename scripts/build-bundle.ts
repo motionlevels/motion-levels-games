@@ -35,7 +35,16 @@ const sourceBuildDate = execFileSync("git", ["show", "-s", "--format=%cI", sourc
 }).trim();
 const outputRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(repoRoot, "dist/bundle"));
 const mediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path.join(repoRoot, "dist/media"));
-const displayCSS = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
+const displayCSSSource = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
+const displayLogo = await readFile(path.join(repoRoot, "packages/display-kit/src/assets/motion-levels-icon.png"));
+const displayLogoReference = 'url("./assets/motion-levels-icon.png")';
+if (!displayCSSSource.includes(displayLogoReference)) {
+  throw new Error("player display CSS is missing the Motion Levels logo reference");
+}
+const displayCSS = displayCSSSource.replace(
+  displayLogoReference,
+  `url("data:image/png;base64,${displayLogo.toString("base64")}")`
+);
 const playerExperienceSchema = await readFile(path.join(repoRoot, "packages/player-experience/schema/player-experience-state.schema.json"), "utf8");
 const sessionHistorySchema = await readFile(path.join(repoRoot, "packages/session-history/schema/session-history-v1.schema.json"), "utf8");
 
