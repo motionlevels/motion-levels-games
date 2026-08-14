@@ -49,3 +49,27 @@ test("reset clears occupied inputs and an in-progress gesture", () => {
   assert.deepEqual(painter.keys(), []);
   assert.deepEqual(painter.move({ x: 4, y: 5 }), []);
 });
+
+test("momentary input releases the previous tile as the pointer crosses the floor", () => {
+  const painter = new FloorInputPainter("momentary");
+
+  assert.deepEqual(painter.begin({ x: 2, y: 3 }), [{ x: 2, y: 3, pressed: true }]);
+  assert.deepEqual(painter.move({ x: 9, y: 21 }), [
+    { x: 2, y: 3, pressed: false },
+    { x: 9, y: 21, pressed: true }
+  ]);
+  assert.deepEqual(painter.keys(), ["9:21"]);
+  assert.deepEqual(painter.move({ x: 9, y: 21 }), []);
+});
+
+test("momentary input releases immediately outside the floor and on pointer end", () => {
+  const painter = new FloorInputPainter("momentary");
+
+  painter.begin({ x: 4, y: 8 });
+  assert.deepEqual(painter.move(null), [{ x: 4, y: 8, pressed: false }]);
+  assert.deepEqual(painter.keys(), []);
+
+  assert.deepEqual(painter.move({ x: 5, y: 8 }), [{ x: 5, y: 8, pressed: true }]);
+  assert.deepEqual(painter.end(), [{ x: 5, y: 8, pressed: false }]);
+  assert.deepEqual(painter.keys(), []);
+});

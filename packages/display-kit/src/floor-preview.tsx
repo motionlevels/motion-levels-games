@@ -5,6 +5,7 @@ import {
   FloorInputPainter,
   floorTileFromClientPoint,
   type FloorInputAction,
+  type FloorInputMode,
   type FloorInputTile
 } from "./floor-input-painter.ts";
 
@@ -15,6 +16,7 @@ export type FloorPreviewProps = {
   className?: string;
   frame: FloorPreviewFrame;
   inputResetKey?: string | number;
+  inputMode?: FloorInputMode;
   interactive?: boolean;
   onTilePress?: (x: number, y: number) => void;
   onTileRelease?: (x: number, y: number) => void;
@@ -58,13 +60,15 @@ export function FloorPreview({
   frame,
   interactive = false,
   inputResetKey,
+  inputMode = "latched",
   onTilePress,
   onTileRelease,
   className = ""
 }: FloorPreviewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const activePointerIdRef = useRef<number | null>(null);
-  const inputPainterRef = useRef(new FloorInputPainter());
+  const inputPainterRef = useRef(new FloorInputPainter(inputMode));
+  const previousInputModeRef = useRef(inputMode);
   const previousInputResetKeyRef = useRef(inputResetKey);
   const [occupiedTileKeys, setOccupiedTileKeys] = useState(() => new Set<string>());
   const [keyboardTileKey, setKeyboardTileKey] = useState("");
@@ -109,16 +113,28 @@ export function FloorPreview({
     applyInputActions(inputPainterRef.current.begin(tile));
   }, [applyInputActions]);
   const continueInputGesture = useCallback((tile: FloorInputTile | null) => {
-    if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
+    if (tile && (Number.isNaN(tile.x) || Number.isNaN(tile.y))) {
       return;
     }
 
     applyInputActions(inputPainterRef.current.move(tile));
   }, [applyInputActions]);
+  const endInputGesture = useCallback(() => {
+    applyInputActions(inputPainterRef.current.end());
+  }, [applyInputActions]);
   const clearInputPainter = useCallback(() => {
     inputPainterRef.current.reset();
     setOccupiedTileKeys(new Set());
   }, []);
+  useEffect(() => {
+    if (previousInputModeRef.current === inputMode) {
+      return;
+    }
+
+    previousInputModeRef.current = inputMode;
+    inputPainterRef.current = new FloorInputPainter(inputMode);
+    setOccupiedTileKeys(new Set());
+  }, [inputMode]);
   useEffect(() => {
     if (Object.is(previousInputResetKeyRef.current, inputResetKey)) {
       return;
@@ -139,7 +155,7 @@ export function FloorPreview({
 
     const endActivePointer = () => {
       activePointerIdRef.current = null;
-      inputPainterRef.current.end();
+      endInputGesture();
     };
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -157,7 +173,7 @@ export function FloorPreview({
       window.removeEventListener("pointerup", endActivePointer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [interactive]);
+  }, [endInputGesture, interactive]);
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!interactive || event.button !== 0) {
@@ -191,23 +207,23 @@ export function FloorPreview({
 
       continueInputGesture(tileFromPoint(event.clientX, event.clientY));
       activePointerIdRef.current = null;
-      inputPainterRef.current.end();
+      endInputGesture();
       clearPointerFocus();
       if (rootRef.current?.hasPointerCapture(event.pointerId)) {
         rootRef.current.releasePointerCapture(event.pointerId);
       }
     },
-    [clearPointerFocus, continueInputGesture, interactive, tileFromPoint]
+    [clearPointerFocus, continueInputGesture, endInputGesture, interactive, tileFromPoint]
   );
   const handleLostPointerCapture = useCallback(() => {
     activePointerIdRef.current = null;
-    inputPainterRef.current.end();
+    endInputGesture();
     clearPointerFocus();
-  }, [clearPointerFocus]);
+  }, [clearPointerFocus, endInputGesture]);
   const handleKeyboardActivation = useCallback((tile: FloorInputTile) => {
     applyInputActions(inputPainterRef.current.begin(tile));
-    inputPainterRef.current.end();
-  }, [applyInputActions]);
+    endInputGesture();
+  }, [applyInputActions, endInputGesture]);
   const firstTile = frame.cells[0];
   const firstTileKey = firstTile ? `${firstTile.x}:${firstTile.y}` : "";
   const rovingTileKey = frame.cells.some((cell) => `${cell.x}:${cell.y}` === keyboardTileKey)

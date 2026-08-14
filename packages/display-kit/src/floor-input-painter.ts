@@ -7,6 +7,8 @@ export type FloorInputAction = FloorInputTile & {
   pressed: boolean;
 };
 
+export type FloorInputMode = "latched" | "momentary";
+
 type PaintMode = "press" | "release";
 type FloorBounds = Pick<DOMRect, "left" | "top" | "width" | "height">;
 
@@ -43,10 +45,9 @@ export function floorTileFromClientPoint(
 /**
  * Tracks the tiles occupied through an interactive floor gesture.
  *
- * A gesture paints one consistent state: starting on an empty tile presses
- * every crossed tile, while starting on an occupied tile releases them. The
- * occupied tiles deliberately remain active after pointer-up so a mouse can
- * represent multiple players standing on different parts of the floor.
+ * Latched mode paints one consistent state and deliberately keeps crossed
+ * tiles occupied after pointer-up so one mouse can represent multiple players.
+ * Momentary mode keeps only the tile currently under the pointer occupied.
  */
 export class FloorInputPainter {
   private readonly activeTiles = new Map<string, FloorInputTile>();
@@ -54,15 +55,44 @@ export class FloorInputPainter {
   private lastTile: FloorInputTile | null = null;
   private paintMode: PaintMode | null = null;
 
+  constructor(private readonly inputMode: FloorInputMode = "latched") {}
+
   begin(tile: FloorInputTile): FloorInputAction[] {
+    if (this.inputMode === "momentary") {
+      const actions = this.releaseActiveTiles();
+      this.paintMode = "press";
+      this.lastTile = tile;
+      this.activeTiles.set(tileKey(tile), tile);
+      actions.push({ ...tile, pressed: true });
+      return actions;
+    }
+
     this.visitedTiles.clear();
     this.paintMode = this.activeTiles.has(tileKey(tile)) ? "release" : "press";
     this.lastTile = tile;
     return this.apply(tile);
   }
 
-  move(tile: FloorInputTile): FloorInputAction[] {
+  move(tile: FloorInputTile | null): FloorInputAction[] {
     if (!this.paintMode) {
+      return [];
+    }
+
+    if (this.inputMode === "momentary") {
+      if (tile && this.lastTile && tileKey(tile) === tileKey(this.lastTile)) {
+        return [];
+      }
+
+      const actions = this.releaseActiveTiles();
+      this.lastTile = tile;
+      if (tile) {
+        this.activeTiles.set(tileKey(tile), tile);
+        actions.push({ ...tile, pressed: true });
+      }
+      return actions;
+    }
+
+    if (!tile) {
       return [];
     }
 
@@ -71,10 +101,12 @@ export class FloorInputPainter {
     return actions;
   }
 
-  end(): void {
+  end(): FloorInputAction[] {
+    const actions = this.inputMode === "momentary" ? this.releaseActiveTiles() : [];
     this.lastTile = null;
     this.paintMode = null;
     this.visitedTiles.clear();
+    return actions;
   }
 
   reset(): void {
@@ -84,6 +116,12 @@ export class FloorInputPainter {
 
   keys(): string[] {
     return [...this.activeTiles.keys()];
+  }
+
+  private releaseActiveTiles(): FloorInputAction[] {
+    const actions = [...this.activeTiles.values()].map((tile) => ({ ...tile, pressed: false }));
+    this.activeTiles.clear();
+    return actions;
   }
 
   private apply(tile: FloorInputTile): FloorInputAction[] {
