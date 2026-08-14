@@ -82,6 +82,103 @@ test("canonical player state and idempotent commands share the venue API", async
   assert.equal(first.currentGame, body.game);
 });
 
+test("remote floor input is validated, idempotent, and recoverable through the venue API", async (context) => {
+  const revision = "1".repeat(40);
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  await runtime.select({
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => {
+    runtime.stop();
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/api/floor-input`;
+  const request = (body: Record<string, unknown>) => fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const invalid = await request({
+    commandId: "40000000-0000-4000-8000-000000000001",
+    clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    changes: [
+      { x: 0, y: 4, pressed: true },
+      { x: 16, y: 4, pressed: true }
+    ]
+  });
+  assert.equal(invalid.status, 400);
+  assert.match(await invalid.text(), /changes\[1\]\.x/u);
+  assert.equal(runtime.status().remoteFloorInput.activeClients, 0);
+
+  const invalidClient = await request({
+    commandId: "40000000-0000-4000-8000-000000000010",
+    clientId: "browser-controller",
+    changes: []
+  });
+  assert.equal(invalidClient.status, 400);
+  assert.match(await invalidClient.text(), /clientId must be a UUID/u);
+
+  const invalidCommand = await request({
+    commandId: "not-a-command-uuid",
+    clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    changes: []
+  });
+  assert.equal(invalidCommand.status, 400);
+  assert.match(await invalidCommand.text(), /commandId must be a UUID/u);
+
+  const commandId = "40000000-0000-4000-8000-000000000002";
+  const clientId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const firstResponse = await request({
+    commandId,
+    clientId,
+    changes: [{ x: 0, y: 4, pressed: true }]
+  });
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json() as Record<string, unknown>;
+  assert.deepEqual(first.remoteFloorInput, { activeClients: 1, heldTiles: 1, leaseMillis: 5_000 });
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
+
+  const retryResponse = await request({
+    commandId,
+    clientId,
+    changes: [{ x: 0, y: 27, pressed: true }]
+  });
+  assert.equal(retryResponse.status, 200);
+  const retry = await retryResponse.json() as Record<string, unknown>;
+  assert.equal(retry.revision, first.revision);
+  assert.equal(runtime.status().remoteFloorInput.heldTiles, 1);
+
+  const released = await request({
+    commandId: "40000000-0000-4000-8000-000000000003",
+    clientId,
+    releaseAll: true
+  });
+  assert.equal(released.status, 200);
+  assert.deepEqual((await released.json() as Record<string, unknown>).remoteFloorInput, {
+    activeClients: 0,
+    heldTiles: 0,
+    leaseMillis: 5_000
+  });
+  runtime.control("restart");
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 0);
+
+  const missingCommandId = await request({ clientId, changes: [] });
+  assert.equal(missingCommandId.status, 400);
+  assert.match(await missingCommandId.text(), /commandId is required/u);
+});
+
 test("observed floor SSE starts empty and streams only controller-owned MLF1 envelopes", async (context) => {
   const runtime = new VenueRuntime({ sourceRevision: "1".repeat(40), controllerAddress: "127.0.0.1:4201" });
   const server = createVenueHttpServer(runtime);

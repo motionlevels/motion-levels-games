@@ -17,6 +17,8 @@ route, or port `4102` on the current host. Protocol v2 uses:
   player-display health/state;
 - `GET /api/live-floor/events` for the runtime-owned SSE stream of the latest
   authoritative `MLF1` frame observed from the Go controller;
+- `POST /api/floor-input` for authenticated operator clients with independent
+  leased latches (the player menu does not call it);
 - `GET`/`PUT /api/menu-state` and `GET /api/menu-state/events` for mirrored
   kiosk recovery state;
 - `POST /api/venue-session` and `POST /api/menu-event` as best-effort
@@ -35,8 +37,8 @@ base64 `MLF1` envelope with the physical 16x32 RGB floor and pressure bitset
 reported by the Go controller after its watchdog. This surface is read-only:
 the menu does not simulate or write floor pressure. The runtime sends the
 current authoritative snapshot immediately when a client connects, then a
-latest-value stream capped at 10 fps so a slow browser cannot queue the
-controller's 50 fps presentation feed.
+latest-value stream at 20 fps by default (capped at 25 fps) so a slow browser
+cannot queue the controller's 50 fps presentation feed.
 
 ## Ownership and compatibility
 

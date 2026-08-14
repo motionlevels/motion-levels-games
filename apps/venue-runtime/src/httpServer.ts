@@ -35,7 +35,7 @@ export function createVenueHttpServer(runtime: VenueRuntime, engineToken = ""): 
         return;
       }
       const status = error instanceof RevisionMismatchError ? 409
-        : error instanceof RequestValidationError || error instanceof SyntaxError ? 400
+        : error instanceof RequestValidationError || error instanceof SyntaxError || error instanceof TypeError ? 400
           : 500;
       response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
       response.end(error instanceof Error ? error.message : String(error));
@@ -94,6 +94,17 @@ async function route(
     json(response, await commands.execute(String(body.commandId ?? ""), () => runtime.control(body.action)));
     return;
   }
+  if (url.pathname === "/api/floor-input" && request.method === "POST") {
+    const body = await readJson(request) as Parameters<VenueRuntime["applyRemoteFloorInput"]>[0];
+    if (typeof body.commandId !== "string" || !body.commandId.trim()) {
+      throw new RequestValidationError("commandId is required");
+    }
+    json(response, await commands.execute(
+      body.commandId,
+      () => runtime.applyRemoteFloorInput(body)
+    ));
+    return;
+  }
   if (url.pathname === "/api/menu-state") {
     if (request.method === "GET") {
       json(response, runtime.getMenuState());
@@ -128,7 +139,7 @@ async function route(
     }
   }
   if ([
-    "/api/health", "/api/status", "/api/player-state", "/api/player-state/events", "/api/display", "/api/display/events", "/api/live-floor/events", "/api/select", "/api/control",
+    "/api/health", "/api/status", "/api/player-state", "/api/player-state/events", "/api/display", "/api/display/events", "/api/live-floor/events", "/api/select", "/api/control", "/api/floor-input",
     "/api/menu-state", "/api/menu-state/events", "/api/venue-session", "/api/menu-event", "/api/display-client"
   ].includes(url.pathname)) {
     response.writeHead(405, { Allow: "GET, HEAD, POST, PUT, OPTIONS" }).end("method not allowed");

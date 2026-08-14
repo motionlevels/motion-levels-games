@@ -12,7 +12,8 @@ const runtime = new VenueRuntime({
   controllerId: process.env.MOTION_LEVELS_CONTROLLER_ID,
   liveFloorFps: parseNonNegative(process.env.MOTION_LEVELS_LIVE_PUSH_FPS, 5),
   liveFloorTimeoutMillis: parseDurationMillis(process.env.MOTION_LEVELS_LIVE_PUSH_TIMEOUT, 2_000),
-  localLiveFloorFps: parsePositive(process.env.MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS, 10),
+  localLiveFloorFps: parsePositive(process.env.MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS, 20),
+  remoteFloorInputLeaseMillis: parseDurationMillis(process.env.MOTION_LEVELS_REMOTE_FLOOR_INPUT_LEASE, 5_000),
   brightness: parseBrightness(process.env.MOTION_LEVELS_ENGINE_BRIGHTNESS),
   log: (message, error) => console.error(`[venue-runtime] ${message}`, error ?? "")
 });

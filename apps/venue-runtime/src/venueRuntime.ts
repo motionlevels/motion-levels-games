@@ -61,6 +61,7 @@ export type VenueRuntimeStatus = PlayerExperienceState & {
   roomControllerId: string;
   controllerId: string;
   floorAdapter: FloorAdapterStatus;
+  remoteFloorInput: RemoteFloorInputStatus;
 };
 
 export type VenueRuntimeOptions = {
@@ -72,6 +73,7 @@ export type VenueRuntimeOptions = {
   liveFloorFps?: number;
   liveFloorTimeoutMillis?: number;
   localLiveFloorFps?: number;
+  remoteFloorInputLeaseMillis?: number;
   brightness?: number;
   log?(message: string, error?: unknown): void;
 };
@@ -82,6 +84,25 @@ export type ObservedFloorFrame = {
   height: number;
   presentedUnixNanos: number;
   frameBase64: string;
+};
+
+export type RemoteFloorInputChange = {
+  x: number;
+  y: number;
+  pressed: boolean;
+};
+
+export type RemoteFloorInputRequest = {
+  commandId: string;
+  clientId: string;
+  changes?: RemoteFloorInputChange[];
+  releaseAll?: boolean;
+};
+
+export type RemoteFloorInputStatus = {
+  activeClients: number;
+  heldTiles: number;
+  leaseMillis: number;
 };
 
 type FloorAdapterStatus = {
@@ -106,6 +127,17 @@ type ObservedFloorSubscription = {
   lastSequence: number | null;
 };
 
+type RemoteFloorInputClient = {
+  held: Set<string>;
+  leaseTimer: NodeJS.Timeout | null;
+};
+
+type NormalizedRemoteFloorInputRequest = {
+  clientId: string;
+  changes: RemoteFloorInputChange[];
+  releaseAll: boolean;
+};
+
 type SelectionMetadata = {
   manifest: GameManifest;
   runtimeGameId: string;
@@ -123,9 +155,14 @@ type SelectionMetadata = {
 };
 
 const screensaverGameId = "salvapantallas";
-const defaultLocalLiveFloorFps = 10;
+const defaultLocalLiveFloorFps = 20;
 const minimumLocalLiveFloorFps = 5;
-const maximumLocalLiveFloorFps = 10;
+const maximumLocalLiveFloorFps = 25;
+const defaultRemoteFloorInputLeaseMillis = 5_000;
+const minimumRemoteFloorInputLeaseMillis = 100;
+const maximumRemoteFloorInputLeaseMillis = 30_000;
+const maximumRemoteFloorInputChanges = FLOOR_COLS * FLOOR_ROWS;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export class RevisionMismatchError extends Error {}
 export class RequestValidationError extends Error {}
@@ -135,6 +172,7 @@ export class VenueRuntime {
   private readonly controller: ControllerClient;
   private readonly liveFloorPublisher: LiveFloorPublisher | null;
   private readonly localLiveFloorFps: number;
+  private readonly remoteFloorInputLeaseMillis: number;
   private readonly liveFloorListeners = new Set<ObservedFloorSubscription>();
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
   private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
@@ -158,6 +196,9 @@ export class VenueRuntime {
   private localLiveFloorLastPublishedAt = 0;
   private localLiveFloorTimer: NodeJS.Timeout | null = null;
   private floorAdapter: FloorAdapterStatus = emptyFloorAdapter();
+  private readonly physicalPressure = new Set<string>();
+  private readonly remotePressureClients = new Map<string, RemoteFloorInputClient>();
+  private readonly remotePressureCounts = new Map<string, number>();
   private readonly heldPressure = new Set<string>();
   private menuState: MenuStateEnvelope = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
   private displayClientReport: Record<string, unknown> | null = null;
@@ -166,6 +207,7 @@ export class VenueRuntime {
   constructor(private readonly options: VenueRuntimeOptions) {
     if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
     this.localLiveFloorFps = normalizeLocalLiveFloorFps(options.localLiveFloorFps);
+    this.remoteFloorInputLeaseMillis = normalizeRemoteFloorInputLeaseMillis(options.remoteFloorInputLeaseMillis);
     this.liveFloorPublisher = createLiveFloorPublisher({
       platformUrl: options.platformUrl,
       platformToken: options.platformToken,
@@ -204,6 +246,7 @@ export class VenueRuntime {
     if (this.localLiveFloorTimer) clearTimeout(this.localLiveFloorTimer);
     this.localLiveFloorTimer = null;
     this.localLiveFloorPending = false;
+    for (const clientId of [...this.remotePressureClients.keys()]) this.releaseRemoteFloorInputClient(clientId);
     this.controller.stop();
   }
 
@@ -359,7 +402,8 @@ export class VenueRuntime {
         pressureStreamConnected: this.controllerConnected,
         roomControllerId: this.options.controllerId ?? "",
         controllerId: this.options.controllerId ?? "",
-        floorAdapter: { ...this.floorAdapter }
+        floorAdapter: { ...this.floorAdapter },
+        remoteFloorInput: this.remoteFloorInputStatus()
       };
     }
     const snapshot = this.state.snapshot;
@@ -422,7 +466,8 @@ export class VenueRuntime {
       pressureStreamConnected: this.controllerConnected,
       roomControllerId: this.options.controllerId ?? "",
       controllerId: this.options.controllerId ?? "",
-      floorAdapter: { ...this.floorAdapter }
+      floorAdapter: { ...this.floorAdapter },
+      remoteFloorInput: this.remoteFloorInputStatus()
     };
   }
 
@@ -451,6 +496,7 @@ export class VenueRuntime {
         localTargetFps: this.localLiveFloorFps,
         localSubscribers: this.liveFloorListeners.size
       },
+      remoteFloorInput: this.remoteFloorInputStatus(),
       audioEnabled: false,
       displayClient: this.displayClientStatus()
     };
@@ -564,12 +610,34 @@ export class VenueRuntime {
   /** Controller input boundary; public to permit deterministic host tests. */
   applyPressure(input: PressureInput): void {
     this.lastPressureUnix = Math.floor(Number(input.unixNanos / 1_000_000_000n)) || Math.floor(Date.now() / 1_000);
-    const key = `${input.x},${input.y}`;
-    if (input.pressed) this.heldPressure.add(key); else this.heldPressure.delete(key);
-    const atMillis = this.elapsedAt(performance.now());
-    this.state = input.pressed
-      ? this.session.press(input.x, input.y, atMillis)
-      : this.session.release(input.x, input.y, atMillis);
+    this.applyPhysicalPressureTransition(input.x, input.y, input.pressed);
+  }
+
+  /** Authenticated operator input. Each browser owns a leased set of latches,
+   * separate from physical pressure and every other browser. The complete
+   * batch is validated before any mutation. */
+  applyRemoteFloorInput(request: RemoteFloorInputRequest): VenueRuntimeStatus {
+    const normalized = normalizeRemoteFloorInputRequest(request);
+    let mutated = false;
+    if (normalized.releaseAll) {
+      mutated = this.releaseRemoteFloorInputClient(normalized.clientId) || mutated;
+    }
+    let client = this.remotePressureClients.get(normalized.clientId);
+    for (const change of normalized.changes) {
+      if (!client) {
+        client = { held: new Set(), leaseTimer: null };
+        this.remotePressureClients.set(normalized.clientId, client);
+      }
+      mutated = this.applyRemotePressureTransition(client, change.x, change.y, change.pressed) || mutated;
+    }
+    client = this.remotePressureClients.get(normalized.clientId);
+    if (client?.held.size) this.renewRemoteFloorInputLease(normalized.clientId, client);
+    else if (client) this.removeEmptyRemoteFloorInputClient(normalized.clientId, client);
+    if (mutated) {
+      this.lastPressureUnix = Math.floor(Date.now() / 1_000);
+      this.publishDisplay();
+    }
+    return this.status();
   }
 
   /** Authoritative controller observation boundary; public for deterministic host tests. */
@@ -670,6 +738,86 @@ export class VenueRuntime {
       const [x, y] = key.split(",").map(Number);
       if (x !== undefined && y !== undefined) this.state = this.session.press(x, y, atMillis);
     }
+  }
+
+  private applyPhysicalPressureTransition(x: number, y: number, pressed: boolean): boolean {
+    const key = `${x},${y}`;
+    if (this.physicalPressure.has(key) === pressed) return false;
+    if (pressed) this.physicalPressure.add(key); else this.physicalPressure.delete(key);
+    this.applyEffectivePressureTransition(x, y);
+    return true;
+  }
+
+  private applyRemotePressureTransition(
+    client: RemoteFloorInputClient,
+    x: number,
+    y: number,
+    pressed: boolean
+  ): boolean {
+    const key = `${x},${y}`;
+    if (client.held.has(key) === pressed) return false;
+    if (pressed) {
+      client.held.add(key);
+      this.remotePressureCounts.set(key, (this.remotePressureCounts.get(key) ?? 0) + 1);
+    } else {
+      client.held.delete(key);
+      const remaining = (this.remotePressureCounts.get(key) ?? 1) - 1;
+      if (remaining > 0) this.remotePressureCounts.set(key, remaining);
+      else this.remotePressureCounts.delete(key);
+    }
+    this.applyEffectivePressureTransition(x, y);
+    return true;
+  }
+
+  private applyEffectivePressureTransition(x: number, y: number): void {
+    const key = `${x},${y}`;
+    const wasHeld = this.heldPressure.has(key);
+    const isHeld = this.physicalPressure.has(key) || this.remotePressureCounts.has(key);
+    if (wasHeld === isHeld) return;
+    if (isHeld) this.heldPressure.add(key); else this.heldPressure.delete(key);
+    const atMillis = this.elapsedAt(performance.now());
+    this.state = isHeld
+      ? this.session.press(x, y, atMillis)
+      : this.session.release(x, y, atMillis);
+  }
+
+  private renewRemoteFloorInputLease(clientId: string, client: RemoteFloorInputClient): void {
+    if (client.leaseTimer) clearTimeout(client.leaseTimer);
+    client.leaseTimer = setTimeout(() => {
+      const current = this.remotePressureClients.get(clientId);
+      if (current !== client) return;
+      this.releaseRemoteFloorInputClient(clientId);
+      this.publishDisplay();
+    }, this.remoteFloorInputLeaseMillis);
+    client.leaseTimer.unref();
+  }
+
+  private releaseRemoteFloorInputClient(clientId: string): boolean {
+    const client = this.remotePressureClients.get(clientId);
+    if (!client) return false;
+    if (client.leaseTimer) clearTimeout(client.leaseTimer);
+    client.leaseTimer = null;
+    let mutated = false;
+    for (const key of [...client.held]) {
+      const [x, y] = pressureCoordinates(key);
+      mutated = this.applyRemotePressureTransition(client, x, y, false) || mutated;
+    }
+    this.remotePressureClients.delete(clientId);
+    return mutated;
+  }
+
+  private removeEmptyRemoteFloorInputClient(clientId: string, client: RemoteFloorInputClient): void {
+    if (client.leaseTimer) clearTimeout(client.leaseTimer);
+    client.leaseTimer = null;
+    this.remotePressureClients.delete(clientId);
+  }
+
+  private remoteFloorInputStatus(): RemoteFloorInputStatus {
+    return {
+      activeClients: this.remotePressureClients.size,
+      heldTiles: this.remotePressureCounts.size,
+      leaseMillis: this.remoteFloorInputLeaseMillis
+    };
   }
 
   private publishDisplay(): void {
@@ -848,6 +996,62 @@ function normalizeLocalLiveFloorFps(value: unknown): number {
   const candidate = Number(value ?? defaultLocalLiveFloorFps);
   if (!Number.isFinite(candidate)) return defaultLocalLiveFloorFps;
   return Math.max(minimumLocalLiveFloorFps, Math.min(maximumLocalLiveFloorFps, candidate));
+}
+
+function normalizeRemoteFloorInputLeaseMillis(value: unknown): number {
+  const candidate = Number(value ?? defaultRemoteFloorInputLeaseMillis);
+  if (!Number.isFinite(candidate)) return defaultRemoteFloorInputLeaseMillis;
+  return Math.round(Math.max(
+    minimumRemoteFloorInputLeaseMillis,
+    Math.min(maximumRemoteFloorInputLeaseMillis, candidate)
+  ));
+}
+
+function normalizeRemoteFloorInputRequest(value: unknown): NormalizedRemoteFloorInputRequest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RequestValidationError("floor input request must be a JSON object");
+  }
+  const request = value as Record<string, unknown>;
+  if (typeof request.clientId !== "string" || !uuidPattern.test(request.clientId.trim())) {
+    throw new RequestValidationError("clientId must be a UUID");
+  }
+  if (request.releaseAll !== undefined && typeof request.releaseAll !== "boolean") {
+    throw new RequestValidationError("releaseAll must be a boolean");
+  }
+  const changeValues = request.changes ?? [];
+  if (!Array.isArray(changeValues)) throw new RequestValidationError("changes must be an array");
+  if (changeValues.length > maximumRemoteFloorInputChanges) {
+    throw new RequestValidationError(`changes must contain at most ${maximumRemoteFloorInputChanges} entries`);
+  }
+  const changes = changeValues.map((changeValue, index): RemoteFloorInputChange => {
+    if (!changeValue || typeof changeValue !== "object" || Array.isArray(changeValue)) {
+      throw new RequestValidationError(`changes[${index}] must be a JSON object`);
+    }
+    const change = changeValue as Record<string, unknown>;
+    if (typeof change.x !== "number" || !Number.isInteger(change.x) || change.x < 0 || change.x >= FLOOR_COLS) {
+      throw new RequestValidationError(`changes[${index}].x must be 0..${FLOOR_COLS - 1}`);
+    }
+    if (typeof change.y !== "number" || !Number.isInteger(change.y) || change.y < 0 || change.y >= FLOOR_ROWS) {
+      throw new RequestValidationError(`changes[${index}].y must be 0..${FLOOR_ROWS - 1}`);
+    }
+    if (typeof change.pressed !== "boolean") {
+      throw new RequestValidationError(`changes[${index}].pressed must be a boolean`);
+    }
+    return { x: change.x, y: change.y, pressed: change.pressed };
+  });
+  return {
+    clientId: request.clientId.trim().toLowerCase(),
+    changes,
+    releaseAll: request.releaseAll === true
+  };
+}
+
+function pressureCoordinates(key: string): [number, number] {
+  const [x, y] = key.split(",").map(Number);
+  if (x === undefined || y === undefined || !Number.isInteger(x) || !Number.isInteger(y)) {
+    throw new Error(`invalid pressure key: ${key}`);
+  }
+  return [x, y];
 }
 
 function cleanText(value: unknown, max: number): string { return String(value ?? "").trim().slice(0, max); }

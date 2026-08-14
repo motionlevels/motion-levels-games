@@ -16,8 +16,9 @@ header. A non-loopback bind fails at startup when the token is missing.
 - `GET /api/health`, `/api/status`, and `/api/display`;
 - `GET /api/display/events` (SSE event `display`);
 - `GET /api/live-floor/events` (SSE event `live-floor`, latest authoritative
-  controller observation capped at 10 fps);
+  controller observation at 20 fps by default, capped at 25 fps);
 - `POST /api/select` and `/api/control`;
+- `POST /api/floor-input` for leased, authenticated operator input;
 - `GET`/`PUT` `/api/menu-state` and `GET /api/menu-state/events`;
 - `POST /api/venue-session` and `/api/menu-event`;
 - `GET`/`POST /api/display-client`.
@@ -34,10 +35,49 @@ request-provided origin is accepted only when no origin is configured and the
 request points to loopback development.
 
 The engine and controller remain at 50 fps. Display SSE is capped at 4 fps and
-the observed live-floor SSE is a latest-value feed capped at 10 fps.
+the observed live-floor SSE is a latest-value feed at 20 fps by default, capped
+at 25 fps. `MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS` can select a value in that
+range. The cloud live-floor publisher remains independent and defaults to 5
+fps. Both live-floor paths retain only the latest pending frame under
+backpressure.
 Idle output is an all-black 16x32 frame. Audio reports `audioEnabled: false`:
 command-backed audio can be added as a narrow adapter later, without putting
 audio state back into gameplay.
+
+## Remote floor input
+
+`POST /api/floor-input` uses the same engine-token boundary as the other
+non-health endpoints and accepts one atomic JSON batch:
+
+```json
+{
+  "commandId": "40000000-0000-4000-8000-000000000002",
+  "clientId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "changes": [{ "x": 7, "y": 3, "pressed": true }],
+  "releaseAll": false
+}
+```
+
+`commandId` and `clientId` are UUIDs. `changes` is optional and may contain at
+most 512 entries; every entry requires integer `x` (0–15), integer `y` (0–31),
+and boolean `pressed`. The complete batch is rejected before mutation when any
+entry is invalid. `releaseAll` is optional and, when combined with changes,
+releases that client's existing latches before applying the batch. A request
+with an empty action list is a lease heartbeat. Command retries with the same
+`commandId` return the first committed result without applying the changes
+again.
+
+Each `clientId` owns an independent latch set with a five-second server lease.
+An active client must send a heartbeat or input before the lease expires;
+expiry automatically releases only that client's latches. `releaseAll: true`
+provides immediate cleanup for pointer cancellation and page teardown. Remote
+client sets and physical controller pressure are combined before entering the
+single `GameSession`, so releasing or expiring a browser cannot release a tile
+still held physically or by another browser. Responses are the canonical
+venue status and include `remoteFloorInput.activeClients`, `heldTiles`, and
+`leaseMillis`. The lease may be tuned with
+`MOTION_LEVELS_REMOTE_FLOOR_INPUT_LEASE` (duration such as `5s` or `5000ms`;
+100 ms–30 s).
 
 ## Controller protocol v2
 
@@ -71,7 +111,9 @@ only the latest unsent frame during backpressure.
 
 Other environment inputs are `MOTION_LEVELS_PLATFORM_URL`,
 `MOTION_LEVELS_PLATFORM_TOKEN`, and `MOTION_LEVELS_ENGINE_BRIGHTNESS` (0–100,
-also accepting 0–1). Optional camera start/stop hooks use
+also accepting 0–1). Local observation and remote-input tuning use
+`MOTION_LEVELS_LOCAL_LIVE_FLOOR_FPS` and
+`MOTION_LEVELS_REMOTE_FLOOR_INPUT_LEASE`. Optional camera start/stop hooks use
 `MOTION_LEVELS_CAMERA_RECORDER_URL` and `_TOKEN`.
 
 For local integration, `npm run dev:venue` runs the source directly. It reads

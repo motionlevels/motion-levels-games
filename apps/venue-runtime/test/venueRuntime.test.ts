@@ -164,6 +164,100 @@ test("held pressure is applied when a game is selected and restarted", async () 
   assert.ok(frameToRgb(runtime.display().frame as Frame, 1).some((channel) => channel > 0));
 });
 
+test("remote floor clients are isolated and cannot release physical pressure", async (context) => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  context.after(() => runtime.stop());
+  await selectPingPong(runtime);
+  const firstClient = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const secondClient = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const topReadyTile = { x: 0, y: 4, pressed: true };
+
+  runtime.applyRemoteFloorInput({
+    commandId: "10000000-0000-4000-8000-000000000001",
+    clientId: firstClient,
+    changes: [topReadyTile]
+  });
+  runtime.applyRemoteFloorInput({
+    commandId: "10000000-0000-4000-8000-000000000002",
+    clientId: secondClient,
+    changes: [topReadyTile]
+  });
+  assert.deepEqual(runtime.status().remoteFloorInput, {
+    activeClients: 2,
+    heldTiles: 1,
+    leaseMillis: 5_000
+  });
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
+
+  runtime.applyRemoteFloorInput({
+    commandId: "10000000-0000-4000-8000-000000000003",
+    clientId: firstClient,
+    releaseAll: true
+  });
+  runtime.control("restart");
+  assert.equal(runtime.status().remoteFloorInput.activeClients, 1);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
+
+  runtime.applyPressure({ x: 0, y: 4, pressed: true, unixNanos: 1n, sequence: 1n });
+  runtime.applyRemoteFloorInput({
+    commandId: "10000000-0000-4000-8000-000000000004",
+    clientId: secondClient,
+    releaseAll: true
+  });
+  runtime.control("restart");
+  assert.equal(runtime.status().remoteFloorInput.activeClients, 0);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
+
+  runtime.applyPressure({ x: 0, y: 4, pressed: false, unixNanos: 2n, sequence: 2n });
+  runtime.control("restart");
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 0);
+});
+
+test("remote floor batches validate atomically before changing the game", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  assert.throws(() => runtime.applyRemoteFloorInput({
+    commandId: "20000000-0000-4000-8000-000000000001",
+    clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    changes: [
+      { x: 8, y: 16, pressed: true },
+      { x: FLOOR_COLS, y: 16, pressed: true }
+    ]
+  }), /changes\[1\]\.x must be 0\.\.15/u);
+  assert.equal(runtime.status().remoteFloorInput.activeClients, 0);
+  assert.equal(runtime.status().remoteFloorInput.heldTiles, 0);
+  assert.equal(runtime.status().activeTargets, 0);
+});
+
+test("remote floor heartbeats renew leases and abandoned input is released", async (context) => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    remoteFloorInputLeaseMillis: 200
+  });
+  context.after(() => runtime.stop());
+  await selectPingPong(runtime);
+  runtime.applyRemoteFloorInput({
+    commandId: "30000000-0000-4000-8000-000000000001",
+    clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    changes: [{ x: 0, y: 4, pressed: true }]
+  });
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 1);
+
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  runtime.applyRemoteFloorInput({
+    commandId: "30000000-0000-4000-8000-000000000002",
+    clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    changes: []
+  });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.equal(runtime.status().remoteFloorInput.activeClients, 1);
+
+  await waitFor(() => runtime.status().remoteFloorInput.activeClients === 0);
+  runtime.control("restart");
+  assert.equal(runtime.status().remoteFloorInput.heldTiles, 0);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).readyPlayers, 0);
+});
+
 test("selecting salvapantallas stays an idle rotation without a gameplay session", async () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   const status = await runtime.select({
@@ -257,7 +351,7 @@ test("frame conversion is always one 16x32 RGB frame", () => {
   assert.ok(rgb.every((channel) => channel === 0));
 });
 
-test("local live floor is latest-value and bounded to ten fps", async () => {
+test("local live floor is latest-value at a configured rate", async () => {
   const runtime = new VenueRuntime({
     sourceRevision: revision,
     controllerAddress: "127.0.0.1:4201",
@@ -274,6 +368,19 @@ test("local live floor is latest-value and bounded to ten fps", async () => {
   assert.deepEqual(sequences, [1, 3]);
   unsubscribe();
   runtime.stop();
+});
+
+test("local live floor defaults to 20 fps and is capped at 25 fps", () => {
+  const defaults = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const capped = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    localLiveFloorFps: 100
+  });
+  const defaultLiveFloor = defaults.health().liveFloor as Record<string, unknown>;
+  const cappedLiveFloor = capped.health().liveFloor as Record<string, unknown>;
+  assert.equal(defaultLiveFloor.localTargetFps, 20);
+  assert.equal(cappedLiveFloor.localTargetFps, 25);
 });
 
 test("local live floor sends the current snapshot immediately to each new subscriber", () => {
@@ -320,4 +427,16 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error("condition was not met");
+}
+
+async function selectPingPong(runtime: VenueRuntime): Promise<void> {
+  await runtime.select({
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
 }
