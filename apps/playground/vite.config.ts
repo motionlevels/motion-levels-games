@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type PluginOption, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolveGamesBuildIdentity } from "../../scripts/build-version.ts";
 
 const playgroundRoot = path.dirname(fileURLToPath(import.meta.url));
 const gamesRoot = path.resolve(playgroundRoot, "../../games");
@@ -16,6 +17,7 @@ const menuBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("
 const menuBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
 const gamesSourceRevision = process.env.MOTION_LEVELS_GAMES_SOURCE_REVISION || gitValue("git rev-parse HEAD");
 if (!/^[0-9a-f]{40}$/u.test(gamesSourceRevision)) throw new Error("playground requires a full games source revision");
+const { buildVersion } = resolveGamesBuildIdentity(gamesSourceRevision);
 const playgroundBase = process.env.VITE_PLAYGROUND_BASE || "/";
 
 export default defineConfig({
@@ -24,6 +26,7 @@ export default defineConfig({
   define: {
     __MENU_BUILD_REVISION__: JSON.stringify(menuBuildRevision),
     __MENU_BUILD_DATE__: JSON.stringify(menuBuildDate),
+    __MOTION_LEVELS_GAMES_BUILD_VERSION__: JSON.stringify(buildVersion),
     MOTION_LEVELS_GAMES_SOURCE_REVISION: JSON.stringify(gamesSourceRevision),
   },
   plugins: [motionLevelsGamesWatcher(), generatedMedia(), characterModels(), webpEncoderWasm(), react()],

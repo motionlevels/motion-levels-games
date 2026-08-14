@@ -105,12 +105,18 @@ export function setMenuEventForwarder(forwarder: MenuEventForwarder | null) {
   menuEventForwarder = forwarder;
 }
 
-export function captureMenuEvent(event: string, properties: Properties = {}) {
+/** Records an operational event in the local engine session without exporting
+ * it to the optional product-analytics destination. */
+export function recordMenuEvent(event: string, properties: Properties = {}) {
   try {
     menuEventForwarder?.(event, properties);
   } catch {
     // visit recording must never break the kiosk
   }
+}
+
+export function captureMenuEvent(event: string, properties: Properties = {}) {
+  recordMenuEvent(event, properties);
   if (!analyticsEnabled()) return;
   posthog.capture(`player_menu_${event}`, {
     ...baseProperties(),

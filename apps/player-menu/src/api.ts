@@ -331,12 +331,38 @@ export async function selectGame(request: SelectGameRequest): Promise<EngineStat
   return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/select`, { ...request, commandId }));
 }
 
-export type ControlGameAction = "pause" | "resume" | "restart" | "exit" | "narration" | "mute" | "unmute" | "toggle_mute";
 export type OutputTestTarget = "floor" | "audio";
+export type ControlGameAction =
+  | "pause"
+  | "resume"
+  | "restart"
+  | "exit"
+  | "narration"
+  | "mute"
+  | "unmute"
+  | "toggle_mute"
+  | "recording_retry"
+  | "recording_continue_without"
+  | "recording_cancel";
 
-export async function controlGame(action: ControlGameAction): Promise<EngineStatus> {
+export type ControlGameOptions = {
+  recordingGateId?: string;
+};
+
+export async function controlGame(action: ControlGameAction, options: ControlGameOptions = {}): Promise<EngineStatus> {
+  const recordingAction = action === "recording_retry"
+    || action === "recording_continue_without"
+    || action === "recording_cancel";
+  const recordingGateId = options.recordingGateId?.trim() || "";
+  if (recordingAction && !recordingGateId) {
+    throw new TypeError("recordingGateId is required for recording gate actions");
+  }
   const commandId = newPlayerExperienceCommandId(globalThis.crypto);
-  return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/control`, { action, commandId }));
+  return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/control`, {
+    action,
+    commandId,
+    ...(recordingGateId ? { recordingGateId } : {}),
+  }));
 }
 
 export async function testOutput(target: OutputTestTarget): Promise<EngineStatus> {

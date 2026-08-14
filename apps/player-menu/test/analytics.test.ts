@@ -29,4 +29,12 @@ describe("player-menu analytics privacy", () => {
     assert.match(appSource, /className={`player ph-no-capture/);
     assert.match(appSource, /className="modal-body ph-mask"/);
   });
+
+  it("can record an engine-session event without exporting it to product analytics", () => {
+    const source = readFileSync(new URL("../src/analytics.ts", import.meta.url), "utf8");
+    const localOnlyBody = source.match(/export function recordMenuEvent[\s\S]*?\n}\n\nexport function captureMenuEvent/)?.[0] || "";
+
+    assert.match(localOnlyBody, /menuEventForwarder\?\.\(event, properties\)/);
+    assert.doesNotMatch(localOnlyBody, /posthog\.capture/);
+  });
 });

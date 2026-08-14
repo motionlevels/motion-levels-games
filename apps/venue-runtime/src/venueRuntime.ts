@@ -14,9 +14,16 @@ import {
   type PlayerExperienceGameSummary,
   type PlayerExperienceOutputTest,
   type PlayerExperienceOutputTestState,
+  type PlayerExperienceRecordingGate,
+  type PlayerExperienceRecordingGateReason,
   type PlayerExperienceState
 } from "@motion-levels-games/player-experience";
-import { GameSession, gameCatalog, gameplayRegistry, type GameSessionState } from "@motion-levels-games/runtime";
+import {
+  GameSession,
+  gameCatalog,
+  gameplayRegistry,
+  type GameSessionState
+} from "@motion-levels-games/runtime";
 import {
   SESSION_HISTORY_SCHEMA,
   normalizeRecordingPolicy,
@@ -36,7 +43,11 @@ import {
   type PresentedFrame
 } from "./controllerProtocol.ts";
 import { createLiveFloorPublisher, encodeLiveViewerFrame, type LiveFloorPublisher } from "./liveFloorPublisher.ts";
-import { SessionHistoryRecorder } from "./sessionHistoryRecorder.ts";
+import {
+  SessionHistoryRecorder,
+  type RunRecordingStartHandle,
+  type RunRecordingStartResult
+} from "./sessionHistoryRecorder.ts";
 import {
   assertSessionHistorySessionId,
   SessionHistoryConflictError,
@@ -116,6 +127,7 @@ export type VenueRuntimeOptions = {
   audioEnabled?: boolean;
   sessionHistoryDir?: string;
   recordingClient?: RecordingClient;
+  recordingStartGateTimeoutMillis?: number;
   now?: () => number;
   log?(message: string, error?: unknown): void;
 };
@@ -221,6 +233,15 @@ type SelectionMetadata = {
   contentRevision: string;
 };
 
+type RecordingGateKind = "initial" | "restart" | "automatic";
+
+type ActiveRecordingGate = {
+  publicState: PlayerExperienceRecordingGate;
+  kind: RecordingGateKind;
+  blockedAtMonotonicMillis: number;
+  deadlineAtMonotonicMillis: number;
+};
+
 const screensaverGameId = "salvapantallas";
 const screensaverContentSchema = "motion-levels-animation-content-v1";
 const defaultScreensaverRefreshMillis = 60_000;
@@ -242,6 +263,10 @@ const minimumRemoteFloorInputTombstoneMillis = 100;
 const maximumRemoteFloorInputTombstoneMillis = 15 * 60_000;
 const maximumTrackedRemoteFloorInputClients = 1_024;
 const maximumRemoteFloorInputChanges = FLOOR_COLS * FLOOR_ROWS;
+const defaultRecordingStartGateTimeoutMillis = 8_000;
+const minimumRecordingStartGateTimeoutMillis = 10;
+const maximumRecordingStartGateTimeoutMillis = 120_000;
+const recordingReadyVisibilityMillis = 1_000;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export class RevisionMismatchError extends Error {}
@@ -255,6 +280,7 @@ export class VenueRuntime {
   private readonly remoteFloorInputLeaseMillis: number;
   private readonly remoteFloorInputTombstoneMillis: number;
   private readonly history: SessionHistoryRecorder | null;
+  private readonly recordingStartGateTimeoutMillis: number;
   private readonly audioEnabled: boolean;
   private readonly liveFloorListeners = new Set<ObservedFloorSubscription>();
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
@@ -308,6 +334,9 @@ export class VenueRuntime {
   private outputTestSequence = 0;
   private outputTest: OutputTestStatus | null = null;
   private floorOutputTestRun: FloorOutputTestRun | null = null;
+  private recordingGate: ActiveRecordingGate | null = null;
+  private recordingReadyTimer: NodeJS.Timeout | null = null;
+  private reapplyHeldPressureOnNextTick = false;
 
   constructor(private readonly options: VenueRuntimeOptions) {
     if (!/^[0-9a-f]{40}$/u.test(options.sourceRevision)) throw new Error("source revision must be a 40-character git hash");
@@ -316,6 +345,9 @@ export class VenueRuntime {
     this.remoteFloorInputTombstoneMillis = normalizeRemoteFloorInputTombstoneMillis(options.remoteFloorInputTombstoneMillis);
     this.audioEnabled = options.audioEnabled === true;
     this.audioMuted = !this.audioEnabled;
+    this.recordingStartGateTimeoutMillis = normalizeRecordingStartGateTimeoutMillis(
+      options.recordingStartGateTimeoutMillis
+    );
     this.history = options.sessionHistoryDir
       ? new SessionHistoryRecorder(new SessionHistoryStore(options.sessionHistoryDir, options.now), {
           now: options.now,
@@ -381,6 +413,8 @@ export class VenueRuntime {
     if (this.localLiveFloorTimer) clearTimeout(this.localLiveFloorTimer);
     this.localLiveFloorTimer = null;
     this.localLiveFloorPending = false;
+    this.clearRecordingReadyTimer();
+    this.recordingGate = null;
     for (const clientId of [...this.remotePressureClients.keys()]) this.releaseRemoteFloorInputClient(clientId);
     const historyDrain = this.history?.stop() ?? Promise.resolve();
     this.controller.stop();
@@ -388,6 +422,9 @@ export class VenueRuntime {
   }
 
   async select(request: SelectGameRequest): Promise<VenueRuntimeStatus> {
+    if (this.recordingGateBlocksGameplay()) {
+      throw new SessionHistoryConflictError("recording gate must be resolved before selecting another game");
+    }
     if (request.sourceRevision !== this.options.sourceRevision) {
       throw new RevisionMismatchError("motion-levels-games revision mismatch");
     }
@@ -412,6 +449,28 @@ export class VenueRuntime {
       this.history?.assertVisitStartable(requestedVenueSessionId);
     }
     const requestedTeamName = cleanText(request.teamName, 256);
+    const sameRequestedVenueSession = Boolean(requestedVenueSessionId)
+      && requestedVenueSessionId === this.venueSessionId;
+    const selectedRecordingPolicy = requestedVenueSessionId
+      ? requestedRecordingPolicy(
+          request.recordingPolicy,
+          request.recordingEnabled,
+          sameRequestedVenueSession ? this.venueSessionRecordingPolicy : { scope: "visit" }
+        )
+      : null;
+    if (requestedVenueSessionId && this.selection
+      && (!sameRequestedVenueSession
+        || JSON.stringify(this.venueSessionRecordingPolicy) !== JSON.stringify(selectedRecordingPolicy))) {
+      throw new SessionHistoryConflictError(
+        "venue session id or recording policy cannot change while a game selection is active"
+      );
+    }
+    if (requestedVenueSessionId && selectedRecordingPolicy
+      && this.history?.recordingTransitionWouldStop(requestedVenueSessionId, selectedRecordingPolicy)) {
+      throw new SessionHistoryConflictError(
+        "venue recording transition must stop the active camera before selecting gameplay"
+      );
+    }
     const durationSeconds = Number(request.durationSeconds);
     const durationMillis = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds * 1_000 : undefined;
     const venueSessionGeneration = this.venueSessionGeneration;
@@ -422,6 +481,9 @@ export class VenueRuntime {
       }
       await this.refreshScreensaverContent(durationMillis === undefined ? undefined : Math.round(durationSeconds));
       this.assertVenueSessionGeneration(venueSessionGeneration);
+      if (this.recordingGateBlocksGameplay()) {
+        throw new SessionHistoryConflictError("recording gate must be resolved before selecting another game");
+      }
       this.history?.endSelection("screensaver_selected");
       this.activateScreensaver(screensaverOptions);
       this.publishDisplay();
@@ -431,7 +493,15 @@ export class VenueRuntime {
       ? await this.fetchRuntimeContent(request)
       : null;
     this.assertVenueSessionGeneration(venueSessionGeneration);
+    if (this.recordingGateBlocksGameplay()) {
+      throw new SessionHistoryConflictError("recording gate must be resolved before selecting another game");
+    }
+    this.assertNoUngatedRecordingStop(
+      selectedRecordingPolicy ?? this.venueSessionRecordingPolicy,
+      requestedVenueSessionId || this.venueSessionId
+    );
     this.cancelRunningOutputTest("Prueba cancelada al iniciar la partida");
+    this.clearRecordingGate();
     const now = performance.now();
     this.state = this.session.select({
       gameId: module.manifest.id,
@@ -442,14 +512,11 @@ export class VenueRuntime {
       options: request.config ?? {},
       ...(contentResult ? { content: contentResult.content } : {})
     });
+    this.reapplyHeldPressureOnNextTick = false;
     this.historyRunEngineOriginMillis = this.state.clockMillis;
     if (requestedVenueSessionId) {
-      const sameVenueSession = requestedVenueSessionId === this.venueSessionId;
-      const recordingPolicy = requestedRecordingPolicy(
-        request.recordingPolicy,
-        request.recordingEnabled,
-        sameVenueSession ? this.venueSessionRecordingPolicy : { scope: "visit" }
-      );
+      const sameVenueSession = sameRequestedVenueSession;
+      const recordingPolicy = selectedRecordingPolicy ?? { scope: "visit" };
       const nextTeamName = requestedTeamName || this.venueSessionTeamName;
       const venueSessionChanged = !sameVenueSession
         || this.venueSessionTeamName !== nextTeamName
@@ -477,9 +544,11 @@ export class VenueRuntime {
       challengeAttemptCount: nonNegativeInteger(request.challengeAttemptCount),
       contentRevision: contentResult?.contentRevision ?? ""
     };
+    const recordingBlocked = this.runRecordingGateRequired();
+    this.session.setAutomaticAttemptTransitionsBlocked(recordingBlocked);
     this.gameStartedAt = now;
     this.pauseStartedAt = 0;
-    this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
+    this.sessionStartedUnix = recordingBlocked ? 0 : Math.floor(this.wallNow() / 1_000);
     this.gameSessionId = randomUUID();
     this.selectionHistoryId = randomUUID();
     this.captureLatestEvent();
@@ -492,7 +561,7 @@ export class VenueRuntime {
         recordingPolicy: this.venueSessionRecordingPolicy
       });
     }
-    this.history?.startSelection({
+    const recordingStart = this.history?.startSelection({
       id: this.selectionHistoryId,
       runId: this.gameSessionId,
       catalogGameId: cleanText(request.game, 256) || undefined,
@@ -516,15 +585,29 @@ export class VenueRuntime {
         name: player.label,
         metadata: { color: player.color }
       }))
-    }, this.historyState(this.state));
-    this.applyHeldPressure(0);
+    }, this.historyState(this.state), { recordingBlocked }) ?? null;
+    if (recordingBlocked) {
+      this.beginRecordingGate("initial", recordingStart, now);
+    } else {
+      this.applyHeldPressure(0);
+    }
     this.publishDisplay();
     return this.status();
   }
 
-  control(actionValue: unknown): VenueRuntimeStatus {
+  control(
+    actionValue: "mute" | "unmute" | "toggle_mute" | "exit" | "pause" | "resume" | "restart" | "narration"
+  ): VenueRuntimeStatus;
+  control(actionValue: unknown, recordingGateIdValue?: unknown): VenueRuntimeStatus | Promise<VenueRuntimeStatus>;
+  control(actionValue: unknown, recordingGateIdValue?: unknown): VenueRuntimeStatus | Promise<VenueRuntimeStatus> {
     const action = String(actionValue ?? "");
     const now = performance.now();
+    if (action === "recording_retry" || action === "recording_continue_without" || action === "recording_cancel") {
+      return this.controlRecordingGate(action, recordingGateIdValue, now);
+    }
+    if (this.recordingGate && this.recordingGate.publicState.state !== "ready") {
+      throw new SessionHistoryConflictError("recording gate must be resolved before controlling gameplay");
+    }
     if (action === "mute" || action === "unmute" || action === "toggle_mute") {
       if (!this.audioEnabled) throw new RequestValidationError("audio is not configured");
       this.cancelRunningOutputTest("Prueba cancelada por otro control");
@@ -534,6 +617,7 @@ export class VenueRuntime {
     }
     if (action === "exit") {
       this.cancelRunningOutputTest("Prueba cancelada al salir de la partida");
+      this.clearRecordingGate();
       this.history?.endSelection("exited");
       this.activateScreensaver();
       this.publishDisplay();
@@ -553,15 +637,25 @@ export class VenueRuntime {
       this.acceptSessionState(this.session.resume());
       this.applyHeldPressure(this.state.clockMillis);
     } else if (action === "restart") {
+      this.assertNoUngatedRecordingStop(this.venueSessionRecordingPolicy, this.venueSessionId);
+      this.clearRecordingGate();
       this.updateState(this.session.restart(0));
+      this.reapplyHeldPressureOnNextTick = false;
       this.historyRunEngineOriginMillis = this.state.clockMillis;
+      const recordingBlocked = this.runRecordingGateRequired();
+      this.session.setAutomaticAttemptTransitionsBlocked(recordingBlocked);
       this.gameStartedAt = now;
       this.pauseStartedAt = 0;
-      this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
+      this.sessionStartedUnix = recordingBlocked ? 0 : Math.floor(this.wallNow() / 1_000);
       this.gameSessionId = randomUUID();
-      this.history?.restartRun(this.gameSessionId, this.historyState(this.state));
-      this.applyHeldPressure(0);
-    } else {
+      const recordingStart = this.history?.restartRun(
+        this.gameSessionId,
+        this.historyState(this.state),
+        { recordingBlocked }
+      ) ?? null;
+      if (recordingBlocked) this.beginRecordingGate("restart", recordingStart, now);
+      else this.applyHeldPressure(0);
+    } else if (action === "narration") {
       // Narration remains a separate media concern; cue audio is owned by the TV display.
     }
     this.publishDisplay();
@@ -633,6 +727,50 @@ export class VenueRuntime {
     return this.status();
   }
 
+  private controlRecordingGate(
+    action: "recording_retry" | "recording_continue_without" | "recording_cancel",
+    recordingGateIdValue: unknown,
+    now: number
+  ): VenueRuntimeStatus | Promise<VenueRuntimeStatus> {
+    const gateId = cleanText(recordingGateIdValue, 256);
+    const gate = this.recordingGate;
+    if (!gateId || !gate || gate.publicState.id !== gateId) {
+      throw new SessionHistoryConflictError("recording gate is stale");
+    }
+    if (gate.publicState.state !== "timed_out") {
+      throw new SessionHistoryConflictError("recording gate is not awaiting a decision");
+    }
+    if (action === "recording_retry") {
+      const handle = this.history?.retryRunRecording(gate.publicState.runId) ?? null;
+      this.retryRecordingGate(gate, handle, now);
+      this.publishDisplay();
+      return this.status();
+    }
+    return this.finishRecordingGateDecision(gate, action === "recording_cancel");
+  }
+
+  private async finishRecordingGateDecision(
+    gate: ActiveRecordingGate,
+    cancel: boolean
+  ): Promise<VenueRuntimeStatus> {
+    await (this.history?.skipRunRecording(
+      gate.publicState.runId,
+      cancel ? "recording_cancelled" : "continued_without_video"
+    ) ?? Promise.resolve());
+    if (this.recordingGate?.publicState.id !== gate.publicState.id
+      || this.recordingGate.publicState.state !== "timed_out") {
+      throw new SessionHistoryConflictError("recording gate changed while stopping capture");
+    }
+    if (cancel) {
+      this.history?.endSelection("recording_cancelled");
+      this.activateScreensaver();
+    } else {
+      this.releaseRecordingGate(gate, false, performance.now());
+    }
+    this.publishDisplay();
+    return this.status();
+  }
+
   status(): VenueRuntimeStatus {
     const catalog = productionCatalog();
     if (!this.selection) {
@@ -699,6 +837,8 @@ export class VenueRuntime {
     }
     const snapshot = this.state.snapshot;
     const lastEvent = this.state.events.at(-1);
+    const publicRecordingGate = this.recordingGate?.publicState;
+    const recordingBlocked = publicRecordingGate?.state === "arming" || publicRecordingGate?.state === "timed_out";
     const status: PlayerExperienceState = {
       contractVersion: playerExperienceContractVersion,
       revision: this.stateRevision,
@@ -734,9 +874,11 @@ export class VenueRuntime {
       success: snapshot.success,
       introRemainingMillis: 0,
       countdownRemainingMillis: snapshot.countdownMillis ?? 0,
-      startedUnix: this.sessionStartedUnix,
-      sessionStartedUnix: this.sessionStartedUnix,
-      endsUnix: snapshot.remainingMillis > 0 ? Math.floor(Date.now() / 1_000 + snapshot.remainingMillis / 1_000) : 0,
+      startedUnix: recordingBlocked ? 0 : this.sessionStartedUnix,
+      sessionStartedUnix: recordingBlocked ? 0 : this.sessionStartedUnix,
+      endsUnix: !recordingBlocked && snapshot.remainingMillis > 0
+        ? Math.floor(this.wallNow() / 1_000 + snapshot.remainingMillis / 1_000)
+        : 0,
       sessionElapsedMillis: snapshot.elapsedMillis,
       sessionRemainingMillis: snapshot.remainingMillis,
       challengeElapsedMillis: this.selection.challengeElapsedMillis,
@@ -744,12 +886,13 @@ export class VenueRuntime {
       elapsedMillis: snapshot.elapsedMillis,
       remainingMillis: snapshot.remainingMillis,
       activeTargets: snapshot.activeTargets,
-      lastEventUnixNanos: this.lastEventUnixNanos,
-      lastEventSequence: this.lastEventSequence,
-      lastEventCue: this.lastEventCue || lastEvent?.cue || snapshot.lastEventCue,
-      lastEventMessage: this.lastEventMessage || lastEvent?.message || snapshot.lastEventMessage,
+      lastEventUnixNanos: recordingBlocked ? 0 : this.lastEventUnixNanos,
+      lastEventSequence: recordingBlocked ? 0 : this.lastEventSequence,
+      lastEventCue: recordingBlocked ? "" : this.lastEventCue || lastEvent?.cue || snapshot.lastEventCue,
+      lastEventMessage: recordingBlocked ? "" : this.lastEventMessage || lastEvent?.message || snapshot.lastEventMessage,
       sessionId: this.gameSessionId,
       lastPressureUnix: this.lastPressureUnix,
+      ...(publicRecordingGate ? { recordingGate: { ...publicRecordingGate } } : {}),
       catalog
     };
     status.lifecycle = lifecycleFromRuntime(status);
@@ -955,6 +1098,13 @@ export class VenueRuntime {
         request.recordingEnabled,
         sameVenueSession ? this.venueSessionRecordingPolicy : { scope: "visit" }
       );
+      const policyOrSessionChanged = !sameVenueSession
+        || JSON.stringify(this.venueSessionRecordingPolicy) !== JSON.stringify(recordingPolicy);
+      if (this.selection && policyOrSessionChanged) {
+        throw new SessionHistoryConflictError(
+          "venue session id or recording policy cannot change while a game selection is active"
+        );
+      }
       changed = !sameVenueSession
         || this.venueSessionTeamName !== teamName
         || JSON.stringify(this.venueSessionRecordingPolicy) !== JSON.stringify(recordingPolicy);
@@ -978,12 +1128,15 @@ export class VenueRuntime {
       });
     } else if (this.venueSessionId === venueSessionId) {
       changed = true;
+      const hadRecordingGate = Boolean(this.recordingGate);
+      const hadActiveSelection = Boolean(this.selection);
       this.history?.endVisit(cleanText(request.reason, 160) || "completed");
       this.venueSessionId = "";
       this.venueSessionStartedUnix = 0;
       this.venueSessionTeamName = "";
       this.venueSessionRecordingPolicy = { scope: "visit" };
       if (this.selection?.venueSessionId === venueSessionId) this.selection.venueSessionId = "";
+      if (hadRecordingGate || hadActiveSelection) this.activateScreensaver();
     }
     if (changed) {
       this.advanceVenueSessionGeneration();
@@ -1027,16 +1180,26 @@ export class VenueRuntime {
     const fresh = seen && ageMillis <= 15_000;
     const lastFeedUnixMillis = Number(report.lastFeedUnixMillis ?? 0);
     const feedFresh = Number.isFinite(lastFeedUnixMillis) && lastFeedUnixMillis > 0 && Date.now() - lastFeedUnixMillis <= 15_000;
+    const lastPaintUnixMillis = Number(report.lastPaintUnixMillis ?? 0);
+    const hasPaint = Number.isFinite(lastPaintUnixMillis) && lastPaintUnixMillis > 0;
+    const paintAgeMillis = hasPaint ? Math.abs(Date.now() - lastPaintUnixMillis) : 0;
+    const paintFresh = hasPaint && paintAgeMillis <= 15_000;
     const connected = report.connected === true || (report.feedTransport === "poll" && feedFresh);
-    const revisionMatches = seen
+    const rendererRevisionMatches = seen
       && report.expectedRevision === this.options.sourceRevision
       && report.loadedRevision === this.options.sourceRevision;
+    const shellRevisionMatches = seen && report.shellRevision === this.options.sourceRevision;
+    const revisionMatches = rendererRevisionMatches && shellRevisionMatches;
     return {
       ...report,
       seen,
       fresh,
-      healthy: fresh && connected && report.renderStatus === "ready" && matchesCurrentGame && revisionMatches,
+      healthy: fresh && connected && paintFresh && report.renderStatus === "ready" && matchesCurrentGame && revisionMatches,
       matchesCurrentGame,
+      paintFresh,
+      paintAgeMillis,
+      rendererRevisionMatches,
+      shellRevisionMatches,
       revisionMatches,
       receivedUnixMillis: this.displayClientReceivedUnixMillis,
       ageMillis
@@ -1195,8 +1358,13 @@ export class VenueRuntime {
   }
 
   private tick(now: number): void {
-    if (!this.state.paused) {
-      this.acceptSessionState(this.session.tick(this.elapsedAt(now)));
+    this.refreshRecordingGate(now);
+    if (this.reapplyHeldPressureOnNextTick && !this.recordingGateBlocksGameplay()) {
+      this.reapplyHeldPressureOnNextTick = false;
+      this.applyHeldPressure(this.elapsedAt(now));
+    }
+    if (!this.state.paused && !this.recordingGateBlocksGameplay()) {
+      this.acceptSessionState(this.session.tick(this.elapsedAt(now)), now);
     }
     const frame = this.state.frame;
     this.frameSequence += 1n;
@@ -1214,6 +1382,174 @@ export class VenueRuntime {
     if (now - this.lastDisplayPublishedAt >= displayPublishIntervalMillis) {
       this.publishDisplay(now - this.lastStatusPublishedAt >= statusPublishIntervalMillis, now);
     }
+  }
+
+  private beginRecordingGate(
+    kind: RecordingGateKind,
+    handle: RunRecordingStartHandle | null,
+    now: number
+  ): void {
+    this.clearRecordingReadyTimer();
+    const startedAtUnixMillis = this.wallNow();
+    const captureId = handle?.recording.captureId ?? handle?.recording.id ?? randomUUID();
+    const unavailable = !handle || handle.recording.status === "missing";
+    const publicState: PlayerExperienceRecordingGate = {
+      id: randomUUID(),
+      state: unavailable ? "timed_out" : "arming",
+      scope: "run",
+      runId: this.gameSessionId,
+      captureId,
+      attempt: 1,
+      startedAtUnixMillis,
+      timeoutAtUnixMillis: startedAtUnixMillis + this.recordingStartGateTimeoutMillis,
+      ...(unavailable ? { reason: "unavailable" as const } : {})
+    };
+    const gate: ActiveRecordingGate = {
+      publicState,
+      kind,
+      blockedAtMonotonicMillis: now,
+      deadlineAtMonotonicMillis: now + this.recordingStartGateTimeoutMillis
+    };
+    this.recordingGate = gate;
+    if (!unavailable && handle) this.observeRecordingStart(gate, handle);
+  }
+
+  private retryRecordingGate(
+    previous: ActiveRecordingGate,
+    handle: RunRecordingStartHandle | null,
+    now: number
+  ): void {
+    this.clearRecordingReadyTimer();
+    const startedAtUnixMillis = this.wallNow();
+    const captureId = handle?.recording.captureId ?? handle?.recording.id ?? previous.publicState.captureId;
+    if (captureId !== previous.publicState.captureId) {
+      throw new SessionHistoryConflictError("recording retry changed capture identity");
+    }
+    const unavailable = !handle || handle.recording.status === "missing";
+    const gate: ActiveRecordingGate = {
+      ...previous,
+      deadlineAtMonotonicMillis: now + this.recordingStartGateTimeoutMillis,
+      publicState: {
+        id: randomUUID(),
+        state: unavailable ? "timed_out" : "arming",
+        scope: "run",
+        runId: previous.publicState.runId,
+        captureId,
+        attempt: previous.publicState.attempt + 1,
+        startedAtUnixMillis,
+        timeoutAtUnixMillis: startedAtUnixMillis + this.recordingStartGateTimeoutMillis,
+        ...(unavailable ? { reason: "unavailable" as const } : {})
+      }
+    };
+    this.recordingGate = gate;
+    if (!unavailable && handle) this.observeRecordingStart(gate, handle);
+  }
+
+  private observeRecordingStart(gate: ActiveRecordingGate, handle: RunRecordingStartHandle): void {
+    void handle.completion.then(
+      (result) => this.acceptRecordingStartResult(gate.publicState.id, result),
+      () => this.acceptRecordingStartFailure(gate.publicState.id, "start_unconfirmed")
+    );
+  }
+
+  private acceptRecordingStartResult(gateId: string, result: RunRecordingStartResult): void {
+    const gate = this.recordingGate;
+    if (!gate || gate.publicState.id !== gateId || gate.publicState.state !== "arming") return;
+    if (result.state === "recording") {
+      this.releaseRecordingGate(gate, true, performance.now());
+      this.publishDisplay();
+      return;
+    }
+    this.acceptRecordingStartFailure(gateId, result.reason ?? "start_unconfirmed");
+  }
+
+  private acceptRecordingStartFailure(
+    gateId: string,
+    reason: PlayerExperienceRecordingGateReason
+  ): void {
+    const gate = this.recordingGate;
+    if (!gate || gate.publicState.id !== gateId || gate.publicState.state !== "arming") return;
+    gate.publicState = {
+      ...gate.publicState,
+      state: "timed_out",
+      reason
+    };
+    this.publishDisplay();
+  }
+
+  private refreshRecordingGate(now: number): void {
+    const gate = this.recordingGate;
+    if (!gate || gate.publicState.state !== "arming" || now < gate.deadlineAtMonotonicMillis) return;
+    gate.publicState = {
+      ...gate.publicState,
+      state: "timed_out",
+      reason: "timeout"
+    };
+  }
+
+  private releaseRecordingGate(gate: ActiveRecordingGate, recorded: boolean, now: number): void {
+    if (this.recordingGate?.publicState.id !== gate.publicState.id) return;
+    this.gameStartedAt += Math.max(0, now - gate.blockedAtMonotonicMillis);
+    this.pauseStartedAt = 0;
+    this.sessionStartedUnix = Math.floor(this.wallNow() / 1_000);
+    if (gate.kind === "automatic") {
+      this.updateState(this.session.advanceAutomaticAttemptTransition());
+      this.reapplyHeldPressureOnNextTick = true;
+    }
+    if (recorded) {
+      const readyAtUnixMillis = this.wallNow();
+      gate.publicState = {
+        ...gate.publicState,
+        state: "ready",
+        readyAtUnixMillis,
+        reason: undefined
+      };
+      this.recordingGate = gate;
+      this.recordingReadyTimer = setTimeout(() => {
+        if (this.recordingGate?.publicState.id !== gate.publicState.id
+          || this.recordingGate.publicState.state !== "ready") return;
+        this.recordingGate = null;
+        this.recordingReadyTimer = null;
+        this.publishDisplay();
+      }, recordingReadyVisibilityMillis);
+      this.recordingReadyTimer.unref();
+    } else {
+      this.recordingGate = null;
+    }
+    this.history?.observeState(this.historyState(this.state));
+    if (gate.kind !== "automatic") this.applyHeldPressure(this.state.clockMillis);
+  }
+
+  private recordingGateBlocksGameplay(): boolean {
+    return this.recordingGate?.publicState.state === "arming"
+      || this.recordingGate?.publicState.state === "timed_out";
+  }
+
+  private runRecordingGateRequired(): boolean {
+    return this.venueSessionRecordingPolicy.scope === "run"
+      && Boolean(this.venueSessionId || this.selection?.venueSessionId);
+  }
+
+  private assertNoUngatedRecordingStop(policy: RecordingPolicy, venueSessionId: string): void {
+    if (!this.history?.recordingStopsPending()) return;
+    if (policy.scope === "run" && Boolean(venueSessionId)) return;
+    throw new SessionHistoryConflictError(
+      "camera stop must be physically confirmed before starting ungated gameplay"
+    );
+  }
+
+  private clearRecordingReadyTimer(): void {
+    if (this.recordingReadyTimer) clearTimeout(this.recordingReadyTimer);
+    this.recordingReadyTimer = null;
+  }
+
+  private clearRecordingGate(): void {
+    this.clearRecordingReadyTimer();
+    this.recordingGate = null;
+  }
+
+  private wallNow(): number {
+    return this.options.now?.() ?? Date.now();
   }
 
   private elapsedAt(now: number): number {
@@ -1311,15 +1647,41 @@ export class VenueRuntime {
     this.publishDisplay();
   }
 
-  private acceptSessionState(next: GameSessionState): void {
+  private acceptSessionState(next: GameSessionState, observedAtMonotonicMillis = performance.now()): void {
     const previous = this.state;
     this.updateState(next);
+    const pendingTransition = this.runRecordingGateRequired()
+      ? this.session.pendingAutomaticAttemptTransition()
+      : null;
+    if (pendingTransition && this.recordingGate?.publicState.state === "ready") {
+      this.clearRecordingGate();
+    }
+    if (pendingTransition && !this.recordingGate) {
+      // Persist the terminal state against the old run before rebasing the
+      // engine clock and creating the camera-gated successor.
+      this.history?.observeState(this.historyState(next));
+      this.updateState(this.session.clearHeldInputs(next.clockMillis));
+      this.historyRunEngineOriginMillis = this.state.clockMillis;
+      this.gameSessionId = randomUUID();
+      this.sessionStartedUnix = 0;
+      const recordingStart = this.history?.restartRun(
+        this.gameSessionId,
+        this.historyState(this.state),
+        {
+          recordingBlocked: true,
+          pendingLevelId: pendingTransition.toLevelId,
+          pendingLevelSlug: pendingTransition.toLevelSlug
+        }
+      ) ?? null;
+      this.beginRecordingGate("automatic", recordingStart, observedAtMonotonicMillis);
+      return;
+    }
     const automaticAttempt = this.selection?.manifest.tags?.includes("published-levels") === true
       && publishedAttemptStarted(previous, next);
     if (automaticAttempt) {
       this.historyRunEngineOriginMillis = next.clockMillis;
       this.gameSessionId = randomUUID();
-      this.sessionStartedUnix = Math.floor(Date.now() / 1_000);
+      this.sessionStartedUnix = Math.floor(this.wallNow() / 1_000);
       this.history?.restartRun(this.gameSessionId, this.historyState(next));
       return;
     }
@@ -1389,6 +1751,7 @@ export class VenueRuntime {
     const isHeld = this.physicalPressure.has(key) || this.remotePressureCounts.has(key);
     if (wasHeld === isHeld) return;
     if (isHeld) this.heldPressure.add(key); else this.heldPressure.delete(key);
+    if (this.recordingGateBlocksGameplay()) return;
     const atMillis = this.elapsedAt(performance.now());
     this.acceptSessionState(isHeld
       ? this.session.press(x, y, atMillis)
@@ -1497,6 +1860,7 @@ export class VenueRuntime {
   }
 
   private activateScreensaver(options: Record<string, unknown> = { mode: "rotation" }): void {
+    this.clearRecordingGate();
     this.state = this.session.select({
       gameId: screensaverGameId,
       playerCount: 0,
@@ -1505,6 +1869,8 @@ export class VenueRuntime {
       options,
       ...(this.screensaverContent ? { content: this.screensaverContent } : {})
     });
+    this.reapplyHeldPressureOnNextTick = false;
+    this.session.setAutomaticAttemptTransitionsBlocked(false);
     this.historyRunEngineOriginMillis = this.state.clockMillis;
     this.selection = null;
     this.gameStartedAt = performance.now();
@@ -1759,6 +2125,15 @@ function normalizeRemoteFloorInputTombstoneMillis(value: unknown): number {
   return Math.round(Math.max(
     minimumRemoteFloorInputTombstoneMillis,
     Math.min(maximumRemoteFloorInputTombstoneMillis, candidate)
+  ));
+}
+
+function normalizeRecordingStartGateTimeoutMillis(value: unknown): number {
+  const candidate = Number(value ?? defaultRecordingStartGateTimeoutMillis);
+  if (!Number.isFinite(candidate)) return defaultRecordingStartGateTimeoutMillis;
+  return Math.round(Math.max(
+    minimumRecordingStartGateTimeoutMillis,
+    Math.min(maximumRecordingStartGateTimeoutMillis, candidate)
   ));
 }
 

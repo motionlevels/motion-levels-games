@@ -21,7 +21,7 @@ import {
 } from "../src/catalogSync.ts";
 import { platformAnimationCards } from "../src/animationCatalog.ts";
 import { inferPlatformURL } from "../src/api.ts";
-import { isSupportedRuntimeSourceFromProducts } from "../src/runtimeSourcePolicy.ts";
+import { catalogSourceMatchesBundledRuntime, isSupportedRuntimeSourceFromProducts } from "../src/runtimeSourcePolicy.ts";
 import type { PlatformGameCatalogEntry } from "../src/api.ts";
 import type { GameCard } from "../src/catalog.ts";
 
@@ -59,6 +59,49 @@ function catalogEntry(patch: Partial<PlatformGameCatalogEntry> = {}): PlatformGa
 }
 
 describe("catalog metadata sync", () => {
+  it("keeps every bundled production game available when the cloud catalog revision is staged", () => {
+    const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
+    const localCatalogSource = fs.readFileSync(path.resolve(__dirname, "../src/localCatalog.ts"), "utf8");
+    const productionManifestCount = fs.readdirSync(path.resolve(__dirname, "../../../games"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.resolve(__dirname, `../../../games/${entry.name}/src/manifest.ts`))
+      .filter((manifestPath) => fs.existsSync(manifestPath))
+      .filter((manifestPath) => /production:\s*true/u.test(fs.readFileSync(manifestPath, "utf8")))
+      .length;
+
+    assert.ok(productionManifestCount > 1, "the fail-safe catalog must not collapse to the featured Lava card");
+    assert.match(localCatalogSource, /export function localProductionPlayerExperienceCatalog/);
+    assert.match(
+      localCatalogSource,
+      /filter\(\(manifest\) => manifest\.availability\.production && manifest\.slug !== "animations"\)/,
+    );
+    assert.match(appSource, /const bundledGames = bundledProductionGameCards\(\);/);
+    assert.match(appSource, /\[\.\.\.bundledGames, \.\.\.platformAnimations/);
+    assert.match(appSource, /featured: fallback\?\.featured === true/);
+    assert.doesNotMatch(appSource, /category: fallback\.category/);
+    assert.match(appSource, /Number\(right\.featured === true\) - Number\(left\.featured === true\)/);
+    assert.match(appSource, /new Map\(enabledCatalog\.map\(\(entry\) => \[entry\.id, entry\.catalog_order\]\)\)/);
+    assert.doesNotMatch(appSource, /new Map\(catalog\.map\(\(entry\) => \[entry\.id, entry\.catalog_order\]\)\)/);
+  });
+
+  it("uses only catalog entries backed by the installed games revision", () => {
+    const installed = "a".repeat(40);
+
+    assert.equal(catalogSourceMatchesBundledRuntime("motion_levels_games", installed, installed, true), true);
+    assert.equal(catalogSourceMatchesBundledRuntime("platform_levels", "", installed, true), true);
+    assert.equal(catalogSourceMatchesBundledRuntime("motion_levels_games", "b".repeat(40), installed, true), false);
+    assert.equal(catalogSourceMatchesBundledRuntime("motion_levels_games", installed, installed, false), false);
+    assert.equal(catalogSourceMatchesBundledRuntime("animation", installed, installed, true), false);
+
+    const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
+    assert.match(appSource, /catalogSourceMatchesBundledRuntime\(/);
+    assert.match(appSource, /entry\.source_revision \|\| ""/);
+    assert.match(
+      appSource,
+      /sourceRevision: entry\.source_revision \|\| fallback\?\.sourceRevision \|\| bundledGamesSourceRevision\(\)/,
+    );
+  });
+
   it("uses the public platform catalog when the menu runs on a direct venue host", () => {
     assert.equal(inferPlatformURL({
       hostname: "motionlevels-cloud-1",
@@ -268,8 +311,8 @@ describe("catalog metadata sync", () => {
     assert.equal(cards[0].previewAnimation, undefined);
     const thumbnailURL = new URL(cards[0].thumbnailSrc || "");
     const previewURL = new URL(cards[0].previewSrc || "");
-    assert.equal(thumbnailURL.pathname, "/games/media/animations/aurora/aurora-thumbnail-small.webp");
-    assert.equal(previewURL.pathname, "/games/media/animations/aurora/aurora-preview.webp");
+    assert.equal(thumbnailURL.pathname, "/games/dev/media/animations/aurora/aurora-thumbnail-small.webp");
+    assert.equal(previewURL.pathname, "/games/dev/media/animations/aurora/aurora-preview.webp");
     assert.equal(thumbnailURL.searchParams.get("revision"), "dev");
     assert.equal(previewURL.searchParams.get("revision"), "dev");
     assert.equal(cards[0].previewRevisionHash, "level-rev");
@@ -304,8 +347,8 @@ describe("catalog metadata sync", () => {
     assert.equal(card.previewSrc, "https://cdn.test/aurora-preview.webp?revision=authored");
     assert.equal(card.thumbnailSrcs?.[0], card.thumbnailSrc);
     assert.equal(card.previewSrcs?.[0], card.previewSrc);
-    assert.match(card.thumbnailSrcs?.at(-1) || "", /\/games\/media\/animations\/aurora\/aurora-thumbnail-small\.webp\?revision=dev$/);
-    assert.match(card.previewSrcs?.at(-1) || "", /\/games\/media\/animations\/aurora\/aurora-preview\.webp\?revision=dev$/);
+    assert.match(card.thumbnailSrcs?.at(-1) || "", /\/games\/dev\/media\/animations\/aurora\/aurora-thumbnail-small\.webp\?revision=dev$/);
+    assert.match(card.previewSrcs?.at(-1) || "", /\/games\/dev\/media\/animations\/aurora\/aurora-preview\.webp\?revision=dev$/);
     assert.equal(card.previewAnimation, undefined);
   });
 
@@ -321,6 +364,19 @@ describe("catalog metadata sync", () => {
     assert.match(staticGamesSource, /id:\s*"lava"/);
     assert.match(staticGamesSource, /sourceKind:\s*"motion_levels_games"/);
     assert.doesNotMatch(staticGamesSource, /featured-lava|authored-lava|salvapantallas/);
+  });
+
+  it("does not expose per-game revision hashes in player-facing copy", () => {
+    const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
+    const styleSource = fs.readFileSync(path.resolve(__dirname, "../src/styles.css"), "utf8");
+
+    assert.match(appSource, /setMessage\("Catálogo actualizado"\);/);
+    assert.doesNotMatch(appSource, /Catálogo actualizado[^\n]*\brev\b/i);
+    assert.doesNotMatch(styleSource, /\.game-revision(?:-row|-refresh)?\b/);
+
+    // Revisions remain part of the internal telemetry contract.
+    assert.match(appSource, /game_revision: selected\?\.revision_hash/);
+    assert.match(appSource, /previous_revision: platformCatalogRef\.current\?\.find/);
   });
 
   it("keeps catalog preview media cheap to decode", () => {
@@ -353,6 +409,8 @@ describe("catalog metadata sync", () => {
   it("publishes revisioned canonical bundle media in the local catalog", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../src/localCatalog.ts"), "utf8");
 
+    assert.match(source, /engine_game: `motion-levels-games:\$\{gameManifestSlug\(manifest\)\}`/);
+    assert.doesNotMatch(source, /engine_game: `motion-levels-games:\$\{manifest\.id\}`/);
     assert.match(source, /const media = gameBundleMediaSources\(manifest\.id, sourceRevision, menuLocation\);/);
     assert.match(source, /catalog_thumbnail_small_url: media\.thumbnailSmall/);
     assert.match(source, /catalog_thumbnail_url: media\.thumbnail/);
@@ -631,6 +689,8 @@ describe("catalog metadata sync", () => {
 
     assert.match(appSource, /function runtimeGameID\(game: Pick<GameCard, "engineGame" \| "id" \| "sourceKind">\): string/);
     assert.match(appSource, /game\.sourceKind === "platform_levels" && isCanonicalEntityID\(game\.id\) \? game\.id : engineGameID\(game\)/);
+    assert.match(appSource, /const selectedGame = gameForMenuIdentity\(menuGames, menu\.selectedGame\) \|\| menuGames\[0\] \|\| games\[0\];/);
+    assert.doesNotMatch(appSource, /menuGames\.find\(\(game\) => game\.id === menu\.selectedGame\) \|\| menuGames\[0\]/);
     assert.match(appSource, /game: runtimeGameID\(launchGame\),\s+engineGame: engineGameID\(launchGame\),/);
     assert.match(appSource, /const levelID = String\(lvl\.id \|\| ""\)\.trim\(\);/);
     assert.match(appSource, /slug: levelSlug \|\| undefined,/);

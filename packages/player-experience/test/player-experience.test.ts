@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   acceptsPlayerExperienceState,
@@ -53,6 +54,19 @@ describe("canonical player experience", () => {
     assert.equal(lifecycleFromRuntime({ ...base, phase: "countdown" }), "starting");
     assert.equal(lifecycleFromRuntime({ ...base, phase: "idle" }), "waiting");
     assert.equal(lifecycleFromRuntime({ ...base, currentGame: "salvapantallas", phase: "running" }), "idle");
+    assert.equal(lifecycleFromRuntime({
+      ...base,
+      recordingGate: {
+        id: "gate-1",
+        state: "arming",
+        scope: "run",
+        runId: "engine-1",
+        captureId: "capture-1",
+        attempt: 1,
+        startedAtUnixMillis: 1,
+        timeoutAtUnixMillis: 10,
+      },
+    }), "launching");
   });
 
   it("never accepts an equal, stale, invalid, or incompatible revision", () => {
@@ -83,5 +97,37 @@ describe("canonical player experience", () => {
     assert.equal(playerExperienceView({ ...base, lifecycle: "idle" }).screen, "browse");
     assert.deepEqual(controlsForState(base), ["pause", "restart", "exit", "narration", "mute", "toggle_mute"]);
     assert.deepEqual(controlsForState({ ...base, lifecycle: "paused" }), ["resume", "restart", "exit", "narration", "mute", "toggle_mute"]);
+    const recordingGate = {
+      id: "gate-1",
+      scope: "run" as const,
+      runId: "engine-1",
+      captureId: "capture-1",
+      attempt: 1,
+      startedAtUnixMillis: 1,
+      timeoutAtUnixMillis: 10,
+    };
+    assert.deepEqual(controlsForState({ ...base, lifecycle: "launching", recordingGate: { ...recordingGate, state: "arming" } }), []);
+    assert.deepEqual(
+      controlsForState({ ...base, lifecycle: "launching", recordingGate: { ...recordingGate, state: "timed_out", reason: "timeout" } }),
+      ["recording_retry", "recording_continue_without", "recording_cancel"],
+    );
+    assert.deepEqual(
+      controlsForState({ ...base, recordingGate: { ...recordingGate, state: "ready", readyAtUnixMillis: 9 } }),
+      ["pause", "restart", "exit", "narration", "mute", "toggle_mute"],
+    );
+    assert.equal(playerExperienceView({ ...base, lifecycle: "launching", recordingGate: { ...recordingGate, state: "arming" } }).pending, true);
+  });
+
+  it("publishes the optional strict run-recording gate in the JSON contract", () => {
+    const schema = JSON.parse(readFileSync(new URL("../schema/player-experience-state.schema.json", import.meta.url), "utf8")) as {
+      properties?: Record<string, unknown>;
+      $defs?: Record<string, { properties?: Record<string, { const?: string; enum?: string[] }>; required?: string[] }>;
+    };
+    const gate = schema.$defs?.recordingGate;
+    assert.ok(schema.properties?.recordingGate);
+    assert.deepEqual(gate?.properties?.state?.enum, ["arming", "timed_out", "ready"]);
+    assert.equal(gate?.properties?.scope?.const, "run");
+    assert.deepEqual(gate?.properties?.reason?.enum, ["timeout", "unavailable", "start_rejected", "start_unconfirmed"]);
+    assert.ok(gate?.required?.includes("captureId"));
   });
 });

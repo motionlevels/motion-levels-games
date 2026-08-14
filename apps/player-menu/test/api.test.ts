@@ -188,6 +188,23 @@ describe("kiosk API requests", () => {
     assert.match(requests[0]?.body.commandId ?? "", /^[0-9a-f-]{36}$/u);
   });
 
+  it("correlates recording gate decisions with the authoritative gate id", async () => {
+    let body: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ revision: 2 }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    await controlGame("recording_retry", { recordingGateId: " gate-2 " });
+    assert.equal(body.action, "recording_retry");
+    assert.equal(body.recordingGateId, "gate-2");
+    assert.match(String(body.commandId), /^[0-9a-f-]{36}$/u);
+    await assert.rejects(controlGame("recording_cancel"), /recordingGateId is required/u);
+  });
+
   it("serializes venue-session mutations in request order", async () => {
     let releaseFirst!: () => void;
     const first = new Promise<void>((resolve) => { releaseFirst = resolve; });

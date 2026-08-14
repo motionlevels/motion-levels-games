@@ -22,7 +22,7 @@
     "allowedControls": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["pause", "resume", "restart", "exit", "narration", "mute", "unmute", "toggle_mute"] }
+      "items": { "enum": ["pause", "resume", "restart", "exit", "narration", "mute", "unmute", "toggle_mute", "recording_retry", "recording_continue_without", "recording_cancel"] }
     },
     "currentGame": { "type": "string", "minLength": 1 },
     "venueSessionId": { "type": "string" },
@@ -67,9 +67,30 @@
     "lastEventCue": { "type": "string" },
     "lastEventMessage": { "type": "string" },
     "lastPressureUnix": { "type": "integer" },
+    "recordingGate": { "$ref": "#/$defs/recordingGate" },
     "catalog": { "type": "array" }
   },
   "$defs": {
+    "recordingGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "state", "scope", "runId", "captureId", "attempt",
+        "startedAtUnixMillis", "timeoutAtUnixMillis"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "state": { "enum": ["arming", "timed_out", "ready"] },
+        "scope": { "const": "run" },
+        "runId": { "type": "string", "minLength": 1 },
+        "captureId": { "type": "string", "minLength": 1 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "startedAtUnixMillis": { "type": "integer", "minimum": 0 },
+        "timeoutAtUnixMillis": { "type": "integer", "minimum": 0 },
+        "readyAtUnixMillis": { "type": "integer", "minimum": 0 },
+        "reason": { "enum": ["timeout", "unavailable", "start_rejected", "start_unconfirmed"] }
+      }
+    },
     "player": {
       "type": "object",
       "additionalProperties": false,

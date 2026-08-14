@@ -8,7 +8,11 @@ import test from "node:test";
 import { FLOOR_COLS, FLOOR_ROWS, gameEvent, type Frame } from "@motion-levels-games/game-sdk";
 import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
 import type { GameSessionState } from "@motion-levels-games/runtime";
-import type { RecordingBoundary } from "@motion-levels-games/session-history";
+import {
+  RecordingStartRejectedError,
+  type RecordingAsset,
+  type RecordingBoundary
+} from "@motion-levels-games/session-history";
 import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manifest";
 import { floorHeight, floorRgbBytes, floorWidth, pressureBitsetBytes, type PresentedFrame } from "../src/controllerProtocol.ts";
 import {
@@ -79,10 +83,12 @@ test("configured TV audio is controllable while idle and reports display output 
     currentGame: "salvapantallas",
     expectedRevision: revision,
     loadedRevision: revision,
+    shellRevision: revision,
     renderStatus: "ready",
     connected: true,
     feedTransport: "eventsource",
     lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
     audioOutputState: "ready",
   });
   assert.equal(runtime.status().audioOutputState, "ready");
@@ -239,6 +245,11 @@ test("game audio event identity remains stable across status reads and unrelated
     controllerAddress: "127.0.0.1:4201",
     audioEnabled: true,
   });
+  runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: "audio-event-visit",
+    recordingEnabled: false,
+  });
   await selectPingPong(runtime);
   runtime.applyRemoteFloorInput({
     commandId: "90000000-0000-4000-8000-000000000001",
@@ -261,6 +272,7 @@ test("game audio event identity remains stable across status reads and unrelated
     action: "start",
     venueSessionId: "audio-event-visit",
     recordingEnabled: false,
+    teamName: "Equipo actualizado",
   });
   assert.equal(runtime.status().lastEventSequence, first.lastEventSequence);
   assert.equal(runtime.status().lastEventUnixNanos, first.lastEventUnixNanos);
@@ -304,13 +316,18 @@ test("idle display health requires the revisioned animations renderer", () => {
     currentGame: "salvapantallas",
     expectedRevision: revision,
     loadedRevision: revision,
+    shellRevision: revision,
     renderStatus: "ready",
     connected: false,
     feedTransport: "poll",
     lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
   });
   const status = runtime.displayClientStatus();
   assert.equal(status.fresh, true);
+  assert.equal(status.paintFresh, true);
+  assert.equal(status.rendererRevisionMatches, true);
+  assert.equal(status.shellRevisionMatches, true);
   assert.equal(status.revisionMatches, true);
   assert.equal(status.healthy, true);
 
@@ -319,12 +336,46 @@ test("idle display health requires the revisioned animations renderer", () => {
     currentGame: "salvapantallas",
     expectedRevision: "",
     loadedRevision: "",
+    shellRevision: revision,
     renderStatus: "ready",
     connected: false,
     feedTransport: "poll",
     lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
   });
   assert.equal(runtime.displayClientStatus().revisionMatches, false);
+  assert.equal(runtime.displayClientStatus().healthy, false);
+
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    shellRevision: "2".repeat(40),
+    renderStatus: "ready",
+    connected: false,
+    feedTransport: "poll",
+    lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now(),
+  });
+  assert.equal(runtime.displayClientStatus().rendererRevisionMatches, true);
+  assert.equal(runtime.displayClientStatus().shellRevisionMatches, false);
+  assert.equal(runtime.displayClientStatus().revisionMatches, false);
+  assert.equal(runtime.displayClientStatus().healthy, false);
+
+  runtime.updateDisplayClient({
+    clientId: "player-display",
+    currentGame: "salvapantallas",
+    expectedRevision: revision,
+    loadedRevision: revision,
+    shellRevision: revision,
+    renderStatus: "ready",
+    connected: false,
+    feedTransport: "poll",
+    lastFeedUnixMillis: Date.now(),
+    lastPaintUnixMillis: Date.now() - 20_000,
+  });
+  assert.equal(runtime.displayClientStatus().paintFresh, false);
   assert.equal(runtime.displayClientStatus().healthy, false);
 });
 
@@ -390,7 +441,9 @@ test("venue history preserves selections and restarts, then restores the active 
     recordingPolicy: { scope: "run" }
   });
   await selectPingPong(first);
+  await continueWithoutRecording(first);
   first.control("restart");
+  await continueWithoutRecording(first);
   first.control("exit");
   await first.stop();
 
@@ -446,8 +499,12 @@ for (const recordingCase of [
     if (recordingCase.scope === "selection" || recordingCase.scope === "run") {
       await waitFor(() => cameraCalls.length === 1);
     }
+    if (recordingCase.scope === "run") await waitForRecordingGateRelease(runtime);
     runtime.control("restart");
-    if (recordingCase.scope === "run") await waitFor(() => cameraCalls.length === 3);
+    if (recordingCase.scope === "run") {
+      await waitFor(() => cameraCalls.length === 3);
+      await waitForRecordingGateRelease(runtime);
+    }
     runtime.control("exit");
     if (recordingCase.scope === "selection" || recordingCase.scope === "run") {
       await waitFor(() => cameraCalls.length === recordingCase.expected.length);
@@ -548,6 +605,294 @@ test("requested recording is reported unavailable when no camera adapter is conf
     activeSessionId: "visit-camera-unavailable",
     degradedReason: "recording_unavailable"
   });
+});
+
+test("run recording gate freezes authority, ignores late confirmation, and retries the same capture", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-recording-gate-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const starts: Array<ReturnType<typeof deferredRecordingBoundary>> = [];
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingStartGateTimeoutMillis: 20,
+    recordingClient: {
+      onBoundary(boundary) {
+        if (boundary.type === "stop") return { ...boundary.recording, status: "complete" };
+        const pending = deferredRecordingBoundary(boundary);
+        starts.push(pending);
+        return pending.promise;
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  const venueSessionId = "visit-strict-run-gate";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "run" } });
+  await selectPingPong(runtime);
+
+  const firstGate = runtime.status().recordingGate;
+  assert.equal(firstGate?.state, "arming");
+  assert.equal(runtime.status().lifecycle, "launching");
+  assert.deepEqual(runtime.status().allowedControls, []);
+  assert.equal(runtime.status().lastEventCue, "", "game audio must remain gated with gameplay");
+  assert.equal(runtime.status().lastEventSequence, 0);
+  const gatedRun = runtime.historySession(venueSessionId).session.selections[0]?.runs[0];
+  assert.equal(gatedRun?.status, "starting");
+  assert.equal(gatedRun?.gameplayStartedAtUnixMillis, undefined);
+  assert.equal(gatedRun?.finalSnapshot?.phase, "recording_arming");
+  const internal = runtime as unknown as { state: GameSessionState; tick(now: number): void };
+  const frozenClock = internal.state.clockMillis;
+  const frozenFrame = structuredClone(runtime.display().frame);
+  runtime.applyPressure({ x: 0, y: 4, pressed: true, unixNanos: 1n, sequence: 1n });
+  internal.tick(performance.now() + 50);
+  assert.equal(internal.state.clockMillis, frozenClock);
+  assert.deepEqual(runtime.display().frame, frozenFrame);
+  assert.equal(runtime.status().recordingGate?.state, "timed_out");
+  assert.equal(runtime.status().recordingGate?.reason, "timeout");
+  assert.deepEqual(runtime.status().allowedControls, [
+    "recording_retry",
+    "recording_continue_without",
+    "recording_cancel"
+  ]);
+  assert.throws(() => runtime.updateVenueSession({
+    action: "start",
+    venueSessionId,
+    recordingPolicy: { scope: "off" }
+  }), /recording policy cannot change/u);
+  assert.deepEqual(runtime.status().venueSessionRecordingPolicy, { scope: "run" });
+
+  starts[0]?.resolve();
+  await waitFor(() => runtime.historySession(venueSessionId).session.recordings[0]?.status === "recording");
+  assert.equal(runtime.status().recordingGate?.id, firstGate?.id, "late confirmation must not release a timed-out gate");
+  const retry = runtime.control("recording_retry", firstGate?.id);
+  assert.ok(!(retry instanceof Promise));
+  const secondGate = runtime.status().recordingGate;
+  assert.equal(secondGate?.state, "arming");
+  assert.equal(secondGate?.attempt, 2);
+  assert.notEqual(secondGate?.id, firstGate?.id);
+  assert.equal(secondGate?.captureId, firstGate?.captureId);
+  assert.equal(starts.length, 1, "a known physical start must not issue a duplicate shutter command");
+  assert.throws(
+    () => runtime.control("recording_continue_without", firstGate?.id),
+    /recording gate is stale/u
+  );
+  await waitForRecordingGateRelease(runtime);
+  assert.notEqual(runtime.status().lastEventCue, "", "the initial cue becomes visible only after release");
+  assert.throws(() => runtime.updateVenueSession({
+    action: "start",
+    venueSessionId,
+    recordingPolicy: { scope: "off" }
+  }), /recording policy cannot change/u);
+  assert.equal(internal.state.clockMillis, frozenClock);
+  runtime.control("exit");
+});
+
+test("ending a venue session after recording is ready closes gameplay and clears the run blocker", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-recording-end-ready-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  const venueSessionId = "visit-run-end-after-ready";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "run" } });
+  await selectPingPong(runtime);
+  await waitForRecordingGateRelease(runtime);
+  await new Promise((resolve) => setTimeout(resolve, 1_050));
+  assert.equal(runtime.status().recordingGate, undefined, "exercise end after the ready toast has expired");
+
+  const ended = runtime.updateVenueSession({ action: "end", venueSessionId, reason: "remote_end" });
+  assert.equal(ended.lifecycle, "idle");
+  assert.equal(ended.currentGame, "salvapantallas");
+  assert.equal(ended.recordingGate, undefined);
+  assert.equal(runtime.historySession(venueSessionId).session.status, "ended");
+  assert.equal(runtime.historySession(venueSessionId).session.selections[0]?.endedAtUnixMillis !== undefined, true);
+});
+
+test("end and exit block ungated gameplay until the previous run is physically stopped", async (context) => {
+  for (const termination of ["end", "exit"] as const) {
+    const directory = mkdtempSync(join(tmpdir(), `motion-levels-runtime-stop-barrier-${termination}-`));
+    context.after(() => rmSync(directory, { recursive: true, force: true }));
+    const stop = deferredRecordingBoundary();
+    const runtime = new VenueRuntime({
+      sourceRevision: revision,
+      controllerAddress: "127.0.0.1:4201",
+      sessionHistoryDir: directory,
+      recordingClient: {
+        onBoundary(boundary) {
+          if (boundary.type === "start") return { ...boundary.recording, status: "recording" };
+          stop.setBoundary(boundary);
+          return stop.promise;
+        }
+      }
+    });
+    const firstVenueSessionId = `visit-stop-barrier-a-${termination}`;
+    runtime.updateVenueSession({
+      action: "start",
+      venueSessionId: firstVenueSessionId,
+      recordingPolicy: { scope: "run" }
+    });
+    await selectPingPong(runtime);
+    await waitForRecordingGateRelease(runtime);
+    if (termination === "end") {
+      runtime.updateVenueSession({ action: "end", venueSessionId: firstVenueSessionId });
+    } else {
+      runtime.control("exit");
+    }
+    await waitFor(() => stop.boundary !== null);
+
+    const secondVenueSessionId = `visit-stop-barrier-b-${termination}`;
+    runtime.updateVenueSession({
+      action: "start",
+      venueSessionId: secondVenueSessionId,
+      recordingPolicy: { scope: "off" }
+    });
+    await assert.rejects(selectPingPong(runtime), /camera stop must be physically confirmed/u);
+    assert.equal(runtime.status().lifecycle, "idle");
+    assert.equal(runtime.status().currentGame, "salvapantallas");
+
+    stop.resolve("complete");
+    await waitFor(() => runtime.historySession(firstVenueSessionId).session.recordings[0]?.status === "complete");
+    await selectPingPong(runtime);
+    assert.notEqual(runtime.status().lifecycle, "idle");
+    runtime.control("exit");
+    await runtime.stop();
+  }
+});
+
+test("continue without video does not release gameplay until the camera stop is confirmed", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-recording-continue-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const start = deferredRecordingBoundary();
+  const stop = deferredRecordingBoundary();
+  let stopObserved = false;
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingStartGateTimeoutMillis: 20,
+    recordingClient: {
+      onBoundary(boundary) {
+        if (boundary.type === "start") {
+          start.setBoundary(boundary);
+          return start.promise;
+        }
+        stopObserved = true;
+        stop.setBoundary(boundary);
+        return stop.promise;
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  runtime.updateVenueSession({ action: "start", venueSessionId: "visit-run-continue", recordingPolicy: { scope: "run" } });
+  await selectPingPong(runtime);
+  const internal = runtime as unknown as { state: GameSessionState; tick(now: number): void };
+  internal.tick(performance.now() + 50);
+  const gateId = runtime.status().recordingGate?.id;
+  assert.ok(gateId);
+  const decision = Promise.resolve(runtime.control("recording_continue_without", gateId));
+  await Promise.resolve();
+  assert.equal(runtime.status().recordingGate?.state, "timed_out");
+  start.resolve();
+  await waitFor(() => stopObserved);
+  assert.equal(runtime.status().recordingGate?.state, "timed_out");
+  stop.resolve("complete");
+  const continued = await decision;
+  assert.equal(continued.recordingGate, undefined);
+  assert.notEqual(continued.lifecycle, "launching");
+  assert.equal(runtime.historySession("visit-run-continue").session.recordings[0]?.metadata?.excludedFromPlayback, true);
+  runtime.control("exit");
+});
+
+test("a rejected start still requires a confirmed stop and failed does not release the gate", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-recording-failed-stop-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  let stopAttempts = 0;
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        if (boundary.type === "start") throw new RecordingStartRejectedError("camera rejected start");
+        stopAttempts += 1;
+        if (stopAttempts === 1) return { ...boundary.recording, status: "failed" };
+        return {
+          ...boundary.recording,
+          status: "complete",
+          metadata: { ...(boundary.recording.metadata ?? {}), stopConfirmed: true }
+        };
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: "visit-run-failed-stop",
+    recordingPolicy: { scope: "run" }
+  });
+  await selectPingPong(runtime);
+  await waitFor(() => runtime.status().recordingGate?.state === "timed_out");
+  const gateId = runtime.status().recordingGate?.id;
+  assert.ok(gateId);
+
+  await assert.rejects(
+    Promise.resolve(runtime.control("recording_continue_without", gateId)),
+    /did not confirm stopped capture/u
+  );
+  assert.equal(stopAttempts, 1, "even an explicitly rejected start emits a defensive STOP");
+  assert.equal(runtime.status().recordingGate?.id, gateId);
+  assert.equal(runtime.status().recordingGate?.state, "timed_out");
+
+  const continued = await runtime.control("recording_continue_without", gateId);
+  assert.equal(stopAttempts, 2);
+  assert.equal(continued.recordingGate, undefined);
+  runtime.control("exit");
+});
+
+test("recording cancel waits for stop and returns to the screensaver", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-recording-cancel-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const start = deferredRecordingBoundary();
+  const stop = deferredRecordingBoundary();
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingStartGateTimeoutMillis: 20,
+    recordingClient: {
+      onBoundary(boundary) {
+        if (boundary.type === "start") {
+          start.setBoundary(boundary);
+          return start.promise;
+        }
+        stop.setBoundary(boundary);
+        return stop.promise;
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  runtime.updateVenueSession({ action: "start", venueSessionId: "visit-run-cancel", recordingPolicy: { scope: "run" } });
+  await selectPingPong(runtime);
+  (runtime as unknown as { tick(now: number): void }).tick(performance.now() + 50);
+  const gateId = runtime.status().recordingGate?.id;
+  assert.ok(gateId);
+  const cancelled = Promise.resolve(runtime.control("recording_cancel", gateId));
+  start.resolve();
+  await waitFor(() => stop.boundary !== null);
+  assert.equal(runtime.status().lifecycle, "launching");
+  stop.resolve("complete");
+  const idle = await cancelled;
+  assert.equal(idle.lifecycle, "idle");
+  assert.equal(idle.currentGame, "salvapantallas");
+  assert.equal(idle.recordingGate, undefined);
 });
 
 test("camera failures degrade recording health without degrading persistence", async (context) => {
@@ -1142,6 +1487,7 @@ test("failed published-level attempts create a new run and run-scoped recording 
     players: []
   });
   await waitFor(() => cameraCalls.length === 1);
+  await waitForRecordingGateRelease(runtime);
   const initialRunId = selected.sessionId;
   const internal = runtime as unknown as { gameStartedAt: number; tick(now: number): void };
   const base = performance.now();
@@ -1163,6 +1509,8 @@ test("failed published-level attempts create a new run and run-scoped recording 
 
   const retryAt = performance.now() + 3_100;
   internal.tick(retryAt);
+  await waitFor(() => cameraCalls.length >= 3);
+  await waitForRecordingGateRelease(runtime);
   const retryRunId = runtime.status().sessionId;
   assert.notEqual(retryRunId, initialRunId);
   assert.equal(runtime.status().phase, "running");
@@ -1225,6 +1573,7 @@ test("successful published-level advances create a new run and expose the actual
     players: []
   });
   await waitFor(() => cameraCalls.length === 1);
+  await waitForRecordingGateRelease(runtime);
   const initialRunId = selected.sessionId;
   const initialLevel = selected.level;
   const internal = runtime as unknown as { gameStartedAt: number; tick(now: number): void };
@@ -1237,6 +1586,7 @@ test("successful published-level advances create a new run and expose the actual
 
   internal.tick(base + 1_400);
   await waitFor(() => cameraCalls.length >= 3);
+  await waitForRecordingGateRelease(runtime);
   const advanced = runtime.status();
   const advancedRunId = advanced.sessionId;
   assert.notEqual(advancedRunId, initialRunId);
@@ -1516,6 +1866,42 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error("condition was not met");
+}
+
+async function waitForRecordingGateRelease(runtime: VenueRuntime): Promise<void> {
+  await waitFor(() => {
+    const gate = runtime.status().recordingGate;
+    return !gate || gate.state === "ready";
+  });
+}
+
+async function continueWithoutRecording(runtime: VenueRuntime): Promise<void> {
+  await waitFor(() => runtime.status().recordingGate?.state === "timed_out");
+  const gateId = runtime.status().recordingGate?.id;
+  assert.ok(gateId);
+  await runtime.control("recording_continue_without", gateId);
+}
+
+function deferredRecordingBoundary(initialBoundary?: RecordingBoundary): {
+  readonly promise: Promise<RecordingAsset>;
+  readonly boundary: RecordingBoundary | null;
+  setBoundary(boundary: RecordingBoundary): void;
+  resolve(status?: RecordingAsset["status"]): void;
+} {
+  let current = initialBoundary ?? null;
+  let resolvePromise!: (asset: RecordingAsset) => void;
+  const promise = new Promise<RecordingAsset>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    get boundary() { return current; },
+    setBoundary(boundary) { current = boundary; },
+    resolve(status = "recording") {
+      assert.ok(current, "recording boundary must be observed before it can resolve");
+      resolvePromise({ ...current.recording, status });
+    }
+  };
 }
 
 async function selectPingPong(runtime: VenueRuntime): Promise<void> {

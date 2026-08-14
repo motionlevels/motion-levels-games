@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_UNLOCK_LEVELS?: string;
   readonly VITE_DEV_SETTINGS_PIN?: string;
   readonly VITE_HOSTED_PLAYER_EXPERIENCE?: string;
+  readonly VITE_MENU_UPDATE_POLL_MILLIS?: string;
 }
 
 interface ImportMeta {
@@ -20,5 +21,6 @@ interface ImportMeta {
 
 declare const __MENU_BUILD_REVISION__: string;
 declare const __MENU_BUILD_DATE__: string;
+declare const __MOTION_LEVELS_GAMES_BUILD_VERSION__: string;
 
 declare module "@fontsource-variable/inter";

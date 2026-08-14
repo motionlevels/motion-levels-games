@@ -6,10 +6,10 @@ import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
-import type { RecordingBoundary } from "@motion-levels-games/session-history";
+import { RecordingStartRejectedError, type RecordingBoundary } from "@motion-levels-games/session-history";
 import {
   authorizeEngineRequest,
-  closeVenueHttpSse,
+  beginVenueHttpShutdown,
   createLatestSseWriter,
   createVenueHttpServer,
   engineTokenHeader
@@ -96,18 +96,184 @@ test("shutdown closes SSE, waits for in-flight commands, then drains runtime", a
   });
   await entered;
   let closed = false;
-  const serverClosed = new Promise<void>((resolve) => server.close(() => {
-    closed = true;
-    resolve();
-  }));
-  closeVenueHttpSse(server);
+  const shutdown = beginVenueHttpShutdown(server);
+  void shutdown.serverClosed.then(() => { closed = true; });
+  let mutationsDrained = false;
+  void shutdown.mutationsDrained.then(() => { mutationsDrained = true; });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(closed, false, "ordinary command must remain connected during shutdown");
+  assert.equal(mutationsDrained, false, "runtime drain must wait for the accepted mutation");
   releaseSelect();
   assert.equal((await select).status, 200);
-  await serverClosed;
+  await shutdown.mutationsDrained;
   await runtime.stop();
+  await shutdown.serverClosed;
   assert.deepEqual(order, ["select:start", "select:end", "runtime:stop"]);
+});
+
+test("shutdown drains an ambiguous camera start through a physically confirmed stop", async (context) => {
+  const revision = "1".repeat(40);
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-http-shutdown-camera-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  let releaseStart = () => {};
+  const startGate = new Promise<void>((resolve) => { releaseStart = resolve; });
+  let observeStart = () => {};
+  const startObserved = new Promise<void>((resolve) => { observeStart = resolve; });
+  let releaseStop = () => {};
+  const stopGate = new Promise<void>((resolve) => { releaseStop = resolve; });
+  let observeStop = () => {};
+  const stopObserved = new Promise<void>((resolve) => { observeStop = resolve; });
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      async onBoundary(boundary) {
+        if (boundary.type === "start") {
+          observeStart();
+          await startGate;
+          return { ...boundary.recording, status: "recording" };
+        }
+        observeStop();
+        await stopGate;
+        return {
+          ...boundary.recording,
+          status: "complete",
+          metadata: { ...(boundary.recording.metadata ?? {}), stopConfirmed: true }
+        };
+      }
+    }
+  });
+  const venueSessionId = "visit-http-shutdown-camera";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "run" } });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/select`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      commandId: "98989898-9898-4989-8989-989898989898",
+      game: "motion-levels-games:ping-pong",
+      engineGame: "motion-levels-games:ping-pong",
+      sourceKind: "motion_levels_games",
+      sourceRevision: revision,
+      venueSessionId,
+      recordingPolicy: { scope: "run" },
+      playerCount: 0,
+      allowAnyPlayers: true,
+      players: []
+    })
+  });
+  assert.equal(response.status, 200);
+  await startObserved;
+
+  const shutdown = beginVenueHttpShutdown(server);
+  await shutdown.mutationsDrained;
+  let runtimeDrained = false;
+  const runtimeDrain = runtime.stop().then(() => { runtimeDrained = true; });
+  await Promise.resolve();
+  assert.equal(runtimeDrained, false);
+  releaseStart();
+  await stopObserved;
+  assert.equal(runtimeDrained, false, "shutdown must await physical stop confirmation");
+  releaseStop();
+  await runtimeDrain;
+  await shutdown.serverClosed;
+  assert.equal(runtime.historySession(venueSessionId).session.recordings[0]?.status, "complete");
+});
+
+test("direct select cannot hide a visit camera stop behind ungated gameplay", async (context) => {
+  const revision = "1".repeat(40);
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-http-select-stop-barrier-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  let releaseStop = () => {};
+  const stopGate = new Promise<void>((resolve) => { releaseStop = resolve; });
+  let observeStop = () => {};
+  const stopObserved = new Promise<void>((resolve) => { observeStop = resolve; });
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      async onBoundary(boundary) {
+        if (boundary.type === "start") return { ...boundary.recording, status: "recording" };
+        observeStop();
+        await stopGate;
+        return {
+          ...boundary.recording,
+          status: "complete",
+          metadata: { ...(boundary.recording.metadata ?? {}), stopConfirmed: true }
+        };
+      }
+    }
+  });
+  const firstVenueSessionId = "visit-http-direct-select-a";
+  const secondVenueSessionId = "visit-http-direct-select-b";
+  runtime.updateVenueSession({
+    action: "start",
+    venueSessionId: firstVenueSessionId,
+    recordingPolicy: { scope: "visit" }
+  });
+  await waitFor(() => runtime.historySession(firstVenueSessionId).session.recordings[0]?.status === "recording");
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(async () => {
+    releaseStop();
+    await runtime.stop();
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const selection = (commandId: string) => ({
+    commandId,
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId: secondVenueSessionId,
+    recordingPolicy: { scope: "off" },
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  const select = (commandId: string) => fetch(`${base}/api/select`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(selection(commandId))
+  });
+
+  const direct = await select("97979797-9797-4979-8979-979797979791");
+  assert.equal(direct.status, 409);
+  assert.match(await direct.text(), /must stop the active camera/u);
+  assert.equal(runtime.status().lifecycle, "idle");
+  assert.equal(runtime.status().venueSessionId, firstVenueSessionId);
+
+  const transitioned = await fetch(`${base}/api/venue-session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "start",
+      venueSessionId: secondVenueSessionId,
+      recordingPolicy: { scope: "off" }
+    })
+  });
+  assert.equal(transitioned.status, 200);
+  await stopObserved;
+  const whileStopping = await select("97979797-9797-4979-8979-979797979792");
+  assert.equal(whileStopping.status, 409);
+  assert.match(await whileStopping.text(), /physically confirmed/u);
+  assert.equal(runtime.status().lifecycle, "idle");
+
+  releaseStop();
+  await waitFor(() => runtime.historySession(firstVenueSessionId).session.recordings[0]?.status === "complete");
+  const afterStop = await select("97979797-9797-4979-8979-979797979793");
+  assert.equal(afterStop.status, 200);
+  assert.notEqual(runtime.status().lifecycle, "idle");
 });
 
 test("canonical player state and idempotent commands share the venue API", async (context) => {
@@ -231,6 +397,78 @@ test("output tests are validated, idempotent, and reject concurrent commands thr
   assert.equal(next.outputTest.sequence, 2);
   assert.equal(next.outputTest.target, "floor");
   assert.equal(next.outputTest.state, "pending");
+});
+
+test("recording gate controls require and route the current gate id", async (context) => {
+  const revision = "1".repeat(40);
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-http-recording-gate-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        if (boundary.type === "start") throw new RecordingStartRejectedError("camera rejected start");
+        return { ...boundary.recording, status: "complete" };
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  const server = createVenueHttpServer(runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  context.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const post = (path: string, body: Record<string, unknown>) => fetch(`http://127.0.0.1:${address.port}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  assert.equal((await post("/api/venue-session", {
+    action: "start",
+    venueSessionId: "visit-http-recording-gate",
+    recordingPolicy: { scope: "run" }
+  })).status, 200);
+  const selected = await post("/api/select", {
+    commandId: "70000000-0000-4000-8000-000000000001",
+    game: "motion-levels-games:ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  assert.equal(selected.status, 200);
+  await waitFor(() => runtime.status().recordingGate?.state === "timed_out");
+  const gate = runtime.status().recordingGate;
+  assert.ok(gate);
+
+  const missing = await post("/api/control", {
+    action: "recording_retry",
+    commandId: "70000000-0000-4000-8000-000000000002"
+  });
+  assert.equal(missing.status, 409);
+  const stale = await post("/api/control", {
+    action: "recording_retry",
+    recordingGateId: "stale-gate",
+    commandId: "70000000-0000-4000-8000-000000000003"
+  });
+  assert.equal(stale.status, 409);
+  const retried = await post("/api/control", {
+    action: "recording_retry",
+    recordingGateId: gate.id,
+    commandId: "70000000-0000-4000-8000-000000000004"
+  });
+  assert.equal(retried.status, 200);
+  const retriedBody = await retried.json() as Record<string, unknown>;
+  const retriedGate = retriedBody.recordingGate as Record<string, unknown>;
+  assert.notEqual(retriedGate.id, gate.id);
+  assert.equal(retriedGate.captureId, gate.captureId);
+  assert.equal(retriedGate.attempt, 2);
 });
 
 test("retrying a conflicted select command cannot restore a stale venue recording policy", async (context) => {

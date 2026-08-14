@@ -56,6 +56,31 @@ export type HistorySelectionInput = {
   players?: SessionHistoryPlayer[];
 };
 
+export type RunRecordingStartFailureReason =
+  | "unavailable"
+  | "start_rejected"
+  | "start_unconfirmed";
+
+export type RunRecordingStartResult = Readonly<{
+  state: "recording" | "failed" | "revoked";
+  recording: RecordingAsset;
+  reason?: RunRecordingStartFailureReason;
+}>;
+
+/** One non-blocking attempt to establish the durable recording attached to a
+ * run. The venue authority owns the UX deadline; this promise may settle
+ * later so the physical camera outcome can still be persisted safely. */
+export type RunRecordingStartHandle = Readonly<{
+  recording: RecordingAsset;
+  completion: Promise<RunRecordingStartResult>;
+}>;
+
+export type HistoryRunStartOptions = Readonly<{
+  recordingBlocked?: boolean;
+  pendingLevelId?: string;
+  pendingLevelSlug?: string;
+}>;
+
 type RunClock = {
   runId: string;
   phase: string;
@@ -65,6 +90,14 @@ type RunClock = {
   gameplayElapsedMillis: number;
   lastPersistedAtUnixMillis: number;
   lastSnapshot: SessionHistoryJsonObject;
+};
+
+type PendingRunRecordingStart = {
+  generation: number;
+  handle: RunRecordingStartHandle;
+  recording: RecordingAsset;
+  settled: boolean;
+  resolve(result: RunRecordingStartResult): void;
 };
 
 const clockFlushIntervalMillis = 5_000;
@@ -84,11 +117,17 @@ export class SessionHistoryRecorder {
   private readonly activeRecordings = new Map<string, string>();
   private readonly recordingGeneration = new Map<string, number>();
   private recordingOperations: Promise<void> = Promise.resolve();
+  private readonly pendingRecordingStops = new Set<string>();
   private readonly uncertainStops = new Map<string, unknown>();
+  private readonly recordingStopWaiters = new Set<{
+    resolve(): void;
+    reject(error: unknown): void;
+  }>();
   private readonly unresolvedStartFailures = new Set<string>();
   private readonly recordingRetryTimers = new Map<string, NodeJS.Timeout>();
   private readonly recordingStartRetryTimers = new Map<string, NodeJS.Timeout>();
   private readonly recordingStartRetryAttempts = new Map<string, number>();
+  private readonly pendingRunRecordingStarts = new Map<string, PendingRunRecordingStart>();
   private recordingWatchTimer: NodeJS.Timeout | null = null;
   private recordingWatchGeneration = 0;
   private recordingDrainActive = false;
@@ -274,8 +313,12 @@ export class SessionHistoryRecorder {
     });
   }
 
-  startSelection(input: HistorySelectionInput, state: GameSessionState): void {
-    this.safe(() => {
+  startSelection(
+    input: HistorySelectionInput,
+    state: GameSessionState,
+    options: HistoryRunStartOptions = {}
+  ): RunRecordingStartHandle | null {
+    return this.safe(() => {
       if (!this.activeSessionId) {
         this.startVisit({
           id: `local-${randomUUID()}`,
@@ -324,15 +367,138 @@ export class SessionHistoryRecorder {
         payload: { gameId: selection.gameId, label: selection.label }
       }]);
       this.boundary("start", "selection", visit, selection.id);
-      this.startRun(input.runId, "initial", state);
-    });
+      return this.startRun(input.runId, "initial", state, options);
+    }, null) ?? null;
   }
 
-  restartRun(runId: string, state: GameSessionState): void {
-    this.safe(() => {
+  restartRun(
+    runId: string,
+    state: GameSessionState,
+    options: HistoryRunStartOptions = {}
+  ): RunRecordingStartHandle | null {
+    return this.safe(() => {
       this.endRun("restarted", "abandoned");
-      this.startRun(runId, "restart", state);
-    });
+      return this.startRun(runId, "restart", state, options);
+    }, null) ?? null;
+  }
+
+  recordingStopsPending(): boolean {
+    return this.pendingRecordingStops.size > 0;
+  }
+
+  recordingTransitionWouldStop(sessionId: string, policy: RecordingPolicy): boolean {
+    if (!this.options.recordingClient || !this.activeSessionId || this.activeRecordings.size === 0) return false;
+    if (sessionId !== this.activeSessionId) return true;
+    try {
+      return !recordingPoliciesEqual(this.store.getVisit(this.activeSessionId).recordingPolicy, policy);
+    } catch {
+      return true;
+    }
+  }
+
+  retryRunRecording(runId: string): RunRecordingStartHandle | null {
+    return this.safe(() => {
+      if (!this.activeSessionId) return null;
+      const visit = this.store.getVisit(this.activeSessionId);
+      if (visit.status !== "active" || visit.recordingPolicy.scope !== "run") return null;
+      const selection = visit.selections.find((candidate) => candidate.id === visit.activeSelectionId);
+      const run = selection?.runs.find((candidate) => candidate.id === runId);
+      if (!selection || !run || visit.activeRunId !== runId || run.endedAtUnixMillis !== undefined) return null;
+      const current = [...visit.recordings]
+        .reverse()
+        .find((candidate) => candidate.scope === "run"
+          && candidate.selectionId === selection.id
+          && candidate.runId === runId);
+      if (!current) return null;
+      const pending = this.pendingRunRecordingStarts.get(runId);
+      if (pending && !pending.settled && pending.recording.id === current.id) {
+        // The venue deadline is intentionally shorter than an arbitrarily
+        // slow camera operation. Retrying while that exact durable start is
+        // still in flight reattaches the new gate to it instead of issuing a
+        // duplicate shutter command for the same capture.
+        return pending.handle;
+      }
+      this.cancelStartRetry(current.id);
+      if (current.status === "recording") {
+        // A late physical confirmation is persisted even after the venue gate
+        // times out. It is already sufficient for an operator retry and must
+        // never be downgraded to requested or sent to the camera again.
+        return {
+          recording: current,
+          completion: Promise.resolve({ state: "recording", recording: current })
+        };
+      }
+      const recording: RecordingAsset = {
+        ...current,
+        status: this.options.recordingClient ? "requested" : "missing",
+        endedAtUnixMillis: undefined,
+        metadata: {
+          ...(current.metadata ?? {}),
+          operatorRetry: true
+        }
+      };
+      this.activeRecordings.set(recordingKey("run", selection.id, runId), recording.id);
+      this.store.upsertRecording(visit.id, recording);
+      return this.enqueueBoundary("start", visit, recording, selection.id, runId);
+    }, null) ?? null;
+  }
+
+  /** Revoke any pending start and persist a stop intent for this run without
+   * changing the visit recording policy. A start already accepted by the
+   * camera is serialized before the stop and cannot leak into the next run. */
+  async skipRunRecording(runId: string, reason = "continued_without_video"): Promise<void> {
+    try {
+      if (!this.activeSessionId) return;
+      const visit = this.store.getVisit(this.activeSessionId);
+      const selection = visit.selections.find((candidate) => candidate.id === visit.activeSelectionId);
+      const recording = [...visit.recordings]
+        .reverse()
+        .find((candidate) => candidate.scope === "run"
+          && candidate.selectionId === selection?.id
+          && candidate.runId === runId);
+      if (!selection || !recording) return;
+      this.cancelStartRetry(recording.id);
+      this.revokeRunRecordingStart(runId, recording, "start_unconfirmed");
+      const skipped = this.store.upsertRecording(visit.id, {
+        ...recording,
+        metadata: {
+          ...(recording.metadata ?? {}),
+          excludedFromPlayback: true,
+          recordingSkipped: true,
+          recordingSkipReason: reason
+        }
+      });
+      if (!this.options.recordingClient || skipped.status === "complete" || skipped.status === "partial"
+        || skipped.status === "missing") {
+        await this.waitForNoRecordingStops();
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const current = this.store.getVisit(visit.id);
+        const key = recordingKey("run", selection.id, runId);
+        if (this.activeRecordings.get(key) === recording.id) {
+          this.boundary("stop", "run", current, selection.id, runId, resolve, reject);
+          return;
+        }
+        const latest = current.recordings.find((candidate) => candidate.id === recording.id);
+        if (!latest || latest.status === "complete" || latest.status === "partial"
+          || latest.status === "missing") {
+          resolve();
+          return;
+        }
+        const finalizing = this.store.upsertRecording(current.id, {
+          ...latest,
+          status: "finalizing",
+          endedAtUnixMillis: latest.endedAtUnixMillis ?? this.now()
+        });
+        this.enqueueBoundary("stop", current, finalizing, selection.id, runId, resolve, false, reject);
+      });
+      await this.waitForNoRecordingStops();
+    } catch (error) {
+      this.degradeRecording(error);
+      throw error;
+    }
   }
 
   endSelection(reason = "completed"): void {
@@ -529,17 +695,25 @@ export class SessionHistoryRecorder {
         this.resolveUncertainStop(recordingId);
         continue;
       }
-      this.scheduleFinalizingRetry(visit.id, recording.id);
+      this.scheduleFinalizingRetry(visit.id, recording.id, true);
     }
   }
 
-  private startRun(id: string, reason: "initial" | "restart" | "recovered", state: GameSessionState): void {
-    if (!this.activeSessionId) return;
+  private startRun(
+    id: string,
+    reason: "initial" | "restart" | "recovered",
+    state: GameSessionState,
+    options: HistoryRunStartOptions = {}
+  ): RunRecordingStartHandle | null {
+    if (!this.activeSessionId) return null;
     const at = this.now();
     const visit = this.store.getVisit(this.activeSessionId);
     const selection = visit.selections.find((candidate) => candidate.id === visit.activeSelectionId);
-    if (!selection) return;
-    const phase = state.paused ? "paused" : String(state.snapshot.phase || "waiting");
+    if (!selection) return null;
+    const initialState = options.recordingBlocked
+      ? recordingArmingHistoryState(state, options)
+      : state;
+    const phase = initialState.paused ? "paused" : String(initialState.snapshot.phase || "waiting");
     const run: SessionHistoryRun = {
       id,
       ordinal: selection.runs.length + 1,
@@ -551,9 +725,10 @@ export class SessionHistoryRecorder {
       pausedMillis: 0,
       phaseDurations: {},
       score: 0,
-      lives: Number(state.snapshot.lives),
+      lives: Number(initialState.snapshot.lives),
       players: [],
-      rounds: []
+      rounds: [],
+      ...(options.recordingBlocked ? { finalSnapshot: historySnapshot(initialState) } : {})
     };
     selection.runs.push(run);
     visit.activeRunId = id;
@@ -563,10 +738,10 @@ export class SessionHistoryRecorder {
       phase,
       phaseChangedAt: at,
       lastFingerprint: "",
-      engineElapsedMillis: state.clockMillis,
-      gameplayElapsedMillis: Number(state.snapshot.elapsedMillis) || 0,
+      engineElapsedMillis: initialState.clockMillis,
+      gameplayElapsedMillis: Number(initialState.snapshot.elapsedMillis) || 0,
       lastPersistedAtUnixMillis: at,
-      lastSnapshot: historySnapshot(state)
+      lastSnapshot: historySnapshot(initialState)
     };
     this.store.commitTransition(visit, [{
       selectionId: selection.id,
@@ -576,8 +751,9 @@ export class SessionHistoryRecorder {
       payload: { reason }
     }]);
     this.linkRunToActiveRecordings(visit, selection.id, id);
-    this.boundary("start", "run", visit, selection.id, id);
-    this.observeState(state);
+    const recording = this.boundary("start", "run", visit, selection.id, id);
+    if (!options.recordingBlocked) this.observeState(state);
+    return recording;
   }
 
   private endRun(reason: string, status: "finished" | "abandoned" | "interrupted"): void {
@@ -663,9 +839,10 @@ export class SessionHistoryRecorder {
     visit: SessionHistoryVisit,
     selectionId?: string,
     runId?: string,
-    afterSuccess?: () => void
-  ): void {
-    if (type === "start" && visit.recordingPolicy.scope !== scope) return;
+    afterSuccess?: () => void,
+    afterFailure?: (error: unknown) => void
+  ): RunRecordingStartHandle | null {
+    if (type === "start" && visit.recordingPolicy.scope !== scope) return null;
     if (type === "stop" && scope === "visit") this.cancelRecordingWatch();
     const key = recordingKey(scope, selectionId, runId);
     const at = this.now();
@@ -693,10 +870,11 @@ export class SessionHistoryRecorder {
       this.clearInactiveStartFailures();
     } else {
       const id = this.activeRecordings.get(key);
-      if (!id) return;
+      if (!id) return null;
       this.cancelStartRetry(id);
       const current = this.store.getVisit(visit.id).recordings.find((candidate) => candidate.id === id);
-      if (!current) return;
+      if (!current) return null;
+      if (scope === "run" && runId) this.revokeRunRecordingStart(runId, current, "start_unconfirmed");
       const terminalRun = scope === "run"
         ? visit.selections.find((candidate) => candidate.id === selectionId)?.runs.find((candidate) => candidate.id === runId)
         : undefined;
@@ -712,7 +890,16 @@ export class SessionHistoryRecorder {
       this.activeRecordings.delete(key);
     }
     this.store.upsertRecording(visit.id, recording);
-    this.enqueueBoundary(type, visit, recording, selectionId, runId, afterSuccess, preserveQueuedStart);
+    return this.enqueueBoundary(
+      type,
+      visit,
+      recording,
+      selectionId,
+      runId,
+      afterSuccess,
+      preserveQueuedStart,
+      afterFailure
+    );
   }
 
   private enqueueBoundary(
@@ -722,16 +909,31 @@ export class SessionHistoryRecorder {
     selectionId?: string,
     runId?: string,
     afterSuccess?: () => void,
-    preserveQueuedStart = false
-  ): void {
+    preserveQueuedStart = false,
+    afterFailure?: (error: unknown) => void
+  ): RunRecordingStartHandle | null {
     const client = this.options.recordingClient;
-    if (!client) return;
     const occurredAtUnixMillis = type === "start"
       ? recording.startedAtUnixMillis ?? this.now()
       : recording.endedAtUnixMillis ?? this.now();
     const previousGeneration = this.recordingGeneration.get(recording.id) ?? 0;
     const generation = preserveQueuedStart ? Math.max(1, previousGeneration) : previousGeneration + 1;
     this.recordingGeneration.set(recording.id, generation);
+    const runStart = type === "start" && recording.scope === "run" && runId
+      ? this.createRunRecordingStart(recording, runId, generation)
+      : null;
+    if (!client) {
+      if (runStart) {
+        this.settleRunRecordingStart(runId ?? "", generation, {
+          state: "failed",
+          recording,
+          reason: "unavailable"
+        });
+      }
+      afterSuccess?.();
+      return runStart?.handle ?? null;
+    }
+    if (type === "stop") this.pendingRecordingStops.add(recording.id);
     const boundary: RecordingBoundary = {
       type,
       scope: recording.scope,
@@ -743,21 +945,55 @@ export class SessionHistoryRecorder {
       recording
     };
     this.recordingOperations = this.recordingOperations.then(async () => {
-      if (this.recordingGeneration.get(recording.id) !== generation) return;
-      if (type === "start" && !this.startBoundaryStillActive(visit.id, recording)) return;
+      if (this.recordingGeneration.get(recording.id) !== generation) {
+        if (runId) this.settleRunRecordingStart(runId, generation, {
+          state: "revoked",
+          recording
+        });
+        return;
+      }
+      if (type === "start" && !this.startBoundaryStillActive(visit.id, recording)) {
+        if (runId) this.settleRunRecordingStart(runId, generation, {
+          state: "revoked",
+          recording
+        });
+        return;
+      }
       if (this.uncertainStops.size > 0 && type === "start") {
-        this.recordingFailed(type, visit.id, recording, generation, this.uncertainStops.values().next().value);
+        const error = this.uncertainStops.values().next().value;
+        this.recordingFailed(type, visit.id, recording, generation, error);
+        if (runId) this.settleRunRecordingStart(runId, generation, {
+          state: "failed",
+          recording: this.currentRecording(visit.id, recording.id) ?? recording,
+          reason: "start_unconfirmed"
+        });
         return;
       }
       try {
         const asset = await client.onBoundary(boundary);
+        if (type === "stop" && (!asset || !isConfirmedStoppedRecording(asset))) {
+          throw new Error(
+            `camera recorder did not confirm stopped capture ${recording.captureId ?? recording.id}`
+          );
+        }
         let persisted: RecordingAsset | null = null;
         if (asset) {
           persisted = this.persistRecordingResult(visit.id, recording.id, asset, generation);
           if (type === "start" && asset.status === "recording") {
             this.recoverRecordingHealth();
             if (persisted?.scope === "visit") this.scheduleRecordingWatch(visit.id, persisted);
+            if (runId) this.settleRunRecordingStart(runId, generation, {
+              state: "recording",
+              recording: persisted ?? asset
+            });
           }
+        }
+        if (type === "start" && runId && asset?.status !== "recording") {
+          this.settleRunRecordingStart(runId, generation, {
+            state: "failed",
+            recording: persisted ?? recording,
+            reason: "start_unconfirmed"
+          });
         }
         if (type === "stop") {
           this.resolveUncertainStop(recording.id);
@@ -772,11 +1008,28 @@ export class SessionHistoryRecorder {
         if (type === "stop" && currentFailure) {
           this.uncertainStops.set(recording.id, error);
           this.scheduleFinalizingRetry(visit.id, recording.id);
+          this.rejectRecordingStopWaiters(error);
         } else if (type === "start" && currentFailure) {
-          this.scheduleStartRetry(visit.id, recording.id);
+          if (runId) this.settleRunRecordingStart(runId, generation, {
+            state: "failed",
+            recording: this.currentRecording(visit.id, recording.id) ?? recording,
+            reason: error instanceof RecordingStartRejectedError ? "start_rejected" : "start_unconfirmed"
+          });
+          if (recording.scope !== "run") this.scheduleStartRetry(visit.id, recording.id);
+        } else if (type === "start" && runId) {
+          const confirmed = this.currentRecording(visit.id, recording.id);
+          if (confirmed?.status === "recording") {
+            this.recoverRecordingHealth();
+            this.settleRunRecordingStart(runId, generation, {
+              state: "recording",
+              recording: confirmed
+            });
+          }
         }
+        afterFailure?.(error);
       }
     });
+    return runStart?.handle ?? null;
   }
 
   private persistRecordingResult(
@@ -803,6 +1056,71 @@ export class SessionHistoryRecorder {
     });
   }
 
+  private createRunRecordingStart(
+    recording: RecordingAsset,
+    runId: string,
+    generation: number
+  ): { handle: RunRecordingStartHandle } {
+    const previous = this.pendingRunRecordingStarts.get(runId);
+    if (previous && !previous.settled && previous.recording.id === recording.id) {
+      // A confirmed stop resumes all queued starts. Reuse the run's promise
+      // when that bookkeeping re-enqueues the exact same durable capture so
+      // the venue gate remains attached to the winning generation.
+      previous.generation = generation;
+      previous.recording = recording;
+      return { handle: previous.handle };
+    }
+    if (previous && !previous.settled) {
+      previous.settled = true;
+      previous.resolve({ state: "revoked", recording: previous.recording });
+    }
+    let resolveCompletion!: (result: RunRecordingStartResult) => void;
+    const completion = new Promise<RunRecordingStartResult>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const handle: RunRecordingStartHandle = { recording, completion };
+    this.pendingRunRecordingStarts.set(runId, {
+      generation,
+      handle,
+      recording,
+      settled: false,
+      resolve: resolveCompletion
+    });
+    return { handle };
+  }
+
+  private settleRunRecordingStart(
+    runId: string,
+    generation: number,
+    result: RunRecordingStartResult
+  ): void {
+    const pending = this.pendingRunRecordingStarts.get(runId);
+    if (!pending || pending.generation !== generation || pending.settled) return;
+    pending.settled = true;
+    this.pendingRunRecordingStarts.delete(runId);
+    pending.resolve(result);
+  }
+
+  private revokeRunRecordingStart(
+    runId: string,
+    recording: RecordingAsset,
+    reason: RunRecordingStartFailureReason
+  ): void {
+    const pending = this.pendingRunRecordingStarts.get(runId);
+    if (!pending || pending.recording.id !== recording.id || pending.settled) return;
+    pending.settled = true;
+    this.pendingRunRecordingStarts.delete(runId);
+    pending.resolve({ state: "revoked", recording, reason });
+  }
+
+  private currentRecording(sessionId: string, recordingId: string): RecordingAsset | undefined {
+    try {
+      return this.store.getVisit(sessionId).recordings.find((candidate) => candidate.id === recordingId);
+    } catch {
+      return undefined;
+    }
+  }
+
   private recordingFailed(
     type: "start" | "stop",
     sessionId: string,
@@ -811,6 +1129,13 @@ export class SessionHistoryRecorder {
     error: unknown
   ): boolean {
     if (this.recordingGeneration.get(recording.id) !== generation) return false;
+    const persisted = this.currentRecording(sessionId, recording.id);
+    if (type === "start" && persisted?.status === "recording") {
+      // A redundant request may fail after another observation has already
+      // proven that the physical capture is active. Preserve the strongest
+      // known state instead of hiding it behind a later transport error.
+      return false;
+    }
     this.degradeRecording(error);
     if (type === "start") this.unresolvedStartFailures.add(recording.id);
     this.safe(() => {
@@ -1042,10 +1367,10 @@ export class SessionHistoryRecorder {
     }
   }
 
-  private scheduleFinalizingRetry(sessionId: string, recordingId: string): void {
+  private scheduleFinalizingRetry(sessionId: string, recordingId: string, expedite = false): void {
     const previous = this.recordingRetryTimers.get(recordingId);
     if (previous) clearTimeout(previous);
-    const delay = this.finalizingRetryDelay();
+    const delay = expedite ? Math.min(this.finalizingRetryDelay(), 100) : this.finalizingRetryDelay();
     const timer = setTimeout(() => {
       this.recordingRetryTimers.delete(recordingId);
       this.safe(() => {
@@ -1135,9 +1460,29 @@ export class SessionHistoryRecorder {
 
   private resolveUncertainStop(recordingId: string): void {
     this.uncertainStops.delete(recordingId);
+    this.pendingRecordingStops.delete(recordingId);
     const timer = this.recordingRetryTimers.get(recordingId);
     if (timer) clearTimeout(timer);
     this.recordingRetryTimers.delete(recordingId);
+    if (this.pendingRecordingStops.size === 0) {
+      for (const waiter of this.recordingStopWaiters) waiter.resolve();
+      this.recordingStopWaiters.clear();
+    }
+  }
+
+  private rejectRecordingStopWaiters(error: unknown): void {
+    for (const waiter of this.recordingStopWaiters) waiter.reject(error);
+    this.recordingStopWaiters.clear();
+  }
+
+  private waitForNoRecordingStops(): Promise<void> {
+    if (this.pendingRecordingStops.size === 0) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      this.recordingStopWaiters.add({ resolve, reject });
+      // Operator decisions are serialized control calls, so do not leave one
+      // parked behind the normal background retry cadence.
+      this.expediteUncertainStops();
+    });
   }
 
   private cancelRecordingWatch(): void {
@@ -1189,6 +1534,13 @@ export class SessionHistoryRecorder {
   }
 }
 
+function isConfirmedStoppedRecording(recording: RecordingAsset): boolean {
+  if (recording.metadata?.stopConfirmed === true) return true;
+  return recording.status === "complete"
+    || recording.status === "partial"
+    || recording.status === "missing";
+}
+
 function policyFromInput(
   input: Pick<HistoryVisitInput, "recordingPolicy" | "recordingEnabled">,
   fallback: RecordingPolicy = { scope: "visit" }
@@ -1212,6 +1564,34 @@ function runStatus(phase: string): SessionHistoryRun["status"] {
   if (phase === "running") return "running";
   if (phase === "waiting") return "waiting";
   return "starting";
+}
+
+function recordingArmingHistoryState(
+  state: GameSessionState,
+  options: HistoryRunStartOptions
+): GameSessionState {
+  const source = state.snapshot as unknown as Record<string, unknown>;
+  const maximumLives = Number(source.maxLives);
+  const snapshot = {
+    ...source,
+    phase: "recording_arming",
+    success: false,
+    score: 0,
+    elapsedMillis: 0,
+    remainingMillis: 0,
+    countdownMillis: 0,
+    resultMillis: 0,
+    ...(Number.isFinite(maximumLives) ? { lives: maximumLives } : {}),
+    ...(options.pendingLevelId ? { level: options.pendingLevelId } : {}),
+    ...(options.pendingLevelSlug ? { levelSlug: options.pendingLevelSlug } : {})
+  } as unknown as GameSessionState["snapshot"];
+  return {
+    ...state,
+    clockMillis: 0,
+    paused: false,
+    snapshot,
+    events: []
+  };
 }
 
 function materialFingerprint(state: GameSessionState): SessionHistoryJsonObject {

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { PlayerExperienceStateGate, type PlayerExperienceOutputTestState } from "@motion-levels-games/player-experience";
 import { displayEventSource, fetchDisplayStatus, type DisplayStatus } from "./api";
 import { audioEventKey, VenueAudioOutput, type AudioOutputState } from "./audio";
 import { reportDisplayClient } from "./displayClient";
@@ -7,9 +8,10 @@ import { createCoalescer, isFeedStalled } from "./displayFeed";
 import { challengeMode, heartMeterSlotCount, levelDisplayAttemptCount, levelDisplayTimeLabel, levelDisplayTimeMillis, levelHeartMeterModel } from "./displayMetrics";
 import { shouldReportDisplayClient, type GamesDisplayRenderState } from "./displayRuntime";
 import { playerLifecycleLabelES } from "./displayText";
+import { claimPlayerDisplayReload, playerDisplayReloadURL, revisionConvergenceDecision } from "./revisionConvergence";
 import { colorCSS, colorRGB, difficultyLabelES, formatClock, gameTitleES, levelLabelES, phaseLabel, playerLabelES } from "./utils";
 import { MotionLevelsGamesDisplay } from "./MotionLevelsGamesDisplay";
-import { PlayerExperienceStateGate, type PlayerExperienceOutputTestState } from "@motion-levels-games/player-experience";
+import { RecordingGateDisplay } from "./RecordingGateOverlay";
 
 // If no stream event arrives, keep the display fresh with a 250ms fallback
 // poll. Some kiosk/browser combinations can silently lose EventSource delivery;
@@ -18,6 +20,8 @@ const FALLBACK_UPDATE_MS = 250;
 const STALL_MS = 750;
 const STREAM_RECONNECT_MS = 3000;
 const DISPLAY_HEARTBEAT_MS = 5000;
+const REVISION_RELOAD_DELAY_MS = 500;
+const PLAYER_DISPLAY_REVISION = MOTION_LEVELS_PLAYER_DISPLAY_REVISION;
 
 const emptyStatus: DisplayStatus = {
   contractVersion: 1,
@@ -232,6 +236,34 @@ export default function App() {
       };
 
   useEffect(() => {
+    if (!telemetryEnabled) return;
+    const sourceRevision = liveStatus.sourceRevision || "";
+    const decision = revisionConvergenceDecision({
+      shellRevision: PLAYER_DISPLAY_REVISION,
+      sourceRevision,
+      lifecycle: liveStatus.lifecycle,
+      renderStatus: effectiveRenderState.status,
+    });
+    if (decision !== "reload") return;
+    const handle = window.setTimeout(() => {
+      let storage: Storage | undefined;
+      try {
+        storage = window.sessionStorage;
+      } catch {
+        // The URL revision marker still prevents a reload loop.
+      }
+      if (!claimPlayerDisplayReload({
+        currentURL: window.location.href,
+        shellRevision: PLAYER_DISPLAY_REVISION,
+        sourceRevision,
+        storage,
+      })) return;
+      window.location.replace(playerDisplayReloadURL(window.location.href, sourceRevision));
+    }, REVISION_RELOAD_DELAY_MS);
+    return () => window.clearTimeout(handle);
+  }, [effectiveRenderState.status, liveStatus.lifecycle, liveStatus.sourceRevision, telemetryEnabled]);
+
+  useEffect(() => {
     audioOutput.configure(liveStatus.audioEnabled, liveStatus.audioMuted);
   }, [audioOutput, liveStatus.audioEnabled, liveStatus.audioMuted]);
 
@@ -338,6 +370,7 @@ export default function App() {
         currentGame: liveStatus.currentGame,
         expectedRevision: effectiveRenderState.expectedRevision,
         loadedRevision: effectiveRenderState.loadedRevision,
+        shellRevision: PLAYER_DISPLAY_REVISION,
         renderStatus: effectiveRenderState.status,
         renderAttempt: effectiveRenderState.attempt,
         connected: liveConnected,
@@ -365,25 +398,24 @@ export default function App() {
     };
   }, [audioOutputState, audioTestReport.id, audioTestReport.sequence, audioTestReport.state, demoStatus, effectiveRenderState.attempt, effectiveRenderState.error, effectiveRenderState.expectedRevision, effectiveRenderState.loadedRevision, effectiveRenderState.status, liveConnected, liveError, liveStatus.currentGame, telemetryEnabled]);
 
+  let display: ReactNode;
   if (gamesDisplayActive) {
-    return (
+    display = (
       <MotionLevelsGamesDisplay
         status={liveStatus}
         fallback={<ArcadeDisplay status={liveStatus} connected={liveConnected} error={liveError} />}
         onStateChange={setGamesRenderState}
       />
     );
+  } else if (isScreensaverDisplay(liveStatus)) {
+    display = <ScreensaverDisplay />;
+  } else if (options.hud === "classic") {
+    display = <ClassicDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
+  } else {
+    display = <ArcadeDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
   }
 
-  if (isScreensaverDisplay(liveStatus)) {
-    return <ScreensaverDisplay />;
-  }
-
-  if (options.hud === "classic") {
-    return <ClassicDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
-  }
-
-  return <ArcadeDisplay status={liveStatus} connected={liveConnected} error={liveError} />;
+  return <RecordingGateDisplay gate={liveStatus.recordingGate}>{display}</RecordingGateDisplay>;
 }
 
 function ScreensaverDisplay() {
@@ -1251,6 +1283,32 @@ function demoDisplayStatus(options: DisplayOptions): DisplayStatus | null {
   };
 
   switch (name) {
+    case "recording-arming":
+      return {
+        ...base,
+        lifecycle: "launching",
+        currentGame: options.demoGame || "parkour",
+        label: options.demoLabel || "Parkour",
+        allowedControls: [],
+        recordingGate: demoRecordingGate("arming"),
+      };
+    case "recording-timeout":
+      return {
+        ...base,
+        lifecycle: "launching",
+        currentGame: options.demoGame || "parkour",
+        label: options.demoLabel || "Parkour",
+        allowedControls: ["recording_retry", "recording_continue_without", "recording_cancel"],
+        recordingGate: { ...demoRecordingGate("timed_out"), reason: "timeout" },
+      };
+    case "recording-ready":
+      return {
+        ...base,
+        lifecycle: "waiting",
+        currentGame: options.demoGame || "parkour",
+        label: options.demoLabel || "Parkour",
+        recordingGate: { ...demoRecordingGate("ready"), readyAtUnixMillis: 2_000 },
+      };
     case "screensaver":
       return {
         ...emptyStatus,
@@ -1455,4 +1513,17 @@ function demoDisplayStatus(options: DisplayOptions): DisplayStatus | null {
     default:
       return null;
   }
+}
+
+function demoRecordingGate(state: "arming" | "timed_out" | "ready") {
+  return {
+    id: "demo-recording-gate",
+    state,
+    scope: "run" as const,
+    runId: "demo-run",
+    captureId: "demo-capture",
+    attempt: 1,
+    startedAtUnixMillis: 1_000,
+    timeoutAtUnixMillis: 11_000,
+  };
 }

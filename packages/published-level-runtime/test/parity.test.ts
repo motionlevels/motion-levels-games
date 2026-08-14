@@ -159,6 +159,93 @@ test("success holds for exactly 1250ms, advances by canonical UUID, then starts 
   assert.equal(next.attemptStartedMillis, 7_270);
 });
 
+test("a venue host can hold and release an automatic attempt transition", () => {
+  const game = makeGame(makeContent([
+    {
+      id: firstLevelId,
+      slug: "level-1",
+      label: "Primero",
+      frames: [{ r: 100, c: [[4, 4, 1, "goal-a"]] }]
+    },
+    {
+      id: secondLevelId,
+      slug: "level-2",
+      label: "Segundo",
+      frames: [{ r: 100, c: [[6, 6, 1, "goal-b"]] }]
+    }
+  ]));
+  game.init(0);
+  game.setAutomaticAttemptTransitionsBlocked(true);
+  game.tick({ atMillis: 3_000 });
+  game.press({ x: 4, y: 4, pressed: true, atMillis: 3_020 });
+  game.tick({ atMillis: 4_270 });
+
+  assert.equal(game.snapshot().phase, "finished");
+  assert.equal(game.snapshot().resultMillis, 0);
+  assert.deepEqual(game.pendingAutomaticAttemptTransition(), {
+    kind: "level_advance",
+    fromLevelId: firstLevelId,
+    fromLevelSlug: "level-1",
+    toLevelId: secondLevelId,
+    toLevelSlug: "level-2"
+  });
+
+  const events = game.advanceAutomaticAttemptTransition();
+  assert.equal(events[0]?.cue, "ready");
+  assert.equal(game.pendingAutomaticAttemptTransition(), null);
+  assert.equal(game.snapshot().phase, "countdown");
+  assert.equal(game.snapshot().level, secondLevelId);
+  assert.equal(game.snapshot().countdownMillis, 3_000);
+});
+
+test("a blocked failed retry cannot consume a held press before the host releases it", () => {
+  const game = makeGame(makeContent([{
+    id: firstLevelId,
+    slug: "level-1",
+    label: "Peligro",
+    life: 1,
+    frames: [{ r: 100, c: [[4, 4, 2, "lava"]] }]
+  }]));
+  game.init(0);
+  game.setAutomaticAttemptTransitionsBlocked(true);
+  game.tick({ atMillis: 3_000 });
+  game.press({ x: 4, y: 4, pressed: true, atMillis: 3_020 });
+  assert.equal(game.snapshot().phase, "finished");
+
+  game.tick({ atMillis: 6_020 });
+  assert.equal(game.snapshot().phase, "finished");
+  assert.deepEqual(game.pendingAutomaticAttemptTransition(), {
+    kind: "retry",
+    fromLevelId: firstLevelId,
+    fromLevelSlug: "level-1",
+    toLevelId: firstLevelId,
+    toLevelSlug: "level-1"
+  });
+
+  game.release({ x: 4, y: 4, pressed: false, atMillis: 6_020 });
+  game.advanceAutomaticAttemptTransition();
+  assert.equal(game.snapshot().phase, "running");
+  assert.equal(game.snapshot().lives, 1);
+  assert.equal(game.snapshot().attemptCreatedMillis, 6_020);
+});
+
+test("the final successful level never exposes a phantom automatic attempt", () => {
+  const game = makeGame(makeContent([{
+    id: firstLevelId,
+    slug: "only-level",
+    label: "Final",
+    frames: [{ r: 100, c: [[4, 4, 1, "goal"]] }]
+  }]));
+  game.init(0);
+  game.setAutomaticAttemptTransitionsBlocked(true);
+  game.tick({ atMillis: 3_000 });
+  game.press({ x: 4, y: 4, pressed: true, atMillis: 3_020 });
+  game.tick({ atMillis: 10_000 });
+  assert.equal(game.snapshot().phase, "finished");
+  assert.equal(game.pendingAutomaticAttemptTransition(), null);
+  assert.deepEqual(game.advanceAutomaticAttemptTransition(), []);
+});
+
 test("challenge timing, free timing, score_at_least, and collect_all stay distinct", () => {
   const scoreLevel = {
     id: firstLevelId,

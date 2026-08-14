@@ -336,6 +336,10 @@ function defaultAudioContext(): AudioContext {
 async function defaultTestSample(context: AudioContext, signal: AbortSignal): Promise<AudioBuffer> {
   const base = typeof document === "undefined" ? "http://127.0.0.1/display/" : document.baseURI;
   const url = new URL(`${import.meta.env.BASE_URL}audio/probando.wav`, base);
+  const buildRevision = typeof MOTION_LEVELS_PLAYER_DISPLAY_REVISION === "string"
+    ? MOTION_LEVELS_PLAYER_DISPLAY_REVISION
+    : "";
+  if (buildRevision) url.searchParams.set("v", buildRevision);
   return loadAudioTestSample(context, url, testSampleTimeoutMillis, signal);
 }
 

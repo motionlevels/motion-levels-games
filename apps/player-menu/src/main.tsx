@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import App from "./App";
 import { initMenuAnalytics } from "./analytics";
+import MenuUpdateGate from "./MenuUpdateGate";
 import { publicAssetURL } from "./utils";
 import "./styles.css";
 
@@ -14,6 +15,14 @@ try {
 
 const kioskDesignWidth = 1920;
 const kioskDesignHeight = 1080;
+const kioskBuildVersion = (
+  <small
+    className="kiosk-build-version"
+    aria-label={`Versión desplegada: ${__MOTION_LEVELS_GAMES_BUILD_VERSION__}`}
+  >
+    {__MOTION_LEVELS_GAMES_BUILD_VERSION__}
+  </small>
+);
 
 function kioskScale() {
   if (fixedKioskPreviewViewport()) return 1;
@@ -56,7 +65,10 @@ function KioskViewport({ children }: { children: ReactNode }) {
   return (
     <div className="kiosk-viewport">
       <div className="kiosk-stage" style={stageStyle}>
-        <div className="kiosk-frame">{children}</div>
+        <div className="kiosk-frame">
+          {children}
+          {kioskBuildVersion}
+        </div>
       </div>
     </div>
   );
@@ -94,9 +106,11 @@ class KioskErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <KioskViewport>
-      <KioskErrorBoundary>
-        <App />
-      </KioskErrorBoundary>
+      <MenuUpdateGate>
+        <KioskErrorBoundary>
+          <App />
+        </KioskErrorBoundary>
+      </MenuUpdateGate>
     </KioskViewport>
   </StrictMode>,
 );

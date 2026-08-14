@@ -15,6 +15,7 @@ export {
   PUBLISHED_LEVEL_CONTENT_SCHEMA,
   type PublishedAnimationRecord,
   type PublishedLevelAudio,
+  type PublishedLevelAttemptTransition,
   type PublishedLevelCell,
   type PublishedLevelContent,
   type PublishedLevelContentInput,

@@ -87,6 +87,18 @@ describe("runtime screen flow", () => {
     assert.doesNotMatch(restartBody, /await launch\(/);
   });
 
+  it("reports a launch request without declaring the game started before the recording gate clears", () => {
+    const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+    const launchBody = source.match(/async function launch\([\s\S]*?\n  async function restartLaunchedGame/)?.[0] || "";
+
+    assert.match(launchBody, /captureMenuEvent\("game_launch_requested"/);
+    assert.doesNotMatch(launchBody, /(?:capture|record)MenuEvent\("game_started"/);
+    assert.match(source, /reportedGameStartedSessions\.current\.has\(status\.sessionId\)/);
+    assert.match(source, /if \(!recordingGateAllowsGameStarted\(status\)\) return;/);
+    assert.match(source, /recordMenuEvent\("game_started"\)/);
+    assert.match(source, /controlGame\(action, recordingGateId \? \{ recordingGateId \} : undefined\)/);
+  });
+
   it("schedules the inactivity deadline instead of waiting for another pressure update", () => {
     const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 

@@ -30,6 +30,7 @@ const port = Number(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_PORT || 4175);
 const viewportWidth = Number(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_WIDTH || 1920);
 const viewportHeight = Number(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_HEIGHT || 1080);
 const captureScreenshots = process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_SCREENSHOTS === "1";
+const scenarioFilter = String(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_SCENARIO || "").trim().toLowerCase();
 const baseURL = `http://127.0.0.1:${port}`;
 const viteEntry = path.join(repoRoot, "node_modules/vite/bin/vite.js");
 const server = spawn(
@@ -163,12 +164,26 @@ try {
     await drawer.locator(".drawer-done").tap();
     await waitForAttribute(drawer, "aria-hidden", "true");
     await assertBrowseChromeNotInert(page);
+    const allowAnyGame = page.locator('.game-card[data-game-id="lava"]');
+    await allowAnyGame.tap();
+    await waitForAttribute(allowAnyGame, "aria-pressed", "true");
     const launch = page.locator(".launch-actions .play");
-    await waitForCondition(
-      async () => (await launch.textContent())?.trim() === "Empezar partida",
-      "allow-any launch to reconnect after reload",
-      5_000,
-    );
+    try {
+      await waitForCondition(
+        async () => (await launch.textContent())?.trim() === "Empezar partida",
+        "allow-any launch to reconnect after reload",
+        5_000,
+      );
+    } catch (error) {
+      const evidence = await page.evaluate(() => ({
+        category: document.querySelector<HTMLElement>(".category-tabs [aria-pressed='true']")?.innerText.trim(),
+        launch: document.querySelector<HTMLElement>(".launch-actions .play")?.innerText.trim(),
+        saved: JSON.parse(localStorage.getItem("ml-player-menu-state-v1") || "{}"),
+        selected: document.querySelector<HTMLElement>(".game-card[aria-pressed='true']")?.dataset.gameId,
+        visibleGames: Array.from(document.querySelectorAll<HTMLElement>(".game-grid .game-card")).map((card) => card.dataset.gameId),
+      }));
+      throw new Error(`allow-any launch did not reconnect: ${JSON.stringify(evidence)}`, { cause: error });
+    }
     assert.equal((await launch.textContent())?.trim(), "Empezar partida");
     assert.equal(await launch.isEnabled(), true);
     await launch.tap();
@@ -187,6 +202,65 @@ try {
     assert.equal((await drawer.locator(".drawer-head span").textContent())?.trim(), "0 jugadores");
     assert.equal(await drawer.locator(".roster .player").count(), 0, "launch and reload must keep the allow-any roster empty");
     assert.equal(await drawer.locator(".roster-issue").count(), 0, "launch must not introduce an allow-any roster error");
+  });
+
+  await scenario("a staged cloud revision cannot hide bundled production games", async ({ page, platformCatalog, status }) => {
+    const stagedRevision = "f".repeat(40);
+    platformCatalog.push(
+      mockCatalogEntry({
+        id: "cloud-lava",
+        engine_game: "motion-levels-games:lava",
+        source_game_id: "lava",
+        source_revision: stagedRevision,
+      }),
+      mockCatalogEntry({
+        id: "cloud-arkanoid",
+        engine_game: "motion-levels-games:arkanoid",
+        source_game_id: "arkanoid",
+        source_revision: stagedRevision,
+      }),
+    );
+    (status.catalog as Array<Record<string, unknown>>).push({
+      game: "motion-levels-games:arkanoid",
+      label: "Arkanoid",
+      description: "Bundled production fallback",
+      music: "",
+      players: false,
+      minPlayers: 1,
+      maxPlayers: 1,
+      difficulty: true,
+      volume: 1,
+    });
+
+    await startSession(page);
+    const drawer = page.locator(".team-drawer");
+    await drawer.locator(".drawer-done").tap();
+    await waitForAttribute(drawer, "aria-hidden", "true");
+    assert.equal(await page.getByRole("button", { name: "Destacados", exact: true }).getAttribute("aria-pressed"), "true");
+    assert.equal(await page.locator('.game-card[data-game-id="lava"]').getAttribute("aria-pressed"), "true");
+    await page.getByRole("button", { name: "Cooperativos", exact: true }).tap();
+    await page.locator('.game-card[data-game-id="lava"]').waitFor({ state: "visible" });
+    assert.equal(await page.locator('.game-card[data-game-id="cloud-lava"]').count(), 0);
+    await page.getByRole("button", { name: "Individual", exact: true }).tap();
+    await page.locator('.game-card[data-game-id="arkanoid"]').waitFor({ state: "visible" });
+    assert.equal(await page.locator('.game-card[data-game-id="cloud-arkanoid"]').count(), 0);
+  });
+
+  await scenario("a failed cloud catalog keeps the curated bundled game featured", async ({ page }) => {
+    await page.route("**/api/game-catalog", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "catalog unavailable" }),
+    }));
+    await startSession(page);
+    const drawer = page.locator(".team-drawer");
+    await drawer.locator(".drawer-done").tap();
+    await waitForAttribute(drawer, "aria-hidden", "true");
+    const featured = page.getByRole("button", { name: "Destacados", exact: true });
+    assert.equal(await featured.getAttribute("aria-pressed"), "true");
+    const lava = page.locator('.game-card[data-game-id="lava"]');
+    await lava.waitFor({ state: "visible" });
+    assert.equal(await lava.getAttribute("aria-pressed"), "true");
   });
 
   await scenario("recording scope exposes four choices and Welcome recovers from an unavailable service", async ({ page, status, venueSessionFailures, venueSessionRequests }) => {
@@ -360,6 +434,13 @@ try {
         source_kind: "motion_levels_games",
         source_game_id: "arkanoid",
       }),
+      ...["duelo", "estela", "ping-pong", "ping-pong-v2", "whack-a-mole"].map((gameID, index) => mockCatalogEntry({
+        id: `disabled-versus-${index}`,
+        engine_game: `motion-levels-games:${gameID}`,
+        catalog_category: "versus",
+        catalog_enabled: false,
+        source_game_id: gameID,
+      })),
     );
     const runtimeCatalog = status.catalog as Array<Record<string, unknown>>;
     runtimeCatalog.push({
@@ -434,6 +515,7 @@ if (failures.length > 0) {
 }
 
 async function scenario(name: string, run: (fixture: BrowserScenario) => Promise<void>): Promise<void> {
+  if (scenarioFilter && !name.toLowerCase().includes(scenarioFilter)) return;
   if (!browser) throw new Error("browser was not started");
   const context = await browser.newContext({
     hasTouch: true,

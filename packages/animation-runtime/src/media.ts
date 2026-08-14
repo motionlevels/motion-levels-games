@@ -27,6 +27,7 @@ export type AnimationMediaCatalogEntry = Readonly<{
   id: string;
   label: string;
   description: string;
+  animated: boolean;
   category: NativeAnimation["category"];
   durationMillis: number;
   palette: NativeAnimation["palette"];
@@ -53,6 +54,7 @@ export function animationMediaCatalogEntry(animation: NativeAnimation): Animatio
     id: animation.id,
     label: animation.label,
     description: animation.description,
+    animated: animation.animated,
     category: animation.category,
     durationMillis: animation.durationMillis,
     palette: animation.palette,

@@ -46,9 +46,9 @@ import {
   richPreviewCandidates,
   uniquePreviewSources,
 } from "./previews";
-import { captureMenuEvent, menuKioskID, setMenuEventForwarder } from "./analytics";
+import { captureMenuEvent, menuKioskID, recordMenuEvent, setMenuEventForwarder } from "./analytics";
 import { nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
-import { floorPreviewMediaSpec } from "./bundleMedia";
+import { bundledGamesSourceRevision, floorPreviewMediaSpec } from "./bundleMedia";
 import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
   closestLevelIDForDifficulty,
@@ -61,11 +61,22 @@ import {
 import { lifeMeterModel, teamLivesFromPlayers, type LifeMeterModel } from "./lifeMeter";
 import { isCanonicalEntityID } from "./identity.ts";
 import { migrateLegacyLevelState } from "./levelStateMigration.ts";
-import { isSupportedRuntimeSource } from "./localCatalog.ts";
+import { isSupportedRuntimeSource, localProductionPlayerExperienceCatalog } from "./localCatalog.ts";
+import { catalogSourceMatchesBundledRuntime } from "./runtimeSourcePolicy.ts";
 import { menuAccessPolicyFromSearch } from "./menuAccess.ts";
 import { resolveMenuMirrorEnvelope } from "./menuMirror.ts";
 import { cleanNameDraft, cleanNameWhitespace } from "./nameEditing.ts";
 import { clearedVenueSessionProjection, commitVenueSessionRecordingScope, venueSessionRecordingCanRequest, venueSessionRecordingScope, venueSessionSyncDecision, type VenueSessionObservation } from "./venueSessionSync.ts";
+import {
+  isRecordingGateAction,
+  recordingGateActionLabel,
+  recordingGateAllowsGameStarted,
+  recordingGateBlocks,
+  recordingGateMenuProjection,
+  type RecordingGateAction,
+  type RecordingGateMenuProjection,
+} from "./recordingGate.ts";
+import { gameForMenuIdentity } from "./gameIdentity.ts";
 
 type MenuState = {
   sessionActive: boolean;
@@ -390,7 +401,7 @@ function isLevelRuntimeActive(status: EngineStatus | null, game: GameCard): bool
 }
 
 function gameForEngineStatus(engineGame: string, currentMenuGameID: string, catalogGames = games): GameCard | undefined {
-  const currentMenuGame = catalogGames.find((game) => game.id === currentMenuGameID);
+  const currentMenuGame = gameForMenuIdentity(catalogGames, currentMenuGameID);
   if (currentMenuGame && isPartyCard(currentMenuGame)) {
     const partyMiniGameMatches = (currentMenuGame.partyMiniGames || []).some((_, index) => {
       const launchGame = partyLaunchGame(currentMenuGame, catalogGames, index);
@@ -601,7 +612,10 @@ function platformEntryToGameCard(entry: PlatformGameCatalogEntry, fallback: Game
     previewAnimation,
     supportsLevels,
     sourceKind: entry.source_kind || fallback?.sourceKind,
-    sourceRevision: entry.source_revision || fallback?.sourceRevision,
+    // Platform rows created before revision pinning may omit the source SHA.
+    // The catalog filter only admits products confirmed by this bundle/runtime,
+    // so complete that legacy metadata with the locally compiled revision.
+    sourceRevision: entry.source_revision || fallback?.sourceRevision || bundledGamesSourceRevision(),
     sourceGameId: entry.source_game_id || fallback?.sourceGameId,
     countdownFloorOverlay: entry.countdown_floor_overlay === true,
     revisionHash: entry.revision_hash || fallback?.revisionHash,
@@ -646,7 +660,30 @@ function applyDerivedPartyPlayerRanges(catalogGames: GameCard[]): GameCard[] {
   });
 }
 
-function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalogEntry[] | null): GameCard[] {
+function bundledProductionGameCards(): GameCard[] {
+  const fallbackByID = new Map(games.map((game) => [game.id, game]));
+  const fallbackByEngine = new Map(games.map((game) => [engineGameID(game), game]));
+  return localProductionPlayerExperienceCatalog()
+    .map((entry, index) => {
+      const fallback = fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry));
+      const game = platformEntryToGameCard(entry, fallback, index);
+      return {
+        ...game,
+        // Category is intrinsic manifest metadata. Featured is platform-owned;
+        // only retain the deliberately curated bundled fallback while offline.
+        featured: fallback?.featured === true,
+      };
+    })
+    // Keep the curated fallback first so a failed cloud fetch still opens on
+    // Destacados instead of an arbitrary alphabetically-first game.
+    .sort((left, right) => Number(right.featured === true) - Number(left.featured === true));
+}
+
+function applyPlatformCatalog(
+  baseGames: GameCard[],
+  catalog: PlatformGameCatalogEntry[] | null,
+  runtimeCatalog: EngineGame[] | undefined = undefined,
+): GameCard[] {
   if (!catalog) return applyDerivedPartyPlayerRanges(baseGames);
   const fallbackByID = new Map(baseGames.map((game) => [game.id, game]));
   const fallbackByEngine = new Map(baseGames.map((game) => [engineGameID(game), game]));
@@ -654,13 +691,30 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
     fallbackByID.get(entry.id) || fallbackByEngine.get(platformEntryEngineGame(entry))
   );
   const baseOrder = new Map(baseGames.map((game, index) => [game.id, index]));
-  const catalogOrderByID = new Map(catalog.map((entry) => [entry.id, entry.catalog_order]));
-  const catalogOrderByEngine = new Map(catalog.map((entry) => [platformEntryEngineGame(entry), entry.catalog_order]));
+  const bundledRuntimeIDs = new Set((runtimeCatalog || []).flatMap((entry) => {
+    const gameID = String(entry.game || "").trim().toLowerCase();
+    return [gameID, gameID.replace(/^motion-levels-games:/u, "")];
+  }));
+  const hasBundledProduct = (entry: PlatformGameCatalogEntry, fallback: GameCard | undefined) => {
+    if (fallback) return true;
+    return [entry.source_game_id, platformEntryEngineGame(entry)].some((value) => {
+      const gameID = String(value || "").trim().toLowerCase();
+      return bundledRuntimeIDs.has(gameID) || bundledRuntimeIDs.has(gameID.replace(/^motion-levels-games:/u, ""));
+    });
+  };
   const enabledCatalog = catalog.filter((entry) => (
     entry.catalog_enabled !== false
     && !isInternalAnimationsAggregate(entry)
     && isSupportedRuntimeCatalogEntry(entry, fallbackForEntry(entry))
+    && catalogSourceMatchesBundledRuntime(
+      entry.source_kind || fallbackForEntry(entry)?.sourceKind,
+      entry.source_revision,
+      bundledGamesSourceRevision(),
+      hasBundledProduct(entry, fallbackForEntry(entry)),
+    )
   ));
+  const catalogOrderByID = new Map(enabledCatalog.map((entry) => [entry.id, entry.catalog_order]));
+  const catalogOrderByEngine = new Map(enabledCatalog.map((entry) => [platformEntryEngineGame(entry), entry.catalog_order]));
   const platformGames = enabledCatalog
     .map((entry, index) => platformEntryToGameCard(
       entry,
@@ -670,6 +724,8 @@ function applyPlatformCatalog(baseGames: GameCard[], catalog: PlatformGameCatalo
   const remainingBaseGames = baseGames.filter((game) => (
     !isInternalAnimationsAggregate(game)
     && isSupportedRuntimeGame(game)
+    // catalog_enabled is an operator kill-switch, independent of a staged
+    // source revision, so an explicit disable always hides the local card.
     && !catalog.some((entry) => platformEntryMatchesGame(entry, game) && entry.catalog_enabled === false)
     && !enabledCatalog.some((entry) => platformEntryMatchesGame(entry, game))
   ));
@@ -691,6 +747,7 @@ function platformCatalogMenuSignature(catalog: PlatformGameCatalogEntry[]): stri
       entry.catalog_enabled !== false,
       entry.catalog_featured === true,
       entry.source_kind || "",
+      entry.source_revision || "",
       entry.source_game_id || "",
     ]))
     .sort()
@@ -1404,6 +1461,7 @@ function MenuApp() {
     return saved?.sessionId && saved.sessionId === menu.sessionId ? saved : null;
   });
   const processedFinishedSessions = useRef(new Set<string>(menu.processedAttemptIDs));
+  const reportedGameStartedSessions = useRef(new Set<string>());
   const processedChallengeCompletions = useRef(new Set<string>());
   const processedPartyFinishes = useRef(new Set<string>());
   const catalogRefreshInFlight = useRef(false);
@@ -1497,7 +1555,7 @@ function MenuApp() {
         const selectedID = menuRef.current.selectedGame;
         const selected = next.find((entry) => entry.id === selectedID);
         setError("");
-        setMessage(selected?.revision_hash ? `Catálogo actualizado · rev ${selected.revision_hash}` : "Catálogo actualizado");
+        setMessage("Catálogo actualizado");
         captureMenuEvent("catalog_refreshed", {
           game: selectedID,
           game_revision: selected?.revision_hash,
@@ -1517,8 +1575,13 @@ function MenuApp() {
   }, []);
 
   const menuGames = useMemo(() => {
+    const bundledGames = bundledProductionGameCards();
     const platformAnimations = platformAnimationCards(platformCatalog);
-    return applyPlatformCatalog([...games, ...platformAnimations, ...liveAnimationCards(status?.catalog, [...games, ...platformAnimations])], platformCatalog);
+    return applyPlatformCatalog(
+      [...bundledGames, ...platformAnimations, ...liveAnimationCards(status?.catalog, [...bundledGames, ...platformAnimations])],
+      platformCatalog,
+      status?.catalog,
+    );
   }, [platformCatalog, status?.catalog]);
 
   useEffect(() => {
@@ -1535,14 +1598,14 @@ function MenuApp() {
     setMenu((current) => {
       const categoryGames = gamesForCategory(menuGames, current.category);
       const preservedSelection = selectedGameToPreserve
-        ? menuGames.find((game) => game.id === selectedGameToPreserve)
+        ? gameForMenuIdentity(menuGames, selectedGameToPreserve)
         : undefined;
       // An empty category is a valid catalog view. Keep it selected so the
       // recovery surface remains stable instead of snapping back to the stale
       // game that happened to be selected in the previous category.
       if (!preservedSelection && categoryGames.length === 0) return current;
       const selected = preservedSelection
-        || categoryGames.find((game) => game.id === current.selectedGame)
+        || gameForMenuIdentity(categoryGames, current.selectedGame)
         || categoryGames[0];
       const category = preservedSelection ? menuCategoryForGame(selected, current.category) : current.category;
       const difficulty = normalizedDifficultyForGame(selected, current.difficulty);
@@ -1592,6 +1655,18 @@ function MenuApp() {
     });
     return () => setMenuEventForwarder(null);
   }, [readOnlyMirror]);
+
+  useEffect(() => {
+    if (!menuAccess.publishMirror || !status?.sessionId) return;
+    if (!recordingGateAllowsGameStarted(status)) return;
+    if (playerExperienceView(status).screen !== "game") return;
+    if (reportedGameStartedSessions.current.has(status.sessionId)) return;
+
+    // Keep this acknowledgement renderer-local: accepted engine revisions are
+    // idempotent for one mount, but no optimistic launch survives a reload.
+    reportedGameStartedSessions.current.add(status.sessionId);
+    recordMenuEvent("game_started");
+  }, [menuAccess.publishMirror, status]);
 
   useEffect(() => {
     if (!menuAccess.publishMirror) return;
@@ -2046,7 +2121,7 @@ function MenuApp() {
   const activeCategory = categories.find((category) => category.id === menu.category) || categories[0];
   const levelsUnlocked = unlockLevelsEnabled(menu);
   const visibleGames = gamesForCategory(menuGames, menu.category);
-  const selectedGame = menuGames.find((game) => game.id === menu.selectedGame) || menuGames[0] || games[0];
+  const selectedGame = gameForMenuIdentity(menuGames, menu.selectedGame) || menuGames[0] || games[0];
   const categorySelectionValid = visibleGames.some((game) => game.id === selectedGame.id);
   const runtimeGame = status ? gameForEngineStatus(status.currentGame, menu.selectedGame, menuGames) : null;
   const launchedGame = runtimeGame && playerExperienceView(status).screen === "game" ? runtimeGame : selectedGame;
@@ -2078,6 +2153,7 @@ function MenuApp() {
   );
   const levelDetail = Boolean(selectedGame.levels?.length && selectedLevel);
   const gameActive = screenMode === "game";
+  const recordingGateBlocking = recordingGateBlocks(status?.recordingGate);
   const launchedPlayers = rosterForGame(launchedGame, activePlayers);
   const displayPlayers = gameActive && enginePlayers.length > 0 ? enginePlayers : launchedPlayers;
   const headerPlayers = gameActive && enginePlayers.length > 0 ? enginePlayers : activePlayers;
@@ -2116,7 +2192,7 @@ function MenuApp() {
     setMenu((current) => {
       const currentCategoryGames = gamesForCategory(menuGames, current.category);
       if (!current.selectedGame && currentCategoryGames.length === 0) return current;
-      const game = menuGames.find((candidate) => candidate.id === current.selectedGame) || selectedGame;
+      const game = gameForMenuIdentity(menuGames, current.selectedGame) || selectedGame;
       const category = currentCategoryGames.length === 0
         ? current.category
         : menuCategoryForGame(game, current.category);
@@ -3132,7 +3208,7 @@ function MenuApp() {
       partyGameID: game.id,
       sessionId: nextMenu.sessionId,
     } : null);
-    captureMenuEvent("game_started", {
+    captureMenuEvent("game_launch_requested", {
       ambient: isAmbientCard(game),
       category: game.category,
       difficulty: launchDifficulty,
@@ -3198,7 +3274,10 @@ function MenuApp() {
       if (launchLocalPlayground(launchRequest)) return true;
       const nextStatus = await selectGame(launchRequest);
       acceptStatus(nextStatus);
-      setMessage(isPartyCard(game) && game.partyMiniGames?.length ? `Party ${partyIndex + 1}/${game.partyMiniGames.length} · ${options.partyScore || 0} pts` : "En curso");
+      const gateProjection = recordingGateMenuProjection(nextStatus.recordingGate, nextStatus.allowedControls);
+      setMessage(isPartyCard(game) && game.partyMiniGames?.length
+        ? `Party ${partyIndex + 1}/${game.partyMiniGames.length} · ${options.partyScore || 0} pts`
+        : gateProjection?.title || "En curso");
       if (supportsNarration(launchGame) && playNarration) {
         setMenu((current) => ({
           ...current,
@@ -3302,12 +3381,20 @@ function MenuApp() {
     }
   }
 
-  async function sendGameControl(action: ControlGameAction) {
+  async function sendGameControl(action: ControlGameAction, recordingGateId?: string) {
     if (controlInFlightRef.current) return;
     if (connectionState !== "connection-on") {
       setMessage("");
       setError("La sala está reconectando. Espera un momento e inténtalo de nuevo.");
       return;
+    }
+    if (isRecordingGateAction(action)) {
+      const gate = status?.recordingGate;
+      if (!gate || gate.state !== "timed_out" || gate.id !== recordingGateId || !status.allowedControls.includes(action)) {
+        setMessage("");
+        setError("La decisión de grabación ya no está disponible.");
+        return;
+      }
     }
     controlInFlightRef.current = true;
     setPendingControlAction(action);
@@ -3320,11 +3407,18 @@ function MenuApp() {
       game: launchedGame.id,
       level: status?.level || undefined,
       phase: status?.phase,
+      ...(recordingGateId ? { recording_gate_id: recordingGateId } : {}),
     });
     try {
-      const nextStatus = await controlGame(action);
+      const nextStatus = await controlGame(action, recordingGateId ? { recordingGateId } : undefined);
       acceptStatus(nextStatus);
-      if (action === "restart") {
+      if (action === "recording_retry") {
+        setMessage(recordingGateMenuProjection(nextStatus.recordingGate, nextStatus.allowedControls)?.title || "Preparando GoPro");
+      } else if (action === "recording_continue_without") {
+        setMessage("Partida iniciada sin grabación");
+      } else if (action === "recording_cancel") {
+        setMessage("Inicio cancelado");
+      } else if (action === "restart") {
         setMessage("Reiniciando");
       } else if (action === "exit") {
         if (stopLevelOnly) {
@@ -3550,7 +3644,8 @@ function MenuApp() {
           error={!floorReady && !isAmbientCard(launchedGame)
             ? "El suelo no está enviando pulsaciones. La partida queda protegida mientras reconectamos."
             : connectionState === "connection-off" ? "Conexión con el motor interrumpida. Reintentando automáticamente." : error}
-          busy={connectionState !== "connection-on" || Boolean(launchingGameID || pendingControlAction || activeLevelLaunch)}
+          busy={connectionState !== "connection-on" || recordingGateBlocking || Boolean(launchingGameID || pendingControlAction || activeLevelLaunch)}
+          recordingGateActionBusy={connectionState !== "connection-on" || Boolean(pendingControlAction)}
           pendingControlAction={pendingControlAction}
           onDifficultyChange={(difficulty) => {
             captureMenuEvent("difficulty_changed", {
@@ -3580,6 +3675,7 @@ function MenuApp() {
           onNarration={() => sendGameControl("narration")}
           exitLabel={launchedLevelActive && launchedLevelMode === "free" ? "Terminar nivel" : "Salir del juego"}
           onExit={() => setPendingGameControl("exit")}
+          onRecordingGateAction={(action, gateId) => void sendGameControl(action, gateId)}
         />
       ) : (
       <section className="layout">
@@ -3778,7 +3874,7 @@ function MenuApp() {
                   ) : visibleGames.map((game, index) => {
                     const future = Boolean(game.disabled);
                     const engineAvailable = isGameLaunchable(game);
-                    const selected = menu.selectedGame === game.id;
+                    const selected = selectedGame.id === game.id;
                     const active = selected && (status?.currentGame === runtimeGameID(game) || status?.currentGame === engineGameID(game));
                     const meta = gameCardMeta(game, active, selected);
                     return (
@@ -4926,9 +5022,10 @@ function OperatorSettingsDialog({
         </div>
 
         <div className="settings-content">
-          <section className="settings-version-card" aria-label="Diagnóstico del sistema y versión del menú">
-            <span className="micro">Versión del menú</span>
+          <section className="settings-version-card" aria-label="Diagnóstico del sistema y versión desplegada">
+            <span className="micro">Versión desplegada</span>
             <strong title={__MENU_BUILD_REVISION__}>{__MENU_BUILD_REVISION__.slice(0, 8)}</strong>
+            <small className="settings-build-revision">Versión {__MOTION_LEVELS_GAMES_BUILD_VERSION__}</small>
             <div className="settings-health" aria-label="Estado del sistema">
               <div className={`settings-health-item ${engineLabel === "Conectado" ? "ok" : "warn"}`}>
                 <span className="settings-health-copy">
@@ -5084,6 +5181,7 @@ function GameControlScreen({
   countdownValue,
   error,
   busy,
+  recordingGateActionBusy,
   pendingControlAction,
   onDifficultyChange,
   onLevelSelect,
@@ -5094,6 +5192,7 @@ function GameControlScreen({
   onNarration,
   exitLabel,
   onExit,
+  onRecordingGateAction,
 }: {
   game: GameCard;
   status: EngineStatus | null;
@@ -5120,6 +5219,7 @@ function GameControlScreen({
   countdownValue: number;
   error: string;
   busy: boolean;
+  recordingGateActionBusy: boolean;
   pendingControlAction: ControlGameAction | null;
   onDifficultyChange: (difficulty: DifficultyID) => void;
   onLevelSelect: (levelID: string) => void;
@@ -5130,8 +5230,14 @@ function GameControlScreen({
   onNarration: () => void;
   exitLabel: string;
   onExit: () => void;
+  onRecordingGateAction: (action: RecordingGateAction, gateId: string) => void;
 }) {
   const paused = Boolean(status?.paused);
+  const recordingGate = status?.recordingGate;
+  const recordingGateProjection = recordingGateMenuProjection(recordingGate, status?.allowedControls);
+  const pendingRecordingGateAction = pendingControlAction && isRecordingGateAction(pendingControlAction)
+    ? pendingControlAction
+    : null;
   const levelModeFree = levelMode === "free";
   const levels = levelsForDifficulty(game, difficulty);
   const hasLevels = levels.length > 0;
@@ -5178,14 +5284,31 @@ function GameControlScreen({
   const attemptSummary = hasLevels ? levelAttemptSummary(status, game, currentLevelID) : { attempts: 0, failures: 0 };
   const challengeAttemptCount = Math.max(0, Math.round(challengeRun?.attemptCount || 0)) + (activeLevelAttempt(status, game, currentLevelID) ? 1 : 0);
   const attemptCount = hasLevels && !levelModeFree ? Math.max(1, challengeAttemptCount) : Math.max(1, attemptSummary.attempts || 0);
-  const phaseLabel = activeLevelLaunch
-    ? activeLevelLaunch.phase === "stopping" ? "Deteniendo nivel" : `Cargando ${launchingLevelLabel || "nivel"}`
-    : ambient ? "Animación en curso" : stopped ? "Nivel detenido" : introActive ? "Narración inicial" : countdownValue > 0 ? "Preparando salida" : paused ? "Pausado" : "En curso";
+  const phaseLabel = recordingGateProjection
+    ? recordingGateProjection.title
+    : activeLevelLaunch
+      ? activeLevelLaunch.phase === "stopping" ? "Deteniendo nivel" : `Cargando ${launchingLevelLabel || "nivel"}`
+      : ambient ? "Animación en curso" : stopped ? "Nivel detenido" : introActive ? "Narración inicial" : countdownValue > 0 ? "Preparando salida" : paused ? "Pausado" : "En curso";
   return (
     <section className={`game-control-screen ${hasLevels ? "with-levels" : ""}`} style={{ "--c": game.color, "--crgb": hexToRGB(game.color) } as CSSProperties}>
-      <div className="game-control-main">
+      {recordingGate && recordingGateProjection?.blocking ? (
+        <RecordingGateMenuOverlay
+          gateId={recordingGate.id}
+          projection={recordingGateProjection}
+          pendingAction={pendingRecordingGateAction}
+          busy={recordingGateActionBusy}
+          onAction={onRecordingGateAction}
+        />
+      ) : null}
+      <div className="game-control-main" inert={recordingGateProjection?.blocking || undefined}>
         <div className="game-control-preview">
           <LiveFloorView orientation={hasLevels ? "portrait" : "landscape"} />
+          {recordingGateProjection?.state === "ready" ? (
+            <div className="recording-gate-ready" role="status" aria-live="polite" aria-atomic="true">
+              <CheckIcon />
+              <span>{recordingGateProjection.title}</span>
+            </div>
+          ) : null}
           {activeLevelLaunch ? (
             <div className="countdown-overlay loading" aria-live="polite">
               <span className="launch-spinner" aria-hidden="true" />
@@ -5315,7 +5438,7 @@ function GameControlScreen({
         ) : null}
       </div>
 
-      <div className="game-control-actions">
+      <div className="game-control-actions" inert={recordingGateProjection?.blocking || undefined}>
         <button className="btn control-action" type="button" onClick={onPauseToggle} disabled={busy} aria-busy={pendingControlAction === "pause" || pendingControlAction === "resume" || undefined}>
           {pendingControlAction === "pause" || pendingControlAction === "resume" ? <span className="launch-spinner" aria-hidden="true" /> : paused ? <PlayIcon /> : <PauseIcon />}
           {pendingControlAction === "pause" || pendingControlAction === "resume" ? "Aplicando" : paused ? "Reanudar" : "Pausar"}
@@ -5342,6 +5465,80 @@ function GameControlScreen({
         </button>
       </div>
     </section>
+  );
+}
+
+function RecordingGateMenuOverlay({
+  gateId,
+  projection,
+  pendingAction,
+  busy,
+  onAction,
+}: {
+  gateId: string;
+  projection: RecordingGateMenuProjection;
+  pendingAction: RecordingGateAction | null;
+  busy: boolean;
+  onAction: (action: RecordingGateAction, gateId: string) => void;
+}) {
+  const retryRef = useRef<HTMLButtonElement>(null);
+  const decision = projection.state === "timed_out";
+
+  useEffect(() => {
+    if (!decision) return;
+    const frame = window.requestAnimationFrame(() => retryRef.current?.focus({ preventScroll: true }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [decision, gateId]);
+
+  return (
+    <div
+      className={`recording-gate-menu-overlay state-${projection.state}`}
+      role={decision ? "alertdialog" : "status"}
+      aria-modal={decision || undefined}
+      aria-live={decision ? "assertive" : "polite"}
+      aria-atomic="true"
+      aria-busy={!decision || busy || undefined}
+      aria-labelledby="recording-gate-menu-title"
+      aria-describedby="recording-gate-menu-body"
+      onKeyDown={decision ? (event) => trapKioskFocus(event) : undefined}
+    >
+      <section className="recording-gate-menu-card">
+        <div className="recording-gate-menu-symbol" aria-hidden="true">
+          {decision ? "!" : <span className="launch-spinner" />}
+        </div>
+        <div className="recording-gate-menu-copy">
+          <span className="micro">Grabación por intento</span>
+          <h2 id="recording-gate-menu-title">{projection.title}</h2>
+          <p id="recording-gate-menu-body">{projection.body}</p>
+        </div>
+        {decision ? (
+          <div className="recording-gate-menu-actions">
+            {projection.actions.map((action) => {
+              const pending = pendingAction === action;
+              const className = action === "recording_retry"
+                ? "btn primary"
+                : action === "recording_cancel"
+                  ? "btn danger"
+                  : "btn";
+              return (
+                <button
+                  key={action}
+                  ref={action === "recording_retry" ? retryRef : undefined}
+                  className={className}
+                  type="button"
+                  disabled={busy || Boolean(pendingAction)}
+                  aria-busy={pending || undefined}
+                  onClick={() => onAction(action, gateId)}
+                >
+                  {pending ? <span className="launch-spinner" aria-hidden="true" /> : action === "recording_retry" ? <RefreshIcon /> : action === "recording_continue_without" ? <PlayIcon /> : <CloseIcon />}
+                  {recordingGateActionLabel(action, pending)}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 

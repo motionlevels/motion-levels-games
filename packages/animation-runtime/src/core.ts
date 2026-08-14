@@ -35,6 +35,8 @@ export type NativeAnimation = Readonly<{
   id: string;
   label: string;
   description: string;
+  animated: boolean;
+  automaticRotation: boolean;
   category: AnimationCategory;
   durationMillis: number;
   palette: readonly HexColor[];
@@ -42,6 +44,9 @@ export type NativeAnimation = Readonly<{
   render: PixelShader;
   pressure?: "ripple" | "spark" | "glow" | "none";
 }>;
+
+export type NativeAnimationDefinition = Omit<NativeAnimation, "animated" | "automaticRotation"> &
+  Partial<Pick<NativeAnimation, "animated" | "automaticRotation">>;
 
 export type RenderAnimationOptions = Readonly<{
   atMillis: number;
@@ -51,14 +56,19 @@ export type RenderAnimationOptions = Readonly<{
 
 type LayerMode = "normal" | "add" | "screen" | "multiply";
 
-export function defineAnimation(definition: NativeAnimation): NativeAnimation {
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(definition.id)) {
-    throw new Error(`Invalid animation id: ${definition.id}`);
+export function defineAnimation(definition: NativeAnimationDefinition): NativeAnimation {
+  const animation: NativeAnimation = {
+    ...definition,
+    animated: definition.animated ?? true,
+    automaticRotation: definition.automaticRotation ?? true
+  };
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(animation.id)) {
+    throw new Error(`Invalid animation id: ${animation.id}`);
   }
-  if (!Number.isFinite(definition.durationMillis) || definition.durationMillis < 100) {
-    throw new Error(`Animation ${definition.id} needs a duration of at least 100ms`);
+  if (!Number.isFinite(animation.durationMillis) || animation.durationMillis < 100) {
+    throw new Error(`Animation ${animation.id} needs a duration of at least 100ms`);
   }
-  return Object.freeze({ ...definition, palette: Object.freeze([...definition.palette]), tags: Object.freeze([...definition.tags]) });
+  return Object.freeze({ ...animation, palette: Object.freeze([...animation.palette]), tags: Object.freeze([...animation.tags]) });
 }
 
 export function renderAnimationFrame(animation: NativeAnimation, options: RenderAnimationOptions): Frame {
