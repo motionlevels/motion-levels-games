@@ -126,6 +126,18 @@ test("bundle generation has enough time for every production game", () => {
   );
 });
 
+test("main release bundles embed the planned tag before promotion creates it", () => {
+  const browserJob = checks.match(/^  browser-playtest:[\s\S]*$/m)?.[0] || "";
+  assert.match(browserJob, /fetch-depth: 0/);
+  assert.match(browserJob, /name: Resolve the player-facing release tag/);
+  assert.match(browserJob, /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/);
+  assert.match(browserJob, /git fetch origin main --tags/);
+  assert.match(browserJob, /git tag --points-at HEAD --sort=-v:refname/);
+  assert.match(browserJob, /node scripts\/next-release-tag\.ts/);
+  assert.match(browserJob, /MOTION_LEVELS_GAMES_RELEASE_TAG=\$release_tag.*GITHUB_ENV/);
+  assert.match(browserJob, /--env MOTION_LEVELS_GAMES_RELEASE_TAG/);
+});
+
 test("release reuses the exact bundle that passed the quality gate", () => {
   const releaseBundle = release.match(/^  bundle:[\s\S]*?(?=^  notify-platform:)/m)?.[0] || "";
   assert.match(releaseBundle, /timeout-minutes: 10/);

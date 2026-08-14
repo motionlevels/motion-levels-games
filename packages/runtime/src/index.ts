@@ -1,4 +1,9 @@
-export { GameSession, type GameSelection, type GameSessionState } from "./session.ts";
+export {
+  GameSession,
+  type AutomaticAttemptTransition,
+  type GameSelection,
+  type GameSessionState
+} from "./session.ts";
 export {
   buildGameplayRegistry,
   gameCatalog,

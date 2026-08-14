@@ -60,8 +60,16 @@ to repair its recovery mirror after a command from the platform.
 The kiosk persists the last observed runtime `runId` and venue-session ID. An
 empty session in the same runtime is an authoritative close; an empty fresh
 runtime after a process restart is recovered from kiosk storage. Camera hooks
-triggered by these transitions remain best-effort and do not own lifecycle
-state.
+for visit/selection scopes remain lifecycle side effects. A `run` recording
+policy is stricter: the engine publishes an authoritative `recordingGate`,
+keeps lifecycle `launching`, and freezes the game until the camera reports a
+physical shutter start. On timeout the menu must send one of
+`recording_retry`, `recording_continue_without`, or `recording_cancel` together
+with the current opaque `recordingGateId`; stale IDs return HTTP 409. Retry
+keeps the run/capture identity but rotates the decision token. Continue and
+cancel do not complete until camera stop is confirmed. Ending the venue
+session revokes an active gate and returns to the screensaver; changing its
+recording policy while the gate is unresolved is rejected fail-closed.
 
 ## Remote floor input
 
@@ -149,6 +157,10 @@ Automatic gameplay replay retention uses
 `MOTION_LEVELS_REPLAY_MAX_LOCAL_BYTES`; invalid or zero values retain the
 fail-closed 512 MiB default, and only remotely verified complete artifacts are
 eligible for pruning.
+Physical start confirmation
+and the engine gate default to eight seconds and can be tuned with
+`MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT` and
+`MOTION_LEVELS_RUN_RECORDING_START_TIMEOUT`, respectively.
 
 For local integration, `npm run dev:venue` runs the source directly. It reads
 the current Git revision automatically; `MOTION_LEVELS_GAMES_SOURCE_REVISION`

@@ -116,6 +116,28 @@ old capture is absent, and opens a new `RecordingAsset`/`captureId`. A run that
 crosses that boundary is linked to both assets. Uncertain stops block every
 new start and are retried independently per capture.
 
+A successful `POST /sessions/start` schedules a capture but is not proof that
+the GoPro shutter opened. The adapter polls `/status` for the same `captureId`
+and marks the asset `recording` only after `recordingState` is
+`recording-segment` (or the forward-compatible `recording`). The physical
+`currentSegmentStartedAt` and measured startup latency are persisted in the
+asset metadata. `MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT` controls
+that confirmation wait independently of the ordinary HTTP request timeout and
+defaults to eight seconds.
+
+`run` policy is strict. Every initial run, explicit restart, automatic retry,
+and automatic next-level advance first creates a durable `recording_arming`
+run and a camera-start handle. Gameplay clocks, ticks, floor input, and the
+published frame remain frozen until physical recording is confirmed. If the
+venue-owned eight-second gate expires, it never auto-continues: the operator
+must retry the same durable asset/capture ID, continue without video, or
+cancel. A late confirmation is still persisted but cannot release a timed-out
+gate. Continue/cancel first confirm that the capture is physically stopped;
+an uncertain stop leaves the gate in place. Continuing affects only that run
+and does not change the visit policy. Automatic published-level transitions
+are explicitly held by the game until this barrier releases, so the terminal
+attempt cannot advance behind the camera gate.
+
 Shutdown stops accepting new HTTP requests, explicitly ends long-lived SSE
 streams, waits for ordinary in-flight commands, and only then drains the
 runtime/camera queue, including stop retries scheduled after the initial drain

@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { engineTokenFromEnvironment } from "./engineToken.ts";
-import { recordingClientFromEnvironment } from "./httpRecordingClient.ts";
-import { closeVenueHttpSse, createVenueHttpServer } from "./httpServer.ts";
+import {
+  recordingClientFromEnvironment,
+  recordingShutdownDrainBudgetMillis
+} from "./httpRecordingClient.ts";
+import { beginVenueHttpShutdown, createVenueHttpServer } from "./httpServer.ts";
 import { VenueRuntime } from "./venueRuntime.ts";
 
 declare const MOTION_LEVELS_GAMES_REVISION: string;
@@ -22,6 +25,11 @@ const runtime = new VenueRuntime({
   audioEnabled: parseBoolean(process.env.MOTION_LEVELS_AUDIO_ENABLED, false),
   sessionHistoryDir: process.env.MOTION_LEVELS_SESSION_HISTORY_DIR?.trim() || "/var/lib/motion-levels/session-history",
   replayMaxLocalBytes: parsePositive(process.env.MOTION_LEVELS_REPLAY_MAX_LOCAL_BYTES, 512 * 1024 * 1024),
+  recordingStartGateTimeoutMillis: parseDurationMillis(
+    process.env.MOTION_LEVELS_RUN_RECORDING_START_TIMEOUT
+      ?? process.env.MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT,
+    8_000
+  ),
   ...(recordingClient ? { recordingClient } : {}),
   log: (message, error) => console.error(`[venue-runtime] ${message}`, error ?? "")
 });
@@ -53,18 +61,24 @@ async function shutdown(signal: "SIGINT" | "SIGTERM"): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[venue-runtime] ${signal} received; draining session history and camera recording`);
+  const minimumDrainMillis = recordingClient ? recordingShutdownDrainBudgetMillis() : 30_000;
+  const shutdownDrainMillis = Math.max(
+    minimumDrainMillis,
+    parseDurationMillis(process.env.MOTION_LEVELS_ENGINE_SHUTDOWN_TIMEOUT, minimumDrainMillis)
+  );
   const forcedExit = setTimeout(() => {
-    console.error("[venue-runtime] shutdown drain exceeded 30 seconds");
+    console.error(`[venue-runtime] shutdown drain exceeded ${shutdownDrainMillis} ms`);
     process.exit(1);
-  }, 30_000);
-  const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()));
-  closeVenueHttpSse(server);
+  }, shutdownDrainMillis);
+  const httpShutdown = beginVenueHttpShutdown(server);
   try {
-    // Wait for ordinary in-flight commands after ending only long-lived SSE.
-    // runtime.stop() is last so no request can enqueue history/camera work
-    // after its drain has completed.
-    await serverClosed;
+    // Mutations accepted before SIGTERM finish first, but unrelated HTTP
+    // connection teardown must not delay the physical camera stop. The HTTP
+    // lifecycle rejects all later requests, so history cannot reopen after
+    // this boundary.
+    await httpShutdown.mutationsDrained;
     await runtime.stop();
+    await httpShutdown.serverClosed;
     clearTimeout(forcedExit);
     process.exit(0);
   } catch (error) {

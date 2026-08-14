@@ -94,6 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           path: source
       - uses: actions/setup-node@v7
         with:
@@ -101,6 +102,34 @@ jobs:
           cache: npm
           cache-dependency-path: source/package-lock.json
       - run: npm ci
+      - name: Resolve the player-facing release tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main --tags
+          strict_tag='^games-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          release_tag="$(git tag --points-at HEAD --sort=-v:refname | grep -E "$strict_tag" | head -n 1 || true)"
+          if [[ -z "$release_tag" ]]; then
+            latest_tag="$(git tag --list 'games-v*' --sort=-v:refname | grep -E "$strict_tag" | head -n 1 || true)"
+            if [[ -n "$latest_tag" ]]; then
+              git merge-base --is-ancestor "$latest_tag" HEAD
+            fi
+
+            change="patch"
+            latest_major="${latest_tag#games-v}"
+            latest_major="${latest_major%%.*}"
+            if [[ -z "$latest_tag" ]] || (( latest_major < 2 )); then
+              change="major"
+            elif \
+                ! git diff --quiet --diff-filter=ADR "$latest_tag..HEAD" -- 'games/*/src/manifest.ts'; then
+              change="minor"
+            fi
+            release_tag="$(node scripts/next-release-tag.ts "${latest_tag:-games-v0.0.0}" "$change")"
+          fi
+
+          echo "MOTION_LEVELS_GAMES_RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
       - run: npm run build
       - name: Run browser-backed release gate in pinned runtime
         env:
@@ -108,11 +137,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/playwright-home"
+          release_tag_env=()
+          if [[ -n "${MOTION_LEVELS_GAMES_RELEASE_TAG:-}" ]]; then
+            release_tag_env+=(--env MOTION_LEVELS_GAMES_RELEASE_TAG)
+          fi
           docker run --rm --ipc=host \
             --user "$(id -u):$(id -g)" \
             --env HOME=/runner-temp/playwright-home \
             --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
             --env MOTION_LEVELS_GAMES_SOURCE_REVISION \
+            "${release_tag_env[@]}" \
             --volume "$GITHUB_WORKSPACE/source:/workspace" \
             --volume "$RUNNER_TEMP:/runner-temp" \
             --workdir /workspace \

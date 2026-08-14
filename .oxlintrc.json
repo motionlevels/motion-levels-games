@@ -40,6 +40,7 @@
       "files": [
         "apps/player-menu/src/floor.ts",
         "apps/player-menu/src/vite-env.d.ts",
+        "apps/player-display/src/vite-env.d.ts",
         "apps/player-menu/test/catalog-sync.test.ts"
       ],
       "rules": {

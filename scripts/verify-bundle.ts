@@ -22,6 +22,7 @@ import {
   type GameMediaAssetKind
 } from "../packages/game-sdk/src/index.ts";
 import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
+import { deriveGamesBuildIdentity } from "./build-version.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 
 const root = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(process.cwd(), "dist/bundle"));
@@ -37,6 +38,8 @@ const manifest = JSON.parse(await readFile(path.join(root, "bundle.json"), "utf8
   catalog?: string;
   animations?: string;
   sourceRevision?: string;
+  buildVersion?: string;
+  releaseTag?: string | null;
   sdkFps?: number;
   artifactDigest?: string;
   files?: unknown[];
@@ -65,6 +68,13 @@ assert.equal(manifest.catalog, "catalog.json");
 assert.equal(manifest.animations, "animations.json");
 assert.equal(manifest.sdkFps, 50);
 assert.match(String(manifest.sourceRevision), /^[0-9a-f]{40}$/u);
+assert.ok("buildVersion" in manifest, "bundle build version is missing");
+assert.ok("releaseTag" in manifest, "bundle release tag metadata is missing");
+const expectedBuildIdentity = manifest.releaseTag === null
+  ? deriveGamesBuildIdentity(manifest.sourceRevision!)
+  : deriveGamesBuildIdentity(manifest.sourceRevision!, { explicitReleaseTag: String(manifest.releaseTag) });
+assert.equal(manifest.buildVersion, expectedBuildIdentity.buildVersion);
+assert.equal(manifest.releaseTag, expectedBuildIdentity.releaseTag);
 assert.equal("runtime" in manifest, false);
 const files = await bundleFiles(root);
 assert.ok(files.some((file) => file.path === manifest.venueRuntime?.entry), "venue runtime entry is missing from bundle files");
@@ -97,20 +107,28 @@ const menuBuild = JSON.parse(await readFile(path.join(root, manifest.playerMenu!
   menuBuildRevision?: string;
   menuBuildDate?: string;
   gamesSourceRevision?: string;
+  buildVersion?: string;
+  releaseTag?: string | null;
 };
 assert.equal(menuBuild.schema, "motion-levels-player-menu-build-v1");
 assert.equal(menuBuild.menuBuildRevision, manifest.sourceRevision);
 assert.equal(menuBuild.gamesSourceRevision, manifest.sourceRevision);
+assert.equal(menuBuild.buildVersion, manifest.buildVersion);
+assert.equal(menuBuild.releaseTag, manifest.releaseTag);
 assert.ok(Boolean(menuBuild.menuBuildDate), "player menu build date is missing");
 const displayBuild = JSON.parse(await readFile(path.join(root, manifest.playerDisplay!.buildManifest!), "utf8")) as {
   schema?: string;
   displayBuildRevision?: string;
   displayBuildDate?: string;
   gamesSourceRevision?: string;
+  buildVersion?: string;
+  releaseTag?: string | null;
 };
 assert.equal(displayBuild.schema, "motion-levels-player-display-build-v1");
 assert.equal(displayBuild.displayBuildRevision, manifest.sourceRevision);
 assert.equal(displayBuild.gamesSourceRevision, manifest.sourceRevision);
+assert.equal(displayBuild.buildVersion, manifest.buildVersion);
+assert.equal(displayBuild.releaseTag, manifest.releaseTag);
 assert.ok(Boolean(displayBuild.displayBuildDate), "player display build date is missing");
 const compiledMenuEntries = files.filter((file) => /^menu\/assets\/.*\.js$/u.test(file.path));
 assert.ok(compiledMenuEntries.length > 0, "player menu has no compiled JavaScript");
@@ -120,6 +138,12 @@ assert.ok(
   ).includes(Buffer.from(manifest.sourceRevision!))))).some(Boolean),
   "player menu JavaScript does not contain its declared games source revision"
 );
+assert.ok(
+  (await Promise.all(compiledMenuEntries.map(async (file) => (
+    await readFile(path.join(root, file.path))
+  ).includes(Buffer.from(manifest.buildVersion!))))).some(Boolean),
+  "player menu JavaScript does not contain its declared build version"
+);
 const compiledDisplayShellEntries = files.filter((file) => /^display\/assets\/.*\.js$/u.test(file.path));
 assert.ok(compiledDisplayShellEntries.length > 0, "player display shell has no compiled JavaScript");
 assert.ok(
@@ -127,6 +151,12 @@ assert.ok(
     await readFile(path.join(root, file.path))
   ).includes(Buffer.from(manifest.sourceRevision!))))).some(Boolean),
   "player display shell JavaScript does not contain its declared games source revision"
+);
+assert.ok(
+  (await Promise.all(compiledDisplayShellEntries.map(async (file) => (
+    await readFile(path.join(root, file.path))
+  ).includes(Buffer.from(manifest.buildVersion!))))).some(Boolean),
+  "player display shell JavaScript does not contain its declared build version"
 );
 for (const [label, entry] of [
   ["venue runtime", manifest.venueRuntime!.entry!],

@@ -51,8 +51,8 @@ function state(
   };
 }
 
-function startSelection(recorder: SessionHistoryRecorder, runId = "run-1"): void {
-  recorder.startSelection({
+function startSelection(recorder: SessionHistoryRecorder, runId = "run-1") {
+  return recorder.startSelection({
     id: "selection-1",
     runId,
     gameId: "ping-pong",
@@ -506,6 +506,170 @@ test("retries an active failed start with the same capture id and recovers healt
   assert.equal(store.getVisit("visit-start-auto-retry").recordings.length, 1);
   assert.equal(store.getVisit("visit-start-auto-retry").recordings[0]?.status, "recording");
   assert.equal(recorder.health().recordingHealthy, true);
+  await recorder.stop();
+});
+
+test("run recording exposes a gated handle and retries only on the operator's same capture", async (context) => {
+  const calls: RecordingBoundary[] = [];
+  let startAttempts = 0;
+  const store = temporaryStore(context, () => 1_000);
+  const recorder = new SessionHistoryRecorder(store, {
+    now: () => 1_000,
+    recordingStartRetryMillis: 10,
+    recordingClient: {
+      onBoundary(boundary) {
+        calls.push(boundary);
+        if (boundary.type === "start" && startAttempts++ === 0) {
+          throw new Error("physical start remained unconfirmed");
+        }
+        return {
+          ...boundary.recording,
+          status: boundary.type === "start" ? "recording" : "complete"
+        };
+      }
+    }
+  });
+  recorder.startVisit({ id: "visit-run-operator-retry", recordingPolicy: { scope: "run" } });
+  const first = recorder.startSelection({
+    id: "selection-run-operator-retry",
+    runId: "run-operator-retry",
+    gameId: "ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    manifestId: "ping-pong",
+    label: "Ping pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: "1".repeat(40),
+    difficulty: "medium"
+  }, state(0, 0), { recordingBlocked: true });
+  assert.ok(first);
+  const firstResult = await first.completion;
+  assert.equal(firstResult.state, "failed");
+  assert.equal(firstResult.reason, "start_unconfirmed");
+  assert.equal(store.getVisit("visit-run-operator-retry").selections[0]?.runs[0]?.status, "starting");
+  assert.equal(store.getVisit("visit-run-operator-retry").selections[0]?.runs[0]?.finalSnapshot?.phase, "recording_arming");
+
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(calls.filter((boundary) => boundary.type === "start").length, 1, "run gates must not auto-backoff");
+  const retried = recorder.retryRunRecording("run-operator-retry");
+  assert.ok(retried);
+  assert.equal(retried.recording.id, first.recording.id);
+  assert.equal(retried.recording.captureId, first.recording.captureId);
+  assert.equal((await retried.completion).state, "recording");
+  assert.equal(calls.filter((boundary) => boundary.type === "start").length, 2);
+
+  recorder.observeState(state(0, 0));
+  assert.equal(store.getVisit("visit-run-operator-retry").selections[0]?.runs[0]?.status, "running");
+  recorder.endSelection("exit");
+  await recorder.stop();
+});
+
+test("run recording retry reattaches to an in-flight start and reuses a late physical confirmation", async (context) => {
+  let releaseStart = () => {};
+  const startGate = new Promise<void>((resolve) => { releaseStart = resolve; });
+  const calls: RecordingBoundary[] = [];
+  const store = temporaryStore(context, () => 1_000);
+  const recorder = new SessionHistoryRecorder(store, {
+    now: () => 1_000,
+    recordingClient: {
+      async onBoundary(boundary) {
+        calls.push(boundary);
+        if (boundary.type === "start") await startGate;
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  recorder.startVisit({ id: "visit-run-inflight-retry", recordingPolicy: { scope: "run" } });
+  const first = recorder.startSelection({
+    id: "selection-run-inflight-retry",
+    runId: "run-inflight-retry",
+    gameId: "ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    manifestId: "ping-pong",
+    label: "Ping pong",
+    sourceKind: "motion_levels_games",
+    sourceRevision: "1".repeat(40),
+    difficulty: "medium"
+  }, state(0, 0), { recordingBlocked: true });
+  assert.ok(first);
+  await waitFor(() => calls.length === 1);
+
+  const attached = recorder.retryRunRecording("run-inflight-retry");
+  assert.ok(attached);
+  assert.equal(attached.completion, first.completion);
+  assert.equal(calls.length, 1);
+
+  releaseStart();
+  assert.equal((await attached.completion).state, "recording");
+  const confirmed = recorder.retryRunRecording("run-inflight-retry");
+  assert.ok(confirmed);
+  assert.equal((await confirmed.completion).state, "recording");
+  assert.equal(calls.filter((boundary) => boundary.type === "start").length, 1);
+  recorder.endSelection("exit");
+  await recorder.stop();
+});
+
+test("a non-terminal stop result remains uncertain and cannot complete skip", async (context) => {
+  let stopAttempts = 0;
+  const store = temporaryStore(context, () => 1_000);
+  const recorder = new SessionHistoryRecorder(store, {
+    now: () => 1_000,
+    recordingWatchIntervalMillis: 1_000,
+    recordingClient: {
+      onBoundary(boundary) {
+        if (boundary.type === "start") return { ...boundary.recording, status: "recording" };
+        stopAttempts += 1;
+        return { ...boundary.recording, status: stopAttempts === 1 ? "recording" : "complete" };
+      }
+    }
+  });
+  recorder.startVisit({ id: "visit-run-stop-unconfirmed", recordingPolicy: { scope: "run" } });
+  startSelection(recorder, "run-stop-unconfirmed");
+  await waitFor(() => store.getVisit("visit-run-stop-unconfirmed").recordings[0]?.status === "recording");
+
+  await assert.rejects(
+    recorder.skipRunRecording("run-stop-unconfirmed"),
+    /did not confirm stopped capture/u
+  );
+  assert.equal(store.getVisit("visit-run-stop-unconfirmed").recordings[0]?.status, "finalizing");
+  await recorder.skipRunRecording("run-stop-unconfirmed");
+  assert.equal(store.getVisit("visit-run-stop-unconfirmed").recordings[0]?.status, "complete");
+  await recorder.stop();
+});
+
+test("skip waits for every earlier uncertain stop before allowing gameplay", async (context) => {
+  let runOneStopAttempts = 0;
+  let releaseRunOneRetry = () => {};
+  const runOneRetryGate = new Promise<void>((resolve) => { releaseRunOneRetry = resolve; });
+  const calls: RecordingBoundary[] = [];
+  const store = temporaryStore(context, () => 1_000);
+  const recorder = new SessionHistoryRecorder(store, {
+    now: () => 1_000,
+    recordingWatchIntervalMillis: 10,
+    recordingClient: {
+      async onBoundary(boundary) {
+        calls.push(boundary);
+        if (boundary.type === "stop" && boundary.runId === "run-prior-stop") {
+          runOneStopAttempts += 1;
+          if (runOneStopAttempts === 1) throw new Error("first run stop response was lost");
+          await runOneRetryGate;
+        }
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  recorder.startVisit({ id: "visit-run-global-stop-wait", recordingPolicy: { scope: "run" } });
+  startSelection(recorder, "run-prior-stop");
+  await waitFor(() => calls.some((boundary) => boundary.type === "start"));
+  recorder.restartRun("run-current-skip", state(0, 0));
+  await waitFor(() => runOneStopAttempts === 1);
+
+  let skipSettled = false;
+  const skipped = recorder.skipRunRecording("run-current-skip").then(() => { skipSettled = true; });
+  await waitFor(() => runOneStopAttempts === 2);
+  assert.equal(skipSettled, false, "the current run stop cannot clear an earlier capture's blocker");
+  releaseRunOneRetry();
+  await skipped;
+  assert.equal(skipSettled, true);
   await recorder.stop();
 });
 

@@ -1,22 +1,27 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { execSync } from "node:child_process";
+import { resolveGamesBuildIdentity } from "../../scripts/build-version.ts";
 
 const displayBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse HEAD");
 const displayBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
 const gamesSourceRevision = process.env.MOTION_LEVELS_GAMES_SOURCE_REVISION || gitValue("git rev-parse HEAD");
 if (!/^[0-9a-f]{40}$/u.test(displayBuildRevision)) throw new Error("player-display requires a full build revision");
 if (!/^[0-9a-f]{40}$/u.test(gamesSourceRevision)) throw new Error("player-display requires a full games source revision");
+const { buildVersion, releaseTag } = resolveGamesBuildIdentity(gamesSourceRevision);
 const buildManifest = {
   schema: "motion-levels-player-display-build-v1",
   displayBuildRevision,
   displayBuildDate,
-  gamesSourceRevision
+  gamesSourceRevision,
+  buildVersion,
+  releaseTag
 };
 
 export default defineConfig({
   base: "./",
   define: {
+    __MOTION_LEVELS_GAMES_BUILD_VERSION__: JSON.stringify(buildVersion),
     MOTION_LEVELS_PLAYER_DISPLAY_REVISION: JSON.stringify(displayBuildRevision),
   },
   plugins: [
