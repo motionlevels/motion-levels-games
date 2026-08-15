@@ -43,6 +43,7 @@ import {
   type PresentedFrame
 } from "./controllerProtocol.ts";
 import { createLiveFloorPublisher, encodeLiveViewerFrame, type LiveFloorPublisher } from "./liveFloorPublisher.ts";
+import { RunReplayArchive, type RunReplayRead } from "./runReplayArchive.ts";
 import {
   SessionHistoryRecorder,
   type RunRecordingStartHandle,
@@ -126,6 +127,7 @@ export type VenueRuntimeOptions = {
   brightness?: number;
   audioEnabled?: boolean;
   sessionHistoryDir?: string;
+  replayMaxLocalBytes?: number;
   recordingClient?: RecordingClient;
   recordingStartGateTimeoutMillis?: number;
   now?: () => number;
@@ -280,6 +282,7 @@ export class VenueRuntime {
   private readonly remoteFloorInputLeaseMillis: number;
   private readonly remoteFloorInputTombstoneMillis: number;
   private readonly history: SessionHistoryRecorder | null;
+  private readonly runReplays: RunReplayArchive | null;
   private readonly recordingStartGateTimeoutMillis: number;
   private readonly audioEnabled: boolean;
   private readonly liveFloorListeners = new Set<ObservedFloorSubscription>();
@@ -302,6 +305,8 @@ export class VenueRuntime {
   private venueSessionRecordingPolicy: RecordingPolicy = { scope: "visit" };
   private venueSessionGeneration = 0;
   private frameSequence = 0n;
+  private readonly sentFrameContexts = new Map<bigint, { runId: string; engineAtMillis: number }>();
+  private replayFinishRequestedRunId = "";
   private lastDisplayPublishedAt = 0;
   private lastStatusPublishedAt = 0;
   private timer: NodeJS.Timeout | null = null;
@@ -353,6 +358,14 @@ export class VenueRuntime {
           now: options.now,
           recordingClient: options.recordingClient,
           log: options.log
+        })
+      : null;
+    this.runReplays = this.history
+      ? new RunReplayArchive(this.history.store, {
+          now: options.now,
+          log: options.log,
+          maxLocalBytes: options.replayMaxLocalBytes,
+          platformUrl: options.platformUrl
         })
       : null;
     const recoveredVisit = this.history?.currentVisit();
@@ -416,7 +429,11 @@ export class VenueRuntime {
     this.clearRecordingReadyTimer();
     this.recordingGate = null;
     for (const clientId of [...this.remotePressureClients.keys()]) this.releaseRemoteFloorInputClient(clientId);
-    const historyDrain = this.history?.stop() ?? Promise.resolve();
+    this.runReplays?.forceFinishAll("runtime_interrupted");
+    const historyDrain = (async () => {
+      await this.runReplays?.drain();
+      await (this.history?.stop() ?? Promise.resolve());
+    })();
     this.controller.stop();
     return historyDrain;
   }
@@ -502,6 +519,7 @@ export class VenueRuntime {
     );
     this.cancelRunningOutputTest("Prueba cancelada al iniciar la partida");
     this.clearRecordingGate();
+    this.finishActiveRunReplay("superseded");
     const now = performance.now();
     this.state = this.session.select({
       gameId: module.manifest.id,
@@ -586,6 +604,7 @@ export class VenueRuntime {
         metadata: { color: player.color }
       }))
     }, this.historyState(this.state), { recordingBlocked }) ?? null;
+    this.startRunReplay(this.historyState(this.state));
     if (recordingBlocked) {
       this.beginRecordingGate("initial", recordingStart, now);
     } else {
@@ -616,6 +635,7 @@ export class VenueRuntime {
       return this.status();
     }
     if (action === "exit") {
+      this.finishActiveRunReplay("exited");
       this.cancelRunningOutputTest("Prueba cancelada al salir de la partida");
       this.clearRecordingGate();
       this.history?.endSelection("exited");
@@ -637,6 +657,7 @@ export class VenueRuntime {
       this.acceptSessionState(this.session.resume());
       this.applyHeldPressure(this.state.clockMillis);
     } else if (action === "restart") {
+      this.finishActiveRunReplay("restarted");
       this.assertNoUngatedRecordingStop(this.venueSessionRecordingPolicy, this.venueSessionId);
       this.clearRecordingGate();
       this.updateState(this.session.restart(0));
@@ -653,6 +674,7 @@ export class VenueRuntime {
         this.historyState(this.state),
         { recordingBlocked }
       ) ?? null;
+      this.startRunReplay(this.historyState(this.state));
       if (recordingBlocked) this.beginRecordingGate("restart", recordingStart, now);
       else this.applyHeldPressure(0);
     } else if (action === "narration") {
@@ -762,6 +784,7 @@ export class VenueRuntime {
       throw new SessionHistoryConflictError("recording gate changed while stopping capture");
     }
     if (cancel) {
+      this.finishActiveRunReplay("recording_cancelled");
       this.history?.endSelection("recording_cancelled");
       this.activateScreensaver();
     } else {
@@ -936,10 +959,17 @@ export class VenueRuntime {
   }
 
   addHistoryRecording(id: string, recording: RecordingAsset): RecordingResponse {
+    const persisted = this.requireHistory().store.upsertRecording(id, recording);
+    this.runReplays?.reconcileRecording(persisted);
     return {
       schema: SESSION_HISTORY_SCHEMA,
-      recording: this.requireHistory().store.upsertRecording(id, recording)
+      recording: persisted
     };
+  }
+
+  historyRunReplay(id: string, runId: string, assetId?: string): RunReplayRead {
+    if (!this.runReplays) throw new RequestValidationError("session history is not configured");
+    return this.runReplays.read(id, runId, assetId);
   }
 
   health(): Record<string, unknown> {
@@ -1128,6 +1158,7 @@ export class VenueRuntime {
       });
     } else if (this.venueSessionId === venueSessionId) {
       changed = true;
+      this.finishActiveRunReplay(cleanText(request.reason, 160) || "completed");
       const hadRecordingGate = Boolean(this.recordingGate);
       const hadActiveSelection = Boolean(this.selection);
       this.history?.endVisit(cleanText(request.reason, 160) || "completed");
@@ -1243,7 +1274,7 @@ export class VenueRuntime {
   /** Controller input boundary; public to permit deterministic host tests. */
   applyPressure(input: PressureInput): void {
     this.lastPressureUnix = Math.floor(Number(input.unixNanos / 1_000_000_000n)) || Math.floor(Date.now() / 1_000);
-    this.applyPhysicalPressureTransition(input.x, input.y, input.pressed);
+    this.applyPhysicalPressureTransition(input.x, input.y, input.pressed, Number(input.unixNanos / 1_000_000n));
   }
 
   /** Authenticated operator input. Each browser owns a leased set of latches,
@@ -1296,6 +1327,12 @@ export class VenueRuntime {
       frameBase64: Buffer.from(encoded).toString("base64")
     };
     this.latestObservedFloor = observed;
+    const context = this.sentFrameContexts.get(frame.desiredSequence);
+    this.runReplays?.observePresentedFrame(frame, context?.engineAtMillis ?? 0);
+    for (const sequence of this.sentFrameContexts.keys()) {
+      if (sequence > frame.desiredSequence - 4_096n) break;
+      this.sentFrameContexts.delete(sequence);
+    }
     this.floorAdapter = {
       ...this.floorAdapter,
       lastPresentedSequence: observed.sequence,
@@ -1368,6 +1405,13 @@ export class VenueRuntime {
     }
     const frame = this.state.frame;
     this.frameSequence += 1n;
+    const frameContext = this.historyState(this.state);
+    if (this.gameSessionId) {
+      this.sentFrameContexts.set(this.frameSequence, {
+        runId: this.gameSessionId,
+        engineAtMillis: frameContext.clockMillis
+      });
+    }
     const outputTestRgb = this.floorOutputTestFrame(this.frameSequence, now);
     this.controller.sendFrame({
       sequence: this.frameSequence,
@@ -1376,6 +1420,10 @@ export class VenueRuntime {
       height: FLOOR_ROWS,
       rgb: outputTestRgb ?? frameToRgb(frame, this.options.brightness ?? 1)
     });
+    if (String(this.state.snapshot.phase) === "finished"
+      && this.replayFinishRequestedRunId !== this.gameSessionId) {
+      this.requestRunReplayFinish(this.gameSessionId, this.state.snapshot.success ? "success" : "finished");
+    }
     this.expireFloorOutputTest(now);
     this.expireAudioOutputTest();
     this.expireOutputTestResult();
@@ -1660,6 +1708,7 @@ export class VenueRuntime {
       // Persist the terminal state against the old run before rebasing the
       // engine clock and creating the camera-gated successor.
       this.history?.observeState(this.historyState(next));
+      this.finishActiveRunReplay("automatic_restart");
       this.updateState(this.session.clearHeldInputs(next.clockMillis));
       this.historyRunEngineOriginMillis = this.state.clockMillis;
       this.gameSessionId = randomUUID();
@@ -1673,18 +1722,22 @@ export class VenueRuntime {
           pendingLevelSlug: pendingTransition.toLevelSlug
         }
       ) ?? null;
+      this.startRunReplay(this.historyState(this.state));
       this.beginRecordingGate("automatic", recordingStart, observedAtMonotonicMillis);
       return;
     }
     const automaticAttempt = this.selection?.manifest.tags?.includes("published-levels") === true
       && publishedAttemptStarted(previous, next);
     if (automaticAttempt) {
+      this.finishActiveRunReplay("automatic_restart");
       this.historyRunEngineOriginMillis = next.clockMillis;
       this.gameSessionId = randomUUID();
       this.sessionStartedUnix = Math.floor(this.wallNow() / 1_000);
       this.history?.restartRun(this.gameSessionId, this.historyState(next));
+      this.startRunReplay(this.historyState(next));
       return;
     }
+    this.runReplays?.observeState(this.gameSessionId, this.historyState(next));
     this.history?.observeState(this.historyState(next));
   }
 
@@ -1711,16 +1764,17 @@ export class VenueRuntime {
     for (const key of this.heldPressure) {
       const [x, y] = key.split(",").map(Number);
       if (x !== undefined && y !== undefined) {
+        this.recordReplayInput("restored", x, y, true, Date.now(), atMillis);
         this.acceptSessionState(this.session.press(x, y, atMillis));
       }
     }
   }
 
-  private applyPhysicalPressureTransition(x: number, y: number, pressed: boolean): boolean {
+  private applyPhysicalPressureTransition(x: number, y: number, pressed: boolean, occurredAtUnixMillis: number): boolean {
     const key = `${x},${y}`;
     if (this.physicalPressure.has(key) === pressed) return false;
     if (pressed) this.physicalPressure.add(key); else this.physicalPressure.delete(key);
-    this.applyEffectivePressureTransition(x, y);
+    this.applyEffectivePressureTransition(x, y, "physical", occurredAtUnixMillis);
     return true;
   }
 
@@ -1741,11 +1795,16 @@ export class VenueRuntime {
       if (remaining > 0) this.remotePressureCounts.set(key, remaining);
       else this.remotePressureCounts.delete(key);
     }
-    this.applyEffectivePressureTransition(x, y);
+    this.applyEffectivePressureTransition(x, y, "remote", Date.now());
     return true;
   }
 
-  private applyEffectivePressureTransition(x: number, y: number): void {
+  private applyEffectivePressureTransition(
+    x: number,
+    y: number,
+    source: "physical" | "remote",
+    occurredAtUnixMillis: number
+  ): void {
     const key = `${x},${y}`;
     const wasHeld = this.heldPressure.has(key);
     const isHeld = this.physicalPressure.has(key) || this.remotePressureCounts.has(key);
@@ -1753,6 +1812,14 @@ export class VenueRuntime {
     if (isHeld) this.heldPressure.add(key); else this.heldPressure.delete(key);
     if (this.recordingGateBlocksGameplay()) return;
     const atMillis = this.elapsedAt(performance.now());
+    this.recordReplayInput(
+      source,
+      x,
+      y,
+      isHeld,
+      occurredAtUnixMillis,
+      runRelativeEngineMillis(atMillis, this.historyRunEngineOriginMillis)
+    );
     this.acceptSessionState(isHeld
       ? this.session.press(x, y, atMillis)
       : this.session.release(x, y, atMillis));
@@ -1860,6 +1927,7 @@ export class VenueRuntime {
   }
 
   private activateScreensaver(options: Record<string, unknown> = { mode: "rotation" }): void {
+    this.finishActiveRunReplay("screensaver");
     this.clearRecordingGate();
     this.state = this.session.select({
       gameId: screensaverGameId,
@@ -1884,6 +1952,54 @@ export class VenueRuntime {
     this.lastEventCue = "";
     this.lastEventMessage = "";
     this.applyHeldPressure(0);
+  }
+
+  private startRunReplay(state: GameSessionState): void {
+    const visit = this.history?.currentVisit();
+    if (!visit || !this.selection || !this.selectionHistoryId || !this.gameSessionId) return;
+    this.replayFinishRequestedRunId = "";
+    this.runReplays?.start({
+      sessionId: visit.id,
+      selectionId: this.selectionHistoryId,
+      runId: this.gameSessionId,
+      gameId: this.selection.runtimeGameId,
+      engineGame: this.selection.engineGame,
+      sourceRevision: this.options.sourceRevision,
+      contentRevision: this.selection.contentRevision || undefined,
+      width: FLOOR_COLS,
+      height: FLOOR_ROWS,
+      firstDesiredSequence: this.frameSequence + 1n,
+      state
+    });
+  }
+
+  private requestRunReplayFinish(runId: string, outcome: string): void {
+    if (!runId || this.replayFinishRequestedRunId === runId) return;
+    this.replayFinishRequestedRunId = runId;
+    this.runReplays?.requestFinish(runId, outcome, this.frameSequence);
+  }
+
+  private finishActiveRunReplay(outcome: string): void {
+    this.requestRunReplayFinish(this.gameSessionId, outcome);
+  }
+
+  private recordReplayInput(
+    source: "physical" | "remote" | "restored",
+    x: number,
+    y: number,
+    pressed: boolean,
+    occurredAtUnixMillis: number,
+    engineAtMillis: number
+  ): void {
+    if (!this.gameSessionId) return;
+    this.runReplays?.observeInput(this.gameSessionId, {
+      source,
+      x,
+      y,
+      pressed,
+      occurredAtUnixMillis: Math.max(0, Math.floor(occurredAtUnixMillis)),
+      engineAtMillis: Math.max(0, engineAtMillis)
+    });
   }
 
   async refreshScreensaverContent(rotationSeconds?: number): Promise<boolean> {
@@ -2043,6 +2159,10 @@ export function frameToRgb(frame: Frame, brightnessValue: number): Uint8Array {
     rgb[offset + 2] = Math.round(color.b * brightness);
   }
   return rgb;
+}
+
+export function runRelativeEngineMillis(effectiveAtMillis: number, runOriginMillis: number): number {
+  return Math.max(0, effectiveAtMillis - Math.max(0, runOriginMillis));
 }
 
 /** Four short, whole-floor pulses. This is an output-only diagnostic frame:

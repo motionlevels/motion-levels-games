@@ -406,7 +406,7 @@ export class SessionHistoryRecorder {
       if (!selection || !run || visit.activeRunId !== runId || run.endedAtUnixMillis !== undefined) return null;
       const current = [...visit.recordings]
         .reverse()
-        .find((candidate) => candidate.scope === "run"
+        .find((candidate) => isCameraRecordingAsset(candidate) && candidate.scope === "run"
           && candidate.selectionId === selection.id
           && candidate.runId === runId);
       if (!current) return null;
@@ -453,7 +453,7 @@ export class SessionHistoryRecorder {
       const selection = visit.selections.find((candidate) => candidate.id === visit.activeSelectionId);
       const recording = [...visit.recordings]
         .reverse()
-        .find((candidate) => candidate.scope === "run"
+        .find((candidate) => isCameraRecordingAsset(candidate) && candidate.scope === "run"
           && candidate.selectionId === selection?.id
           && candidate.runId === runId);
       if (!selection || !recording) return;
@@ -1555,7 +1555,12 @@ function recordingPoliciesEqual(left: RecordingPolicy, right: RecordingPolicy): 
 }
 
 function isOpenRecording(asset: RecordingAsset): boolean {
-  return asset.status === "requested" || asset.status === "recording" || asset.status === "finalizing";
+  return isCameraRecordingAsset(asset)
+    && (asset.status === "requested" || asset.status === "recording" || asset.status === "finalizing");
+}
+
+function isCameraRecordingAsset(asset: RecordingAsset): boolean {
+  return asset.backend !== "venue-runtime-replay";
 }
 
 function runStatus(phase: string): SessionHistoryRun["status"] {

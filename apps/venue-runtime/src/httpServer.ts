@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { closeSync, createReadStream } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { RecordingAsset } from "@motion-levels-games/session-history";
 import { venueApiProtocolVersion } from "./apiProtocol.ts";
@@ -157,13 +158,41 @@ async function route(
     if (status && status !== "active" && status !== "ended") {
       throw new RequestValidationError("status must be active or ended");
     }
+    const historyStatus = status === "active" || status === "ended" ? status : undefined;
     json(response, runtime.listHistorySessions({
       cursor: url.searchParams.get("cursor") || undefined,
       limit: queryInteger(url, "limit"),
-      status: status as "active" | "ended" | undefined,
+      status: historyStatus,
       from: queryInteger(url, "from"),
       to: queryInteger(url, "to")
     }));
+    return;
+  }
+  const replayMatch = /^\/api\/history\/v1\/sessions\/([^/]+)\/runs\/([^/]+)\/replay(?:\/([^/]+))?$/u.exec(url.pathname);
+  if (replayMatch) {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      response.writeHead(405, { Allow: "GET, HEAD, OPTIONS" }).end("method not allowed");
+      return;
+    }
+    const replay = runtime.historyRunReplay(
+      decodePathSegment(replayMatch[1] ?? ""),
+      decodePathSegment(replayMatch[2] ?? ""),
+      replayMatch[3] ? decodePathSegment(replayMatch[3]) : undefined
+    );
+    response.writeHead(200, {
+      "Content-Type": replay.asset.contentType ?? "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${safeDownloadName(replay.asset.fileName ?? "run-replay.mlrun.jsonl.gz")}"`,
+      "Cache-Control": "private, no-store",
+      ...(replay.asset.byteSize === undefined ? {} : { "Content-Length": replay.asset.byteSize })
+    });
+    if (request.method === "HEAD") {
+      closeSync(replay.fd);
+      response.end();
+      return;
+    }
+    createReadStream(replay.path, { fd: replay.fd, autoClose: true })
+      .on("error", () => response.destroy())
+      .pipe(response);
     return;
   }
   const historyMatch = /^\/api\/history\/v1\/sessions\/([^/]+)(?:\/(events|recordings))?$/u.exec(url.pathname);
@@ -175,8 +204,14 @@ async function route(
       return;
     }
     if (child === "events" && request.method === "GET") {
+      const cursor = url.searchParams.get("cursor") || undefined;
+      const afterSequence = queryInteger(url, "afterSequence");
+      if (cursor && afterSequence !== undefined) {
+        throw new RequestValidationError("cursor and afterSequence are mutually exclusive");
+      }
       json(response, runtime.historyEvents(id, {
-        cursor: url.searchParams.get("cursor") || undefined,
+        cursor,
+        afterSequence,
         limit: queryInteger(url, "limit")
       }));
       return;
@@ -420,6 +455,10 @@ function optionalObject(value: unknown, label: string): Record<string, unknown> 
     throw new RequestValidationError(`${label} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function safeDownloadName(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/gu, "_").slice(0, 255) || "run-replay.mlrun.jsonl.gz";
 }
 
 function json(response: ServerResponse, value: unknown, head = false): void {

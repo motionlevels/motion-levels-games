@@ -37,6 +37,7 @@ const creatingTemporaryManifestPattern = /^\.manifest\.json\.[1-9][0-9]*\.[0-9a-
 const defaultPageLimit = 50;
 const maximumPageLimit = 500;
 const maximumSequence = 999_999_999_999;
+export const sessionHistoryEventCacheLimit = 32;
 
 export class SessionHistoryNotFoundError extends Error {}
 export class SessionHistoryValidationError extends Error {}
@@ -52,6 +53,7 @@ export type SessionListQuery = {
 
 export type SessionEventsQuery = {
   cursor?: string;
+  afterSequence?: number;
   limit?: number;
 };
 
@@ -71,6 +73,7 @@ export type SessionHistoryStoreDiagnostics = {
  */
 export class SessionHistoryStore {
   private readonly visits = new Map<string, SessionHistoryVisit>();
+  private readonly eventsByVisit = new Map<string, SessionHistoryEvent[]>();
   private readonly captureOwners = new Map<string, string>();
   private healthyValue = true;
   private lastErrorValue = "";
@@ -123,6 +126,7 @@ export class SessionHistoryStore {
       renamed = true;
       fsyncDirectory(this.rootDir);
       this.visits.set(desired.id, clone(desired));
+      this.cacheEvents(desired.id, clone(durableEvents));
       this.replaceVisitCaptures(desired.id, [], desired.recordings);
       this.notifyJournalBatch(durableEvents.length);
       return clone(desired);
@@ -262,18 +266,21 @@ export class SessionHistoryStore {
   listEvents(sessionId: string, query: SessionEventsQuery = {}): SessionEventsResponse {
     this.getMutable(sessionId);
     const limit = pageLimit(query.limit);
-    const after = query.cursor ? decodeSequenceCursor(query.cursor) : 0;
-    const available = this.readEvents(sessionId)
-      .filter((event) => event.sequence > after)
-      .sort((left, right) => left.sequence - right.sequence)
-      .map(publicEvent);
-    const events = available.slice(0, limit);
+    if (query.cursor && query.afterSequence !== undefined) {
+      throw new SessionHistoryValidationError("cursor and afterSequence are mutually exclusive");
+    }
+    const after = query.cursor
+      ? decodeSequenceCursor(query.cursor)
+      : eventAfterSequence(query.afterSequence);
+    const available = this.eventsForVisit(sessionId);
+    const start = firstEventAfter(available, after);
+    const events = available.slice(start, start + limit).map(publicEvent);
     const tail = events.at(-1);
     return {
       schema: SESSION_HISTORY_SCHEMA,
       sessionId,
       events: clone(events),
-      nextCursor: available.length > events.length && tail ? encodeSequenceCursor(tail.sequence) : null
+      nextCursor: start + events.length < available.length && tail ? encodeSequenceCursor(tail.sequence) : null
     };
   }
 
@@ -393,7 +400,9 @@ export class SessionHistoryStore {
         validateVisit(parsed);
         if (parsed.id !== entry.name) throw new Error(`session directory identity mismatch: ${entry.name}`);
         for (const recording of parsed.recordings) validateRecording(parsed, recording);
-        const events = this.readEvents(entry.name);
+        const events = this.readEventsFromDisk(entry.name)
+          .sort((left, right) => left.sequence - right.sequence);
+        this.cacheEvents(entry.name, clone(events));
         const manifestSequence = parsed.lastSequence;
         for (const event of events
           .filter((candidate) => candidate.sequence > manifestSequence)
@@ -511,9 +520,35 @@ export class SessionHistoryStore {
 
   private appendLines(id: string, events: readonly SessionHistoryEvent[]): void {
     appendLinesAtPath(this.eventsPath(id), events);
+    const cached = this.eventsByVisit.get(id);
+    if (cached) {
+      cached.push(...clone(events));
+      this.cacheEvents(id, cached);
+    }
   }
 
-  private readEvents(id: string): SessionHistoryEvent[] {
+  private eventsForVisit(id: string): SessionHistoryEvent[] {
+    const cached = this.eventsByVisit.get(id);
+    if (cached) {
+      this.cacheEvents(id, cached);
+      return cached;
+    }
+    const events = this.readEventsFromDisk(id).sort((left, right) => left.sequence - right.sequence);
+    this.cacheEvents(id, events);
+    return events;
+  }
+
+  private cacheEvents(id: string, events: SessionHistoryEvent[]): void {
+    this.eventsByVisit.delete(id);
+    this.eventsByVisit.set(id, events);
+    while (this.eventsByVisit.size > sessionHistoryEventCacheLimit) {
+      const oldest = this.eventsByVisit.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.eventsByVisit.delete(oldest);
+    }
+  }
+
+  private readEventsFromDisk(id: string): SessionHistoryEvent[] {
     let text = "";
     try {
       text = readFileSync(this.eventsPath(id), "utf8");
@@ -1001,6 +1036,25 @@ function decodeSequenceCursor(value: string): number {
     throw new SessionHistoryValidationError("invalid event cursor");
   }
   return decoded;
+}
+
+function eventAfterSequence(value: unknown): number {
+  if (value === undefined) return 0;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new SessionHistoryValidationError("afterSequence must be a non-negative safe integer");
+  }
+  return value;
+}
+
+function firstEventAfter(events: readonly SessionHistoryEvent[], sequence: number): number {
+  let lower = 0;
+  let upper = events.length;
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    if ((events[middle]?.sequence ?? Number.MAX_SAFE_INTEGER) <= sequence) lower = middle + 1;
+    else upper = middle;
+  }
+  return lower;
 }
 
 function clone<T>(value: T): T {

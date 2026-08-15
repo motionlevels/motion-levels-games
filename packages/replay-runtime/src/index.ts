@@ -7,6 +7,8 @@ import {
   type GameInstance
 } from "@motion-levels-games/game-sdk";
 
+export * from "./runReplay.ts";
+
 export const REPLAY_SCHEMA_VERSION = 1;
 export const DEFAULT_REPLAY_SNAPSHOT_INTERVAL_TICKS = 250;
 
