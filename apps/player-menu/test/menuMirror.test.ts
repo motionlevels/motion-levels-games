@@ -4,7 +4,7 @@ import { menuAccessPolicyFromSearch } from "../src/menuAccess.ts";
 import { resolveMenuMirrorEnvelope } from "../src/menuMirror.ts";
 
 describe("embedded menu mirror hydration", () => {
-  it("makes remote control interactive when no kiosk snapshot exists yet", () => {
+  it("lets an interactive remote seed a runtime that has no snapshot yet", () => {
     const access = menuAccessPolicyFromSearch("?remoteControl=1");
     const resolved = resolveMenuMirrorEnvelope({
       version: 0,

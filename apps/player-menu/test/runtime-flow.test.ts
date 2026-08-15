@@ -71,7 +71,8 @@ describe("runtime screen flow", () => {
     const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 
     assert.match(source, /nextRefresh = window\.setTimeout\(refresh, 2500\)/);
-    assert.match(source, /nextRefresh = window\.setTimeout\(refreshMenuState, 700\)/);
+    assert.match(source, /source = menuStateEventSource\(\)/);
+    assert.match(source, /nextRefresh = window\.setTimeout\(refreshMenuState, 2_500\)/);
     assert.match(source, /if \(launchInFlightRef\.current\) return false/);
     assert.match(source, /if \(controlInFlightRef\.current\) return/);
     assert.match(source, /setPendingControlAction\(action\)/);
@@ -137,11 +138,12 @@ describe("runtime screen flow", () => {
     assert.match(source, /onKeyDown=\{\(event\) => trapKioskFocus\(event, \(\) => setTeamOpen\(false\)\)\}/);
   });
 
-  it("hydrates remote control without making it a second kiosk or disabling handlers", () => {
+  it("hydrates every remote control through one authoritative runtime without disabling handlers", () => {
     const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 
     assert.match(source, /if \(!menuAccess\.persistLocalState\) return;\s*try \{\s*localStorage\.setItem\(storageKey/u);
-    assert.match(source, /if \(!menuAccess\.publishMirror\) return;\s*const snapshot: MenuMirrorSnapshot/u);
+    assert.match(source, /if \(!menuAccess\.publishMirror \|\| !menuMirrorConnected\) return;\s*const snapshot: MenuMirrorSnapshot/u);
+    assert.match(source, /expectedVersion: mirroredMenuVersion\.current/u);
     assert.match(source, /if \(!followsMenuMirror\) return;\s*let cancelled = false/u);
     assert.match(source, /inert=\{readOnlyMirror\}/u);
     assert.doesNotMatch(source, /inert=\{followsMenuMirror\}/u);

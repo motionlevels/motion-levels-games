@@ -85,6 +85,7 @@ export type SelectGameRequest = {
 };
 
 export type MenuStateEnvelope = {
+  activeClients: number;
   kioskId: string;
   version: number;
   updatedUnixMillis: number;
@@ -102,6 +103,7 @@ export type VenueRuntimeStatus = Omit<PlayerExperienceState, "outputTest"> & {
   venueSessionRecordingEnabled: boolean;
   venueSessionRecordingAvailable: boolean;
   venueSessionRecordingPolicy: RecordingPolicy;
+  venueSessionKioskId: string;
   venueSessionStartedUnix: number;
 };
 
@@ -274,6 +276,43 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 export class RevisionMismatchError extends Error {}
 export class RequestValidationError extends Error {}
 
+const sharedMenuSnapshotFields = new Set(["menu", "screen", "view"]);
+
+function normalizeMenuChangedFields(changedFields: unknown): string[] | undefined {
+  if (changedFields === undefined) return undefined;
+  if (!Array.isArray(changedFields) || changedFields.some((field) => typeof field !== "string" || !sharedMenuSnapshotFields.has(field))) {
+    throw new RequestValidationError("changedFields contains an unsupported menu field");
+  }
+  return [...new Set(changedFields as string[])];
+}
+
+function mergeMenuSnapshot(current: unknown, requested: unknown, changedFields: string[] | undefined): unknown {
+  if (changedFields === undefined) return structuredClone(requested);
+  if (!current || typeof current !== "object" || Array.isArray(current)) return structuredClone(requested);
+  if (!requested || typeof requested !== "object" || Array.isArray(requested)) {
+    throw new RequestValidationError("partial menu snapshot must be an object");
+  }
+  const merged = structuredClone(current) as Record<string, unknown>;
+  const source = requested as Record<string, unknown>;
+  for (const field of changedFields) merged[field] = structuredClone(source[field]);
+  return merged;
+}
+
+function menuPatchCanRebase(
+  current: unknown,
+  requested: unknown,
+  changedFields: string[] | undefined,
+  expectedVersion: number,
+  fieldVersions: ReadonlyMap<string, number>,
+): boolean {
+  if (!changedFields || !current || typeof current !== "object" || Array.isArray(current)
+    || !requested || typeof requested !== "object" || Array.isArray(requested)) return false;
+  const currentRecord = current as Record<string, unknown>;
+  const requestedRecord = requested as Record<string, unknown>;
+  return changedFields.every((field) => (fieldVersions.get(field) ?? 0) <= expectedVersion
+    || JSON.stringify(currentRecord[field]) === JSON.stringify(requestedRecord[field]));
+}
+
 export class VenueRuntime {
   private readonly session = new GameSession();
   private readonly controller: ControllerClient;
@@ -289,6 +328,8 @@ export class VenueRuntime {
   private readonly displayListeners = new Set<(display: Record<string, unknown>) => void>();
   private readonly statusListeners = new Set<(status: VenueRuntimeStatus) => void>();
   private readonly menuListeners = new Set<(state: MenuStateEnvelope) => void>();
+  private readonly menuClientListeners = new Set<(state: MenuStateEnvelope) => void>();
+  private readonly menuFieldVersions = new Map<string, number>();
   private readonly runId = randomUUID();
   private stateRevision = 1;
   private state!: GameSessionState;
@@ -300,6 +341,7 @@ export class VenueRuntime {
   private historyRunEngineOriginMillis = 0;
   private selectionHistoryId = "";
   private venueSessionId = "";
+  private venueSessionKioskId = "";
   private venueSessionStartedUnix = 0;
   private venueSessionTeamName = "";
   private venueSessionRecordingPolicy: RecordingPolicy = { scope: "selection" };
@@ -327,7 +369,7 @@ export class VenueRuntime {
   private readonly remotePressureCounts = new Map<string, number>();
   private readonly remoteFloorInputSequences = new Map<string, RemoteFloorInputSequence>();
   private readonly heldPressure = new Set<string>();
-  private menuState: MenuStateEnvelope = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
+  private menuState: Omit<MenuStateEnvelope, "activeClients"> = { kioskId: "", version: 0, updatedUnixMillis: 0, snapshot: null };
   private displayClientReport: Record<string, unknown> | null = null;
   private displayClientReceivedUnixMillis = 0;
   private audioMuted: boolean;
@@ -371,6 +413,7 @@ export class VenueRuntime {
     const recoveredVisit = this.history?.currentVisit();
     if (recoveredVisit) {
       this.venueSessionId = recoveredVisit.id;
+      this.venueSessionKioskId = recoveredVisit.kioskId ?? "";
       this.venueSessionStartedUnix = Math.floor(recoveredVisit.startedAtUnixMillis / 1_000);
       this.venueSessionTeamName = recoveredVisit.teamName;
       this.venueSessionRecordingPolicy = { ...recoveredVisit.recordingPolicy };
@@ -855,6 +898,7 @@ export class VenueRuntime {
         venueSessionRecordingEnabled: this.recordingEffectivelyEnabled(),
         venueSessionRecordingAvailable: this.recordingAvailable(),
         venueSessionRecordingPolicy: { ...this.venueSessionRecordingPolicy },
+        venueSessionKioskId: this.venueSessionKioskId,
         venueSessionStartedUnix: this.venueSessionStartedUnix
       };
     }
@@ -932,6 +976,7 @@ export class VenueRuntime {
       venueSessionRecordingEnabled: this.recordingEffectivelyEnabled(),
       venueSessionRecordingAvailable: this.recordingAvailable(),
       venueSessionRecordingPolicy: { ...this.venueSessionRecordingPolicy },
+      venueSessionKioskId: this.venueSessionKioskId,
       venueSessionStartedUnix: this.venueSessionStartedUnix
     };
   }
@@ -1092,24 +1137,61 @@ export class VenueRuntime {
     };
   }
 
-  getMenuState(): MenuStateEnvelope { return structuredClone(this.menuState); }
+  getMenuState(): MenuStateEnvelope {
+    return {
+      ...structuredClone(this.menuState),
+      activeClients: this.menuClientListeners.size,
+    };
+  }
 
-  putMenuState(kioskId: unknown, snapshot: unknown): MenuStateEnvelope {
+  putMenuState(kioskId: unknown, snapshot: unknown, expectedVersion?: unknown, changedFields?: unknown): MenuStateEnvelope {
+    const normalizedChangedFields = normalizeMenuChangedFields(changedFields);
+    if (expectedVersion !== undefined) {
+      const requestedVersion = Number(expectedVersion);
+      if (!Number.isSafeInteger(requestedVersion) || requestedVersion < 0) {
+        throw new RequestValidationError("expectedVersion must be a non-negative integer");
+      }
+      if (requestedVersion !== this.menuState.version && !menuPatchCanRebase(
+        this.menuState.snapshot,
+        snapshot,
+        normalizedChangedFields,
+        requestedVersion,
+        this.menuFieldVersions,
+      )) {
+        throw new RevisionMismatchError("menu state version does not match");
+      }
+    }
     const serialized = JSON.stringify(snapshot);
     if (serialized.length > 1_000_000) throw new RequestValidationError("snapshot is too large");
+    const nextSnapshot = mergeMenuSnapshot(this.menuState.snapshot, snapshot, normalizedChangedFields);
+    const nextVersion = this.menuState.version + 1;
     this.menuState = {
       kioskId: cleanText(kioskId, 256),
-      version: this.menuState.version + 1,
+      version: nextVersion,
       updatedUnixMillis: Date.now(),
-      snapshot: structuredClone(snapshot)
+      snapshot: nextSnapshot
     };
-    for (const listener of this.menuListeners) listener(this.getMenuState());
+    for (const field of normalizedChangedFields ?? sharedMenuSnapshotFields) {
+      this.menuFieldVersions.set(field, nextVersion);
+    }
+    this.publishMenuState();
     return this.getMenuState();
   }
 
-  subscribeMenuState(listener: (state: MenuStateEnvelope) => void): () => void {
+  subscribeMenuState(listener: (state: MenuStateEnvelope) => void, countsAsClient = true): () => void {
     this.menuListeners.add(listener);
-    return () => this.menuListeners.delete(listener);
+    if (countsAsClient) this.menuClientListeners.add(listener);
+    this.publishMenuState();
+    return () => {
+      if (!this.menuListeners.delete(listener)) return;
+      this.menuClientListeners.delete(listener);
+      this.publishMenuState();
+    };
+  }
+
+  private publishMenuState(): void {
+    const state = this.getMenuState();
+    for (const listener of this.menuListeners) listener(state);
   }
 
   updateVenueSession(request: Record<string, unknown>): Record<string, unknown> {
@@ -1139,6 +1221,9 @@ export class VenueRuntime {
         || this.venueSessionTeamName !== teamName
         || JSON.stringify(this.venueSessionRecordingPolicy) !== JSON.stringify(recordingPolicy);
       this.venueSessionId = venueSessionId;
+      if (!sameVenueSession || !this.venueSessionKioskId) {
+        this.venueSessionKioskId = cleanText(request.kioskId, 256);
+      }
       this.venueSessionStartedUnix = sameVenueSession && this.venueSessionStartedUnix > 0
         ? this.venueSessionStartedUnix
         : Math.floor(Date.now() / 1_000);
@@ -1163,6 +1248,7 @@ export class VenueRuntime {
       const hadActiveSelection = Boolean(this.selection);
       this.history?.endVisit(cleanText(request.reason, 160) || "completed");
       this.venueSessionId = "";
+      this.venueSessionKioskId = "";
       this.venueSessionStartedUnix = 0;
       this.venueSessionTeamName = "";
       this.venueSessionRecordingPolicy = { scope: "selection" };

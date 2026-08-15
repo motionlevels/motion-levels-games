@@ -389,13 +389,32 @@ export type MenuEventRequest = {
 };
 
 export type MenuStateEnvelope<TSnapshot = unknown> = {
+  activeClients: number;
   kioskId: string;
   version: number;
   updatedUnixMillis: number;
   snapshot: TSnapshot | null;
 };
 
-let pendingMenuStateWrite: { kioskId: string; snapshot: unknown } | null = null;
+type MenuStateWrite<TSnapshot = unknown> = {
+  changedFields: Array<"menu" | "screen" | "view">;
+  kioskId: string;
+  expectedVersion: number;
+  snapshot: TSnapshot;
+};
+
+type MenuStateWriteObserver<TSnapshot = unknown> = {
+  onAccepted?: (envelope: MenuStateEnvelope<TSnapshot>) => void;
+  onConflict?: () => void;
+};
+
+type PendingMenuStateWrite = {
+  request: MenuStateWrite;
+  onAccepted?: (envelope: MenuStateEnvelope) => void;
+  onConflict?: () => void;
+};
+
+let pendingMenuStateWrite: PendingMenuStateWrite | null = null;
 let menuStateWriteInFlight = false;
 let menuStateRetryDelayMillis = 500;
 
@@ -434,9 +453,19 @@ export async function fetchMenuState<TSnapshot = unknown>(): Promise<MenuStateEn
   return requestJSON<MenuStateEnvelope<TSnapshot>>(`${engineBaseURL()}/api/menu-state`, { cache: "no-store" }, mirrorTimeoutMillis);
 }
 
-export function postMenuState<TSnapshot>(request: { kioskId: string; snapshot: TSnapshot }) {
+export function menuStateEventSource(): EventSource {
+  return new EventSource(`${engineBaseURL()}/api/menu-state/events`);
+}
+
+export function postMenuState<TSnapshot>(request: MenuStateWrite<TSnapshot>, observer: MenuStateWriteObserver<TSnapshot> = {}) {
   if (localPlaygroundEnabled()) return;
-  pendingMenuStateWrite = request;
+  pendingMenuStateWrite = {
+    request,
+    onAccepted: observer.onAccepted
+      ? (envelope) => observer.onAccepted?.(envelope as MenuStateEnvelope<TSnapshot>)
+      : undefined,
+    onConflict: observer.onConflict,
+  };
   if (menuStateWriteInFlight) return;
   void flushMenuStateWrites();
 }
@@ -445,20 +474,28 @@ async function flushMenuStateWrites() {
   menuStateWriteInFlight = true;
   try {
     while (pendingMenuStateWrite) {
-      const request = pendingMenuStateWrite;
+      const pending = pendingMenuStateWrite;
       pendingMenuStateWrite = null;
       try {
-        await requestJSON<MenuStateEnvelope>(`${engineBaseURL()}/api/menu-state`, {
+        const envelope = await requestJSON<MenuStateEnvelope>(`${engineBaseURL()}/api/menu-state`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
+          body: JSON.stringify(pending.request),
         }, mirrorTimeoutMillis);
+        pending.onAccepted?.(envelope);
+        advancePendingMenuStateVersion(pending.request.expectedVersion, envelope.version);
         menuStateRetryDelayMillis = 500;
-      } catch {
+      } catch (error) {
+        if (error instanceof RequestError && error.status === 409) {
+          pendingMenuStateWrite = null;
+          pending.onConflict?.();
+          menuStateRetryDelayMillis = 500;
+          continue;
+        }
         // Keep the latest snapshot queued across a transient outage. If a newer
         // snapshot arrived while this request was running, it supersedes the
         // failed one and will be the payload retried after the backoff.
-        if (!pendingMenuStateWrite) pendingMenuStateWrite = request;
+        if (!pendingMenuStateWrite) pendingMenuStateWrite = pending;
         await new Promise((resolve) => globalThis.setTimeout(resolve, menuStateRetryDelayMillis));
         menuStateRetryDelayMillis = Math.min(5_000, menuStateRetryDelayMillis * 2);
       }
@@ -466,5 +503,11 @@ async function flushMenuStateWrites() {
   } finally {
     menuStateWriteInFlight = false;
     if (pendingMenuStateWrite) void flushMenuStateWrites();
+  }
+}
+
+function advancePendingMenuStateVersion(expectedVersion: number, acceptedVersion: number) {
+  if (pendingMenuStateWrite?.request.expectedVersion === expectedVersion) {
+    pendingMenuStateWrite.request.expectedVersion = acceptedVersion;
   }
 }

@@ -296,12 +296,13 @@ async function route(
     }
     if (request.method === "PUT" || request.method === "POST") {
       const body = await readJson(request, 1_050_000);
-      json(response, runtime.putMenuState(body.kioskId, body.snapshot));
+      json(response, runtime.putMenuState(body.kioskId, body.snapshot, body.expectedVersion, body.changedFields));
       return;
     }
   }
   if (url.pathname === "/api/menu-state/events" && request.method === "GET") {
-    sse(response, request, sseResponses, "menu-state", runtime.getMenuState(), (listener) => runtime.subscribeMenuState(listener));
+    const countsAsClient = url.searchParams.get("observer") !== "1";
+    sse(response, request, sseResponses, "menu-state", runtime.getMenuState(), (listener) => runtime.subscribeMenuState(listener, countsAsClient));
     return;
   }
   if (url.pathname === "/api/venue-session" && request.method === "POST") {

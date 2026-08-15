@@ -1930,6 +1930,64 @@ test("local live floor sends the current snapshot immediately to each new subscr
   await runtime.stop();
 });
 
+test("menu state is revisioned once and reports every live subscriber", () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  const firstStates: Array<{ activeClients: number; version: number }> = [];
+  const secondStates: Array<{ activeClients: number; version: number }> = [];
+
+  assert.deepEqual(runtime.getMenuState(), {
+    activeClients: 0,
+    kioskId: "",
+    snapshot: null,
+    updatedUnixMillis: 0,
+    version: 0,
+  });
+
+  const unsubscribeFirst = runtime.subscribeMenuState((state) => firstStates.push(state));
+  assert.equal(runtime.getMenuState().activeClients, 1);
+  const unsubscribeObserver = runtime.subscribeMenuState(() => {}, false);
+  assert.equal(runtime.getMenuState().activeClients, 1);
+  const unsubscribeSecond = runtime.subscribeMenuState((state) => secondStates.push(state));
+  assert.equal(runtime.getMenuState().activeClients, 2);
+
+  const accepted = runtime.putMenuState("client-a", { menu: { selectedGame: "lava" }, screen: "browse", view: { teamOpen: false } }, 0);
+  assert.equal(accepted.activeClients, 2);
+  assert.equal(accepted.version, 1);
+  assert.throws(
+    () => runtime.putMenuState("stale-client", { menu: { selectedGame: "arkanoid" } }, 0),
+    RevisionMismatchError,
+  );
+  assert.deepEqual(runtime.getMenuState().snapshot, { menu: { selectedGame: "lava" }, screen: "browse", view: { teamOpen: false } });
+
+  const merged = runtime.putMenuState(
+    "client-b",
+    { menu: { selectedGame: "arkanoid" }, screen: "welcome" },
+    1,
+    ["menu"],
+  );
+  assert.deepEqual(merged.snapshot, { menu: { selectedGame: "arkanoid" }, screen: "browse", view: { teamOpen: false } });
+
+  const rebased = runtime.putMenuState(
+    "client-a",
+    { menu: { selectedGame: "arkanoid" }, screen: "browse", view: { teamOpen: true } },
+    1,
+    ["menu", "screen", "view"],
+  );
+  assert.deepEqual(rebased.snapshot, { menu: { selectedGame: "arkanoid" }, screen: "browse", view: { teamOpen: true } });
+  assert.throws(
+    () => runtime.putMenuState("stale-client", { view: { teamOpen: false } }, 1, ["view"]),
+    RevisionMismatchError,
+  );
+
+  unsubscribeSecond();
+  assert.equal(firstStates.at(-1)?.activeClients, 1);
+  assert.equal(runtime.getMenuState().activeClients, 1);
+  unsubscribeFirst();
+  unsubscribeObserver();
+  assert.equal(runtime.getMenuState().activeClients, 0);
+  assert.equal(secondStates.some((state) => state.activeClients === 2 && state.version === 3), true);
+});
+
 test("runtime content cannot redirect production fetches to a request-controlled origin", () => {
   assert.equal(
     resolveRuntimeContentPlatformUrl("https://platform.motionlevels.example/base", "https://attacker.example")?.origin,

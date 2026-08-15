@@ -3,9 +3,9 @@ import { describe, it } from "node:test";
 import { menuAccessPolicyFromSearch } from "../src/menuAccess.ts";
 
 describe("player-menu access modes", () => {
-  it("lets the physical kiosk own persistence and the canonical mirror", () => {
+  it("lets the physical kiosk persist recovery state while following runtime authority", () => {
     assert.deepEqual(menuAccessPolicyFromSearch(""), {
-      followMirror: false,
+      followMirror: true,
       persistLocalState: true,
       publishMirror: true,
       readOnly: false
@@ -21,11 +21,11 @@ describe("player-menu access modes", () => {
     });
   });
 
-  it("keeps the platform remote canonical without disabling interaction", () => {
+  it("lets the platform remote publish through the same runtime authority", () => {
     assert.deepEqual(menuAccessPolicyFromSearch("?remoteControl=1"), {
       followMirror: true,
       persistLocalState: false,
-      publishMirror: false,
+      publishMirror: true,
       readOnly: false
     });
   });

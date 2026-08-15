@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, localPlaygroundEnabled, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, testOutput, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
+import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, localPlaygroundEnabled, menuStateEventSource, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, testOutput, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
 import { PlayerExperienceStateGate, playerExperienceView } from "@motion-levels-games/player-experience";
 import { categories, colors, difficulties, games, playerColorNames, playerColors, type CategoryID, type DifficultyID, type GameCard, type GameConfigVar, type PartyMiniGame } from "./catalog";
 import { partyCatalogIsComplete, partyLaunchGame } from "./party";
@@ -150,7 +150,16 @@ type PartyRunState = {
 };
 type MenuMirrorSnapshot = {
   menu: MenuState;
+  screen?: "browse" | "game" | "welcome";
+  view?: {
+    gameConfigOpen: boolean;
+    levelBrowserGameID: string | null;
+    settingsOpen: boolean;
+    settingsUnlocked: boolean;
+    teamOpen: boolean;
+  };
 };
+type MenuMirrorField = keyof MenuMirrorSnapshot;
 type RemoteSessionRequest = {
   configuredPlayerCount: number;
   reservationId: string;
@@ -1437,8 +1446,8 @@ function MenuApp() {
     []
   );
   const readOnlyMirror = menuAccess.readOnly;
-  const followsMenuMirror = menuAccess.followMirror;
   const localPlayground = useMemo(() => localPlaygroundEnabled(), []);
+  const followsMenuMirror = menuAccess.followMirror && !localPlayground;
   const [menu, setMenu] = useState<MenuState>(() => menuAccess.persistLocalState ? loadMenuState() : defaultMenuState());
   const [status, setStatus] = useState<PlayerMenuEngineStatus | null>(null);
   const statusGate = useRef(new PlayerExperienceStateGate());
@@ -1494,6 +1503,11 @@ function MenuApp() {
   const syncedEngineSession = useRef("");
   const mirroredMenuVersion = useRef(0);
   const mirroredMenuUpdatedUnixMillis = useRef(0);
+  const canonicalMenuSnapshot = useRef("");
+  const canonicalMenuApplicationPending = useRef(false);
+  const dirtyMenuFields = useRef(new Set<MenuMirrorField>());
+  const suppressedMenuFields = useRef(new Set<MenuMirrorField>());
+  const lastRenderedMenuSnapshot = useRef<MenuMirrorSnapshot | null>(null);
   const venueSessionObservationRef = useRef<VenueSessionObservation | null>(
     menuAccess.persistLocalState ? loadVenueSessionObservation() : null
   );
@@ -1511,7 +1525,42 @@ function MenuApp() {
   const teamCloseRef = useRef<HTMLButtonElement>(null);
   const teamDrawerFocusFallback = useCallback(() => teamCloseRef.current, []);
   const teamWasOpenRef = useRef(false);
+  const [menuMirrorConnected, setMenuMirrorConnected] = useState(!followsMenuMirror);
   const [menuMirrorReady, setMenuMirrorReady] = useState(!followsMenuMirror);
+
+  const applyMenuEnvelope = useCallback((envelope: MenuStateEnvelope<MenuMirrorSnapshot>) => {
+    const resolved = resolveMenuMirrorEnvelope(
+      envelope,
+      mirroredMenuVersion.current,
+      mirroredMenuUpdatedUnixMillis.current
+    );
+    setMenuMirrorConnected(resolved.ready);
+    if (!resolved.accepted || !resolved.snapshot) return;
+    setMenuMirrorReady(true);
+    mirroredMenuVersion.current = resolved.version;
+    mirroredMenuUpdatedUnixMillis.current = resolved.updatedUnixMillis;
+    const snapshot = resolved.snapshot;
+    const authoredLocally = envelope.kioskId === menuKioskID();
+    canonicalMenuSnapshot.current = JSON.stringify(snapshot);
+    if (authoredLocally) return;
+    canonicalMenuApplicationPending.current = true;
+    lastRenderedMenuSnapshot.current = snapshot;
+    dirtyMenuFields.current.clear();
+    setMenu({ ...snapshot.menu, processedAttemptIDs: snapshot.menu.processedAttemptIDs || [] });
+    if (snapshot.screen) setScreenMode(snapshot.screen === "game" ? "game" : "browse");
+    if (snapshot.view) {
+      setGameConfigOpen(snapshot.view.gameConfigOpen);
+      setLevelBrowserGameID(snapshot.view.levelBrowserGameID);
+      setSettingsOpen(snapshot.view.settingsOpen);
+      setSettingsUnlocked(snapshot.view.settingsUnlocked);
+      setTeamOpen(snapshot.view.teamOpen);
+    }
+    setKeyboardTarget(null);
+    setColorPickerFor(null);
+    setConfirmRemove(null);
+    setConfirmResetSession(false);
+    setPendingLevelSwitch(null);
+  }, []);
 
   useEffect(() => {
     if (!menuAccess.persistLocalState) return;
@@ -1691,42 +1740,92 @@ function MenuApp() {
     recordMenuEvent("game_started");
   }, [menuAccess.publishMirror, status]);
 
+  const canonicalMenuScreen: NonNullable<MenuMirrorSnapshot["screen"]> = screenMode === "game"
+    ? "game"
+    : menu.sessionActive ? "browse" : "welcome";
+
   useEffect(() => {
-    if (!menuAccess.publishMirror) return;
+    if (!menuAccess.publishMirror || !menuMirrorConnected) return;
     const snapshot: MenuMirrorSnapshot = {
       menu,
+      screen: canonicalMenuScreen,
+      view: {
+        gameConfigOpen,
+        levelBrowserGameID,
+        settingsOpen,
+        settingsUnlocked,
+        teamOpen,
+      },
     };
+    const serializedSnapshot = JSON.stringify(snapshot);
+    if (canonicalMenuApplicationPending.current) {
+      canonicalMenuApplicationPending.current = false;
+      if (serializedSnapshot === canonicalMenuSnapshot.current) {
+        lastRenderedMenuSnapshot.current = snapshot;
+        dirtyMenuFields.current.clear();
+        return;
+      }
+    }
+    const previousSnapshot = lastRenderedMenuSnapshot.current;
+    for (const field of ["menu", "screen", "view"] as const) {
+      if (!previousSnapshot || JSON.stringify(previousSnapshot[field]) !== JSON.stringify(snapshot[field])) {
+        if (!suppressedMenuFields.current.has(field)) dirtyMenuFields.current.add(field);
+      }
+    }
+    suppressedMenuFields.current.clear();
+    lastRenderedMenuSnapshot.current = snapshot;
+    if (serializedSnapshot === canonicalMenuSnapshot.current) return;
+    if (dirtyMenuFields.current.size === 0) return;
     const timeout = window.setTimeout(() => {
-      postMenuState({ kioskId: menuKioskID(), snapshot });
+      const changedFields = [...dirtyMenuFields.current];
+      dirtyMenuFields.current.clear();
+      postMenuState({
+        changedFields,
+        kioskId: menuKioskID(),
+        expectedVersion: mirroredMenuVersion.current,
+        snapshot,
+      }, {
+        onAccepted: applyMenuEnvelope,
+        onConflict: () => {
+          void fetchMenuState<MenuMirrorSnapshot>().then(applyMenuEnvelope).catch(() => {});
+        },
+      });
     }, 150);
     return () => window.clearTimeout(timeout);
-  }, [menu, menuAccess.publishMirror]);
+  }, [
+    applyMenuEnvelope,
+    canonicalMenuScreen,
+    gameConfigOpen,
+    levelBrowserGameID,
+    menu,
+    menuAccess.publishMirror,
+    menuMirrorConnected,
+    settingsOpen,
+    settingsUnlocked,
+    teamOpen,
+  ]);
 
   useEffect(() => {
     if (!followsMenuMirror) return;
     let cancelled = false;
     let nextRefresh: number | undefined;
+    let source: EventSource | null = null;
 
-    function applyEnvelope(envelope: MenuStateEnvelope<MenuMirrorSnapshot>) {
-      if (cancelled) return;
-      const resolved = resolveMenuMirrorEnvelope(
-        envelope,
-        mirroredMenuVersion.current,
-        mirroredMenuUpdatedUnixMillis.current
-      );
-      setMenuMirrorReady(resolved.ready);
-      if (!resolved.accepted || !resolved.snapshot) return;
-      mirroredMenuVersion.current = resolved.version;
-      mirroredMenuUpdatedUnixMillis.current = resolved.updatedUnixMillis;
-      const snapshot = resolved.snapshot;
-      setMenu({ ...snapshot.menu, processedAttemptIDs: snapshot.menu.processedAttemptIDs || [] });
-      setKeyboardTarget(null);
-      setColorPickerFor(null);
-      setConfirmRemove(null);
-      setConfirmResetSession(false);
-      setPendingLevelSwitch(null);
-      setSettingsOpen(false);
-    }
+    const applyEnvelope = (envelope: MenuStateEnvelope<MenuMirrorSnapshot>) => {
+      if (!cancelled) applyMenuEnvelope(envelope);
+    };
+
+    const attach = () => {
+      source?.close();
+      source = menuStateEventSource();
+      source.addEventListener("menu-state", (event) => {
+        try {
+          applyEnvelope(JSON.parse((event as MessageEvent).data) as MenuStateEnvelope<MenuMirrorSnapshot>);
+        } catch {
+          // Keep the last accepted canonical state when an event is malformed.
+        }
+      });
+    };
 
     async function refreshMenuState() {
       try {
@@ -1738,16 +1837,21 @@ function MenuApp() {
       } catch {
         if (!cancelled) setError("Sin conexión con el menú principal");
       } finally {
-        if (!cancelled) nextRefresh = window.setTimeout(refreshMenuState, 700);
+        if (!cancelled) {
+          if (source?.readyState === EventSource.CLOSED) attach();
+          nextRefresh = window.setTimeout(refreshMenuState, 2_500);
+        }
       }
     }
 
+    attach();
     void refreshMenuState();
     return () => {
       cancelled = true;
+      source?.close();
       if (nextRefresh !== undefined) window.clearTimeout(nextRefresh);
     };
-  }, [followsMenuMirror]);
+  }, [applyMenuEnvelope, followsMenuMirror]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1852,6 +1956,11 @@ function MenuApp() {
     const defaultGame = menuGames[0] || games[0];
 
     if (decision.action === "hydrate") {
+      const sessionOwner = status.venueSessionKioskId || "";
+      if (sessionOwner && sessionOwner !== menuKioskID() && !sessionOwner.startsWith("platform:")) {
+        suppressedMenuFields.current.add("menu");
+        suppressedMenuFields.current.add("screen");
+      }
       const recordingPolicy = venueSessionRecordingScope(status, menu.recordingPolicy);
       setMenu((current) => ({
         ...current,

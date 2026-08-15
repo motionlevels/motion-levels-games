@@ -581,12 +581,32 @@ async function installMockAPIs(
     }
     await json(route, status);
   });
-  await context.route("**/api/menu-state", (route) => json(route, {
+  let menuState = {
+    activeClients: 1,
     kioskId: "browser-test",
-    snapshot: null,
-    updatedUnixMillis: Date.now(),
-    version: 1,
-  }));
+    snapshot: null as unknown,
+    updatedUnixMillis: 0,
+    version: 0,
+  };
+  await context.route("**/api/menu-state", async (route) => {
+    if (route.request().method() === "GET") {
+      await json(route, menuState);
+      return;
+    }
+    const request = route.request().postDataJSON() as { expectedVersion?: number; kioskId?: string; snapshot?: unknown };
+    if (request.expectedVersion !== menuState.version) {
+      await route.fulfill({ status: 409, contentType: "text/plain", body: "menu state version does not match" });
+      return;
+    }
+    menuState = {
+      ...menuState,
+      kioskId: String(request.kioskId || "browser-test"),
+      snapshot: structuredClone(request.snapshot),
+      updatedUnixMillis: Date.now(),
+      version: menuState.version + 1,
+    };
+    await json(route, menuState);
+  });
   await context.route("**/api/menu-event", (route) => json(route, {}));
   await context.route("**/api/select", async (route) => {
     selectRequests.push(route.request().postDataJSON() as Record<string, unknown>);

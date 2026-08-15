@@ -69,6 +69,7 @@ export type EngineStatus = PlayerExperienceState & {
   venueSessionRecordingAvailable?: boolean;
   venueSessionRecordingEnabled?: boolean;
   venueSessionRecordingPolicy?: RecordingPolicy;
+  venueSessionKioskId?: string;
   venueSessionStartedUnix?: number;
 };
 export type DisplayPlayer = EnginePlayer;

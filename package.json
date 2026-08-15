@@ -21,6 +21,7 @@
     "check:fast": "npm run lint && npm run typecheck",
     "test": "npm run test --workspaces --if-present",
     "test:player-menu:browser": "tsx scripts/test-player-menu-browser.ts",
+    "test:player-menu:sync-browser": "tsx scripts/test-player-menu-sync-browser.ts",
     "test:player-menu:update-browser": "tsx scripts/test-player-menu-update-browser.ts",
     "test:contracts": "tsx --test test/*.test.ts",
     "test:all": "npm test && npm run test:contracts && npm run test:scaffold",

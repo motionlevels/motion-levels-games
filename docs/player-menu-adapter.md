@@ -23,8 +23,8 @@ route, or port `4102` on the current host. Protocol v2 uses:
   authoritative `MLF1` frame observed from the Go controller;
 - `POST /api/floor-input` for authenticated operator clients with independent
   leased latches (the player menu does not call it);
-- `GET`/`PUT /api/menu-state` and `GET /api/menu-state/events` for mirrored
-  kiosk recovery state;
+- `GET`/`PUT /api/menu-state` and `GET /api/menu-state/events` for the
+  runtime-authoritative menu state and live menu-client presence;
 - `POST /api/venue-session` for authoritative visit start/end state and
   `POST /api/menu-event` for best-effort operational events;
 - `GET`/`POST /api/display-client` for player-display health reports. Audio
@@ -65,21 +65,32 @@ Venue bundle import must validate the declared version before deployment.
 
 ## Embedded menu modes
 
-`?readOnly=1` follows the kiosk-owned `/api/menu-state` mirror and makes the
-embedded menu inert. `?remoteControl=1` follows and hydrates from that same
-canonical mirror but keeps the normal menu handlers and engine commands
-enabled. The remote controller never writes `/api/menu-state` or persists its
-menu/Party state to local storage, so it cannot become a second kiosk that
-overwrites recovery state. Explicit read-only mode still wins when both query
-parameters are present. A successful first mirror read with no snapshot makes
-remote control available with the default menu state instead of waiting
-forever for a kiosk writer.
+Every player-menu renderer follows the runtime-owned `/api/menu-state` stream.
+Interactive renderers, including `?remoteControl=1`, publish navigation and
+selection changes with the canonical version they observed; stale writes are
+rejected instead of replacing a newer screen. The physical kiosk alone keeps a
+local recovery copy, but that copy is only used to seed a fresh runtime with no
+snapshot. `?readOnly=1` subscribes without publishing and remains inert;
+explicit read-only mode still wins when both query parameters are present.
+Interactive clients keep their controls behind the loading surface until that
+first seed has been accepted and broadcast, so a user cannot act during the
+bootstrap race between two freshly opened renderers.
 
-The runtime owns whether a venue session exists; the kiosk owns the detailed
-menu recovery snapshot. When a platform `end` clears the runtime session, the
-physical kiosk clears session identity, team, and roster and republishes that
-clean snapshot for every embedded mirror. A normal game `exit` preserves the
-runtime venue session and therefore keeps the visit open.
+Each open `/api/menu-state/events` subscription counts as one live menu client.
+The `activeClients` field is included in both the JSON snapshot and every SSE
+event, and changes immediately on connect or disconnect. This makes the engine
+the only source for presence, current screen, selected game, category,
+difficulty, level, roster, and the rest of the shared menu projection.
+Monitoring surfaces may subscribe with `?observer=1` to receive those changes
+without inflating the menu-client count themselves.
+
+The runtime owns both the venue-session lifecycle and the current detailed menu
+snapshot. Renderers propose revision-checked patches for the `menu`, `screen`,
+or `view` slices so a session update cannot accidentally roll back another
+client's panel or selection. When a platform `end` clears the runtime session,
+the shared snapshot clears session identity, team, and roster for every menu.
+A normal game `exit` preserves the runtime venue session and therefore keeps
+the visit open.
 
 ## Local full playthrough
 
