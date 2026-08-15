@@ -51,13 +51,16 @@ Recording policy is an object with one of these scopes:
 
 - `off`: do not request camera recording.
 - `visit`: one capture for the complete visit.
-- `selection`: one capture per selected game, including all of its restarts.
+- `selection`: one capture per selected game or published level. Restarts and
+  failed retries of the same level stay together; advancing to another level
+  rotates the capture without splitting the history selection.
 - `run`: one capture per individual run, explicit restart, automatic failed
   attempt retry, or automatic next-level attempt.
 
 Legacy `recordingEnabled: true|false` remains accepted and maps to `visit` or
 `off`. Changing scope while a visit is active closes the prior capture and
 starts the appropriate boundary for the current visit, selection, or run.
+New venue sessions default to `selection` (`Cada juego`).
 
 The camera adapter is configured with `MOTION_LEVELS_CAMERA_RECORDER_URL` and,
 optionally, `MOTION_LEVELS_CAMERA_RECORDER_TOKEN` or

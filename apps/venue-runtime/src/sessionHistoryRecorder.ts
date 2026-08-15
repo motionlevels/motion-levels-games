@@ -79,6 +79,7 @@ export type HistoryRunStartOptions = Readonly<{
   recordingBlocked?: boolean;
   pendingLevelId?: string;
   pendingLevelSlug?: string;
+  rotateSelectionRecording?: boolean;
 }>;
 
 type RunClock = {
@@ -378,7 +379,16 @@ export class SessionHistoryRecorder {
   ): RunRecordingStartHandle | null {
     return this.safe(() => {
       this.endRun("restarted", "abandoned");
-      return this.startRun(runId, "restart", state, options);
+      if (options.rotateSelectionRecording && this.activeSessionId) {
+        const visit = this.store.getVisit(this.activeSessionId);
+        this.boundary("stop", "selection", visit, visit.activeSelectionId);
+      }
+      const recordingStart = this.startRun(runId, "restart", state, options);
+      if (options.rotateSelectionRecording && this.activeSessionId) {
+        const visit = this.store.getVisit(this.activeSessionId);
+        this.boundary("start", "selection", visit, visit.activeSelectionId);
+      }
+      return recordingStart;
     }, null) ?? null;
   }
 
@@ -1543,7 +1553,7 @@ function isConfirmedStoppedRecording(recording: RecordingAsset): boolean {
 
 function policyFromInput(
   input: Pick<HistoryVisitInput, "recordingPolicy" | "recordingEnabled">,
-  fallback: RecordingPolicy = { scope: "visit" }
+  fallback: RecordingPolicy = { scope: "selection" }
 ): RecordingPolicy {
   if (input.recordingPolicy !== undefined) return normalizeRecordingPolicy(input.recordingPolicy);
   if (input.recordingEnabled !== undefined) return normalizeRecordingPolicy(input.recordingEnabled);

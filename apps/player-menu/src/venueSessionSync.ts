@@ -49,7 +49,7 @@ export function clearedVenueSessionProjection<TPlayer>(defaultPlayers: readonly 
     sessionId: "",
     sessionStartedUnix: 0,
     recordingEnabled: true,
-    recordingPolicy: "visit" as const,
+    recordingPolicy: "selection" as const,
     teamName: "",
     players: [...defaultPlayers],
     levelProgress: {},
@@ -69,7 +69,7 @@ export function clearedVenueSessionProjection<TPlayer>(defaultPlayers: readonly 
  */
 export function venueSessionRecordingScope(
   engine: VenueSessionRecordingState,
-  fallback: VenueSessionRecordingScope = "visit",
+  fallback: VenueSessionRecordingScope = "selection",
 ): VenueSessionRecordingScope {
   if (engine.venueSessionRecordingPolicy?.scope) return engine.venueSessionRecordingPolicy.scope;
   if (engine.venueSessionRecordingAvailable !== undefined) return fallback;

@@ -527,6 +527,25 @@ for (const recordingCase of [
   });
 }
 
+test("new venue sessions default to selection recording", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-recording-default-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory
+  });
+  context.after(async () => { await runtime.stop(); });
+
+  runtime.updateVenueSession({ action: "start", venueSessionId: "recording-default-selection" });
+
+  assert.deepEqual(runtime.status().venueSessionRecordingPolicy, { scope: "selection" });
+  assert.deepEqual(
+    runtime.historySession("recording-default-selection").session.recordingPolicy,
+    { scope: "selection" }
+  );
+});
+
 test("history persistence failures degrade health without exposing local filesystem details", async (context) => {
   const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-health-"));
   const invalidRoot = join(directory, "not-a-directory");
@@ -1606,6 +1625,67 @@ test("successful published-level advances create a new run and expose the actual
   assert.equal(visit.selections[0]?.runs[0]?.finalSnapshot?.level, initialLevel);
   assert.equal(visit.selections[0]?.runs[1]?.finalSnapshot?.level, advanced.level);
   assert.deepEqual(visit.recordings.map((recording) => recording.runId), [initialRunId, advancedRunId]);
+});
+
+test("selection recording opens a new capture when a published game advances levels", async (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-selection-level-advance-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const cameraCalls: RecordingBoundary[] = [];
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    sessionHistoryDir: directory,
+    recordingClient: {
+      onBoundary(boundary) {
+        cameraCalls.push(structuredClone(boundary));
+        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+      }
+    }
+  });
+  context.after(async () => { await runtime.stop(); });
+  const venueSessionId = "visit-selection-level-advance";
+  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "selection" } });
+  const selected = await runtime.select({
+    game: `motion-levels-games:${parkourGameId}`,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    venueSessionId,
+    recordingPolicy: { scope: "selection" },
+    difficulty: "medium",
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  });
+  await waitFor(() => cameraCalls.length === 1);
+  const initialRunId = selected.sessionId;
+  const initialLevel = selected.level;
+  const internal = runtime as unknown as { gameStartedAt: number; tick(now: number): void };
+  const base = performance.now();
+  internal.gameStartedAt = base - 3_000;
+  internal.tick(base);
+  runtime.applyPressure({ x: 7, y: 5, pressed: true, unixNanos: 1n, sequence: 1n });
+  assert.equal(runtime.status().phase, "finished");
+  assert.equal(runtime.status().success, true);
+
+  internal.tick(base + 1_400);
+  await waitFor(() => cameraCalls.length >= 3);
+  const advanced = runtime.status();
+  assert.notEqual(advanced.sessionId, initialRunId);
+  assert.notEqual(advanced.level, initialLevel);
+  assert.deepEqual(cameraCalls.slice(0, 3).map((boundary) => `${boundary.type}:${boundary.scope}`), [
+    "start:selection",
+    "stop:selection",
+    "start:selection"
+  ]);
+  assert.equal(new Set(cameraCalls.slice(0, 3).map((boundary) => boundary.recording.captureId)).size, 2);
+
+  const visit = runtime.historySession(venueSessionId).session;
+  assert.equal(visit.selections.length, 1);
+  assert.deepEqual(visit.recordings.map((recording) => recording.linkedRunIds), [
+    [initialRunId],
+    [advanced.sessionId]
+  ]);
 });
 
 test("frame conversion is always one 16x32 RGB frame", () => {

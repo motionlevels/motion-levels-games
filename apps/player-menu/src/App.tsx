@@ -24,7 +24,7 @@ import {
   shouldPreferCatalogFallbackPreviewAnimation,
   supportedDifficultiesForGame,
 } from "./catalogSync";
-import { ArrowLeftIcon, BackspaceIcon, BoltIcon, CheckIcon, CloseIcon, GamepadIcon, GearIcon, PauseIcon, PlayIcon, PlusIcon, QuestionIcon, RefreshIcon, RestartIcon, SparkIcon, StarIcon, TeamIcon, UserIcon, VersusIcon, VolumeIcon, VolumeMutedIcon } from "./icons";
+import { ArrowLeftIcon, BackspaceIcon, BoltIcon, CatalogIcon, CheckIcon, CloseIcon, FlagIcon, GamepadIcon, GearIcon, InfinityIcon, PauseIcon, PlayIcon, PlusIcon, QuestionIcon, RecordingOffIcon, RefreshIcon, RestartIcon, SparkIcon, StarIcon, TeamIcon, UserIcon, VersusIcon, VolumeIcon, VolumeMutedIcon } from "./icons";
 import { FloorPreview } from "./FloorPreview";
 import { LiveFloorView } from "./LiveFloorView";
 import { floorAnimations, type FloorAnim } from "./floor";
@@ -77,6 +77,7 @@ import {
   type RecordingGateMenuProjection,
 } from "./recordingGate.ts";
 import { gameForMenuIdentity } from "./gameIdentity.ts";
+import { defaultRecordingScope, migrateMotionlevelsOneRecordingScope, motionlevelsOneRecordingMigrationKey } from "./recordingDefaults.ts";
 
 type MenuState = {
   sessionActive: boolean;
@@ -188,11 +189,18 @@ const defaultPlayers: Player[] = [{ id: 1, name: "", color: playerColors[0], act
 const teamNameStarts = ["Rayo", "Neón", "Pulso", "Láser", "Cumbre", "Órbita", "Turbo", "Brillo", "Salto", "Ritmo", "Chispa", "Fuego"];
 const teamNameFinishes = ["Verde", "Azul", "Solar", "Norte", "Sur", "Lima", "Rojo", "Claro", "Pista", "Nivel", "Flash", "Veloz"];
 const recordingModeOptions: Array<{ description: string; label: string; scope: RecordingScope }> = [
-  { scope: "off", label: "Desactivada", description: "Sin vídeo" },
-  { scope: "visit", label: "Sesión completa", description: "Grabación continua toda la sesión" },
-  { scope: "selection", label: "Cada juego", description: "Los reinicios siguen juntos" },
-  { scope: "run", label: "Cada intento", description: "Separa cada reinicio" },
+  { scope: "off", label: "Desactivada", description: "No se guardan vídeos" },
+  { scope: "visit", label: "Sesión completa", description: "Un vídeo continuo para toda la sesión" },
+  { scope: "selection", label: "Cada juego", description: "Un vídeo por juego o nivel" },
+  { scope: "run", label: "Cada intento", description: "Un vídeo por intento o reinicio" },
 ];
+
+function recordingModeIcon(scope: RecordingScope): ReactNode {
+  if (scope === "off") return <RecordingOffIcon />;
+  if (scope === "visit") return <InfinityIcon />;
+  if (scope === "selection") return <RestartIcon />;
+  return <FlagIcon />;
+}
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -1227,7 +1235,7 @@ function defaultMenuState(): MenuState {
     sessionId: "",
     sessionStartedUnix: 0,
     recordingEnabled: true,
-    recordingPolicy: "visit",
+    recordingPolicy: defaultRecordingScope,
     teamName: "",
     players: defaultPlayers,
     category: "featured",
@@ -1271,7 +1279,14 @@ function loadMenuState(): MenuState {
       const savedDifficulty = difficulties.some((candidate) => candidate.id === saved.difficulty)
         ? (saved.difficulty as DifficultyID)
         : "easy";
-      const recordingPolicy = normalizeRecordingScope(saved.recordingPolicy, saved.recordingEnabled);
+      const storedRecordingPolicy = normalizeRecordingScope(saved.recordingPolicy, saved.recordingEnabled);
+      const migration = migrateMotionlevelsOneRecordingScope(
+        storedRecordingPolicy,
+        typeof window === "undefined" ? "" : window.location.pathname,
+        localStorage.getItem(motionlevelsOneRecordingMigrationKey) === "1",
+      );
+      if (migration.migrated) localStorage.setItem(motionlevelsOneRecordingMigrationKey, "1");
+      const recordingPolicy = migration.scope;
       return {
         sessionActive: Boolean(saved.sessionActive),
         sessionId: isUUID(saved.sessionId) ? saved.sessionId.toLowerCase() : "",
@@ -1297,6 +1312,14 @@ function loadMenuState(): MenuState {
           : [],
       };
     }
+    const defaults = defaultMenuState();
+    const migration = migrateMotionlevelsOneRecordingScope(
+      defaults.recordingPolicy,
+      typeof window === "undefined" ? "" : window.location.pathname,
+      localStorage.getItem(motionlevelsOneRecordingMigrationKey) === "1",
+    );
+    if (migration.migrated) localStorage.setItem(motionlevelsOneRecordingMigrationKey, "1");
+    return { ...defaults, recordingPolicy: migration.scope };
   } catch {
     // Ignore broken local storage and return the default kiosk state.
   }
@@ -1320,7 +1343,7 @@ function clearedMenuSession(current: MenuState, defaultGame: GameCard): MenuStat
 
 export function normalizeRecordingScope(value: unknown, legacyEnabled?: unknown): RecordingScope {
   if (value === "off" || value === "visit" || value === "selection" || value === "run") return value;
-  return legacyEnabled === false ? "off" : "visit";
+  return legacyEnabled === false ? "off" : defaultRecordingScope;
 }
 
 function loadCachedPlatformCatalog(): PlatformGameCatalogEntry[] | null {
@@ -4466,8 +4489,14 @@ function RecordingModePicker({
               disabled={disabled || saving || (option.scope !== "off" && !configured)}
               onClick={() => onChange(option.scope)}
             >
-              <span>{option.label}</span>
-              <small>{option.description}</small>
+              <span className="recording-option__icon" aria-hidden="true">{recordingModeIcon(option.scope)}</span>
+              <span className="recording-option__copy">
+                <span className="recording-option__label">{option.label}</span>
+                <small>{option.description}</small>
+              </span>
+              <span className="recording-option__check" aria-hidden="true">
+                {selected ? <CheckIcon /> : null}
+              </span>
             </button>
           );
         })}
@@ -4848,6 +4877,7 @@ function outputTestTone(state: OutputTestState, fallbackTone: "ok" | "warn" | "d
 }
 
 function DiagnosticTestButton({
+  leadingIcon,
   target,
   canTest,
   currentHealthy,
@@ -4860,6 +4890,7 @@ function DiagnosticTestButton({
   unavailableHint,
   onTest,
 }: {
+  leadingIcon: ReactNode;
   target: OutputTestTarget;
   canTest: boolean;
   currentHealthy: boolean;
@@ -4890,6 +4921,7 @@ function DiagnosticTestButton({
       title={hint}
       onClick={() => onTest(target)}
     >
+      <span className="settings-health-icon" aria-hidden="true">{leadingIcon}</span>
       <span className="settings-health-copy">
         <span className="settings-health-label">{name}</span>
         <b>{label}</b>
@@ -5002,12 +5034,14 @@ function OperatorSettingsDialog({
             <small className="settings-build-revision">Versión {__MOTION_LEVELS_GAMES_BUILD_VERSION__}</small>
             <div className="settings-health" aria-label="Estado del sistema">
               <div className={`settings-health-item ${engineLabel === "Conectado" ? "ok" : "warn"}`}>
+                <span className="settings-health-icon" aria-hidden="true"><BoltIcon /></span>
                 <span className="settings-health-copy">
                   <span className="settings-health-label">Motor</span>
                   <b>{engineLabel}</b>
                 </span>
               </div>
               <DiagnosticTestButton
+                leadingIcon={<GamepadIcon />}
                 target="floor"
                 canTest={floorCanTest}
                 currentHealthy={floorHealthy}
@@ -5021,6 +5055,7 @@ function OperatorSettingsDialog({
                 onTest={onTestOutput}
               />
               <DiagnosticTestButton
+                leadingIcon={<VolumeIcon />}
                 target="audio"
                 canTest={audioCanTest}
                 currentHealthy={audioHealthy}
@@ -5034,6 +5069,7 @@ function OperatorSettingsDialog({
                 onTest={onTestOutput}
               />
               <div className={`settings-health-item ${catalogLabel === "Actualizando" ? "warn" : "ok"}`}>
+                <span className="settings-health-icon" aria-hidden="true"><CatalogIcon /></span>
                 <span className="settings-health-copy">
                   <span className="settings-health-label">Catálogo</span>
                   <b>{catalogLabel}</b>

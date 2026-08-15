@@ -181,3 +181,38 @@ export function VolumeMutedIcon() {
     </svg>
   );
 }
+
+export function RecordingOffIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" strokeWidth="5" />
+      <path d="M17 17 47 47" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function InfinityIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M28 24c-4-5-8-8-13-8C8 16 4 22 4 32s4 16 11 16c7 0 12-8 17-16 5-8 10-16 17-16 7 0 11 6 11 16s-4 16-11 16c-5 0-9-3-13-8" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function FlagIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M15 56V9M17 12c13-7 22 7 34 0v25c-12 7-21-7-34 0" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function CatalogIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true">
+      {[10, 34].flatMap((x) => [10, 34].map((y) => (
+        <rect key={`${x}-${y}`} x={x} y={y} width="18" height="18" rx="3" fill="none" stroke="currentColor" strokeWidth="4" />
+      )))}
+    </svg>
+  );
+}

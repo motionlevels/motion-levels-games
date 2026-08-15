@@ -271,6 +271,38 @@ test("serializes run capture boundaries globally even while camera start is pend
   ]);
 });
 
+test("rotates selection recording for a new published level without splitting history", async (context) => {
+  const calls: RecordingBoundary[] = [];
+  const client: RecordingClient = {
+    onBoundary(boundary) {
+      calls.push(structuredClone(boundary));
+      return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
+    }
+  };
+  const store = temporaryStore(context, () => 1_000);
+  const recorder = new SessionHistoryRecorder(store, { now: () => 1_000, recordingClient: client });
+  recorder.startVisit({ id: "visit-level-captures", recordingPolicy: { scope: "selection" } });
+  startSelection(recorder, "run-level-1");
+  await waitFor(() => calls.length === 1);
+
+  recorder.restartRun("run-level-2", state(0, 0), { rotateSelectionRecording: true });
+  await waitFor(() => calls.length === 3);
+
+  assert.deepEqual(calls.map((boundary) => `${boundary.type}:${boundary.scope}`), [
+    "start:selection",
+    "stop:selection",
+    "start:selection",
+  ]);
+  assert.equal(new Set(calls.map((boundary) => boundary.recording.captureId)).size, 2);
+  const visit = store.getVisit("visit-level-captures");
+  assert.equal(visit.selections.length, 1);
+  assert.deepEqual(visit.selections[0]?.runs.map((run) => run.id), ["run-level-1", "run-level-2"]);
+  assert.deepEqual(visit.recordings.map((recording) => recording.linkedRunIds), [
+    ["run-level-1"],
+    ["run-level-2"],
+  ]);
+});
+
 test("never starts a queued capture after its run was revoked", async (context) => {
   let releaseFirstStart = () => {};
   const firstStartGate = new Promise<void>((resolve) => { releaseFirstStart = resolve; });

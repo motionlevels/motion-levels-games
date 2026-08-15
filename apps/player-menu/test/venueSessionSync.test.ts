@@ -178,6 +178,7 @@ describe("venue session synchronization", () => {
     assert.equal(remoteMirror.snapshot?.menu.sessionActive, false);
     assert.equal(remoteMirror.snapshot?.menu.teamName, "");
     assert.deepEqual(remoteMirror.snapshot?.menu.players, [{ id: 1, name: "" }]);
+    assert.equal(remoteMirror.snapshot?.menu.recordingPolicy, "selection");
   });
 
   it("recovers persisted kiosk state into a freshly restarted runtime", () => {

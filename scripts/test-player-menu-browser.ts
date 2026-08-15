@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright";
 
@@ -32,6 +33,7 @@ const viewportHeight = Number(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_HEIG
 const captureScreenshots = process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_SCREENSHOTS === "1";
 const scenarioFilter = String(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_SCENARIO || "").trim().toLowerCase();
 const baseURL = `http://127.0.0.1:${port}`;
+const screenshotPath = (name: string) => path.join(tmpdir(), name);
 const viteEntry = path.join(repoRoot, "node_modules/vite/bin/vite.js");
 const server = spawn(
   process.execPath,
@@ -55,12 +57,12 @@ try {
 
   await scenario("team name accepts multiple words and Done stays dismissed on touch", async ({ page }) => {
     await startSession(page);
-    if (captureScreenshots) await page.screenshot({ path: `/private/tmp/player-menu-drawer-${viewportWidth}.png` });
+    if (captureScreenshots) await page.screenshot({ path: screenshotPath(`player-menu-drawer-${viewportWidth}.png`) });
     const input = page.locator('input[placeholder="Nombre del equipo"]');
     await openTouchKeyboard(input, page);
     if (captureScreenshots) {
       await page.waitForTimeout(350);
-      await page.screenshot({ path: `/private/tmp/player-menu-keyboard-${viewportWidth}.png` });
+      await page.screenshot({ path: screenshotPath(`player-menu-keyboard-${viewportWidth}.png`) });
     }
     await replaceWithVirtualKeyboard(page, "LOS LOBOS");
     await page.locator(".kb-done").tap();
@@ -286,9 +288,13 @@ try {
     assert.equal(await page.locator("[data-recording-scope]").count(), 0, "the team drawer must not expose operator recording controls");
 
     const settings = await openUnlockedOperatorSettings(page);
+    if (captureScreenshots) {
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: screenshotPath(`player-menu-operator-settings-${viewportWidth}.png`) });
+    }
     const choices = settings.locator("[data-recording-scope]");
     assert.deepEqual(await choices.evaluateAll((buttons) => buttons.map((button) => (
-      button.querySelector("span")?.textContent?.trim()
+      button.querySelector(".recording-option__label")?.textContent?.trim()
     ))), [
       "Desactivada",
       "Sesión completa",
@@ -303,7 +309,7 @@ try {
   await scenario("operator recording switches policies and rolls back a rejected scope above settings", async ({ page, venueSessionFailures, venueSessionRequests }) => {
     await startSession(page);
     assert.equal(venueSessionRequests.length, 1);
-    assertRecordingRequest(venueSessionRequests[0], "visit");
+    assertRecordingRequest(venueSessionRequests[0], "selection");
     const settings = await openUnlockedOperatorSettings(page);
 
     for (const scope of recordingScopes) {
@@ -383,14 +389,14 @@ try {
     await waitForCondition(async () => (await audio.textContent())?.includes("Reproducido") === true, "completed audio playback", 5_000);
     assert.match((await audio.locator("small").textContent()) ?? "", /La reproducción terminó/u);
     if (captureScreenshots) {
-      await page.screenshot({ path: `/private/tmp/player-menu-settings-passed-${viewportWidth}.png` });
+      await page.screenshot({ path: screenshotPath(`player-menu-settings-passed-${viewportWidth}.png`) });
     }
     status.audioOutputState = "failed";
     status.revision += 1;
     await waitForCondition(async () => (await audio.textContent())?.includes("Error de salida") === true, "failed audio health", 5_000);
     await waitForCondition(() => audio.isEnabled(), "retryable failed audio diagnostic", 5_000);
     if (captureScreenshots) {
-      await page.screenshot({ path: `/private/tmp/player-menu-settings-failed-${viewportWidth}.png` });
+      await page.screenshot({ path: screenshotPath(`player-menu-settings-failed-${viewportWidth}.png`) });
     }
   });
 
@@ -703,7 +709,7 @@ async function openWelcome(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Comenzar" }).waitFor({ state: "visible" });
   if (captureScreenshots) {
     await page.waitForTimeout(700);
-    await page.screenshot({ path: `/private/tmp/player-menu-welcome-${viewportWidth}.png` });
+    await page.screenshot({ path: screenshotPath(`player-menu-welcome-${viewportWidth}.png`) });
   }
 }
 

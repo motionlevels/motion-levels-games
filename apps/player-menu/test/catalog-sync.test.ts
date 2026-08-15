@@ -645,7 +645,7 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /<GameConfigDialog/);
   });
 
-  it("keeps visit recording as the compatible default and exposes four kiosk recording modes", () => {
+  it("defaults to one recording per game and exposes four kiosk recording modes", () => {
     const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
     const apiSource = fs.readFileSync(path.resolve(__dirname, "../src/api.ts"), "utf8");
     const stylesSource = fs.readFileSync(path.resolve(__dirname, "../src/styles.css"), "utf8");
@@ -654,7 +654,7 @@ describe("catalog metadata sync", () => {
     assert.match(apiSource, /recordingPolicy\?: RecordingPolicy;/);
     assert.match(appSource, /normalizeRecordingScope\(saved\.recordingPolicy, saved\.recordingEnabled\)/);
     assert.match(appSource, /recordingEnabled: true/);
-    assert.match(appSource, /recordingPolicy: "visit"/);
+    assert.match(appSource, /recordingPolicy: defaultRecordingScope/);
     assert.match(appSource, /async function setSessionRecordingScope\(scope: RecordingScope\)/);
     assert.match(appSource, /recording_enabled: menu\.recordingEnabled/);
     assert.match(appSource, /recording_scope: menu\.recordingPolicy/);
@@ -673,6 +673,7 @@ describe("catalog metadata sync", () => {
     assert.match(stylesSource, /\.recording-picker\s*\{/);
     assert.match(stylesSource, /\.recording-options\s*\{/);
     assert.match(stylesSource, /\.recording-option\.selected/);
+    assert.match(stylesSource, /\.recording-option__check/);
   });
 
   it("does not preserve unknown retired menu state keys from localStorage", () => {

@@ -299,7 +299,7 @@ export class VenueRuntime {
   private venueSessionId = "";
   private venueSessionStartedUnix = 0;
   private venueSessionTeamName = "";
-  private venueSessionRecordingPolicy: RecordingPolicy = { scope: "visit" };
+  private venueSessionRecordingPolicy: RecordingPolicy = { scope: "selection" };
   private venueSessionGeneration = 0;
   private frameSequence = 0n;
   private lastDisplayPublishedAt = 0;
@@ -455,7 +455,7 @@ export class VenueRuntime {
       ? requestedRecordingPolicy(
           request.recordingPolicy,
           request.recordingEnabled,
-          sameRequestedVenueSession ? this.venueSessionRecordingPolicy : { scope: "visit" }
+          sameRequestedVenueSession ? this.venueSessionRecordingPolicy : { scope: "selection" }
         )
       : null;
     if (requestedVenueSessionId && this.selection
@@ -516,7 +516,7 @@ export class VenueRuntime {
     this.historyRunEngineOriginMillis = this.state.clockMillis;
     if (requestedVenueSessionId) {
       const sameVenueSession = sameRequestedVenueSession;
-      const recordingPolicy = selectedRecordingPolicy ?? { scope: "visit" };
+      const recordingPolicy = selectedRecordingPolicy ?? { scope: "selection" };
       const nextTeamName = requestedTeamName || this.venueSessionTeamName;
       const venueSessionChanged = !sameVenueSession
         || this.venueSessionTeamName !== nextTeamName
@@ -1096,7 +1096,7 @@ export class VenueRuntime {
       const recordingPolicy = requestedRecordingPolicy(
         request.recordingPolicy,
         request.recordingEnabled,
-        sameVenueSession ? this.venueSessionRecordingPolicy : { scope: "visit" }
+        sameVenueSession ? this.venueSessionRecordingPolicy : { scope: "selection" }
       );
       const policyOrSessionChanged = !sameVenueSession
         || JSON.stringify(this.venueSessionRecordingPolicy) !== JSON.stringify(recordingPolicy);
@@ -1134,7 +1134,7 @@ export class VenueRuntime {
       this.venueSessionId = "";
       this.venueSessionStartedUnix = 0;
       this.venueSessionTeamName = "";
-      this.venueSessionRecordingPolicy = { scope: "visit" };
+      this.venueSessionRecordingPolicy = { scope: "selection" };
       if (this.selection?.venueSessionId === venueSessionId) this.selection.venueSessionId = "";
       if (hadRecordingGate || hadActiveSelection) this.activateScreensaver();
     }
@@ -1670,7 +1670,8 @@ export class VenueRuntime {
         {
           recordingBlocked: true,
           pendingLevelId: pendingTransition.toLevelId,
-          pendingLevelSlug: pendingTransition.toLevelSlug
+          pendingLevelSlug: pendingTransition.toLevelSlug,
+          rotateSelectionRecording: pendingTransition.kind === "level_advance"
         }
       ) ?? null;
       this.beginRecordingGate("automatic", recordingStart, observedAtMonotonicMillis);
@@ -1682,7 +1683,9 @@ export class VenueRuntime {
       this.historyRunEngineOriginMillis = next.clockMillis;
       this.gameSessionId = randomUUID();
       this.sessionStartedUnix = Math.floor(this.wallNow() / 1_000);
-      this.history?.restartRun(this.gameSessionId, this.historyState(next));
+      this.history?.restartRun(this.gameSessionId, this.historyState(next), {
+        rotateSelectionRecording: publishedLevelChanged(previous, next)
+      });
       return;
     }
     this.history?.observeState(this.historyState(next));
@@ -2104,6 +2107,14 @@ function publishedAttemptStarted(previous: GameSessionState, next: GameSessionSt
     && nextAttempt > previousAttempt;
 }
 
+function publishedLevelChanged(previous: GameSessionState, next: GameSessionState): boolean {
+  const previousSnapshot = previous.snapshot as unknown as Record<string, unknown>;
+  const nextSnapshot = next.snapshot as unknown as Record<string, unknown>;
+  const previousLevel = String(previousSnapshot.levelSlug || previousSnapshot.level || "");
+  const nextLevel = String(nextSnapshot.levelSlug || nextSnapshot.level || "");
+  return previousLevel.length > 0 && nextLevel.length > 0 && previousLevel !== nextLevel;
+}
+
 function normalizeLocalLiveFloorFps(value: unknown): number {
   const candidate = Number(value ?? defaultLocalLiveFloorFps);
   if (!Number.isFinite(candidate)) return defaultLocalLiveFloorFps;
@@ -2202,7 +2213,7 @@ function cleanText(value: unknown, max: number): string { return String(value ??
 function requestedRecordingPolicy(
   policy: unknown,
   legacyEnabled: unknown,
-  fallback: RecordingPolicy = { scope: "visit" }
+  fallback: RecordingPolicy = { scope: "selection" }
 ): RecordingPolicy {
   if (policy !== undefined) return normalizeRecordingPolicy(policy);
   if (legacyEnabled !== undefined) return normalizeRecordingPolicy(legacyEnabled);

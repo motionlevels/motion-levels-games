@@ -26,8 +26,8 @@ describe("operator settings diagnostics", () => {
     assert.ok(recordingPicker > operatorBranch, "recording controls must render only in the unlocked operator branch");
   });
 
-  it("uses the full settings dialog width for the locked operator layout", () => {
-    assert.match(stylesSource, /\.settings-modal\s*\{[^}]*width: min\(1160px, 100%\)/su);
+  it("uses the expanded settings dialog width for the locked operator layout", () => {
+    assert.match(stylesSource, /\.settings-modal\s*\{[^}]*width: min\(1480px, 100%\)/su);
     assert.match(stylesSource, /\.pin-panel\s*\{[^}]*grid-template-areas:/su);
   });
 
