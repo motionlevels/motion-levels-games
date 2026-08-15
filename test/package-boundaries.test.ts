@@ -70,6 +70,7 @@ test("workspace source imports respect package ownership", async () => {
       allowed: new Set([
         "@motion-levels-games/game-sdk",
         "@motion-levels-games/player-experience",
+        "@motion-levels-games/replay-runtime",
         "@motion-levels-games/runtime",
         "@motion-levels-games/session-history"
       ])

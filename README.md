@@ -6,6 +6,10 @@ in-process in Node; the venue keeps its controller and supervisor in Go.
 
 ## Quickstart
 
+The repository standardizes local development, CI, and production tooling on
+Node.js 24.17.0 with npm 11.13.0. Version managers should read
+[`.node-version`](.node-version); npm rejects other Node major versions.
+
 ```sh
 npm install
 npm run check:fast

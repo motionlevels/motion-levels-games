@@ -117,8 +117,9 @@ sound, and attribution metadata remains mandatory.
 For third-party input, keep the original source, author, licence, download
 date, permitted use, modification notes, and attribution in the package. The
 optimizer is installed at the exact lockfile version
-`@gltf-transform/cli@4.4.2` (Node 20+). Its vulnerable `sharp ~0.34` range is
-scoped-overridden to the exact compatible codec `sharp@0.35.3`; the script
+`@gltf-transform/cli@4.4.2` under the repository-pinned Node 24 runtime. Its
+vulnerable `sharp ~0.34` range is scoped-overridden to the exact compatible
+codec `sharp@0.35.3`; the script
 checks and records both installed versions. Process a reviewed source into a
 new path with its expected source hash:
 

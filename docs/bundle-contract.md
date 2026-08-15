@@ -99,5 +99,5 @@ the verified bundle locally from that clean source checkout. The separate
 release workflow is manual recovery for an existing tag; tag creation does not
 start a second copy of the release gate already completed by main CI.
 
-The runtime entry targets Node.js 20. See `docs/venue-runtime.md` for its HTTP
+The runtime entry targets Node.js 24. See `docs/venue-runtime.md` for its HTTP
 and controller contracts and for deliberate legacy feature removals.

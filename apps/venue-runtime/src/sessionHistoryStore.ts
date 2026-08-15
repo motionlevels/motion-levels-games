@@ -68,7 +68,7 @@ export type SessionHistoryStoreDiagnostics = {
 };
 
 /**
- * Node 20-compatible local history store. Manifests are atomically replaced;
+ * Node 24-compatible local history store. Manifests are atomically replaced;
  * timeline entries are durable, append-only NDJSON records.
  */
 export class SessionHistoryStore {

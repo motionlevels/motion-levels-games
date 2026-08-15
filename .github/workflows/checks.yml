@@ -21,7 +21,7 @@ jobs:
           path: source
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: source/.node-version
           cache: npm
           cache-dependency-path: source/package-lock.json
       - run: npm ci
@@ -32,7 +32,7 @@ jobs:
       - run: npm run typecheck
 
   compatibility-tests:
-    name: Node 22 compatibility
+    name: Full test suite
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
@@ -41,14 +41,14 @@ jobs:
           path: source
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: source/.node-version
           cache: npm
           cache-dependency-path: source/package-lock.json
       - run: npm ci
       - run: npm run test:all
 
   coverage-tests:
-    name: Node 24 coverage and contracts
+    name: Coverage and contracts
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
@@ -57,7 +57,7 @@ jobs:
           path: source
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: source/.node-version
           cache: npm
           cache-dependency-path: source/package-lock.json
       - run: npm ci
@@ -76,7 +76,7 @@ jobs:
           path: source
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: source/.node-version
           cache: npm
           cache-dependency-path: source/package-lock.json
       - run: npm ci
@@ -98,7 +98,7 @@ jobs:
           path: source
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: source/.node-version
           cache: npm
           cache-dependency-path: source/package-lock.json
       - run: npm ci

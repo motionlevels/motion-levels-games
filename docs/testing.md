@@ -94,20 +94,25 @@ prevents the main and authoring branches from drifting apart. The reusable
 workflow runs five independent jobs:
 
 1. lint, manifest validation, and TypeScript;
-2. the full test set on Node 22 for compatibility;
-3. repository contracts and thresholded coverage on Node 24;
-4. the production build and deterministic engine playtests on Node 24;
+2. the full test set;
+3. repository contracts and thresholded coverage;
+4. the production build and deterministic engine playtests;
 5. the real-browser playground interaction playtest, generated media, and
    verified release bundle inside the Playwright runtime image pinned to the
    repository's Playwright version.
+
+Every host job reads the same exact Node 24 version from `.node-version`. The
+pinned Playwright 1.61 image also uses Node 24, so browser verification stays on
+the same runtime major while retaining the image's revision-matched browsers.
 
 Caller workflows use concurrency cancellation so obsolete commits stop
 consuming CI time. Every job has a timeout and read-only repository permission.
 The `dev` caller retains its additional ancestry check before shared CI runs.
 Every job checks out into an isolated `source/` directory. This prevents stale
 files in a shared runner's default workspace from influencing a new checkout.
-The browser job installs and builds on Node 24, then bind-mounts that isolated
-checkout into the pinned official Playwright image. The container runs as the
+The browser job installs and builds with the repository-pinned Node version,
+then bind-mounts that isolated checkout into the pinned official Playwright
+image. The container runs as the
 runner's exact uid/gid, so it cannot leave root-owned repository files behind;
 it needs neither recursive ownership repair nor interactive `sudo`.
 

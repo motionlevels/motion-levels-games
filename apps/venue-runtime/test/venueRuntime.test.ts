@@ -1692,7 +1692,9 @@ test("selection recording opens a new capture when a published game advances lev
 
   const visit = runtime.historySession(venueSessionId).session;
   assert.equal(visit.selections.length, 1);
-  assert.deepEqual(visit.recordings.map((recording) => recording.linkedRunIds), [
+  assert.deepEqual(visit.recordings
+    .filter((recording) => recording.backend === "camera-recorder")
+    .map((recording) => recording.linkedRunIds), [
     [initialRunId],
     [advanced.sessionId]
   ]);

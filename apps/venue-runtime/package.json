@@ -16,6 +16,6 @@
     "@motion-levels-games/session-history": "0.1.0"
   },
   "devDependencies": {
-    "@types/node": "^25.0.2"
+    "@types/node": "^24.13.3"
   }
 }

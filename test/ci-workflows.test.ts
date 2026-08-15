@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { glob, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const dev = await readFile(new URL("../.github/workflows/dev-games.yml", import.meta.url), "utf8");
 const checks = await readFile(new URL("../.github/workflows/checks.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release-bundle.yml", import.meta.url), "utf8");
+const nodeVersion = (await readFile(new URL("../.node-version", import.meta.url), "utf8")).trim();
+const npmConfig = (await readFile(new URL("../.npmrc", import.meta.url), "utf8")).trim();
+const rootPackage = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+) as {
+  packageManager?: string;
+  engines?: Record<string, string>;
+};
 
 test("main and dev workflows share one CI implementation", () => {
   assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
@@ -55,7 +63,41 @@ test("green main builds automatically promote one immutable release", () => {
   assert.doesNotMatch(ci, /gh workflow run release-bundle\.yml/);
 });
 
-test("reusable CI separates quality, compatibility, coverage, bundle, and browser checks", () => {
+test("the Node 24 toolchain has one version source across local development and CI", async () => {
+  assert.equal(nodeVersion, "24.17.0");
+  assert.equal(npmConfig, "engine-strict=true");
+  assert.equal(rootPackage.packageManager, "npm@11.13.0");
+  assert.deepEqual(rootPackage.engines, {
+    node: ">=24 <25",
+    npm: ">=11 <12",
+  });
+  assert.equal(
+    (checks.match(/node-version-file: source\/\.node-version/g) ?? []).length,
+    5,
+    "every reusable CI job must read the repository Node pin",
+  );
+  assert.equal(
+    (ci.match(/node-version-file: source\/\.node-version/g) ?? []).length,
+    1,
+    "release promotion must read the repository Node pin",
+  );
+  assert.doesNotMatch(checks, /node-version: \d+/);
+  assert.doesNotMatch(ci, /node-version: \d+/);
+
+  const nodeTypeVersions = new Set<string>();
+  for await (const packagePath of glob(["package.json", "{apps,games,packages}/*/package.json"], {
+    cwd: new URL("..", import.meta.url),
+  })) {
+    const manifest = JSON.parse(
+      await readFile(new URL(`../${packagePath}`, import.meta.url), "utf8"),
+    ) as { devDependencies?: Record<string, string> };
+    const nodeTypes = manifest.devDependencies?.["@types/node"];
+    if (nodeTypes) nodeTypeVersions.add(nodeTypes);
+  }
+  assert.deepEqual([...nodeTypeVersions], ["^24.13.3"]);
+});
+
+test("reusable CI separates quality, full-suite, coverage, bundle, and browser checks", () => {
   assert.match(checks, /workflow_call:/);
   for (const job of [
     "quality",
@@ -66,8 +108,6 @@ test("reusable CI separates quality, compatibility, coverage, bundle, and browse
   ]) {
     assert.match(checks, new RegExp(`^  ${job}:`, "m"), `${job} must remain an independent job`);
   }
-  assert.match(checks, /node-version: 22/);
-  assert.match(checks, /node-version: 24/);
   assert.match(checks, /run: npm run test:coverage/);
   assert.match(checks, /run: npm run test:contracts/);
   assert.match(checks, /run: npm run validate:characters/);
