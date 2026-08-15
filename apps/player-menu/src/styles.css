@@ -72,24 +72,31 @@ body,
 }
 
 .kiosk-build-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   position: absolute;
-  left: 28px;
-  bottom: 8px;
+  left: 32px;
+  bottom: 12px;
   z-index: 20;
-  padding: 3px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 999px;
-  color: rgba(226, 234, 246, 0.54);
-  background: rgba(3, 6, 11, 0.48);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  color: rgba(200, 210, 224, 0.42);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 650;
   line-height: 1;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
+}
+
+.kiosk-build-version::before {
+  width: 12px;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: rgba(var(--accent-rgb), 0.5);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.22);
+  content: "";
 }
 
 button,
