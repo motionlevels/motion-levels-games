@@ -81,6 +81,11 @@ assert.ok(files.some((file) => file.path === manifest.venueRuntime?.entry), "ven
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.entry), "player display entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.shellEntry), "player display shell is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.buildManifest), "player display build manifest is missing from bundle files");
+const audioTestSamplePath = "display/audio/probando.wav";
+assert.ok(files.some((file) => file.path === audioTestSamplePath), "player display audio diagnostic is missing from bundle files");
+const audioTestSample = await readFile(path.join(root, audioTestSamplePath));
+assert.equal(audioTestSample.subarray(0, 4).toString("ascii"), "RIFF", "audio diagnostic is not a WAV file");
+assert.equal(audioTestSample.subarray(8, 12).toString("ascii"), "WAVE", "audio diagnostic has no WAVE signature");
 assert.ok(files.some((file) => file.path === manifest.playerMenu?.entry), "player menu entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerMenu?.buildManifest), "player menu build manifest is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playground?.entry), "playground entry is missing from bundle files");

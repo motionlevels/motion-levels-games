@@ -110,6 +110,18 @@ export type PlayerExperienceFinishedAttempt = {
   endedUnixNanos: number;
 };
 
+export type PlayerExperienceOutputTestState = "idle" | "pending" | "playing" | "passed" | "failed";
+
+export type PlayerExperienceOutputTest = {
+  id: string;
+  target: "floor" | "audio";
+  state: PlayerExperienceOutputTestState;
+  sequence: number;
+  startedUnixMillis: number;
+  finishedUnixMillis?: number;
+  error?: string;
+};
+
 /**
  * The single live state consumed by the menu and Player Display.
  *
@@ -155,6 +167,7 @@ export type PlayerExperienceState = {
   audioEnabled: boolean;
   audioMuted: boolean;
   audioOutputState?: PlayerExperienceAudioOutputState;
+  outputTest?: PlayerExperienceOutputTest | null;
   paused: boolean;
   success: boolean;
   startedUnix: number;

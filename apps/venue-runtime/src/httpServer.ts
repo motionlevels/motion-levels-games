@@ -257,6 +257,17 @@ async function route(
     ));
     return;
   }
+  if (url.pathname === "/api/output-test" && request.method === "POST") {
+    const body = await readJson(request);
+    if (typeof body.commandId !== "string" || !body.commandId.trim()) {
+      throw new RequestValidationError("commandId is required");
+    }
+    json(response, await commands.execute(
+      body.commandId,
+      () => runtime.runOutputTest(body.target)
+    ));
+    return;
+  }
   if (url.pathname === "/api/floor-input" && request.method === "POST") {
     const body = await readJson(request) as Parameters<VenueRuntime["applyRemoteFloorInput"]>[0];
     if (typeof body.commandId !== "string" || !body.commandId.trim()) {
@@ -302,7 +313,7 @@ async function route(
     }
   }
   if ([
-    "/api/health", "/api/status", "/api/player-state", "/api/player-state/events", "/api/display", "/api/display/events", "/api/live-floor/events", "/api/select", "/api/control", "/api/floor-input",
+    "/api/health", "/api/status", "/api/player-state", "/api/player-state/events", "/api/display", "/api/display/events", "/api/live-floor/events", "/api/select", "/api/control", "/api/output-test", "/api/floor-input",
     "/api/menu-state", "/api/menu-state/events", "/api/venue-session", "/api/menu-event", "/api/display-client"
   ].includes(url.pathname)) {
     response.writeHead(405, { Allow: "GET, HEAD, POST, PUT, OPTIONS" }).end("method not allowed");

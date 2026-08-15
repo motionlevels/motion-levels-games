@@ -4819,9 +4819,9 @@ button.capsule:disabled,
 
 .settings-content {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 258px minmax(0, 1fr);
   align-items: start;
-  gap: 18px;
+  gap: 20px;
 }
 
 .pin-panel,
@@ -4839,10 +4839,10 @@ button.capsule:disabled,
 
 .settings-version-card {
   min-height: 0;
-  padding: 20px;
+  padding: 18px;
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--glass-line);
   border-radius: var(--r-lg);
   background:
@@ -4857,13 +4857,12 @@ button.capsule:disabled,
 .settings-version-card strong {
   color: var(--text);
   font-family: var(--mono);
-  font-size: 25px;
+  font-size: 24px;
   font-weight: 900;
-  line-height: 1.08;
-  overflow-wrap: anywhere;
+  line-height: 1;
+  letter-spacing: 0.035em;
 }
 
-.settings-version-card small,
 .settings-copy p {
   margin: 0;
   color: var(--muted);
@@ -4883,23 +4882,31 @@ button.capsule:disabled,
 
 .settings-health {
   display: grid;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 18px;
+  gap: 9px;
+  margin-top: 6px;
+  padding-top: 16px;
   border-top: 1px solid rgba(214, 229, 255, 0.12);
 }
 
-.settings-health > div {
+.settings-health-item {
   position: relative;
-  display: grid;
-  gap: 3px;
-  padding: 11px 11px 11px 30px;
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 30px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
+  color: inherit;
   background: rgba(255, 255, 255, 0.045);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  isolation: isolate;
 }
 
-.settings-health > div::before {
+.settings-health-item::before {
   content: "";
   position: absolute;
   left: 12px;
@@ -4911,36 +4918,44 @@ button.capsule:disabled,
   transform: translateY(-50%);
 }
 
-.settings-health > div.ok {
+.settings-health-item.ok {
   border-color: rgba(var(--signal-ok-rgb), 0.14);
   background: rgba(var(--signal-ok-rgb), 0.055);
 }
 
-.settings-health > div.ok::before {
+.settings-health-item.ok::before {
   background: var(--signal-ok);
   box-shadow: 0 0 12px rgba(var(--signal-ok-rgb), 0.48);
 }
 
-.settings-health > div.warn {
+.settings-health-item.warn {
   border-color: rgba(var(--amber-rgb), 0.15);
   background: rgba(var(--amber-rgb), 0.05);
 }
 
-.settings-health > div.warn::before {
+.settings-health-item.warn::before {
   background: var(--amber);
 }
 
-.settings-health > div.danger {
+.settings-health-item.danger {
   border-color: rgba(var(--signal-danger-rgb), 0.2);
   background: rgba(var(--signal-danger-rgb), 0.06);
 }
 
-.settings-health > div.danger::before {
+.settings-health-item.danger::before {
   background: var(--signal-danger);
   box-shadow: 0 0 12px rgba(var(--signal-danger-rgb), 0.42);
 }
 
-.settings-health span {
+.settings-health-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  position: relative;
+  z-index: 1;
+}
+
+.settings-health-label {
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
@@ -4949,9 +4964,133 @@ button.capsule:disabled,
 }
 
 .settings-health b {
+  display: block;
   color: rgba(238, 246, 255, 0.9);
   font-size: 15px;
   font-weight: 900;
+  line-height: 1.12;
+}
+
+.settings-health small {
+  display: block;
+  margin: 1px 0 0;
+  color: rgba(179, 194, 218, 0.72);
+  font-size: 10px;
+  font-weight: 730;
+  line-height: 1.22;
+}
+
+.settings-test-action {
+  min-height: 72px;
+  padding-right: 42px;
+  appearance: none;
+  cursor: pointer;
+  transition:
+    transform 100ms var(--ease),
+    border-color 140ms var(--ease),
+    background 140ms var(--ease),
+    box-shadow 140ms var(--ease),
+    opacity 140ms var(--ease);
+}
+
+.settings-test-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(var(--accent-rgb), 0.42);
+  background:
+    linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(var(--accent-rgb), 0.035)),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: 0 12px 28px -22px rgba(var(--accent-rgb), 0.85);
+}
+
+.settings-test-action:focus-visible {
+  outline: 3px solid rgba(var(--accent-rgb), 0.78);
+  outline-offset: 2px;
+}
+
+.settings-test-action:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+}
+
+.settings-test-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.settings-test-action.testing {
+  opacity: 1;
+  cursor: wait;
+  animation: settingsTestButtonPulse 680ms ease-in-out infinite;
+}
+
+.settings-test-action.tested {
+  border-color: rgba(var(--signal-ok-rgb), 0.42);
+  box-shadow: 0 0 24px -13px rgba(var(--signal-ok-rgb), 0.9);
+}
+
+.settings-test-glyph {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 21px;
+  height: 21px;
+  display: grid;
+  place-items: center;
+  color: rgba(204, 221, 245, 0.7);
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.settings-test-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.settings-test-action.testing .settings-test-glyph {
+  color: var(--amber);
+  animation: settingsTestGlyphPulse 680ms ease-in-out infinite;
+}
+
+.settings-test-pulse {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  width: 35px;
+  height: 35px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) scale(0.55);
+}
+
+.settings-test-action.testing .settings-test-pulse {
+  color: var(--amber);
+  animation: settingsTestRipple 680ms ease-out infinite;
+}
+
+.settings-test-action.tested .settings-test-pulse {
+  color: var(--signal-ok);
+  animation: settingsTestSuccess 520ms ease-out 1;
+}
+
+@keyframes settingsTestButtonPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(var(--amber-rgb), 0); }
+  50% { transform: scale(0.985); box-shadow: 0 0 24px -9px rgba(var(--amber-rgb), 0.72); }
+}
+
+@keyframes settingsTestGlyphPulse {
+  0%, 100% { transform: translateY(-50%) scale(0.9); }
+  50% { transform: translateY(-50%) scale(1.12); }
+}
+
+@keyframes settingsTestRipple {
+  0% { opacity: 0.7; transform: translateY(-50%) scale(0.45); }
+  100% { opacity: 0; transform: translateY(-50%) scale(1.08); }
+}
+
+@keyframes settingsTestSuccess {
+  0% { opacity: 0.8; transform: translateY(-50%) scale(0.45); }
+  100% { opacity: 0; transform: translateY(-50%) scale(1.15); }
 }
 
 .settings-copy {

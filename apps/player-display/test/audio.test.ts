@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { audioEventKey, cueVoices } from "../src/audio.ts";
+import { afterEach, describe, it } from "node:test";
+import { audioEventKey, cueVoices, loadAudioTestSample } from "../src/audio.ts";
+
+const nativeFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = nativeFetch;
+});
 
 describe("audioEventKey", () => {
   const base = {
@@ -53,11 +59,109 @@ describe("VenueAudioOutput", () => {
     assert.equal(states.at(-1), "ready");
     await output.dispose();
   });
+
+  it("plays the recorded test phrase through the output even when game audio is muted", async () => {
+    const fake = fakeAudioContext("running");
+    const sample = { duration: 0.42 } as AudioBuffer;
+    const { VenueAudioOutput } = await import("../src/audio.ts");
+    const output = new VenueAudioOutput(() => {}, () => fake.context, async () => sample);
+
+    output.configure(true, true);
+    let started = 0;
+    const result = output.playTestPhrase(() => { started += 1; });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const source = fake.sources[0];
+    assert.ok(source);
+    assert.equal(source.buffer, sample);
+    assert.equal(source.started, true);
+    assert.equal(started, 1);
+    source.onended?.call(source as unknown as AudioBufferSourceNode, new Event("ended"));
+    assert.equal(await result, true);
+    await output.dispose();
+  });
+
+  it("reports a failed test when the recorded phrase cannot be loaded", async () => {
+    const fake = fakeAudioContext("running");
+    const { VenueAudioOutput } = await import("../src/audio.ts");
+    const output = new VenueAudioOutput(
+      () => {},
+      () => fake.context,
+      async () => { throw new Error("missing sample"); },
+    );
+    output.configure(true, false);
+    assert.equal(await output.playTestPhrase(), false);
+    await output.dispose();
+  });
+
+  it("cancels a deferred phrase load before any source can start", async () => {
+    const fake = fakeAudioContext("running");
+    const sample = { duration: 0.42 } as AudioBuffer;
+    let resolveSample!: (buffer: AudioBuffer) => void;
+    let loaderSignal: AbortSignal | null = null;
+    const deferredSample = new Promise<AudioBuffer>((resolve) => { resolveSample = resolve; });
+    const { VenueAudioOutput } = await import("../src/audio.ts");
+    const output = new VenueAudioOutput(
+      () => {},
+      () => fake.context,
+      async (_context, signal) => {
+        loaderSignal = signal;
+        return deferredSample;
+      },
+    );
+    output.configure(true, false);
+
+    const result = output.playTestPhrase();
+    await new Promise((resolve) => setImmediate(resolve));
+    output.cancelTestPhrase();
+    resolveSample(sample);
+
+    assert.equal(loaderSignal?.aborted, true);
+    assert.equal(await result, false);
+    assert.equal(fake.sources.length, 0, "a cancelled deferred load must never reach source.start");
+    await output.dispose();
+  });
+
+  it("stops a phrase which is already playing", async () => {
+    const fake = fakeAudioContext("running");
+    const sample = { duration: 0.42 } as AudioBuffer;
+    const { VenueAudioOutput } = await import("../src/audio.ts");
+    const output = new VenueAudioOutput(() => {}, () => fake.context, async () => sample);
+    output.configure(true, false);
+
+    const result = output.playTestPhrase();
+    await new Promise((resolve) => setImmediate(resolve));
+    const source = fake.sources[0];
+    assert.ok(source?.started);
+
+    output.cancelTestPhrase();
+
+    assert.equal(source.stopped, true);
+    assert.equal(await result, false);
+    await output.dispose();
+  });
+
+  it("aborts a stalled recorded-phrase request", async () => {
+    const fake = fakeAudioContext("running");
+    globalThis.fetch = ((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener(
+        "abort",
+        () => reject(new DOMException("Aborted", "AbortError")),
+        { once: true },
+      );
+    })) as typeof fetch;
+
+    await assert.rejects(
+      loadAudioTestSample(fake.context, new URL("http://127.0.0.1/audio/probando.wav"), 5),
+      (error: unknown) => error instanceof DOMException && error.name === "AbortError",
+    );
+  });
 });
 
 function fakeAudioContext(initialState: AudioContextState): {
   context: AudioContext;
   resolveResume: () => void;
+  sources: Array<AudioBufferSourceNode & { started: boolean; stopped: boolean }>;
 } {
   let state = initialState;
   let resolveResume = () => {};
@@ -72,15 +176,30 @@ function fakeAudioContext(initialState: AudioContextState): {
     disconnect() {},
     gain: { setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {} },
   } as unknown as GainNode;
+  const sources: Array<AudioBufferSourceNode & { started: boolean; stopped: boolean }> = [];
   const context = {
     currentTime: 0,
     destination: {},
     get state() { return state; },
     set onstatechange(value: ((this: BaseAudioContext, ev: Event) => unknown) | null) { void value; },
     createGain: () => gain,
+    createBufferSource: () => {
+      const source = {
+        buffer: null,
+        started: false,
+        stopped: false,
+        onended: null,
+        connect() {},
+        disconnect() {},
+        start() { source.started = true; },
+        stop() { source.stopped = true; },
+      } as unknown as AudioBufferSourceNode & { started: boolean; stopped: boolean };
+      sources.push(source);
+      return source;
+    },
     createOscillator: () => ({}) as OscillatorNode,
     resume: () => resume,
     close: async () => { state = "closed"; },
   } as unknown as AudioContext;
-  return { context, resolveResume };
+  return { context, resolveResume, sources };
 }

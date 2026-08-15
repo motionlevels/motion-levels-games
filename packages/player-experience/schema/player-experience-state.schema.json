@@ -40,6 +40,19 @@
     "audioEnabled": { "type": "boolean" },
     "audioMuted": { "type": "boolean" },
     "audioOutputState": { "enum": ["disabled", "checking", "ready", "suspended", "failed"] },
+    "outputTest": {
+      "type": ["object", "null"],
+      "required": ["id", "target", "state", "sequence", "startedUnixMillis"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "target": { "enum": ["floor", "audio"] },
+        "state": { "enum": ["idle", "pending", "playing", "passed", "failed"] },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "startedUnixMillis": { "type": "integer", "minimum": 0 },
+        "finishedUnixMillis": { "type": "integer", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    },
     "paused": { "type": "boolean" },
     "success": { "type": "boolean" },
     "startedUnix": { "type": "integer" },

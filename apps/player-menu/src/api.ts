@@ -331,6 +331,7 @@ export async function selectGame(request: SelectGameRequest): Promise<EngineStat
   return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/select`, { ...request, commandId }));
 }
 
+export type OutputTestTarget = "floor" | "audio";
 export type ControlGameAction =
   | "pause"
   | "resume"
@@ -362,6 +363,11 @@ export async function controlGame(action: ControlGameAction, options: ControlGam
     commandId,
     ...(recordingGateId ? { recordingGateId } : {}),
   }));
+}
+
+export async function testOutput(target: OutputTestTarget): Promise<EngineStatus> {
+  const commandId = newPlayerExperienceCommandId(globalThis.crypto);
+  return enqueuePlayerCommand(() => requestPlayerCommand(`${engineBaseURL()}/api/output-test`, { commandId, target }));
 }
 
 export type VenueSessionRequest = {

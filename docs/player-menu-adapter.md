@@ -13,6 +13,10 @@ route, or port `4102` on the current host. Protocol v2 uses:
 - `GET /api/player-state/events` for the revisioned live SSE feed;
 - `POST /api/select` to launch a catalog selection;
 - `POST /api/control` for pause, resume, restart, exit, narration, and mute;
+- `POST /api/output-test` for an idempotent, operator-triggered `floor` or
+  `audio` diagnostic. The canonical player state exposes the correlated
+  `outputTest` UUID and its `pending`, `playing`, `passed`, or `failed`
+  lifecycle;
 - `GET /api/health`, `/api/display`, and `/api/display/events` for venue and
   player-display health/state;
 - `GET /api/live-floor/events` for the runtime-owned SSE stream of the latest
@@ -23,7 +27,9 @@ route, or port `4102` on the current host. Protocol v2 uses:
   kiosk recovery state;
 - `POST /api/venue-session` for authoritative visit start/end state and
   `POST /api/menu-event` for best-effort operational events;
-- `GET`/`POST /api/display-client` for player-display health reports.
+- `GET`/`POST /api/display-client` for player-display health reports. Audio
+  diagnostics acknowledge the same output-test UUID and sequence only after
+  the recorded phrase is scheduled, completed, or fails.
 
 The platform catalog remains a read-only input at `GET /api/game-catalog`.
 The menu resolves it from `VITE_PLATFORM_URL`, the active platform/gateway

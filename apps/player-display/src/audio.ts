@@ -16,6 +16,12 @@ type AudioEventStatus = Pick<PlayerExperienceState,
 >;
 
 type AudioContextFactory = () => AudioContext;
+type TestSampleLoader = (context: AudioContext, signal: AbortSignal) => Promise<AudioBuffer>;
+type ActiveAudioTest = {
+  controller: AbortController;
+  cancelPlayback: (() => void) | null;
+};
+const testSampleTimeoutMillis = 3_000;
 
 export function audioEventKey(status: AudioEventStatus): string | null {
   if (!status.lastEventCue || status.lastEventCue === "none") return null;
@@ -79,11 +85,14 @@ export class VenueAudioOutput {
   private outputState: AudioOutputState = "disabled";
   private lastCueAt = new Map<string, number>();
   private activeVoices = new Set<OscillatorNode>();
+  private activeTests = new Set<ActiveAudioTest>();
+  private testSample: { generation: number; buffer: AudioBuffer } | null = null;
   private generation = 0;
 
   constructor(
     private readonly onStateChange: (state: AudioOutputState) => void,
     private readonly createContext: AudioContextFactory = defaultAudioContext,
+    private readonly loadTestSample: TestSampleLoader = defaultTestSample,
   ) {}
 
   configure(enabled: boolean, muted: boolean): void {
@@ -122,6 +131,36 @@ export class VenueAudioOutput {
     void this.resume(context, generation).then((ready) => {
       if (ready) this.schedule(context, voices, generation);
     });
+  }
+
+  async playTestPhrase(onStarted?: () => void): Promise<boolean> {
+    if (!this.enabled) return false;
+    const context = this.ensureContext();
+    if (!context) return false;
+    const generation = this.generation;
+    const test: ActiveAudioTest = {
+      controller: new AbortController(),
+      cancelPlayback: null,
+    };
+    this.activeTests.add(test);
+    try {
+      if (!await this.resume(context, generation) || test.controller.signal.aborted) return false;
+      const sample = await this.testSampleFor(context, generation, test.controller.signal);
+      if (!this.isCurrent(context, generation) || test.controller.signal.aborted) return false;
+      return await this.scheduleTestSample(context, sample, test, onStarted);
+    } catch {
+      return false;
+    } finally {
+      this.activeTests.delete(test);
+    }
+  }
+
+  /** Stops every diagnostic phrase without closing or muting gameplay audio. */
+  cancelTestPhrase(): void {
+    for (const test of this.activeTests) {
+      test.controller.abort();
+      test.cancelPlayback?.();
+    }
   }
 
   async dispose(): Promise<void> {
@@ -189,6 +228,63 @@ export class VenueAudioOutput {
     }
   }
 
+  private async testSampleFor(context: AudioContext, generation: number, signal: AbortSignal): Promise<AudioBuffer> {
+    if (this.testSample?.generation === generation) return this.testSample.buffer;
+    const buffer = await this.loadTestSample(context, signal);
+    if (!signal.aborted && this.isCurrent(context, generation)) {
+      this.testSample = { generation, buffer };
+    }
+    return buffer;
+  }
+
+  private scheduleTestSample(
+    context: AudioContext,
+    sample: AudioBuffer,
+    test: ActiveAudioTest,
+    onStarted?: () => void,
+  ): Promise<boolean> {
+    if (context.state !== "running" || test.controller.signal.aborted) return Promise.resolve(false);
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    const start = context.currentTime + 0.008;
+    source.buffer = sample;
+    source.connect(gain);
+    gain.connect(context.destination);
+    gain.gain.setValueAtTime(0.78, start);
+    return new Promise((resolve) => {
+      let finished = false;
+      const timeout = globalThis.setTimeout(
+        () => finish(false),
+        Math.max(750, Math.ceil((sample.duration + 0.5) * 1_000)),
+      );
+      const finish = (played: boolean) => {
+        if (finished) return;
+        finished = true;
+        globalThis.clearTimeout(timeout);
+        test.cancelPlayback = null;
+        source.onended = null;
+        source.disconnect();
+        gain.disconnect();
+        resolve(played);
+      };
+      test.cancelPlayback = () => {
+        try {
+          source.stop();
+        } catch {
+          // A source which already ended needs only its normal cleanup.
+        }
+        finish(false);
+      };
+      source.onended = () => finish(true);
+      try {
+        source.start(start);
+        onStarted?.();
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
   private applyMasterGain(context: AudioContext): void {
     this.master?.gain.setTargetAtTime(this.muted ? 0 : 0.32, context.currentTime, 0.012);
   }
@@ -216,7 +312,10 @@ export class VenueAudioOutput {
     this.generation += 1;
     this.context = null;
     this.master = null;
+    this.testSample = null;
     this.activeVoices.clear();
+    this.cancelTestPhrase();
+    this.activeTests.clear();
     if (context) context.onstatechange = null;
     this.setOutputState(finalState);
     if (context && context.state !== "closed") {
@@ -232,6 +331,37 @@ export class VenueAudioOutput {
 function defaultAudioContext(): AudioContext {
   if (typeof globalThis.AudioContext !== "function") throw new Error("Web Audio is unavailable");
   return new globalThis.AudioContext({ latencyHint: "interactive", sampleRate: 48_000 });
+}
+
+async function defaultTestSample(context: AudioContext, signal: AbortSignal): Promise<AudioBuffer> {
+  const base = typeof document === "undefined" ? "http://127.0.0.1/display/" : document.baseURI;
+  const url = new URL(`${import.meta.env.BASE_URL}audio/probando.wav`, base);
+  const buildRevision = typeof MOTION_LEVELS_PLAYER_DISPLAY_REVISION === "string"
+    ? MOTION_LEVELS_PLAYER_DISPLAY_REVISION
+    : "";
+  if (buildRevision) url.searchParams.set("v", buildRevision);
+  return loadAudioTestSample(context, url, testSampleTimeoutMillis, signal);
+}
+
+export async function loadAudioTestSample(
+  context: AudioContext,
+  url: URL,
+  timeoutMillis = testSampleTimeoutMillis,
+  signal?: AbortSignal,
+): Promise<AudioBuffer> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const timeout = globalThis.setTimeout(() => controller.abort(), Math.max(1, timeoutMillis));
+  try {
+    const response = await fetch(url, { cache: "force-cache", signal: controller.signal });
+    if (!response.ok) throw new Error(`audio test sample returned HTTP ${response.status}`);
+    return context.decodeAudioData(await response.arrayBuffer());
+  } finally {
+    globalThis.clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
 }
 
 function normalizeCue(value: string): string {

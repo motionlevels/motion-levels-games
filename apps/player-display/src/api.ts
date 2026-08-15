@@ -9,6 +9,7 @@ export type { PlayerExperienceState };
 
 const venueRuntimePort = "4102";
 const localVenueRuntimeURL = `http://127.0.0.1:${venueRuntimePort}`;
+const displayStatusTimeoutMillis = 2_000;
 
 function inferVenueRuntimeURL(): string {
   if (typeof window === "undefined" || !window.location.hostname || window.location.protocol === "file:") {
@@ -25,17 +26,24 @@ function inferVenueRuntimeURL(): string {
 }
 
 export function venueRuntimeBaseURL(): string {
-  return import.meta.env.VITE_VENUE_RUNTIME_URL
-    || import.meta.env.VITE_GAME_ENGINE_URL
+  return import.meta.env?.VITE_VENUE_RUNTIME_URL
+    || import.meta.env?.VITE_GAME_ENGINE_URL
     || inferVenueRuntimeURL();
 }
 
-export async function fetchDisplayStatus(): Promise<DisplayStatus> {
-  const response = await fetch(`${venueRuntimeBaseURL()}/api/display`, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(await response.text());
+export async function fetchDisplayStatus(timeoutMillis = displayStatusTimeoutMillis): Promise<DisplayStatus> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), Math.max(1, timeoutMillis));
+  try {
+    const response = await fetch(`${venueRuntimeBaseURL()}/api/display`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<DisplayStatus>;
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
-  return response.json() as Promise<DisplayStatus>;
 }
 
 export function displayEventSource(): EventSource {
