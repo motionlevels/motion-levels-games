@@ -5,6 +5,7 @@ import App from "./App";
 import { initMenuAnalytics } from "./analytics";
 import MenuUpdateGate from "./MenuUpdateGate";
 import { publicAssetURL } from "./utils";
+import { VenueFloorRotationProvider } from "./venueFloorRotation";
 import "./styles.css";
 
 try {
@@ -106,11 +107,13 @@ class KioskErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <KioskViewport>
-      <MenuUpdateGate>
-        <KioskErrorBoundary>
-          <App />
-        </KioskErrorBoundary>
-      </MenuUpdateGate>
+      <VenueFloorRotationProvider>
+        <MenuUpdateGate>
+          <KioskErrorBoundary>
+            <App />
+          </KioskErrorBoundary>
+        </MenuUpdateGate>
+      </VenueFloorRotationProvider>
     </KioskViewport>
   </StrictMode>,
 );

@@ -62,7 +62,10 @@ test("the menu consumes only the canonical revisioned player state", async () =>
   assert.match(app, /PlayerExperienceStateGate/);
   assert.match(app, /status \? playerExperienceView\(status\)\.screen : fallbackScreenMode/);
   assert.doesNotMatch(app, /(?:launchedGameID|stoppedLevelGameID|introUntil|countdownUntil)/u);
-  assert.match(app, /type MenuMirrorSnapshot = \{\s*menu: MenuState;\s*\}/u);
+  assert.match(
+    app,
+    /type MenuMirrorSnapshot = \{\s*menu: MenuState;\s*screen\?: "browse" \| "game" \| "welcome";\s*view\?: \{/u
+  );
   assert.doesNotMatch(contracts, /export type EngineStatus = \{/u);
 });
 

@@ -44,6 +44,7 @@ import {
   normalizeGameConfigValue,
   normalizeGameDifficulty,
   normalizeGameSeed,
+  normalizeFloorRotationDegrees,
   type Frame,
   type GameConfigOptions,
   type GameConfigVar,
@@ -132,6 +133,12 @@ function createStartedGame(
 }
 
 export function App() {
+  const floorRotationDegrees = useMemo(
+    () => normalizeFloorRotationDegrees(
+      typeof window === "undefined" ? 0 : new URLSearchParams(window.location.search).get("floorRotation")
+    ),
+    []
+  );
   const playerJourney = useMemo(() => readPlayerJourneyLaunch(playgroundGames), []);
   const [playerMenuPreviewUrl] = useState(() => localPlayerMenuUrl());
   const initialPrimaryScreen: PrimaryScreen = playerMenuPreviewUrl ? readPrimaryScreen() : "display";
@@ -1609,7 +1616,7 @@ export function App() {
 
           <div className="display-preview-box" ref={displayPreviewRef}>
             <div className="display-preview-native" ref={displayNativeRef}>
-              <PlayerDisplayRuntimeProvider paused={paused}>
+              <PlayerDisplayRuntimeProvider paused={paused} floorRotationDegrees={floorRotationDegrees}>
                 <PlayerDisplay snapshot={snapshot} frame={frame} />
               </PlayerDisplayRuntimeProvider>
             </div>

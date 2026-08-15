@@ -78,6 +78,8 @@ import {
 } from "./recordingGate.ts";
 import { gameForMenuIdentity } from "./gameIdentity.ts";
 import { defaultRecordingScope, migrateMotionlevelsOneRecordingScope, motionlevelsOneRecordingMigrationKey } from "./recordingDefaults.ts";
+import { floorDisplaySize } from "@motion-levels-games/game-sdk";
+import { useVenueFloorRotation } from "./venueFloorRotation";
 
 type MenuState = {
   sessionActive: boolean;
@@ -5884,6 +5886,15 @@ function Preview({
   src?: string;
   srcs?: string[];
 }) {
+  const floorRotation = useVenueFloorRotation();
+  const previewDimensions = floorDisplaySize(
+    floorPreviewMediaSpec.width,
+    floorPreviewMediaSpec.height,
+    floorRotation,
+  );
+  const previewHeightLimitedWidth = floorRotation === 90 || floorRotation === 270
+    ? "calc((100cqh - var(--preview-board-height-inset)) / 2)"
+    : "calc((100cqh - var(--preview-board-height-inset)) + (100cqh - var(--preview-board-height-inset)))";
   const [failedSrcs, setFailedSrcs] = useState<string[]>([]);
   const [loadedPosterSrc, setLoadedPosterSrc] = useState("");
   const [promotedSrc, setPromotedSrc] = useState("");
@@ -5945,17 +5956,16 @@ function Preview({
     <div
       className={`preview ${compact ? "compact-preview" : ""} ${logoMedia || showLogoFallback ? "logo-preview" : ""}`}
       style={{
-        "--preview-media-width": `${floorPreviewMediaSpec.width}px`,
-        "--preview-media-aspect": `${floorPreviewMediaSpec.width} / ${floorPreviewMediaSpec.height}`,
+        "--preview-media-width": `${previewDimensions.width}px`,
+        "--preview-media-aspect": `${previewDimensions.width} / ${previewDimensions.height}`,
+        "--preview-media-height-limited-width": previewHeightLimitedWidth,
       } as CSSProperties}
       data-media-unavailable={mediaUnavailable || undefined}
     >
-      {mediaSrc ? (
+      {mediaSrc && logoMedia ? (
         <img
-          className={`preview-media ${logoMedia ? "logo-preview-media" : ""}`}
+          className="preview-media logo-preview-media"
           src={mediaSrc}
-          width={logoMedia ? undefined : floorPreviewMediaSpec.width}
-          height={logoMedia ? undefined : floorPreviewMediaSpec.height}
           alt=""
           aria-hidden="true"
           decoding="async"
@@ -5966,6 +5976,24 @@ function Preview({
             if (mediaSrc === posterSrc) setLoadedPosterSrc(posterSrc);
           }}
         />
+      ) : mediaSrc ? (
+        <div className="preview-media-frame" data-floor-rotation={floorRotation}>
+          <img
+            className="preview-media"
+            src={mediaSrc}
+            width={floorPreviewMediaSpec.width}
+            height={floorPreviewMediaSpec.height}
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            draggable={false}
+            loading={compact ? "lazy" : "eager"}
+            onError={() => setFailedSrcs((failed) => failed.includes(mediaSrc) ? failed : [...failed, mediaSrc])}
+            onLoad={() => {
+              if (mediaSrc === posterSrc) setLoadedPosterSrc(posterSrc);
+            }}
+          />
+        </div>
       ) : showAnimation ? (
         <FloorPreview anim={anim} orientation="landscape" />
       ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { DisplayStatus } from "./api";
 import { displayErrorMessage, runtimeRetryDelayMillis, type GamesDisplayRenderState } from "./displayRuntime";
+import { useVenueFloorRotation } from "./venueFloorRotation";
 
 type GamesDisplayRuntime = {
   revision: string;
@@ -14,6 +15,7 @@ type GamesDisplayInput = {
   snapshot: Record<string, unknown>;
   frame?: DisplayStatus["frame"];
   paused: boolean;
+  floorRotationDegrees: 0 | 90 | 180 | 270;
   onError?: (reason: unknown) => void;
 };
 
@@ -30,6 +32,7 @@ type MotionLevelsGamesDisplayProps = {
 };
 
 export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: MotionLevelsGamesDisplayProps) {
+  const floorRotationDegrees = useVenueFloorRotation();
   const hostRef = useRef<HTMLDivElement>(null);
   const [renderState, setRenderState] = useState<GamesDisplayRenderState>(() => renderLoadingState(status.sourceRevision || ""));
   const revision = status.sourceRevision || "";
@@ -40,12 +43,14 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
     snapshot: status.gameSnapshot ?? {},
     frame: status.frame,
     paused: status.phase === "paused",
+    floorRotationDegrees,
   });
   latestInput.current = {
     gameId,
     snapshot: status.gameSnapshot ?? {},
     frame: status.frame,
     paused: status.phase === "paused",
+    floorRotationDegrees,
   };
 
   useEffect(() => {
@@ -120,6 +125,7 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
         snapshot: status.gameSnapshot,
         frame: status.frame,
         paused: status.phase === "paused",
+        floorRotationDegrees,
         onError: (reason) => {
           safelyUnmount(runtime, host);
           const next = {
@@ -145,7 +151,7 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
       setRenderState(next);
       onStateChange(next);
     }
-  }, [gameId, onStateChange, renderState.attempt, renderState.status, revision, status.frame, status.gameSnapshot, status.phase]);
+  }, [floorRotationDegrees, gameId, onStateChange, renderState.attempt, renderState.status, revision, status.frame, status.gameSnapshot, status.phase]);
 
   return (
     <main className="motion-levels-games-display-host">

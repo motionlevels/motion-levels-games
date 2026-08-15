@@ -8,6 +8,18 @@ export const DEFAULT_START_COUNTDOWN_MILLIS = 2_000;
 export const DEFAULT_PLAYER_RELEASE_GRACE_MILLIS = 650;
 
 export {
+  composeFloorRotations,
+  displayToFloorCoordinate,
+  floorDisplaySize,
+  floorRotationDegrees,
+  floorToDisplayCoordinate,
+  normalizeFloorRotationDegrees,
+  type FloorCoordinate,
+  type FloorDisplaySize,
+  type FloorRotationDegrees
+} from "./floor-orientation.ts";
+
+export {
   paintDiamondRing,
   paintDiamondWave,
   type DiamondRingOptions,

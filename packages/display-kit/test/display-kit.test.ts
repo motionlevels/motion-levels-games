@@ -209,6 +209,40 @@ test("FloorPreview positions tiles by coordinates instead of cell order", () => 
   assert.match(html, /data-color="#148cff"/);
 });
 
+test("FloorPreview rotates the board without changing logical tile identity", () => {
+  const frame = setFrameCell(createFrame("#05070a"), 3, 4, "#148cff");
+  const html = renderToStaticMarkup(React.createElement(
+    PlayerDisplayRuntimeProvider,
+    { floorRotationDegrees: 180, paused: false },
+    React.createElement(FloorPreview, { frame })
+  ));
+
+  assert.match(html, /data-floor-rotation="180"/);
+  assert.match(html, /--ml-floor-cols:16/);
+  assert.match(html, /--ml-floor-rows:32/);
+  assert.match(
+    html,
+    /grid-column-start:13;grid-row-start:28[^>]*data-tile-x="3"[^>]*data-tile-y="4"/
+  );
+});
+
+test("FloorPreview sideways rotation swaps the visual board dimensions", () => {
+  const html = renderToStaticMarkup(React.createElement(FloorPreview, {
+    frame: createFrame("#05070a"),
+    rotationDegrees: 90
+  }));
+
+  assert.match(html, /data-floor-rotation="90"/);
+  assert.match(html, /--ml-floor-cols:32/);
+  assert.match(html, /--ml-floor-rows:16/);
+  assert.match(html, /aria-colcount="32"/);
+  assert.match(html, /aria-rowcount="16"/);
+  assert.match(
+    styleSource,
+    /\.ml-frame-preview-panel \.ml-floor-preview:is\(\[data-floor-rotation="90"\], \[data-floor-rotation="270"\]\)\s*\{[^}]*height:\s*auto;[^}]*width:\s*360px;/s
+  );
+});
+
 test("FloorPreview keeps pointer hover separate from persistent focus", () => {
   assert.doesNotMatch(
     styleSource,

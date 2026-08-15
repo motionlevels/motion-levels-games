@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState, type CSSProperties, type ReactNode } f
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import App from "./App";
+import { VenueFloorRotationProvider } from "./venueFloorRotation";
 import "./styles.css";
 
 const kioskDesignWidth = 1920;
@@ -68,7 +69,9 @@ function KioskViewport({ children }: { children: ReactNode }) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <KioskViewport>
-      <App />
+      <VenueFloorRotationProvider>
+        <App />
+      </VenueFloorRotationProvider>
     </KioskViewport>
   </StrictMode>,
 );

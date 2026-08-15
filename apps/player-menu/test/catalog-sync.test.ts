@@ -392,7 +392,7 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /renderPartyPreview\(game, \{ compact: true, rich: selected \|\| active \}\)/);
     assert.match(styleSource, /--preview-board-max-width: min\(78%, 560px\);/);
     assert.match(styleSource, /\.preview\s*\{[\s\S]*?--preview-board-height-inset: 18px;[\s\S]*?container-type: size;/);
-    assert.match(styleSource, /\.floor-canvas,\s*\.preview-media\s*\{[\s\S]*?width: min\([\s\S]*?var\(--preview-media-width\),[\s\S]*?var\(--preview-board-max-width\),[\s\S]*?100cqh[\s\S]*?\);[\s\S]*?aspect-ratio: var\(--preview-media-aspect\);/);
+    assert.match(styleSource, /\.floor-canvas,\s*\.preview-media-frame\s*\{[\s\S]*?width: min\([\s\S]*?var\(--preview-media-width\),[\s\S]*?var\(--preview-board-max-width\),[\s\S]*?var\(--preview-media-height-limited-width\)[\s\S]*?\);[\s\S]*?aspect-ratio: var\(--preview-media-aspect\);/);
     assert.match(styleSource, /\.party-preview-tile \.preview\s*\{\s*--preview-board-height-inset: 4px;\s*--preview-board-max-width: calc\(100% - 4px\);/);
 
     const floorPreviewSource = fs.readFileSync(path.resolve(__dirname, "../src/FloorPreview.tsx"), "utf8");
@@ -400,8 +400,12 @@ describe("catalog metadata sync", () => {
     assert.match(floorPreviewSource, /width=\{canvasWidth\}/);
     assert.match(floorPreviewSource, /height=\{canvasHeight\}/);
     assert.doesNotMatch(floorPreviewSource, /ResizeObserver|style\.width|clientWidth|clientHeight/);
-    assert.match(appSource, /width=\{logoMedia \? undefined : floorPreviewMediaSpec\.width\}/);
-    assert.match(appSource, /height=\{logoMedia \? undefined : floorPreviewMediaSpec\.height\}/);
+    assert.match(appSource, /<div className="preview-media-frame" data-floor-rotation=\{floorRotation\}>/);
+    assert.match(appSource, /width=\{floorPreviewMediaSpec\.width\}/);
+    assert.match(appSource, /height=\{floorPreviewMediaSpec\.height\}/);
+    assert.match(styleSource, /\.preview-media-frame\[data-floor-rotation="90"\] \.preview-media[\s\S]*?rotate\(90deg\)/);
+    assert.match(styleSource, /\.preview-media-frame\[data-floor-rotation="180"\] \.preview-media[\s\S]*?rotate\(180deg\)/);
+    assert.match(styleSource, /\.preview-media-frame\[data-floor-rotation="270"\] \.preview-media[\s\S]*?rotate\(270deg\)/);
     assert.match(appSource, /setLoadedPosterSrc\(""\);\s*\}, \[posterSrc\]\);/);
     assert.match(appSource, /setPromotedSrc\(""\);\s*\}, \[posterSrc, richCandidate\]\);/);
   });

@@ -588,6 +588,11 @@ async function installMockAPIs(
     updatedUnixMillis: 0,
     version: 0,
   };
+  await context.route("**/api/menu-state/events", (route) => route.fulfill({
+    status: 200,
+    headers: { "cache-control": "no-cache", "content-type": "text/event-stream" },
+    body: `event: menu-state\ndata: ${JSON.stringify(menuState)}\n\n`,
+  }));
   await context.route("**/api/menu-state", async (route) => {
     if (route.request().method() === "GET") {
       await json(route, menuState);

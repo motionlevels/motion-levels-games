@@ -1,7 +1,7 @@
 import { createRoot, type Root } from "react-dom/client";
 import { Component, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 import { PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
-import type { Frame, GameSnapshot } from "@motion-levels-games/game-sdk";
+import type { FloorRotationDegrees, Frame, GameSnapshot } from "@motion-levels-games/game-sdk";
 import { displayRegistry } from "./displayRegistry.ts";
 import { reportDisplayError } from "./displayError.ts";
 
@@ -13,6 +13,7 @@ type DisplayInput = {
   snapshot: GameSnapshot;
   frame?: Frame;
   paused?: boolean;
+  floorRotationDegrees?: FloorRotationDegrees;
   onError?: (reason: unknown) => void;
 };
 
@@ -39,7 +40,10 @@ function render(element: Element, input: DisplayInput): void {
   const PlayerDisplay = module.PlayerDisplay as ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>;
   root.render(
     <DisplayErrorBoundary key={input.gameId} onError={input.onError}>
-      <PlayerDisplayRuntimeProvider paused={input.paused === true}>
+      <PlayerDisplayRuntimeProvider
+        paused={input.paused === true}
+        floorRotationDegrees={input.floorRotationDegrees}
+      >
         <PlayerDisplay snapshot={input.snapshot} frame={input.frame} />
       </PlayerDisplayRuntimeProvider>
     </DisplayErrorBoundary>
