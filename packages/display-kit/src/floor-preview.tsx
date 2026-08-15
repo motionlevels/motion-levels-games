@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { FrameCell } from "@motion-levels-games/game-sdk";
+import {
+  displayToFloorCoordinate,
+  floorDisplaySize,
+  floorToDisplayCoordinate,
+  normalizeFloorRotationDegrees,
+  type FloorRotationDegrees,
+  type FrameCell
+} from "@motion-levels-games/game-sdk";
 import {
   FloorInputPainter,
   floorTileFromClientPoint,
@@ -8,6 +15,7 @@ import {
   type FloorInputMode,
   type FloorInputTile
 } from "./floor-input-painter.ts";
+import { usePlayerDisplayRuntime } from "./player-display-runtime.tsx";
 
 export type FloorPreviewCell = FrameCell & { pressed?: boolean };
 export type FloorPreviewFrame = { width: number; height: number; cells: FloorPreviewCell[] };
@@ -18,6 +26,7 @@ export type FloorPreviewProps = {
   inputResetKey?: string | number;
   inputMode?: FloorInputMode;
   interactive?: boolean;
+  rotationDegrees?: FloorRotationDegrees;
   onTilePress?: (x: number, y: number) => void;
   onTileRelease?: (x: number, y: number) => void;
 };
@@ -63,8 +72,12 @@ export function FloorPreview({
   inputMode = "latched",
   onTilePress,
   onTileRelease,
+  rotationDegrees,
   className = ""
 }: FloorPreviewProps) {
+  const runtime = usePlayerDisplayRuntime();
+  const floorRotation = normalizeFloorRotationDegrees(rotationDegrees ?? runtime.floorRotationDegrees);
+  const displaySize = floorDisplaySize(frame.width, frame.height, floorRotation);
   const rootRef = useRef<HTMLDivElement>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const inputPainterRef = useRef(new FloorInputPainter(inputMode));
@@ -73,8 +86,8 @@ export function FloorPreview({
   const [occupiedTileKeys, setOccupiedTileKeys] = useState(() => new Set<string>());
   const [keyboardTileKey, setKeyboardTileKey] = useState("");
   const style = {
-    "--ml-floor-cols": frame.width,
-    "--ml-floor-rows": frame.height
+    "--ml-floor-cols": displaySize.width,
+    "--ml-floor-rows": displaySize.height
   } as CSSProperties;
   const rootClassName = `ml-floor-preview ${interactive ? "ml-floor-interactive" : ""} ${className}`.trim();
   const clearPointerFocus = useCallback(() => {
@@ -89,8 +102,17 @@ export function FloorPreview({
       return null;
     }
 
-    return floorTileFromClientPoint(clientX, clientY, root.getBoundingClientRect(), frame.width, frame.height);
-  }, [frame.height, frame.width]);
+    const displayTile = floorTileFromClientPoint(
+      clientX,
+      clientY,
+      root.getBoundingClientRect(),
+      displaySize.width,
+      displaySize.height
+    );
+    return displayTile
+      ? displayToFloorCoordinate(displayTile, frame.width, frame.height, floorRotation)
+      : null;
+  }, [displaySize.height, displaySize.width, floorRotation, frame.height, frame.width]);
   const applyInputActions = useCallback((actions: FloorInputAction[]) => {
     if (actions.length === 0) {
       return;
@@ -238,6 +260,18 @@ export function FloorPreview({
         ?.focus({ preventScroll: true });
     });
   }, []);
+  const keyboardTileAfterNavigation = useCallback((tile: FloorInputTile, key: string) => {
+    const displayedTile = floorToDisplayCoordinate(tile, frame.width, frame.height, floorRotation);
+    const nextDisplayedTile = floorTileAfterKeyboardNavigation(
+      displayedTile,
+      key,
+      displaySize.width,
+      displaySize.height
+    );
+    return nextDisplayedTile
+      ? displayToFloorCoordinate(nextDisplayedTile, frame.width, frame.height, floorRotation)
+      : null;
+  }, [displaySize.height, displaySize.width, floorRotation, frame.height, frame.width]);
 
   return (
     <div
@@ -250,15 +284,17 @@ export function FloorPreview({
       ref={rootRef}
       style={style}
       role="grid"
-      aria-colcount={frame.width}
+      aria-colcount={displaySize.width}
       aria-label={ariaLabel}
-      aria-rowcount={frame.height}
+      aria-rowcount={displaySize.height}
+      data-floor-rotation={floorRotation}
     >
       {frame.cells.map((cell) => {
+        const displayedCell = floorToDisplayCoordinate(cell, frame.width, frame.height, floorRotation);
         const tileStyle = {
           backgroundColor: cell.color,
-          gridColumnStart: cell.x + 1,
-          gridRowStart: cell.y + 1
+          gridColumnStart: displayedCell.x + 1,
+          gridRowStart: displayedCell.y + 1
         } as CSSProperties;
         const key = `${cell.x}-${cell.y}`;
         const tileKey = `${cell.x}:${cell.y}`;
@@ -288,7 +324,7 @@ export function FloorPreview({
               }}
               onFocus={() => setKeyboardTileKey(tileKey)}
               onKeyDown={(event) => {
-                const nextTile = floorTileAfterKeyboardNavigation(cell, event.key, frame.width, frame.height);
+                const nextTile = keyboardTileAfterNavigation(cell, event.key);
                 if (!nextTile) return;
                 event.preventDefault();
                 focusKeyboardTile(nextTile);

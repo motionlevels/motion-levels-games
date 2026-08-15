@@ -1,8 +1,16 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
-import { drawFloorCanvas, floorDisplayCells, type FloorBoardCell } from "./floorView";
+import { floorDisplaySize } from "@motion-levels-games/game-sdk";
+import {
+  composeFloorBoardOrientation,
+  drawFloorCanvas,
+  floorBoardOrientationDegrees,
+  floorDisplayCells,
+  type FloorBoardCell
+} from "./floorView";
 import { FLOOR_COLS, FLOOR_ROWS, type FloorAnim } from "./floor";
 import { floorPreviewMediaSpec } from "./bundleMedia";
+import { useVenueFloorRotation } from "./venueFloorRotation";
 
 const PITCH = floorPreviewMediaSpec.height / FLOOR_COLS;
 const GAP = 2;
@@ -17,10 +25,17 @@ type FloorPreviewOrientation = "portrait" | "landscape";
 // loops the given per-game animation. One self-contained rAF loop per card; pauses when the
 // tab is hidden and falls back to a single static frame under prefers-reduced-motion.
 export function FloorPreview({ anim, orientation = "portrait" }: { anim: FloorAnim; orientation?: FloorPreviewOrientation }) {
+  const venueRotation = useVenueFloorRotation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const landscape = orientation === "landscape";
-  const canvasWidth = landscape ? floorPreviewMediaSpec.width : floorPreviewMediaSpec.height;
-  const canvasHeight = landscape ? floorPreviewMediaSpec.height : floorPreviewMediaSpec.width;
+  const boardOrientation = composeFloorBoardOrientation(landscape ? "clockwise" : "data", venueRotation);
+  const displaySize = floorDisplaySize(FLOOR_COLS, FLOOR_ROWS, floorBoardOrientationDegrees(boardOrientation));
+  const canvasWidth = displaySize.width * PITCH;
+  const canvasHeight = displaySize.height * PITCH;
+  const boardRotation = floorBoardOrientationDegrees(boardOrientation);
+  const previewHeightLimitedWidth = boardRotation === 90 || boardRotation === 270
+    ? "calc((100cqh - var(--preview-board-height-inset)) / 2)"
+    : "calc((100cqh - var(--preview-board-height-inset)) + (100cqh - var(--preview-board-height-inset)))";
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -29,8 +44,8 @@ export function FloorPreview({ anim, orientation = "portrait" }: { anim: FloorAn
 
     const cols = FLOOR_COLS;
     const rows = FLOOR_ROWS;
-    const displayCols = landscape ? rows : cols;
-    const displayRows = landscape ? cols : rows;
+    const displayCols = displaySize.width;
+    const displayRows = displaySize.height;
     const width = displayCols * PITCH;
     const height = displayRows * PITCH;
     targetCanvas.width = width;
@@ -49,7 +64,7 @@ export function FloorPreview({ anim, orientation = "portrait" }: { anim: FloorAn
       }
       drawFloorCanvas({
         canvas: targetCanvas,
-        ...floorDisplayCells(cols, rows, cells, landscape ? "clockwise" : "data", IDLE_CSS),
+        ...floorDisplayCells(cols, rows, cells, boardOrientation, IDLE_CSS),
         emptyColor: "#05070a",
         tileSize: LIT,
         gapSize: GAP,
@@ -88,7 +103,7 @@ export function FloorPreview({ anim, orientation = "portrait" }: { anim: FloorAn
       cancelAnimationFrame(raf);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [anim, landscape]);
+  }, [anim, boardOrientation, displaySize.height, displaySize.width]);
 
   return (
     <canvas
@@ -97,9 +112,11 @@ export function FloorPreview({ anim, orientation = "portrait" }: { anim: FloorAn
       width={canvasWidth}
       height={canvasHeight}
       data-orientation={orientation}
+      data-floor-rotation={boardRotation}
       style={{
         "--preview-media-width": `${canvasWidth}px`,
         "--preview-media-aspect": `${canvasWidth} / ${canvasHeight}`,
+        "--preview-media-height-limited-width": previewHeightLimitedWidth,
       } as CSSProperties}
       aria-hidden="true"
     />

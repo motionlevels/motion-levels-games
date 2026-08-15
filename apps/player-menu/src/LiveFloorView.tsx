@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { drawFloorCanvas, floorDisplayCells, type FloorBoardCell } from "./floorView";
+import { floorDisplaySize } from "@motion-levels-games/game-sdk";
+import {
+  composeFloorBoardOrientation,
+  drawFloorCanvas,
+  floorBoardOrientationDegrees,
+  floorDisplayCells,
+  type FloorBoardCell
+} from "./floorView";
 import { FLOOR_COLS, FLOOR_ROWS } from "./floor";
 import { engineBaseURL } from "./api";
+import { useVenueFloorRotation } from "./venueFloorRotation";
 
 const PITCH = 14;
 const GAP = 2;
@@ -25,6 +33,7 @@ export function liveFloorEventsURL(): string {
 }
 
 export function LiveFloorView({ orientation = "landscape" }: { orientation?: LiveFloorOrientation }) {
+  const venueRotation = useVenueFloorRotation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<EventSource | null>(null);
   const frameRef = useRef<Uint8Array | null>(null);
@@ -40,9 +49,12 @@ export function LiveFloorView({ orientation = "landscape" }: { orientation?: Liv
     if (!canvas) return;
     const targetCanvas = canvas;
 
-    const landscape = orientation === "landscape";
-    const displayCols = landscape ? FLOOR_ROWS : FLOOR_COLS;
-    const displayRows = landscape ? FLOOR_COLS : FLOOR_ROWS;
+    const boardOrientation = composeFloorBoardOrientation(orientation === "landscape" ? "clockwise" : "data", venueRotation);
+    const { width: displayCols, height: displayRows } = floorDisplaySize(
+      FLOOR_COLS,
+      FLOOR_ROWS,
+      floorBoardOrientationDegrees(boardOrientation)
+    );
     const width = displayCols * PITCH + GAP;
     const height = displayRows * PITCH + GAP;
     targetCanvas.width = width;
@@ -82,7 +94,7 @@ export function LiveFloorView({ orientation = "landscape" }: { orientation?: Liv
       }
       drawFloorCanvas({
         canvas: targetCanvas,
-        ...floorDisplayCells(FLOOR_COLS, FLOOR_ROWS, cells, landscape ? "clockwise" : "data", IDLE_CSS),
+        ...floorDisplayCells(FLOOR_COLS, FLOOR_ROWS, cells, boardOrientation, IDLE_CSS),
         emptyColor: "#05070a",
         tileSize: LIT,
         gapSize: GAP,
@@ -180,10 +192,10 @@ export function LiveFloorView({ orientation = "landscape" }: { orientation?: Liv
       streamRef.current?.close();
       streamRef.current = null;
     };
-  }, [orientation]);
+  }, [orientation, venueRotation]);
 
   return (
-    <div className={`live-floor ${connection} ${orientation}`}>
+    <div className={`live-floor ${connection} ${orientation}`} data-floor-rotation={venueRotation}>
       <canvas
         ref={canvasRef}
         className="live-floor-canvas"

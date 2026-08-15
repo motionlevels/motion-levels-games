@@ -1,11 +1,13 @@
 /** @jsxRuntime automatic */
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { GamePlayer, GameSnapshot } from "@motion-levels-games/game-sdk";
+import { usePlayerDisplayRuntime } from "./player-display-runtime.tsx";
 
 export { FloorPreview, FramePreviewPanel, floorTileAfterKeyboardNavigation } from "./floor-preview.tsx";
 export type { FloorPreviewCell, FloorPreviewFrame, FloorPreviewProps } from "./floor-preview.tsx";
 export type { FloorInputMode } from "./floor-input-painter.ts";
+export { PlayerDisplayRuntimeProvider, usePlayerDisplayRuntime } from "./player-display-runtime.tsx";
 
 export type Tone = "amber" | "blue" | "cyan" | "green" | "magenta" | "pink" | "red" | "yellow" | "neutral";
 export type DisplayPlayer = Pick<GamePlayer, "label" | "score" | "color">;
@@ -31,22 +33,6 @@ export function phaseLabel(phase: string): string {
   return phaseLabels[phase] ?? phase;
 }
 
-const PlayerDisplayRuntimeContext = createContext({ paused: false });
-
-export function PlayerDisplayRuntimeProvider({
-  paused,
-  children
-}: {
-  paused: boolean;
-  children?: ReactNode;
-}) {
-  return (
-    <PlayerDisplayRuntimeContext.Provider value={{ paused }}>
-      {children}
-    </PlayerDisplayRuntimeContext.Provider>
-  );
-}
-
 export function GameDisplayShell({
   title,
   phase,
@@ -58,7 +44,7 @@ export function GameDisplayShell({
   variant?: "default" | "versus";
   children?: ReactNode;
 }) {
-  const runtime = useContext(PlayerDisplayRuntimeContext);
+  const runtime = usePlayerDisplayRuntime();
   const isPaused = runtime.paused;
   const displayedPhase = isPaused ? "paused" : phase;
 

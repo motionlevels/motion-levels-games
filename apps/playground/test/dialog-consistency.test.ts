@@ -99,7 +99,7 @@ test("effective pause blocks every player input path", () => {
   );
   assert.match(
     appSource,
-    /<PlayerDisplayRuntimeProvider paused=\{paused\}>[\s\S]*?<PlayerDisplay snapshot=\{snapshot\} frame=\{frame\} \/>/,
+    /<PlayerDisplayRuntimeProvider paused=\{paused\} floorRotationDegrees=\{floorRotationDegrees\}>[\s\S]*?<PlayerDisplay snapshot=\{snapshot\} frame=\{frame\} \/>/,
     "the shared runtime provider must always carry effective pause into every TV display"
   );
 });

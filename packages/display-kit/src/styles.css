@@ -2138,6 +2138,17 @@
   width: 190px;
 }
 
+.ml-frame-preview-panel .ml-floor-preview:is([data-floor-rotation="90"], [data-floor-rotation="270"]) {
+  height: auto;
+  width: 360px;
+}
+
+.ml-frame-preview-panel.ml-solo-floor .ml-floor-preview:is([data-floor-rotation="90"], [data-floor-rotation="270"]) {
+  height: auto;
+  max-width: 100%;
+  width: 720px;
+}
+
 .ml-floor-preview {
   aspect-ratio: var(--ml-floor-cols) / var(--ml-floor-rows);
   background: #02060b;
