@@ -463,7 +463,7 @@ test("recording gate controls require and route the current gate id", async (con
     recordingGateId: gate.id,
     commandId: "70000000-0000-4000-8000-000000000004"
   });
-  assert.equal(retried.status, 200);
+  assert.equal(retried.status, 200, await retried.clone().text());
   const retriedBody = await retried.json() as Record<string, unknown>;
   const retriedGate = retriedBody.recordingGate as Record<string, unknown>;
   assert.notEqual(retriedGate.id, gate.id);
@@ -814,6 +814,12 @@ test("history API lists visits, pages events, returns detail, and associates rec
   const nextEvents = await historyGet(`/api/history/v1/sessions/${visitId}/events?limit=20&cursor=${encodeURIComponent(firstEvents.nextCursor)}`).then((response) => response.json());
   assert.ok(nextEvents.events.length > 0);
   assert.ok(nextEvents.events[0].sequence > firstEvents.events[0].sequence);
+  const incrementalEvents = await historyGet(`/api/history/v1/sessions/${visitId}/events?limit=20&afterSequence=${firstEvents.events[0].sequence}`).then((response) => response.json());
+  assert.deepEqual(incrementalEvents.events.map((event: { sequence: number }) => event.sequence),
+    nextEvents.events.map((event: { sequence: number }) => event.sequence));
+  assert.equal((await historyGet(`/api/history/v1/sessions/${visitId}/events?cursor=${encodeURIComponent(firstEvents.nextCursor)}&afterSequence=1`)).status, 400);
+  assert.equal((await historyGet(`/api/history/v1/sessions/${visitId}/events?afterSequence=-1`)).status, 400);
+  assert.equal((await historyGet(`/api/history/v1/sessions/${visitId}/events?afterSequence=9007199254740992`)).status, 400);
 
   const recording = await post(`/api/history/v1/sessions/${visitId}/recordings`, {
     id: "uploaded-recording-1",
@@ -866,8 +872,19 @@ test("history API lists visits, pages events, returns detail, and associates rec
   runtime.control("exit");
   await waitFor(() => runtime.historySession(visitId).session.recordings
     .some((asset) => asset.runId === replayRunId && asset.status === "pending_upload"));
-  const replayPath = `/api/history/v1/sessions/${visitId}/runs/${replayRunId}/replay`;
+  const replayAsset = runtime.historySession(visitId).session.recordings
+    .find((asset) => asset.runId === replayRunId && asset.backend === "venue-runtime-replay");
+  assert.ok(replayAsset);
+  const legacyReplayPath = `/api/history/v1/sessions/${visitId}/runs/${replayRunId}/replay`;
+  assert.equal((await historyGet(legacyReplayPath)).status, 404, "the unqualified endpoint is legacy-only");
+  const replayPath = `${legacyReplayPath}/${replayAsset.id}`;
   assert.equal((await historyGet(replayPath, "wrong")).status, 401);
+  const replayHead = await fetch(`${base}${replayPath}`, {
+    method: "HEAD",
+    headers: { [engineTokenHeader]: historyToken }
+  });
+  assert.equal(replayHead.status, 200);
+  assert.equal(Number(replayHead.headers.get("content-length")), replayAsset.byteSize);
   const replayDownload = await historyGet(replayPath);
   assert.equal(replayDownload.status, 200);
   assert.match(replayDownload.headers.get("content-type") ?? "", /motion-levels\.run-replay/u);

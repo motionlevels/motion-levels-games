@@ -6,7 +6,12 @@ export const RUN_REPLAY_FILE_EXTENSION = ".mlrun.jsonl.gz" as const;
 export const RUN_REPLAY_MAX_DIMENSION = 256 as const;
 export const RUN_REPLAY_MAX_PIXELS = 16_384 as const;
 export const RUN_REPLAY_MAX_RECORD_BYTES = 4 * 1024 * 1024;
+export const RUN_REPLAY_MAX_PART_FRAMES = 10_000 as const;
+export const RUN_REPLAY_MAX_PART_BODY_RECORDS = 50_000 as const;
+export const RUN_REPLAY_MAX_PART_JSONL_BYTES = 32 * 1024 * 1024;
+export const RUN_REPLAY_MAX_PART_INDEX = 999_999 as const;
 const maximumEncodedByteFieldCharacters = 2_000_000;
+const replayAssetIdPattern = /^run-replay-[0-9a-f]{64}-part-[0-9]{6}$/u;
 
 export type RunReplayJsonPrimitive = boolean | number | string | null;
 export type RunReplayJsonValue =
@@ -33,6 +38,10 @@ export type RunReplayHeaderRecord = {
   frameSource: "presented-frame";
   firstDesiredSequence: string;
   startedAtUnixMillis: number;
+  /** Present together on multipart captures. Omitted by legacy single-part v1 files. */
+  assetId?: string;
+  partIndex?: number;
+  runFrameOffset?: number;
 };
 
 /** A keyframe contains the complete byte array. A delta contains a sequence of
@@ -97,6 +106,10 @@ export type RunReplayFooterRecord = {
   checkpointCount: number;
   firstPresentationSequence?: string;
   lastPresentationSequence?: string;
+  /** Present together on multipart captures. Omitted by legacy single-part v1 files. */
+  partIndex?: number;
+  isFinalPart?: boolean;
+  partCount?: number;
 };
 
 export type RunReplayRecord =
@@ -182,7 +195,11 @@ export function decodeRunReplayFrame(
 
 export function encodeRunReplayRecord(record: RunReplayRecord): string {
   assertRunReplayRecord(record);
-  return `${JSON.stringify(record)}\n`;
+  const serialized = `${JSON.stringify(record)}\n`;
+  if (new TextEncoder().encode(serialized).byteLength > RUN_REPLAY_MAX_RECORD_BYTES) {
+    throw new Error("Run replay record exceeds the maximum encoded size");
+  }
+  return serialized;
 }
 
 export function decodeRunReplayRecord(serialized: string): RunReplayRecord {
@@ -199,6 +216,9 @@ export function decodeRunReplayRecords(
   serialized: string,
   options: { allowIncomplete?: boolean } = {}
 ): RunReplayRecord[] {
+  if (new TextEncoder().encode(serialized).byteLength > RUN_REPLAY_MAX_PART_JSONL_BYTES) {
+    throw new Error("Run replay part exceeds the maximum encoded size");
+  }
   const records = serialized.split("\n")
     .filter((line) => line.length > 0)
     .map(decodeRunReplayRecord);
@@ -207,6 +227,8 @@ export function decodeRunReplayRecords(
   let footerSeen = false;
   const header = records[0];
   if (header?.type !== "header") throw new Error("Run replay header is missing");
+  const multipart = header.partIndex !== undefined;
+  let firstFrameSeen = false;
   for (const record of records.slice(1)) {
     if (record.type === "header") throw new Error("Run replay contains more than one header");
     if (footerSeen) throw new Error("Run replay footer must be the final record");
@@ -215,13 +237,40 @@ export function decodeRunReplayRecords(
     }
     previousRecordSequence = record.recordSequence;
     footerSeen = record.type === "footer";
+    if (record.type === "frame" && !firstFrameSeen) {
+      firstFrameSeen = true;
+      if (multipart && (record.rgb.encoding !== "keyframe" || record.pressure.encoding !== "keyframe")) {
+        throw new Error("Run replay multipart parts must begin with a keyframe");
+      }
+    }
     if (record.type === "input" && (record.x >= header.width || record.y >= header.height)) {
       throw new Error("Run replay input coordinate is outside the declared floor");
     }
   }
   const footer = records.at(-1);
+  const bodyRecordCount = records.filter((record) => record.type !== "header" && record.type !== "footer").length;
+  const frameRecordCount = records.filter((record) => record.type === "frame").length;
+  if (bodyRecordCount > RUN_REPLAY_MAX_PART_BODY_RECORDS) {
+    throw new Error("Run replay part exceeds the maximum body record count");
+  }
+  if (frameRecordCount > RUN_REPLAY_MAX_PART_FRAMES) {
+    throw new Error("Run replay part exceeds the maximum frame count");
+  }
   if (!options.allowIncomplete && footer?.type !== "footer") throw new Error("Run replay footer is missing");
   if (footer?.type === "footer") {
+    if (multipart) {
+      if (footer.partIndex !== header.partIndex) throw new Error("Run replay footer partIndex does not match its header");
+      if (footer.isFinalPart) {
+        if (footer.partCount !== (header.partIndex ?? 0) + 1) {
+          throw new Error("Run replay final partCount is invalid");
+        }
+        if (footer.outcome === "continued") throw new Error("Run replay final part outcome is invalid");
+      } else if (footer.outcome !== "continued" || footer.partial || footer.partCount !== undefined) {
+        throw new Error("Run replay continued part footer is invalid");
+      }
+    } else if (footer.partIndex !== undefined || footer.isFinalPart !== undefined || footer.partCount !== undefined) {
+      throw new Error("Run replay legacy footer cannot contain multipart fields");
+    }
     const count = (type: RunReplayRecord["type"]) => records.filter((record) => record.type === type).length;
     if (footer.frameCount !== count("frame")
       || footer.inputCount !== count("input")
@@ -301,6 +350,22 @@ function assertRunReplayRecord(value: unknown): asserts value is RunReplayRecord
       throw new Error("Run replay firstDesiredSequence must be an unsigned integer string");
     }
     nonNegativeInteger(record.startedAtUnixMillis, "Run replay start time");
+    const multipartFieldCount = [record.assetId, record.partIndex, record.runFrameOffset]
+      .filter((entry) => entry !== undefined).length;
+    if (multipartFieldCount !== 0 && multipartFieldCount !== 3) {
+      throw new Error("Run replay multipart header fields must be present together");
+    }
+    if (multipartFieldCount === 3) {
+      if (typeof record.assetId !== "string" || !replayAssetIdPattern.test(record.assetId)) {
+        throw new Error("Run replay assetId is invalid");
+      }
+      const partIndex = nonNegativeInteger(record.partIndex, "Run replay part index");
+      if (partIndex > RUN_REPLAY_MAX_PART_INDEX) throw new Error("Run replay part index exceeds the supported limit");
+      if (!record.assetId.endsWith(`-part-${String(partIndex).padStart(6, "0")}`)) {
+        throw new Error("Run replay assetId part suffix does not match partIndex");
+      }
+      nonNegativeInteger(record.runFrameOffset, "Run replay frame offset");
+    }
     return;
   }
   positiveInteger(record.recordSequence, "Run replay record sequence");
@@ -360,6 +425,26 @@ function assertRunReplayRecord(value: unknown): asserts value is RunReplayRecord
       if (record[key] !== undefined && !isUnsigned64String(record[key])) {
         throw new Error(`Run replay ${key} must be an unsigned integer string`);
       }
+    }
+    const multipartFieldCount = [record.partIndex, record.isFinalPart]
+      .filter((entry) => entry !== undefined).length;
+    if (multipartFieldCount !== 0 && multipartFieldCount !== 2) {
+      throw new Error("Run replay multipart footer fields must be present together");
+    }
+    if (multipartFieldCount === 2) {
+      const partIndex = nonNegativeInteger(record.partIndex, "Run replay part index");
+      if (partIndex > RUN_REPLAY_MAX_PART_INDEX || typeof record.isFinalPart !== "boolean") {
+        throw new Error("Run replay multipart footer is invalid");
+      }
+      if (record.isFinalPart) {
+        const partCount = positiveInteger(record.partCount, "Run replay part count");
+        if (partCount !== partIndex + 1) throw new Error("Run replay final partCount is invalid");
+        if (record.outcome === "continued") throw new Error("Run replay final part outcome is invalid");
+      } else if (record.outcome !== "continued" || record.partial || record.partCount !== undefined) {
+        throw new Error("Run replay continued part footer is invalid");
+      }
+    } else if (record.partCount !== undefined) {
+      throw new Error("Run replay legacy footer cannot contain multipart fields");
     }
     return;
   }

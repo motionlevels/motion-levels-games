@@ -967,9 +967,9 @@ export class VenueRuntime {
     };
   }
 
-  historyRunReplay(id: string, runId: string): RunReplayRead {
+  historyRunReplay(id: string, runId: string, assetId?: string): RunReplayRead {
     if (!this.runReplays) throw new RequestValidationError("session history is not configured");
-    return this.runReplays.read(id, runId);
+    return this.runReplays.read(id, runId, assetId);
   }
 
   health(): Record<string, unknown> {

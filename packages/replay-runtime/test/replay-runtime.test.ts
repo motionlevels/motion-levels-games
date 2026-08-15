@@ -13,6 +13,9 @@ import {
   stableStringify,
   verifyHeadlessReplay,
   RUN_REPLAY_CONTRACT_VERSION,
+  RUN_REPLAY_MAX_PART_BODY_RECORDS,
+  RUN_REPLAY_MAX_PART_FRAMES,
+  RUN_REPLAY_MAX_PART_JSONL_BYTES,
   RUN_REPLAY_SCHEMA,
   decodeRunReplayByteField,
   decodeRunReplayRecords,
@@ -112,6 +115,200 @@ test("run replay NDJSON requires a final footer with coherent counts", () => {
     checkpointCount: 0
   });
   assert.throws(() => decodeRunReplayRecords(headerLine + outsideInput + inputFooter), /outside the declared floor/u);
+});
+
+test("multipart run replay fields and footer semantics are strict and backward compatible", () => {
+  const assetId = `run-replay-${"a".repeat(64)}-part-000000`;
+  const multipartHeader: RunReplayHeaderRecord = {
+    type: "header",
+    schema: RUN_REPLAY_SCHEMA,
+    contractVersion: RUN_REPLAY_CONTRACT_VERSION,
+    sessionId: "visit-multipart",
+    selectionId: "selection-multipart",
+    runId: "run-multipart",
+    gameId: "ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceRevision: "1".repeat(40),
+    width: 1,
+    height: 1,
+    pixelFormat: "rgb24",
+    pressureFormat: "row-major-bitset-lsb0",
+    frameSource: "presented-frame",
+    firstDesiredSequence: "1",
+    startedAtUnixMillis: 1_000,
+    assetId,
+    partIndex: 0,
+    runFrameOffset: 0
+  };
+  const frame = encodeRunReplayRecord({
+    type: "frame",
+    recordSequence: 1,
+    presentationSequence: "1",
+    desiredSequence: "1",
+    presentedUnixNanos: "1000000",
+    engineAtMillis: 0,
+    fadeRatio: 0,
+    rgb: { encoding: "keyframe", dataBase64: "AAAA" },
+    pressure: { encoding: "keyframe", dataBase64: "AA==" }
+  });
+  const finalFooter = encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: 2,
+    endedAtUnixMillis: 2_000,
+    outcome: "finished",
+    partial: false,
+    frameCount: 1,
+    inputCount: 0,
+    eventCount: 0,
+    checkpointCount: 0,
+    firstPresentationSequence: "1",
+    lastPresentationSequence: "1",
+    partIndex: 0,
+    isFinalPart: true,
+    partCount: 1
+  });
+  assert.equal(decodeRunReplayRecords(encodeRunReplayRecord(multipartHeader) + frame + finalFooter).length, 3);
+  assert.throws(() => encodeRunReplayRecord({ ...multipartHeader, assetId: undefined }), /present together/u);
+  assert.throws(() => encodeRunReplayRecord({
+    ...multipartHeader,
+    assetId: `run-replay-${"a".repeat(64)}-part-000001`
+  }), /suffix does not match/u);
+  assert.throws(() => decodeRunReplayRecords(encodeRunReplayRecord(multipartHeader) + encodeRunReplayRecord({
+    type: "frame",
+    recordSequence: 1,
+    presentationSequence: "1",
+    desiredSequence: "1",
+    presentedUnixNanos: "1000000",
+    engineAtMillis: 0,
+    fadeRatio: 0,
+    rgb: { encoding: "delta", dataBase64: "" },
+    pressure: { encoding: "delta", dataBase64: "" }
+  }) + finalFooter), /begin with a keyframe/u);
+  assert.throws(() => encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: 1,
+    endedAtUnixMillis: 2_000,
+    outcome: "continued",
+    partial: false,
+    frameCount: 0,
+    inputCount: 0,
+    eventCount: 0,
+    checkpointCount: 0,
+    partIndex: 0,
+    isFinalPart: true,
+    partCount: 1
+  }), /final part outcome/u);
+  assert.throws(() => encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: 1,
+    endedAtUnixMillis: 2_000,
+    outcome: "finished",
+    partial: false,
+    frameCount: 0,
+    inputCount: 0,
+    eventCount: 0,
+    checkpointCount: 0,
+    partIndex: 0,
+    isFinalPart: true,
+    partCount: 2
+  }), /partCount is invalid/u);
+  assert.throws(() => encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: 1,
+    endedAtUnixMillis: 2_000,
+    outcome: "finished",
+    partial: false,
+    frameCount: 0,
+    inputCount: 0,
+    eventCount: 0,
+    checkpointCount: 0,
+    partIndex: 0,
+    isFinalPart: false
+  }), /continued part footer/u);
+});
+
+test("shared run replay decoder enforces the browser-safe multipart profile", () => {
+  const assetId = `run-replay-${"b".repeat(64)}-part-000000`;
+  const headerLine = encodeRunReplayRecord({
+    type: "header",
+    schema: RUN_REPLAY_SCHEMA,
+    contractVersion: RUN_REPLAY_CONTRACT_VERSION,
+    sessionId: "visit-limits",
+    selectionId: "selection-limits",
+    runId: "run-limits",
+    gameId: "ping-pong",
+    engineGame: "motion-levels-games:ping-pong",
+    sourceRevision: "1".repeat(40),
+    width: 1,
+    height: 1,
+    pixelFormat: "rgb24",
+    pressureFormat: "row-major-bitset-lsb0",
+    frameSource: "presented-frame",
+    firstDesiredSequence: "1",
+    startedAtUnixMillis: 1_000,
+    assetId,
+    partIndex: 0,
+    runFrameOffset: 0
+  });
+  const frames = Array.from({ length: RUN_REPLAY_MAX_PART_FRAMES + 1 }, (_value, index) => encodeRunReplayRecord({
+    type: "frame",
+    recordSequence: index + 1,
+    presentationSequence: String(index + 1),
+    desiredSequence: String(index + 1),
+    presentedUnixNanos: String((index + 1) * 1_000_000),
+    engineAtMillis: index,
+    fadeRatio: 0,
+    rgb: index === 0
+      ? { encoding: "keyframe" as const, dataBase64: "AAAA" }
+      : { encoding: "delta" as const, dataBase64: "" },
+    pressure: index === 0
+      ? { encoding: "keyframe" as const, dataBase64: "AA==" }
+      : { encoding: "delta" as const, dataBase64: "" }
+  })).join("");
+  const frameFooter = encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: RUN_REPLAY_MAX_PART_FRAMES + 2,
+    endedAtUnixMillis: 2_000,
+    outcome: "finished",
+    partial: false,
+    frameCount: RUN_REPLAY_MAX_PART_FRAMES + 1,
+    inputCount: 0,
+    eventCount: 0,
+    checkpointCount: 0,
+    firstPresentationSequence: "1",
+    lastPresentationSequence: String(RUN_REPLAY_MAX_PART_FRAMES + 1),
+    partIndex: 0,
+    isFinalPart: true,
+    partCount: 1
+  });
+  assert.throws(() => decodeRunReplayRecords(headerLine + frames + frameFooter), /maximum frame count/u);
+
+  const inputs = Array.from({ length: RUN_REPLAY_MAX_PART_BODY_RECORDS + 1 }, (_value, index) => encodeRunReplayRecord({
+    type: "input",
+    recordSequence: index + 1,
+    occurredAtUnixMillis: 1_000 + index,
+    engineAtMillis: index,
+    source: "remote",
+    x: 0,
+    y: 0,
+    pressed: index % 2 === 0
+  })).join("");
+  const inputFooter = encodeRunReplayRecord({
+    type: "footer",
+    recordSequence: RUN_REPLAY_MAX_PART_BODY_RECORDS + 2,
+    endedAtUnixMillis: 2_000,
+    outcome: "finished",
+    partial: false,
+    frameCount: 0,
+    inputCount: RUN_REPLAY_MAX_PART_BODY_RECORDS + 1,
+    eventCount: 0,
+    checkpointCount: 0,
+    partIndex: 0,
+    isFinalPart: true,
+    partCount: 1
+  });
+  assert.throws(() => decodeRunReplayRecords(headerLine + inputs + inputFooter), /maximum body record count/u);
+  assert.throws(() => decodeRunReplayRecords("x".repeat(RUN_REPLAY_MAX_PART_JSONL_BYTES + 1)), /maximum encoded size/u);
 });
 
 test("stable JSON and checksums ignore object insertion order", () => {

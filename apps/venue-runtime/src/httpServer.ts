@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { closeSync, createReadStream } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { RecordingAsset } from "@motion-levels-games/session-history";
 import { venueApiProtocolVersion } from "./apiProtocol.ts";
@@ -168,7 +168,7 @@ async function route(
     }));
     return;
   }
-  const replayMatch = /^\/api\/history\/v1\/sessions\/([^/]+)\/runs\/([^/]+)\/replay$/u.exec(url.pathname);
+  const replayMatch = /^\/api\/history\/v1\/sessions\/([^/]+)\/runs\/([^/]+)\/replay(?:\/([^/]+))?$/u.exec(url.pathname);
   if (replayMatch) {
     if (request.method !== "GET" && request.method !== "HEAD") {
       response.writeHead(405, { Allow: "GET, HEAD, OPTIONS" }).end("method not allowed");
@@ -176,7 +176,8 @@ async function route(
     }
     const replay = runtime.historyRunReplay(
       decodePathSegment(replayMatch[1] ?? ""),
-      decodePathSegment(replayMatch[2] ?? "")
+      decodePathSegment(replayMatch[2] ?? ""),
+      replayMatch[3] ? decodePathSegment(replayMatch[3]) : undefined
     );
     response.writeHead(200, {
       "Content-Type": replay.asset.contentType ?? "application/octet-stream",
@@ -185,10 +186,13 @@ async function route(
       ...(replay.asset.byteSize === undefined ? {} : { "Content-Length": replay.asset.byteSize })
     });
     if (request.method === "HEAD") {
+      closeSync(replay.fd);
       response.end();
       return;
     }
-    createReadStream(replay.path).on("error", () => response.destroy()).pipe(response);
+    createReadStream(replay.path, { fd: replay.fd, autoClose: true })
+      .on("error", () => response.destroy())
+      .pipe(response);
     return;
   }
   const historyMatch = /^\/api\/history\/v1\/sessions\/([^/]+)(?:\/(events|recordings))?$/u.exec(url.pathname);
@@ -200,8 +204,14 @@ async function route(
       return;
     }
     if (child === "events" && request.method === "GET") {
+      const cursor = url.searchParams.get("cursor") || undefined;
+      const afterSequence = queryInteger(url, "afterSequence");
+      if (cursor && afterSequence !== undefined) {
+        throw new RequestValidationError("cursor and afterSequence are mutually exclusive");
+      }
       json(response, runtime.historyEvents(id, {
-        cursor: url.searchParams.get("cursor") || undefined,
+        cursor,
+        afterSequence,
         limit: queryInteger(url, "limit")
       }));
       return;
