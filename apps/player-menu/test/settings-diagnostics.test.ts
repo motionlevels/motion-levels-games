@@ -5,6 +5,8 @@ import { describe, it } from "node:test";
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const dialogSource = appSource.slice(appSource.indexOf("function OperatorSettingsDialog"));
+const welcomeSource = appSource.slice(appSource.indexOf("function WelcomeScreen"), appSource.indexOf("function RecordingModePicker"));
+const teamDrawerSource = appSource.slice(appSource.indexOf("panel team-panel team-drawer"), appSource.indexOf('className="main-panel"'));
 
 describe("operator settings diagnostics", () => {
   it("keeps the diagnostic card visible on both sides of the operator lock", () => {
@@ -13,6 +15,20 @@ describe("operator settings diagnostics", () => {
 
     assert.ok(diagnostics >= 0);
     assert.ok(operatorBranch > diagnostics, "diagnostics must render before the locked/unlocked branch");
+  });
+
+  it("keeps recording controls behind the operator PIN", () => {
+    const operatorBranch = dialogSource.indexOf("{unlocked ? (");
+    const recordingPicker = dialogSource.indexOf("<RecordingModePicker");
+
+    assert.doesNotMatch(welcomeSource, /<RecordingModePicker/u);
+    assert.doesNotMatch(teamDrawerSource, /<RecordingModePicker/u);
+    assert.ok(recordingPicker > operatorBranch, "recording controls must render only in the unlocked operator branch");
+  });
+
+  it("uses the full settings dialog width for the locked operator layout", () => {
+    assert.match(stylesSource, /\.settings-modal\s*\{[^}]*width: min\(1160px, 100%\)/su);
+    assert.match(stylesSource, /\.pin-panel\s*\{[^}]*grid-template-areas:/su);
   });
 
   it("shows a compact revision while retaining the complete revision as its title", () => {

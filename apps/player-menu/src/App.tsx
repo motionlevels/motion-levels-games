@@ -3475,15 +3475,10 @@ function MenuApp() {
         message={message}
         error={error}
         starting={sessionStarting}
-        recordingScope={menu.recordingPolicy}
-        recordingConfigured={recordingConfigured}
-        recordingAvailable={recordingAvailable}
-        recordingSaving={recordingScopeSaving}
         remoteSessionRequest={null}
         onCancelRemoteStart={() => {}}
         onConfirmRemoteStart={() => {}}
         onStart={() => {}}
-        onRecordingScopeChange={() => {}}
         onFullscreen={enterBrowserFullscreen}
       />
     );
@@ -3499,15 +3494,10 @@ function MenuApp() {
         message={message}
         error={error}
         starting={sessionStarting}
-        recordingScope={menu.recordingPolicy}
-        recordingConfigured={recordingConfigured}
-        recordingAvailable={recordingAvailable}
-        recordingSaving={recordingScopeSaving}
         remoteSessionRequest={remoteSessionRequest}
         onCancelRemoteStart={dismissRemoteSessionStart}
         onConfirmRemoteStart={confirmRemoteSessionStart}
         onStart={() => void beginSession()}
-        onRecordingScopeChange={(scope) => void setSessionRecordingScope(scope)}
         onFullscreen={enterBrowserFullscreen}
       />
     );
@@ -3811,14 +3801,6 @@ function MenuApp() {
               Cerrar sesión
             </button>
           </section>
-
-          <RecordingModePicker
-            scope={menu.recordingPolicy}
-            configured={recordingConfigured}
-            available={recordingAvailable}
-            saving={recordingScopeSaving}
-            onChange={(scope) => void setSessionRecordingScope(scope)}
-          />
 
           <button className="btn primary drawer-done" type="button" onClick={() => setTeamOpen(false)}>
             <CheckIcon />
@@ -4300,6 +4282,10 @@ function MenuApp() {
           catalogLabel={catalogRefreshing ? "Actualizando" : `${menuGames.length} ${menuGames.length === 1 ? "modo" : "modos"}`}
           testPending={settingsTestPending}
           testError={settingsTestError}
+          recordingScope={menu.recordingPolicy}
+          recordingConfigured={recordingConfigured}
+          recordingAvailable={recordingAvailable}
+          recordingSaving={recordingScopeSaving}
           onTypeDigit={typeSettingsPinDigit}
           onBackspace={() => {
             setSettingsError("");
@@ -4311,6 +4297,7 @@ function MenuApp() {
           }}
           onSubmit={() => submitSettingsPin()}
           onToggleLevels={() => setOperatorUnlockLevels(!menu.operatorUnlockLevels)}
+          onRecordingScopeChange={(scope) => void setSessionRecordingScope(scope)}
           onTestOutput={(target) => void runOutputTest(target)}
           onClose={closeSettings}
         />
@@ -4347,14 +4334,9 @@ function WelcomeScreen({
   message,
   error,
   starting,
-  recordingScope,
-  recordingConfigured,
-  recordingAvailable,
-  recordingSaving,
   remoteSessionRequest,
   onCancelRemoteStart,
   onConfirmRemoteStart,
-  onRecordingScopeChange,
   onStart,
   onFullscreen,
 }: {
@@ -4365,14 +4347,9 @@ function WelcomeScreen({
   message: string;
   error: string;
   starting: boolean;
-  recordingScope: RecordingScope;
-  recordingConfigured: boolean;
-  recordingAvailable: boolean;
-  recordingSaving: boolean;
   remoteSessionRequest: RemoteSessionRequest | null;
   onCancelRemoteStart: () => void;
   onConfirmRemoteStart: () => void;
-  onRecordingScopeChange: (scope: RecordingScope) => void;
   onStart: () => void;
   onFullscreen: () => void;
 }) {
@@ -4428,15 +4405,6 @@ function WelcomeScreen({
           </section>
         ) : (
           <section className="welcome-session-controls" aria-label="Nueva sesión">
-            <RecordingModePicker
-              scope={recordingScope}
-              configured={recordingConfigured}
-              available={recordingAvailable}
-              saving={recordingSaving}
-              disabled={readOnly || starting}
-              variant="welcome"
-              onChange={onRecordingScopeChange}
-            />
             <button className="btn primary welcome-start" type="button" onClick={onStart} disabled={readOnly || starting} aria-busy={starting || undefined}>
               <PlayIcon />
               {readOnly ? "Esperando menú" : starting ? "Preparando sesión" : "Comenzar"}
@@ -4454,7 +4422,6 @@ function RecordingModePicker({
   available,
   saving,
   disabled = false,
-  variant = "drawer",
   onChange,
 }: {
   scope: RecordingScope;
@@ -4462,24 +4429,21 @@ function RecordingModePicker({
   available: boolean;
   saving: boolean;
   disabled?: boolean;
-  variant?: "drawer" | "welcome";
   onChange: (scope: RecordingScope) => void;
 }) {
-  const canRetryActiveMode = variant === "drawer" && configured && !available && scope !== "off";
+  const canRetryActiveMode = configured && !available && scope !== "off";
   const status = !configured
     ? "Servicio no configurado"
     : available
       ? "Elige cuándo empieza un vídeo nuevo"
       : canRetryActiveMode
         ? "Servicio sin conexión · toca el modo activo para reintentar"
-        : variant === "welcome"
-          ? "Elige un modo; se intentará al iniciar la sesión"
-          : "Elige un modo para activar y reintentar";
-  const labelID = `recording-mode-label-${variant}`;
+        : "Elige un modo para activar y reintentar";
+  const labelID = "recording-mode-label-operator";
 
   return (
     <section
-      className={`recording-picker recording-picker--${variant} ${scope === "off" ? "off" : "on"} ${!configured ? "unavailable" : available ? "" : "degraded"} ${saving ? "saving" : ""}`}
+      className={`recording-picker recording-picker--operator ${scope === "off" ? "off" : "on"} ${!configured ? "unavailable" : available ? "" : "degraded"} ${saving ? "saving" : ""}`}
       aria-busy={saving || undefined}
     >
       <div className="recording-picker__head" id={labelID}>
@@ -4952,11 +4916,16 @@ function OperatorSettingsDialog({
   catalogLabel,
   testPending,
   testError,
+  recordingScope,
+  recordingConfigured,
+  recordingAvailable,
+  recordingSaving,
   onTypeDigit,
   onBackspace,
   onClear,
   onSubmit,
   onToggleLevels,
+  onRecordingScopeChange,
   onTestOutput,
   onClose,
 }: {
@@ -4972,11 +4941,16 @@ function OperatorSettingsDialog({
   catalogLabel: string;
   testPending: OutputTestTarget | null;
   testError: { target: OutputTestTarget; message: string; baselineOutputTestId: string } | null;
+  recordingScope: RecordingScope;
+  recordingConfigured: boolean;
+  recordingAvailable: boolean;
+  recordingSaving: boolean;
   onTypeDigit: (digit: string) => void;
   onBackspace: () => void;
   onClear: () => void;
   onSubmit: () => void;
   onToggleLevels: () => void;
+  onRecordingScopeChange: (scope: RecordingScope) => void;
   onTestOutput: (target: OutputTestTarget) => void;
   onClose: () => void;
 }) {
@@ -5084,6 +5058,13 @@ function OperatorSettingsDialog({
                 </span>
                 <span className="switch-track" aria-hidden="true"><span /></span>
               </button>
+              <RecordingModePicker
+                scope={recordingScope}
+                configured={recordingConfigured}
+                available={recordingAvailable}
+                saving={recordingSaving}
+                onChange={onRecordingScopeChange}
+              />
             </section>
           ) : (
             <section className="pin-panel" aria-label="PIN operador">

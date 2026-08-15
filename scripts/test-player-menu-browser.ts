@@ -263,12 +263,10 @@ try {
     assert.equal(await lava.getAttribute("aria-pressed"), "true");
   });
 
-  await scenario("recording scope exposes four choices and Welcome recovers from an unavailable service", async ({ page, status, venueSessionFailures, venueSessionRequests }) => {
+  await scenario("recording controls stay operator-only and Welcome recovers from an unavailable service", async ({ page, status, venueSessionFailures, venueSessionRequests }) => {
     status.venueSessionRecordingAvailable = false;
     await openWelcome(page);
-    const welcomeStatus = page.locator(".recording-picker--welcome .recording-picker__head small");
-    assert.equal((await welcomeStatus.textContent())?.trim(), "Elige un modo; se intentará al iniciar la sesión");
-    assert.equal((await welcomeStatus.textContent())?.includes("toca el modo activo"), false);
+    assert.equal(await page.locator("[data-recording-scope]").count(), 0, "Welcome must not expose operator recording controls");
 
     status.venueSessionRecordingAvailable = true;
     venueSessionFailures.push("mock welcome start rejection");
@@ -285,7 +283,10 @@ try {
     await start.tap();
     await page.getByRole("dialog", { name: "Configuración del equipo" }).waitFor({ state: "visible" });
     assert.equal(venueSessionRequests.length, 2);
-    const choices = page.locator("[data-recording-scope]");
+    assert.equal(await page.locator("[data-recording-scope]").count(), 0, "the team drawer must not expose operator recording controls");
+
+    const settings = await openUnlockedOperatorSettings(page);
+    const choices = settings.locator("[data-recording-scope]");
     assert.deepEqual(await choices.evaluateAll((buttons) => buttons.map((button) => (
       button.querySelector("span")?.textContent?.trim()
     ))), [
@@ -299,29 +300,15 @@ try {
     )), ["off", "visit", "selection", "run"]);
   });
 
-  for (const scope of recordingScopes) {
-    await scenario(`welcome starts the session with ${scope} recording policy`, async ({ page, venueSessionRequests }) => {
-      await openWelcome(page);
-      const choice = page.locator(`[data-recording-scope="${scope}"]`);
-      await choice.tap();
-      await waitForAttribute(choice, "aria-pressed", "true");
-      assert.equal(venueSessionRequests.length, 0, "choosing a pre-session mode must not mutate a nonexistent session");
-
-      await page.getByRole("button", { name: "Comenzar" }).tap();
-      await page.getByRole("dialog", { name: "Configuración del equipo" }).waitFor({ state: "visible" });
-      assert.equal(venueSessionRequests.length, 1);
-      assertRecordingRequest(venueSessionRequests[0], scope);
-    });
-  }
-
-  await scenario("active session switches policies and rolls back a rejected scope above the drawer", async ({ page, venueSessionFailures, venueSessionRequests }) => {
+  await scenario("operator recording switches policies and rolls back a rejected scope above settings", async ({ page, venueSessionFailures, venueSessionRequests }) => {
     await startSession(page);
     assert.equal(venueSessionRequests.length, 1);
     assertRecordingRequest(venueSessionRequests[0], "visit");
+    const settings = await openUnlockedOperatorSettings(page);
 
     for (const scope of recordingScopes) {
       const previousCount = venueSessionRequests.length;
-      const choice = page.locator(`[data-recording-scope="${scope}"]`);
+      const choice = settings.locator(`[data-recording-scope="${scope}"]`);
       await choice.tap();
       await waitForCondition(
         () => venueSessionRequests.length === previousCount + 1,
@@ -332,7 +319,7 @@ try {
     }
 
     venueSessionFailures.push("mock active recording scope rejection");
-    const rejectedChoice = page.locator('[data-recording-scope="selection"]');
+    const rejectedChoice = settings.locator('[data-recording-scope="selection"]');
     const previousCount = venueSessionRequests.length;
     await rejectedChoice.tap();
     await waitForCondition(
@@ -342,14 +329,13 @@ try {
     const activeError = page.locator(".layout > .kiosk-toast.error");
     await activeError.waitFor({ state: "visible" });
     assert.equal((await activeError.textContent())?.includes("No se pudo cambiar el alcance de grabación. Se ha restaurado la configuración anterior."), true);
-    await waitForAttribute(page.locator('[data-recording-scope="run"]'), "aria-pressed", "true");
+    await waitForAttribute(settings.locator('[data-recording-scope="run"]'), "aria-pressed", "true");
     assert.equal(await rejectedChoice.getAttribute("aria-pressed"), "false");
-    assert.equal(await page.locator(".team-drawer").getAttribute("aria-hidden"), "false");
     const layers = await page.locator(".layout").evaluate(() => ({
-      drawer: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>(".team-drawer")!).zIndex, 10),
+      settings: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>(".modal-overlay")!).zIndex, 10),
       toast: Number.parseInt(getComputedStyle(document.querySelector<HTMLElement>(".kiosk-toast.error")!).zIndex, 10),
     }));
-    assert.ok(layers.toast > layers.drawer, `error toast must layer above the open drawer: ${JSON.stringify(layers)}`);
+    assert.ok(layers.toast > layers.settings, `error toast must layer above operator settings: ${JSON.stringify(layers)}`);
   });
 
   await scenario("operator settings run floor and audio diagnostics with authoritative feedback", async ({ page, outputTestRequests, status }) => {
@@ -371,6 +357,7 @@ try {
 
     const floor = settings.getByRole("button", { name: /^Suelo:/u });
     const audio = settings.getByRole("button", { name: /^Audio:/u });
+    await waitForCondition(() => floor.isEnabled(), "connected floor diagnostic", 5_000);
     assert.equal(await floor.isEnabled(), true, `floor diagnostic must be enabled: ${(await floor.textContent())?.trim()}`);
     await floor.tap();
     await waitForCondition(
@@ -692,6 +679,23 @@ async function startSession(page: Page): Promise<void> {
   await openWelcome(page);
   await page.getByRole("button", { name: "Comenzar" }).tap();
   await page.getByRole("dialog", { name: "Configuración del equipo" }).waitFor({ state: "visible" });
+}
+
+async function openUnlockedOperatorSettings(page: Page) {
+  const drawer = page.locator(".team-drawer");
+  if (await drawer.getAttribute("aria-hidden") === "false") {
+    await drawer.locator(".drawer-done").tap();
+    await waitForAttribute(drawer, "aria-hidden", "true");
+  }
+  await page.locator('.topbar button[aria-label="Ajustes"]').tap();
+  const settings = page.getByRole("dialog", { name: "Ajustes" });
+  await settings.waitFor({ state: "visible" });
+  assert.equal(await settings.locator("[data-recording-scope]").count(), 0, "recording controls must stay hidden before operator unlock");
+  for (const digit of "739481") {
+    await settings.getByRole("button", { name: digit, exact: true }).tap();
+  }
+  await settings.getByText("Modo operador desbloqueado").waitFor({ state: "visible" });
+  return settings;
 }
 
 async function openWelcome(page: Page): Promise<void> {
