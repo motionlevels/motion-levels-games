@@ -24,6 +24,7 @@ const runtime = new VenueRuntime({
   brightness: parseBrightness(process.env.MOTION_LEVELS_ENGINE_BRIGHTNESS),
   audioEnabled: parseBoolean(process.env.MOTION_LEVELS_AUDIO_ENABLED, false),
   sessionHistoryDir: process.env.MOTION_LEVELS_SESSION_HISTORY_DIR?.trim() || "/var/lib/motion-levels/session-history",
+  replayMaxLocalBytes: parsePositive(process.env.MOTION_LEVELS_REPLAY_MAX_LOCAL_BYTES, 512 * 1024 * 1024),
   recordingStartGateTimeoutMillis: parseDurationMillis(
     process.env.MOTION_LEVELS_RUN_RECORDING_START_TIMEOUT
       ?? process.env.MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT,

@@ -15,6 +15,7 @@ Each visit has its own directory:
 ```text
 <history-root>/<visit-id>/manifest.json
 <history-root>/<visit-id>/events.ndjson
+<history-root>/<visit-id>/replays/<replay-asset-id>.mlrun.jsonl.gz
 ```
 
 `manifest.json` is replaced atomically after an fsync. `events.ndjson` is the
@@ -28,15 +29,99 @@ after-state for the affected visit/selection/run. The manifest's `lastSequence`
 is a checkpoint: startup idempotently reduces every later complete batch and
 rewrites a repaired checkpoint, so a crash between journal sync and manifest
 replacement cannot split the timeline from its state.
-Frames, pressure samples, and elapsed-only ticks are deliberately excluded;
-the runtime keeps elapsed clocks in memory, checkpoints them to the manifest
-at most once every five seconds, and writes the exact final values when a run
-ends.
+The lifecycle journal deliberately excludes high-frequency frames, pressure
+samples, and elapsed-only ticks. Every run instead owns the separate automatic
+gameplay artifact described below. The runtime keeps elapsed clocks in memory,
+checkpoints them to the manifest at most once every five seconds, and writes
+the exact final values when a run ends.
 
 On process startup, an active visit is restored. Any run or game selection
 that was open when the previous process disappeared is closed as interrupted,
 and recovery is recorded on the timeline. The visit itself remains active so
 the kiosk can continue it.
+
+## Automatic gameplay replay
+
+Every run records `motion-levels-run-replay-v1`, independently of camera
+policy. Frames come from the controller's authoritative `PresentedFrame`
+callback—not a rendering reconstructed from game state—so the exact RGB,
+pressure bitset, fade/watchdog result, presentation sequence, desired source
+sequence, and presentation time are retained. Effective physical/remote
+inputs, game events, and periodic or material snapshots form a causal timeline
+alongside those visual frames. Frame pressure is authoritative for playback;
+input records are diagnostic markers and must not be reapplied as an overlay.
+
+Long runs are losslessly segmented. Part `N` has asset ID
+`run-replay-<sha256-utf8-run-id>-part-<NNNNNN>` (lowercase 64-character hex,
+zero-based six-digit index), with journal and final file names derived from
+that asset ID. Each part is an independently decodable v1 JSONL document:
+`recordSequence` restarts at one, the first frame is an RGB and pressure
+keyframe, and the header carries `assetId`, `partIndex`, and cumulative
+`runFrameOffset`. A non-final footer has `outcome: "continued"`,
+`partial: false`, `isFinalPart: false`, and no `partCount`. The final footer
+carries the real outcome, `isFinalPart: true`, and
+`partCount === partIndex + 1`. Legacy `run-replay-<run-id>` assets without
+multipart fields remain readable as one final part but are never newly
+produced.
+
+Each producer part is capped at 10,000 frames, 50,000 non-header/footer
+records, 32 MiB of uncompressed JSONL including the footer, and 4 MiB per
+record. Rollover happens before the triggering record, so that record appears
+exactly once in the successor and its first visual record is a keyframe. The
+predecessor body is fdatasync'd first; then the successor header and directory,
+then its manifest asset, become durable before the predecessor gets its
+`continued` footer. This order preserves the successor's cumulative frame
+offset across a power loss. Journals are streamed through gzip without loading
+the complete replay into memory and published atomically.
+
+Startup truncates a torn final record. In an interrupted rollover, every
+recoverable lower part with a durable successor becomes `continued`; the
+highest durable part becomes a final `runtime_interrupted`, `partial: true`
+part. A manifest-only phantom successor is not considered durable, while a
+failed asset with a valid journal is retried. A header journal durable before
+its manifest upsert is adopted only after its hashed asset ID,
+visit/selection/run identity, part index, and cumulative frame offset validate
+against a contiguous durable prefix. Torn pre-header files contain no durable
+record and are removed with a directory fsync so the deterministic part ID can
+be retried. A stale but nonempty suffix is rejected and quarantined rather
+than silently spliced into a run. If a recovered final footer would cross the
+part byte cap, the current part closes as `continued` and recovery creates an
+empty terminal partial part; the same terminal repair is used when a non-final
+gzip has no successor, without mutating already published bytes. A verified,
+remote-only continued prefix retains enough metadata to create that terminal
+after local pruning. If a valid final gzip and its pre-rename journal both
+survive, the gzip wins and the duplicate is removed durably.
+
+The visit's `recordings` collection has one `RecordingAsset` per part, backend
+`venue-runtime-replay`, explicit selection/run IDs, relative path, bytes,
+SHA-256, record counts and sequence bounds. Metadata repeats `partIndex`,
+`runFrameOffset`, `isFinalPart`, and `partCount` only on the final part. Every
+part independently reaches `pending_upload`; an interrupted final part first
+uses local status `partial`. The venue-owned uploader can idempotently update
+each verified asset to `complete` with remote object metadata while retaining
+`metadata.partial`. This repository has no cloud-storage or deployment
+coupling.
+
+Local replay cache is bounded by `MOTION_LEVELS_REPLAY_MAX_LOCAL_BYTES`
+(512 MiB by default; zero or invalid values fail closed to that default). The
+runtime counts every local replay and prunes oldest files only after the same
+asset is `complete`, retains valid bytes/SHA-256, and has an HTTPS download on
+the configured Platform origin. A remotely verified complete part is eligible
+even when its retained metadata says the captured tail is partial; statuses
+`pending_upload`, `partial`, `finalizing`, or `failed` are never eligible.
+Pruning and downloads reject symlinks and path escapes, fsync the replay
+directory, clear `localPath`, and preserve the remote asset plus `localPruned`
+audit metadata. Because hashing is asynchronous, pruning re-reads and
+revalidates the current recording immediately before unlinking so a concurrent
+upload reconciliation is never overwritten. Offline, pending, failed and
+unverified files can temporarily exceed the bound rather than lose the only
+copy.
+
+This contract supersedes automatic production `.mlreplay.zst` capture. That
+legacy file remains historical input only and must not be regenerated. The
+older `GameReplay` API in `@motion-levels-games/replay-runtime` remains useful
+for deterministic playground/agent diagnostics; it is not the venue session
+visual replay contract.
 
 ## Hierarchy and recording policy
 
@@ -127,12 +212,22 @@ Routes:
 
 - `GET /api/history/v1/sessions?status=&from=&to=&limit=&cursor=`
 - `GET /api/history/v1/sessions/:sessionId`
-- `GET /api/history/v1/sessions/:sessionId/events?limit=&cursor=`
+- `GET /api/history/v1/sessions/:sessionId/events?limit=&cursor=&afterSequence=`
+- `GET|HEAD /api/history/v1/sessions/:sessionId/runs/:runId/replay/:assetId`
 - `POST /api/history/v1/sessions/:sessionId/recordings`
 
-List and event responses use opaque cursors. `from` and `to` are inclusive
+List and event responses use opaque cursors. Event callers may instead pass a
+non-negative safe-integer `afterSequence`; it is exclusive and mutually
+exclusive with `cursor`. A 32-visit LRU caches validated journals and serves
+pages by binary search; an evicted visit is reloaded in full once, while later
+250-event pages do not reparse the journal. `from` and `to` are inclusive
 epoch-millisecond visit-overlap filters. Recording POST bodies must conform to
 the v1 `RecordingAsset` shape; unknown fields are not persisted.
+Replay downloads return the stored gzip bytes with the run-replay vendor media
+type and no HTTP `Content-Encoding`, so an uploader verifies the persisted
+SHA-256 without transparent client decompression. The unqualified
+`.../:runId/replay` route is retained only for exact legacy single-part asset
+IDs; newly segmented captures require the explicit, run-scoped `assetId`.
 
 `/api/health` distinguishes persistence, camera configuration, and camera
 health. Player state likewise separates `venueSessionRecordingConfigured`

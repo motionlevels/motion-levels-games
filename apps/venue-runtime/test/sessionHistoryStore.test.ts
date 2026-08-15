@@ -8,7 +8,7 @@ import {
   SESSION_HISTORY_SCHEMA,
   type SessionHistoryVisit
 } from "@motion-levels-games/session-history";
-import { SessionHistoryStore } from "../src/sessionHistoryStore.ts";
+import { sessionHistoryEventCacheLimit, SessionHistoryStore } from "../src/sessionHistoryStore.ts";
 
 function temporaryRoot(context: TestContext): string {
   const path = mkdtempSync(join(tmpdir(), "motion-levels-session-history-"));
@@ -561,4 +561,46 @@ test("rejects empty and non-canonical event cursors", (context) => {
     if (!cursor) continue;
     assert.throws(() => store.listEvents("visit-cursor", { cursor }), /invalid event cursor/u);
   }
+});
+
+test("afterSequence pages events exclusively and cannot be combined with cursor", (context) => {
+  const store = new SessionHistoryStore(temporaryRoot(context));
+  store.createVisit(visit("visit-after-sequence", 1_000));
+  store.appendEvents("visit-after-sequence", Array.from({ length: 5 }, (_value, index) => ({
+    kind: `event.${index + 1}`,
+    occurredAtUnixMillis: 1_001 + index,
+    payload: {}
+  })));
+  const page = store.listEvents("visit-after-sequence", { afterSequence: 2, limit: 2 });
+  assert.deepEqual(page.events.map((event) => event.sequence), [3, 4]);
+  assert.ok(page.nextCursor);
+  assert.deepEqual(store.listEvents("visit-after-sequence", { afterSequence: 5 }).events, []);
+  assert.deepEqual(store.listEvents("visit-after-sequence", { afterSequence: 999 }).events, []);
+  assert.throws(() => store.listEvents("visit-after-sequence", {
+    cursor: page.nextCursor!,
+    afterSequence: 2
+  }), /mutually exclusive/u);
+  for (const afterSequence of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => store.listEvents("visit-after-sequence", { afterSequence }), /non-negative safe integer/u);
+  }
+});
+
+test("event paging cache evicts old visits and reloads a complete journal after an uncached append", (context) => {
+  const store = new SessionHistoryStore(temporaryRoot(context));
+  for (let index = 0; index <= sessionHistoryEventCacheLimit; index += 1) {
+    const id = `visit-cache-${String(index).padStart(2, "0")}`;
+    store.createVisit(visit(id, 1_000 + index), [{
+      kind: "visit.started",
+      occurredAtUnixMillis: 1_000 + index,
+      payload: { index }
+    }]);
+  }
+  const evictedId = "visit-cache-00";
+  store.appendEvent(evictedId, {
+    kind: "menu.event",
+    occurredAtUnixMillis: 2_000,
+    payload: { name: "after_eviction" }
+  });
+  assert.deepEqual(store.listEvents(evictedId).events.map((event) => event.sequence), [1, 2]);
+  assert.deepEqual(store.listEvents(evictedId, { afterSequence: 1 }).events.map((event) => event.kind), ["menu.event"]);
 });

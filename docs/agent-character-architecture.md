@@ -115,6 +115,12 @@ intentionally page-local and is not a second portable schema. Portable Duelo
 authority verification is owned by the game-specific `/replay` tooling
 subpath, which records the real press/release inputs.
 
+Venue production playback is a different use case. The venue runtime
+automatically writes `motion-levels-run-replay-v1` from exact controller
+`PresentedFrame` observations and its session timeline. It supersedes
+automatic `.mlreplay.zst` generation without changing the playground's
+diagnostic `GameReplay` or game-specific authority-verification formats.
+
 ## Canonical Stage and assets
 
 The shared Stage preserves the deployed Jugar camera, arena, LED floor and TV,

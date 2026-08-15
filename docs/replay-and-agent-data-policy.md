@@ -8,6 +8,14 @@ Do not persist real-player trajectories by default. Fixed replays used in the
 repository and CI are authored, synthetic, or explicitly curated fixtures.
 They must not be described as human data.
 
+The access-controlled operational session replay
+`motion-levels-run-replay-v1` is a separate product record governed by the
+venue/platform session retention policy. It contains exact floor RGB and
+pressure observations and operational timestamps so authorized staff can play
+back a visit. It is not an anonymized trajectory, training export, public
+ghost, or repository fixture. Before any such artifact leaves that operational
+boundary, this document's collection gate and privacy transformation apply.
+
 ## Collection gate
 
 Before enabling real-session retention, document all of the following in the
