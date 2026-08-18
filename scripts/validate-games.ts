@@ -71,6 +71,19 @@ const requiredFiles = [
   "test"
 ];
 
+const ALLOWED_GAME_IMPORT_PACKAGES = [
+  "@motion-levels-games/game-sdk",
+  "@motion-levels-games/display-kit",
+  "@motion-levels-games/agent-runtime",
+  "@motion-levels-games/replay-runtime",
+  "@motion-levels-games/character-runtime",
+  "@motion-levels-games/published-level-runtime",
+  "@motion-levels-games/animation-runtime",
+  "react",
+  "react-dom",
+  "node:"
+];
+
 const gameDirs = (await readdir(gamesRoot, { withFileTypes: true }))
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
@@ -268,6 +281,42 @@ for (const gameId of gameDirs) {
     }
   } catch (error) {
     problems.push(`${gameId}: could not read README.md (${errorMessage(error)})`);
+  }
+
+  await validateGameImports(gameId, gameRoot, problems);
+}
+
+async function validateGameImports(gameId: string, gameRoot: string, problemList: string[]): Promise<void> {
+  const srcDir = path.join(gameRoot, "src");
+  try {
+    const entries = await readdir(srcDir, { recursive: true, withFileTypes: true });
+    const sourceFiles = entries
+      .filter((entry) => entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")))
+      .map((entry) => path.join(entry.parentPath || srcDir, entry.name));
+
+    const importRegex = /(?:import|export)\s+(?:type\s+)?(?:[\w*\s{},]*\s+from\s+)?["\x27]([^"\x27]+)["\x27]|import\(\s*["\x27]([^"\x27]+)["\x27]\s*\)/g;
+
+    for (const filePath of sourceFiles) {
+      const content = await readFile(filePath, "utf8");
+      const relativeFile = path.relative(gameRoot, filePath);
+      let match: RegExpExecArray | null;
+      while ((match = importRegex.exec(content)) !== null) {
+        const specifier = match[1] || match[2];
+        if (!specifier || specifier.startsWith(".")) {
+          continue;
+        }
+        const isAllowed = ALLOWED_GAME_IMPORT_PACKAGES.some(
+          (pkg) => specifier === pkg || specifier.startsWith(pkg + "/")
+        );
+        if (!isAllowed) {
+          problemList.push(
+            `${gameId}: ${relativeFile} imports forbidden module "${specifier}". Games must only import from @motion-levels-games/game-sdk or @motion-levels-games/display-kit.`
+          );
+        }
+      }
+    }
+  } catch (error) {
+    problemList.push(`${gameId}: failed to scan src imports (${errorMessage(error)})`);
   }
 }
 

@@ -33,7 +33,7 @@ test("the full local experience serves the menu from the playground origin", () 
 test("the root development command starts one fixed full-experience server", () => {
   assert.match(rootPackage.scripts.dev, /@motion-levels-games\/playground/u);
   assert.match(rootPackage.scripts.dev, /--port 4104/u);
-  assert.equal(rootPackage.scripts["dev:experience"], "npm run dev");
+  assert.match(rootPackage.scripts["dev:game"], /scripts\/dev-game\.ts/u);
 });
 
 test("player menu preview stays loopback-only", () => {

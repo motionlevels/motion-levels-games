@@ -6,6 +6,17 @@ export function readStoredSelectedGameId(
   availableGameIds: readonly string[],
   storage: StorageLike | undefined = browserStorage()
 ): string | undefined {
+  if (typeof window !== "undefined") {
+    try {
+      const urlGame = new URLSearchParams(window.location.search).get("game")?.trim();
+      if (urlGame && availableGameIds.includes(urlGame)) {
+        return urlGame;
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+  }
+
   if (!storage) {
     return undefined;
   }
