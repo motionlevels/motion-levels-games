@@ -5857,11 +5857,31 @@ function PartyPreview({ catalogGames, compact = false, difficulty, game, rich = 
 }
 
 function LevelMysteryPreview() {
+  const floorRotation = useVenueFloorRotation();
+  const previewDimensions = floorDisplaySize(
+    floorPreviewMediaSpec.width,
+    floorPreviewMediaSpec.height,
+    floorRotation,
+  );
+  const previewHeightLimitedWidth = floorRotation === 90 || floorRotation === 270
+    ? "calc((100cqh - var(--preview-board-height-inset, 10px)) / 2)"
+    : "calc((100cqh - var(--preview-board-height-inset, 10px)) + (100cqh - var(--preview-board-height-inset, 10px)))";
   return (
-    <div className="preview compact-preview level-mystery-preview" aria-hidden="true">
-      <span className="level-mystery-preview__icon">
-        <QuestionIcon />
-      </span>
+    <div
+      className="preview compact-preview"
+      style={{
+        "--preview-media-width": `${previewDimensions.width}px`,
+        "--preview-media-aspect": `${previewDimensions.width} / ${previewDimensions.height}`,
+        "--preview-media-height-limited-width": previewHeightLimitedWidth,
+      } as CSSProperties}
+      aria-hidden="true"
+    >
+      <div className="preview-media-frame preview-mystery-frame" data-floor-rotation={floorRotation}>
+        <div className="preview-fallback-led-grid" />
+        <span className="level-mystery-preview__icon">
+          <QuestionIcon />
+        </span>
+      </div>
     </div>
   );
 }
@@ -5893,8 +5913,8 @@ function Preview({
     floorRotation,
   );
   const previewHeightLimitedWidth = floorRotation === 90 || floorRotation === 270
-    ? "calc((100cqh - var(--preview-board-height-inset)) / 2)"
-    : "calc((100cqh - var(--preview-board-height-inset)) + (100cqh - var(--preview-board-height-inset)))";
+    ? "calc((100cqh - var(--preview-board-height-inset, 14px)) / 2)"
+    : "calc((100cqh - var(--preview-board-height-inset, 14px)) + (100cqh - var(--preview-board-height-inset, 14px)))";
   const [failedSrcs, setFailedSrcs] = useState<string[]>([]);
   const [loadedPosterSrc, setLoadedPosterSrc] = useState("");
   const [promotedSrc, setPromotedSrc] = useState("");
@@ -5947,11 +5967,12 @@ function Preview({
 
   const anim = fallbackAnim || floorAnimations[animationID];
   const promotedToAnimation = Boolean(promoteAnimation && posterReady && !richCandidate && anim);
-  const mediaSrc = promotedToAnimation ? undefined : promotedSrc || posterSrc;
+  const mediaSrc = promotedToAnimation ? undefined : (promotedSrc || posterSrc);
   const logoMedia = isMotionLevelsLogoSrc(mediaSrc);
   const mediaUnavailable = mediaWasConfigured && !mediaSrc;
   const showAnimation = Boolean((promotedToAnimation || !mediaSrc) && anim);
   const showLogoFallback = !mediaSrc && !showAnimation;
+
   return (
     <div
       className={`preview ${compact ? "compact-preview" : ""} ${logoMedia || showLogoFallback ? "logo-preview" : ""}`}
@@ -5962,43 +5983,49 @@ function Preview({
       } as CSSProperties}
       data-media-unavailable={mediaUnavailable || undefined}
     >
-      {mediaSrc && logoMedia ? (
-        <img
-          className="preview-media logo-preview-media"
-          src={mediaSrc}
-          alt=""
-          aria-hidden="true"
-          decoding="async"
-          draggable={false}
-          loading={compact ? "lazy" : "eager"}
-          onError={() => setFailedSrcs((failed) => failed.includes(mediaSrc) ? failed : [...failed, mediaSrc])}
-          onLoad={() => {
-            if (mediaSrc === posterSrc) setLoadedPosterSrc(posterSrc);
-          }}
-        />
-      ) : mediaSrc ? (
+      {mediaSrc && !logoMedia ? (
         <div className="preview-media-frame" data-floor-rotation={floorRotation}>
-          <img
-            className="preview-media"
-            src={mediaSrc}
-            width={floorPreviewMediaSpec.width}
-            height={floorPreviewMediaSpec.height}
-            alt=""
-            aria-hidden="true"
-            decoding="async"
-            draggable={false}
-            loading={compact ? "lazy" : "eager"}
-            onError={() => setFailedSrcs((failed) => failed.includes(mediaSrc) ? failed : [...failed, mediaSrc])}
-            onLoad={() => {
-              if (mediaSrc === posterSrc) setLoadedPosterSrc(posterSrc);
-            }}
-          />
+          {posterSrc && (
+            <img
+              className={`preview-media preview-media-poster ${promotedSrc ? "has-promoted" : ""}`}
+              src={posterSrc}
+              width={floorPreviewMediaSpec.width}
+              height={floorPreviewMediaSpec.height}
+              alt=""
+              aria-hidden="true"
+              decoding="async"
+              draggable={false}
+              loading={compact ? "lazy" : "eager"}
+              onError={() => setFailedSrcs((failed) => failed.includes(posterSrc) ? failed : [...failed, posterSrc])}
+              onLoad={() => {
+                setLoadedPosterSrc(posterSrc);
+              }}
+            />
+          )}
+          {promotedSrc && promotedSrc !== posterSrc && (
+            <img
+              key={promotedSrc}
+              className="preview-media preview-media-animated"
+              src={promotedSrc}
+              width={floorPreviewMediaSpec.width}
+              height={floorPreviewMediaSpec.height}
+              alt=""
+              aria-hidden="true"
+              decoding="async"
+              draggable={false}
+              loading="eager"
+              onError={() => setFailedSrcs((failed) => failed.includes(promotedSrc) ? failed : [...failed, promotedSrc])}
+            />
+          )}
         </div>
       ) : showAnimation ? (
         <FloorPreview anim={anim} orientation="landscape" />
       ) : (
-        <div className="preview-logo-fallback" aria-hidden="true">
-          <img src={publicAssetURL("motion-levels-icon.webp")} alt="" />
+        <div className="preview-media-frame preview-media-fallback-frame" data-floor-rotation={floorRotation}>
+          <div className="preview-fallback-led-grid" aria-hidden="true" />
+          <div className="preview-logo-fallback" aria-hidden="true">
+            <img src={publicAssetURL("motion-levels-icon.webp")} alt="" />
+          </div>
         </div>
       )}
     </div>
