@@ -1537,8 +1537,8 @@ function MenuApp() {
       mirroredMenuUpdatedUnixMillis.current
     );
     setMenuMirrorConnected(resolved.ready);
+    if (resolved.ready) setMenuMirrorReady(true);
     if (!resolved.accepted || !resolved.snapshot) return;
-    setMenuMirrorReady(true);
     mirroredMenuVersion.current = resolved.version;
     mirroredMenuUpdatedUnixMillis.current = resolved.updatedUnixMillis;
     const snapshot = resolved.snapshot;
