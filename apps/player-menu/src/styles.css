@@ -666,8 +666,8 @@ body {
   aspect-ratio: 2 / 1;
   min-height: 0;
   padding: 0;
-  border: 1px solid rgba(214, 228, 255, 0.12);
-  border-radius: 18px;
+  border: 1px solid rgba(214, 228, 255, 0.14);
+  border-radius: 0;
   overflow: hidden;
   background:
     radial-gradient(80% 80% at 50% 44%, rgba(var(--crgb, var(--accent-rgb)), 0.2), transparent 70%),
@@ -684,7 +684,7 @@ body {
   max-width: 100%;
   max-height: 100%;
   aspect-ratio: 2 / 1;
-  border-radius: 16px;
+  border-radius: 0;
   transform: none;
   box-shadow: none;
 }
@@ -2390,7 +2390,7 @@ button.capsule:disabled,
   height: auto;
   aspect-ratio: var(--preview-media-aspect);
   position: relative;
-  border-radius: 4px;
+  border-radius: 0;
   transform: rotateX(12deg) rotateZ(0.3deg);
   transform-origin: center 56%;
   box-shadow:
