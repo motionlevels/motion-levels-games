@@ -36,7 +36,25 @@ const sourceBuildDate = execFileSync("git", ["show", "-s", "--format=%cI", sourc
   encoding: "utf8"
 }).trim();
 const outputRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(repoRoot, "dist/bundle"));
-const mediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path.join(repoRoot, "dist/media"));
+const defaultDistMedia = path.join(repoRoot, "dist/media");
+const defaultSubmoduleMedia = path.join(repoRoot, "assets/media");
+let resolvedMediaRoot = defaultDistMedia;
+if (process.env.MOTION_LEVELS_GAMES_MEDIA_DIR) {
+  resolvedMediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR);
+} else {
+  try {
+    const s = await stat(defaultDistMedia);
+    if (!s.isDirectory()) throw new Error();
+  } catch {
+    try {
+      const s = await stat(defaultSubmoduleMedia);
+      if (s.isDirectory()) resolvedMediaRoot = defaultSubmoduleMedia;
+    } catch {
+      // fallback to default dist/media
+    }
+  }
+}
+const mediaRoot = resolvedMediaRoot;
 const displayCSSSource = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
 const displayLogo = await readFile(path.join(repoRoot, "packages/display-kit/src/assets/motion-levels-icon.png"));
 const displayLogoReference = 'url("./assets/motion-levels-icon.png")';

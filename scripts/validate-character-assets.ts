@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   inspectGlb,
@@ -26,8 +26,19 @@ const policies: Readonly<Record<string, CharacterAssetAuditPolicy>> = Object.fre
 });
 const failures: string[] = [];
 
+async function resolveAssetPath(file: string): Promise<string> {
+  const submodulePath = path.resolve("assets/3d/characters", path.basename(file));
+  try {
+    const s = await stat(submodulePath);
+    if (s.isFile()) return submodulePath;
+  } catch {
+    // fallback
+  }
+  return path.resolve("packages/character-runtime", file);
+}
+
 for (const manifest of manifests) {
-  const absolutePath = path.resolve("packages/character-runtime", manifest.file);
+  const absolutePath = await resolveAssetPath(manifest.file);
   const bytes = await readFile(absolutePath);
   const inspection = inspectGlb(bytes);
   const validation = validateCharacterAsset(manifest, inspection);

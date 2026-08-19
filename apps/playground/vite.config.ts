@@ -10,8 +10,15 @@ const playgroundRoot = path.dirname(fileURLToPath(import.meta.url));
 const gamesRoot = path.resolve(playgroundRoot, "../../games");
 const gameRegistryPath = path.resolve(playgroundRoot, "src/gameRegistry.ts");
 const playerMenuRoot = path.resolve(playgroundRoot, "../player-menu");
-const characterAssetsRoot = path.resolve(playgroundRoot, "../../packages/character-runtime/assets");
-const generatedMediaRoot = path.resolve(playgroundRoot, "../../dist/media");
+const characterAssetsSubmoduleRoot = path.resolve(playgroundRoot, "../../assets/3d/characters");
+const characterAssetsFallbackRoot = path.resolve(playgroundRoot, "../../packages/character-runtime/assets");
+const characterAssetsRoot = existsSync(characterAssetsSubmoduleRoot)
+  ? characterAssetsSubmoduleRoot
+  : characterAssetsFallbackRoot;
+const mediaSubmoduleRoot = path.resolve(playgroundRoot, "../../assets/media/games");
+const generatedMediaRoot = existsSync(mediaSubmoduleRoot)
+  ? mediaSubmoduleRoot
+  : path.resolve(playgroundRoot, "../../dist/media");
 const webpEncoderWasmPath = path.resolve(playgroundRoot, "../../node_modules/webp-encoder/lib/assets/a.out.wasm");
 const menuBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse --short HEAD") || "dev";
 const menuBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
