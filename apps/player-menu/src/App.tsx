@@ -4487,13 +4487,42 @@ function WelcomeScreen({
   onStart: () => void;
   onFullscreen: () => void;
 }) {
-  const availableGames = previewGames?.length ? previewGames : games;
-  const welcomeGame = availableGames.find((game) => game.levels?.length && game.featured) || availableGames.find((game) => game.levels?.length);
+  const availableGames = useMemo(() => {
+    const list = previewGames?.length ? previewGames : games;
+    return list.filter((g) => !g.disabled);
+  }, [previewGames]);
+
+  const [activeGameIndex, setActiveGameIndex] = useState(() => {
+    if (!availableGames.length) return 0;
+    const featuredIndex = availableGames.findIndex((game) => game.featured);
+    return featuredIndex >= 0 ? featuredIndex : 0;
+  });
+
+  useEffect(() => {
+    if (availableGames.length <= 1) return;
+    const timer = setInterval(() => {
+      setActiveGameIndex((prevIndex) => {
+        let nextIndex = prevIndex;
+        let attempts = 0;
+        while (nextIndex === prevIndex && attempts < 10) {
+          nextIndex = Math.floor(Math.random() * availableGames.length);
+          attempts += 1;
+        }
+        if (nextIndex === prevIndex) {
+          nextIndex = (prevIndex + 1) % availableGames.length;
+        }
+        return nextIndex;
+      });
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [availableGames]);
+
+  const welcomeGame = availableGames[activeGameIndex] || availableGames[0];
   const welcomeLevel = welcomeGame?.levels?.[0];
-  const welcomePreviewSrc = welcomeGame ? levelPreviewSrc(welcomeGame, welcomeLevel, "easy") : undefined;
-  const welcomePreviewAnimation = welcomeGame ? levelFallbackPreviewAnimationID(welcomeGame, welcomeLevel) : "lava";
+  const welcomePreviewSrc = welcomeGame ? (welcomeGame.previewSrc || levelPreviewSrc(welcomeGame, welcomeLevel, "easy")) : undefined;
+  const welcomePreviewAnimation = welcomeGame ? (previewAnimationID(welcomeGame) || levelFallbackPreviewAnimationID(welcomeGame, welcomeLevel)) : "lava";
   const systemStatusClass = connectionState === "connection-on" && !floorReady ? "floor-off" : connectionState;
-  const connectionLabel = systemStatusLabel(connectionState, floorReady);
+
   return (
     <main className={`app welcome-app ${systemStatusClass} ${readOnly ? "read-only-mirror" : ""}`} inert={readOnly}>
       {error || message ? (
@@ -4505,16 +4534,21 @@ function WelcomeScreen({
       <section className="welcome-screen" aria-label="Inicio">
         <div className="welcome-copy">
           <button className="welcome-mark" type="button" aria-label="Pantalla completa" title="Pantalla completa" onClick={onFullscreen} />
-          <span className={`system-status welcome-status ${systemStatusClass}`} role="status" aria-live="polite">
-            <span className="system-status-dot" aria-hidden="true" />
-            {connectionLabel}
-          </span>
           <h1>Motion Levels</h1>
           <p>Preparad el equipo, elegid un reto y jugad sobre el suelo LED.</p>
         </div>
         <div className="welcome-visual" aria-hidden="true">
           <div className="welcome-floor" style={{ "--crgb": welcomeGame ? hexToRGB(welcomeGame.color) : "47, 216, 108" } as CSSProperties}>
-            <Preview src={welcomePreviewSrc} animationID={welcomePreviewAnimation} promoteAnimation />
+            <Preview
+              key={welcomeGame?.id || "welcome"}
+              src={welcomeGame ? gameThumbnailSrc(welcomeGame) : undefined}
+              srcs={welcomeGame ? gameThumbnailSrcs(welcomeGame) : emptyPreviewSources}
+              richSrc={welcomePreviewSrc}
+              richSrcs={welcomeGame ? gamePreviewSrcs(welcomeGame) : emptyPreviewSources}
+              animationID={welcomePreviewAnimation}
+              revisionHash={welcomeGame?.previewRevisionHash}
+              promoteAnimation
+            />
           </div>
         </div>
         {remoteSessionRequest ? (
