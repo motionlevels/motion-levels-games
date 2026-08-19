@@ -95,16 +95,21 @@ class KioskErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
   }
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <KioskViewport>
-      <VenueFloorRotationProvider>
-        <MenuUpdateGate>
-          <KioskErrorBoundary>
-            <App />
-          </KioskErrorBoundary>
-        </MenuUpdateGate>
-      </VenueFloorRotationProvider>
-    </KioskViewport>
-  </StrictMode>,
-);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  const globalRoot = window as unknown as { __motionLevelsMenuRoot?: ReturnType<typeof createRoot> };
+  const root = globalRoot.__motionLevelsMenuRoot || (globalRoot.__motionLevelsMenuRoot = createRoot(rootElement));
+  root.render(
+    <StrictMode>
+      <KioskViewport>
+        <VenueFloorRotationProvider>
+          <MenuUpdateGate>
+            <KioskErrorBoundary>
+              <App />
+            </KioskErrorBoundary>
+          </MenuUpdateGate>
+        </VenueFloorRotationProvider>
+      </KioskViewport>
+    </StrictMode>,
+  );
+}
