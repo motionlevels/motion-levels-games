@@ -46,6 +46,7 @@ export default defineConfig({
       "/engine": {
         target: "http://127.0.0.1:4102",
         changeOrigin: true,
+        rewrite: (reqPath) => reqPath.replace(/^\/engine/, ""),
       },
     },
     fs: {

@@ -183,7 +183,7 @@ function inferEngineURL(): string {
   if (gatewayMatch) {
     return `${window.location.origin}${gatewayMatch[0].replace(/\/menu\/?$/, "/engine")}`;
   }
-  if (window.location.pathname.startsWith("/menu") || window.location.pathname.startsWith("/display")) {
+  if (window.location.pathname.startsWith("/menu") || window.location.pathname.startsWith("/display") || window.location.pathname.startsWith("/player-menu")) {
     return `${window.location.origin}/engine`;
   }
   return `${window.location.protocol}//${window.location.hostname}:${enginePort}`;
