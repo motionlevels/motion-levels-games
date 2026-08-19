@@ -5142,7 +5142,6 @@ function OperatorSettingsDialog({
           <section className="settings-version-card" aria-label="Diagnóstico del sistema y versión desplegada">
             <span className="micro">Versión desplegada</span>
             <strong title={__MENU_BUILD_REVISION__}>{__MENU_BUILD_REVISION__.slice(0, 8)}</strong>
-            <small className="settings-build-revision">Versión {__MOTION_LEVELS_GAMES_BUILD_VERSION__}</small>
             <div className="settings-health" aria-label="Estado del sistema">
               <div className={`settings-health-item ${engineLabel === "Conectado" ? "ok" : "warn"}`}>
                 <span className="settings-health-icon" aria-hidden="true"><BoltIcon /></span>
