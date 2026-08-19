@@ -31,6 +31,7 @@
     "test:all": "npm test && npm run test:contracts && npm run test:scaffold",
     "test:scaffold": "tsx scripts/test-create-game.ts",
     "test:player-menu": "tsx scripts/test-player-menu-browser.ts",
+    "validate:architecture": "tsx scripts/validate-architecture.ts",
     "validate:games": "tsx scripts/validate-games.ts",
     "validate:characters": "tsx scripts/validate-character-assets.ts",
     "optimize:character-asset": "tsx scripts/optimize-character-asset.ts",
@@ -39,8 +40,8 @@
     "playtest": "tsx scripts/playtest-games.ts",
     "playtest:browser": "tsx scripts/playtest-playground.ts",
     "generate:media": "tsx scripts/generate-media.ts",
-    "check": "npm run lint && npm run validate:games && npm run validate:characters && npm run benchmark:agents && npm run typecheck && npm run test:all && npm run build && npm run playtest",
-    "check:fast": "npm run lint && npm run typecheck"
+    "check": "npm run lint && npm run validate:architecture && npm run validate:games && npm run validate:characters && npm run benchmark:agents && npm run typecheck && npm run test:all && npm run build && npm run playtest",
+    "check:fast": "npm run lint && npm run validate:architecture && npm run typecheck"
   },
   "overrides": {
     "@gltf-transform/cli": {

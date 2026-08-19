@@ -1,0 +1,36 @@
+{
+  "schema": "motion-levels-games-architecture-v1",
+  "gameRoot": "games",
+  "engineAuthority": "packages/game-sdk",
+  "coreRoots": [
+    "packages/game-sdk",
+    "packages/display-kit",
+    "packages/agent-runtime",
+    "packages/agent-analytics",
+    "packages/animation-runtime",
+    "packages/character-runtime",
+    "packages/jugar-3d",
+    "packages/player-experience",
+    "packages/published-level-runtime",
+    "packages/replay-runtime",
+    "packages/session-history"
+  ],
+  "compositionRoots": [
+    "packages/runtime",
+    "apps",
+    "scripts"
+  ],
+  "allowedConcreteGameConsumers": [
+    "packages/runtime"
+  ],
+  "forbiddenEngineRoots": [
+    "game-engine",
+    "packages/engine",
+    "packages/game-engine",
+    "packages/core-engine",
+    "apps/game-engine"
+  ],
+  "strictMode": {
+    "description": "Strict mode additionally fails while a package-layer exception remains. Remove packages/runtime after moving concrete registries into a composition package."
+  }
+}

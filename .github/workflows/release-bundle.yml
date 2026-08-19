@@ -46,6 +46,8 @@ jobs:
     name: Release quality gate
     needs: release-policy
     uses: ./.github/workflows/checks.yml
+    with:
+      build_release_bundle: true
 
   bundle:
     needs:
@@ -106,6 +108,7 @@ jobs:
             echo "A newer main commit changes bundle inputs; its release must update consumers." >&2
             exit 1
           fi
+
   notify-platform:
     needs:
       - release-policy

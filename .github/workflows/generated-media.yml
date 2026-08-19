@@ -1,0 +1,72 @@
+name: Generated game media
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to render.
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-media-${{ github.event_name == 'workflow_dispatch' && inputs.ref || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    name: Render previews and thumbnails
+    runs-on: ${{ vars.CI_RUNNER_LABEL }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          path: source
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || 'main' }}
+      - name: Record the exact source revision
+        id: source
+        shell: bash
+        run: echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: source/.node-version
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - run: npm ci
+      - run: npm run validate:architecture
+      - run: npm run build
+      - name: Run slow deterministic agent benchmark
+        run: npm run benchmark:agents
+      - name: Render all media in the pinned browser runtime
+        env:
+          MOTION_LEVELS_GAMES_SOURCE_REVISION: ${{ steps.source.outputs.revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/playwright-home"
+          docker run --rm --ipc=host \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/runner-temp/playwright-home \
+            --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+            --env MOTION_LEVELS_GAMES_SOURCE_REVISION \
+            --volume "$GITHUB_WORKSPACE/source:/workspace" \
+            --volume "$RUNNER_TEMP:/runner-temp" \
+            --workdir /workspace \
+            mcr.microsoft.com/playwright:v1.61.1-noble \
+            bash -lc 'set -euo pipefail; npm run playtest:browser; npm run generate:media'
+      - name: Upload generated media
+        uses: actions/upload-artifact@v7
+        with:
+          name: motion-levels-generated-media-${{ steps.source.outputs.revision }}
+          path: source/dist/media
+          if-no-files-found: error
+          retention-days: 14

@@ -2,6 +2,12 @@ name: Shared checks
 
 on:
   workflow_call:
+    inputs:
+      build_release_bundle:
+        description: Generate media and assemble the immutable production bundle.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -12,7 +18,7 @@ defaults:
 
 jobs:
   quality:
-    name: Lint, manifests, and types
+    name: Lint, architecture, manifests, and types
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
@@ -26,9 +32,9 @@ jobs:
           cache-dependency-path: source/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run validate:architecture
       - run: npm run validate:games
       - run: npm run validate:characters
-      - run: npm run benchmark:agents
       - run: npm run typecheck
 
   compatibility-tests:
@@ -48,7 +54,7 @@ jobs:
       - run: npm run test:all
 
   coverage-tests:
-    name: Coverage and contracts
+    name: Coverage and playground tests
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 10
     steps:
@@ -61,10 +67,8 @@ jobs:
           cache: npm
           cache-dependency-path: source/package-lock.json
       - run: npm ci
-      - run: npm run test:contracts
       - run: npm run test:coverage
       - run: npm run test --workspace @motion-levels-games/playground
-      - run: npm run test:scaffold
 
   build-and-playtest:
     name: Production build and deterministic engine playtest
@@ -84,10 +88,7 @@ jobs:
       - run: npm run playtest
 
   browser-playtest:
-    name: Browser playtest and release bundle in pinned runtime
-    # This job measures software-rendered frame timing and generates all media.
-    # Running it beside the four CPU-heavy lanes on the same homelab host can
-    # starve SwiftShader and turn host contention into a false product failure.
+    name: Browser playtest and optional release bundle
     needs: [quality, compatibility-tests, coverage-tests, build-and-playtest]
     runs-on: ${{ vars.CI_RUNNER_LABEL }}
     timeout-minutes: 30
@@ -103,7 +104,7 @@ jobs:
           cache-dependency-path: source/package-lock.json
       - run: npm ci
       - name: Resolve the player-facing release tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: inputs.build_release_bundle
         shell: bash
         run: |
           set -euo pipefail
@@ -131,9 +132,11 @@ jobs:
 
           echo "MOTION_LEVELS_GAMES_RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
       - run: npm run build
-      - name: Run browser-backed release gate in pinned runtime
+      - name: Run browser gate in the pinned Playwright runtime
         env:
+          BUILD_RELEASE_BUNDLE: ${{ inputs.build_release_bundle }}
           MOTION_LEVELS_GAMES_SOURCE_REVISION: ${{ github.sha }}
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/playwright-home"
@@ -145,14 +148,24 @@ jobs:
             --user "$(id -u):$(id -g)" \
             --env HOME=/runner-temp/playwright-home \
             --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+            --env BUILD_RELEASE_BUNDLE \
             --env MOTION_LEVELS_GAMES_SOURCE_REVISION \
             "${release_tag_env[@]}" \
             --volume "$GITHUB_WORKSPACE/source:/workspace" \
             --volume "$RUNNER_TEMP:/runner-temp" \
             --workdir /workspace \
             mcr.microsoft.com/playwright:v1.61.1-noble \
-            bash -lc 'npm run playtest:browser && npm run generate:media && npm run build:bundle && npm run verify:bundle'
+            bash -lc '
+              set -euo pipefail
+              npm run playtest:browser
+              if [[ "$BUILD_RELEASE_BUNDLE" == "true" ]]; then
+                npm run generate:media
+                npm run build:bundle
+                npm run verify:bundle
+              fi
+            '
       - name: Upload production bundle
+        if: inputs.build_release_bundle
         uses: actions/upload-artifact@v7
         with:
           name: motion-levels-games-${{ github.sha }}
