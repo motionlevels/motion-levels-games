@@ -97,8 +97,8 @@ class KioskErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 
 const rootElement = document.getElementById("root");
 if (rootElement) {
-  const globalRoot = window as unknown as { __motionLevelsMenuRoot?: ReturnType<typeof createRoot> };
-  const root = globalRoot.__motionLevelsMenuRoot || (globalRoot.__motionLevelsMenuRoot = createRoot(rootElement));
+  const globalRoot = window as unknown as { motionLevelsMenuRoot?: ReturnType<typeof createRoot> };
+  const root = globalRoot.motionLevelsMenuRoot || (globalRoot.motionLevelsMenuRoot = createRoot(rootElement));
   root.render(
     <StrictMode>
       <KioskViewport>

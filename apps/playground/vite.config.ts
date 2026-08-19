@@ -76,6 +76,12 @@ function generatedMedia(): PluginOption {
         next();
         return;
       }
+      if (pathname === "/api/game-catalog") {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.end(JSON.stringify({ games: [] }));
+        return;
+      }
       const mediaPrefixOffset = pathname.indexOf("/media/");
       if (mediaPrefixOffset < 0) {
         next();

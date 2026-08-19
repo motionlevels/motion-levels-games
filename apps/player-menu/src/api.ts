@@ -282,8 +282,13 @@ export async function fetchGameCatalog(): Promise<PlatformGameCatalogEntry[]> {
   }
   const baseURL = platformBaseURL();
   if (!baseURL) return [];
-  const payload = await requestJSON<{ games?: PlatformGameCatalogEntry[] }>(`${baseURL}/api/game-catalog`, { cache: "no-store" });
-  return Array.isArray(payload.games) ? payload.games : [];
+  try {
+    const payload = await requestJSON<{ games?: PlatformGameCatalogEntry[] }>(`${baseURL}/api/game-catalog`, { cache: "no-store" });
+    return Array.isArray(payload.games) ? payload.games : [];
+  } catch {
+    const { localPlayerExperienceCatalog } = await import("./localCatalog");
+    return localPlayerExperienceCatalog();
+  }
 }
 
 export async function fetchAnimationPreview(level: string, frames = 16, revision?: string): Promise<AnimationPreview> {
