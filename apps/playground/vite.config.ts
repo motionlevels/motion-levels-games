@@ -38,6 +38,16 @@ export default defineConfig({
   },
   plugins: [motionLevelsGamesWatcher(), generatedMedia(), characterModels(), webpEncoderWasm(), react()],
   server: {
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:4102",
+        changeOrigin: true,
+      },
+      "/engine": {
+        target: "http://127.0.0.1:4102",
+        changeOrigin: true,
+      },
+    },
     fs: {
       allow: [
         playgroundRoot,
