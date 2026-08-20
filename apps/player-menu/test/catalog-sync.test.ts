@@ -19,7 +19,7 @@ import {
   shouldPreferCatalogFallbackPreviewAnimation,
   supportedDifficultiesForGame,
 } from "../src/catalogSync.ts";
-import { platformAnimationCards } from "../src/animationCatalog.ts";
+import { nativeAnimationCards, platformAnimationCards } from "../src/animationCatalog.ts";
 import { inferPlatformURL } from "../src/api.ts";
 import { catalogSourceMatchesBundledRuntime, isSupportedRuntimeSourceFromProducts } from "../src/runtimeSourcePolicy.ts";
 import type { PlatformGameCatalogEntry } from "../src/api.ts";
@@ -76,7 +76,9 @@ describe("catalog metadata sync", () => {
       /filter\(\(manifest\) => manifest\.availability\.production && manifest\.slug !== "animations"\)/,
     );
     assert.match(appSource, /const bundledGames = bundledProductionGameCards\(\);/);
-    assert.match(appSource, /\[\.\.\.bundledGames, \.\.\.platformAnimations/);
+    assert.match(appSource, /const animationCards = platformCatalog === null/);
+    assert.match(appSource, /\[\.\.\.bundledGames, \.\.\.animationCards/);
+    assert.match(appSource, /nativeAnimationCards\(\)/);
     assert.match(appSource, /featured: fallback\?\.featured === true/);
     assert.doesNotMatch(appSource, /category: fallback\.category/);
     assert.match(appSource, /Number\(right\.featured === true\) - Number\(left\.featured === true\)/);
@@ -316,6 +318,24 @@ describe("catalog metadata sync", () => {
     assert.equal(thumbnailURL.searchParams.get("revision"), "dev");
     assert.equal(previewURL.searchParams.get("revision"), "dev");
     assert.equal(cards[0].previewRevisionHash, "level-rev");
+  });
+
+  it("keeps the native animation library available while the platform catalog is offline", () => {
+    const revision = "a".repeat(40);
+    const cards = nativeAnimationCards({
+      sourceRevision: revision,
+      menuLocation: "https://venue.test/menu/",
+    });
+    assert.ok(cards.length >= 24);
+    const aurora = cards.find((card) => card.id === "animation-aurora");
+    assert.ok(aurora);
+    assert.equal(aurora?.category, "attract");
+    assert.equal(aurora?.sourceKind, "animation");
+    assert.equal(aurora?.previewAnimation, undefined);
+    assert.equal(
+      new URL(aurora?.previewSrc || "").pathname,
+      `/games/${revision}/media/animations/aurora/aurora-preview.webp`,
+    );
   });
 
   it("keeps party inside the competitive menu category", () => {

@@ -47,7 +47,7 @@ import {
   uniquePreviewSources,
 } from "./previews";
 import { captureMenuEvent, menuKioskID, recordMenuEvent, setMenuEventForwarder } from "./analytics";
-import { nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
+import { nativeAnimationCards, nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
 import { bundledGamesSourceRevision, floorPreviewMediaSpec } from "./bundleMedia";
 import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
@@ -1650,9 +1650,11 @@ function MenuApp() {
 
   const menuGames = useMemo(() => {
     const bundledGames = bundledProductionGameCards();
-    const platformAnimations = platformAnimationCards(platformCatalog);
+    const animationCards = platformCatalog === null
+      ? nativeAnimationCards()
+      : platformAnimationCards(platformCatalog);
     return applyPlatformCatalog(
-      [...bundledGames, ...platformAnimations, ...liveAnimationCards(status?.catalog, [...bundledGames, ...platformAnimations])],
+      [...bundledGames, ...animationCards, ...liveAnimationCards(status?.catalog, [...bundledGames, ...animationCards])],
       platformCatalog,
       status?.catalog,
     );

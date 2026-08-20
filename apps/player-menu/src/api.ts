@@ -285,8 +285,12 @@ export async function fetchGameCatalog(): Promise<PlatformGameCatalogEntry[]> {
     const payload = await requestJSON<{ games?: PlatformGameCatalogEntry[] }>(`${baseURL}/api/game-catalog`, { cache: "no-store" });
     return Array.isArray(payload.games) ? payload.games : [];
   } catch {
-    const { localPlayerExperienceCatalog } = await import("./localCatalog");
-    return localPlayerExperienceCatalog();
+    // Keep the caller's bundled fallback active when the cloud catalog is
+    // unavailable. Returning the complete local catalog here makes the
+    // result look like a successful platform response and can replace the
+    // curated offline selection (including published animation cards) with
+    // alphabetically featured metadata.
+    throw new Error("game catalog unavailable");
   }
 }
 

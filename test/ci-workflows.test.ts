@@ -47,6 +47,7 @@ test("reusable checks make bundle assembly an explicit opt-in", () => {
     /if \[\[ "\$BUILD_RELEASE_BUNDLE" == "true" \]\]; then[\s\S]*?npm run generate:media[\s\S]*?npm run build:bundle[\s\S]*?npm run verify:bundle/u,
   );
   assert.match(checks, /npm run playtest:browser/u);
+  assert.match(checks, /npm run test:player-menu/u);
   assert.match(checks, /mcr\.microsoft\.com\/playwright:v1\.61\.1-noble/u);
   assert.match(checks, /if: inputs\.build_release_bundle[\s\S]*?actions\/upload-artifact@v7/u);
 });

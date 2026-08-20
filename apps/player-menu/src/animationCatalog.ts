@@ -1,6 +1,7 @@
 import type { PlatformGameCatalogEntry } from "./api";
 import type { GameCard } from "./catalog";
 import {
+  animationLibrary,
   animationLibraryById,
   animationMediaReferences,
 } from "@motion-levels-games/animation-runtime";
@@ -12,6 +13,40 @@ import {
 import { catalogDirectAssetSrc, uniquePreviewSources } from "./previews.ts";
 
 const animationColors = ["#36d9ff", "#005af8", "#8dff6e", "#b987ff", "#ff9f45", "#ffd166"];
+
+/**
+ * The native animation library is part of the games bundle. Keep it
+ * available while the platform catalog is offline; a successful platform
+ * catalog still controls which editor-published animation levels are shown.
+ */
+export function nativeAnimationCards(
+  options: { menuLocation?: PlayerMenuLocation; sourceRevision?: string } = {},
+): GameCard[] {
+  return animationLibrary.map((animation, index): GameCard => {
+    const media = nativeAnimationMediaSources(animation.id, options);
+    return {
+      id: `animation-${animation.id}`,
+      label: animation.label,
+      category: "attract",
+      color: animationColors[index % animationColors.length],
+      players: "Todos",
+      difficulty: "Ambiente",
+      duration: "Bucle",
+      mode: "Ambiente",
+      audio: "Suave",
+      description: animation.description,
+      rules: ["Pisa la pista para crear ondas y destellos.", "Las animaciones se repiten sin cortes."],
+      engineGame: `animation-${animation.id}`,
+      previewRevisionHash: options.sourceRevision ?? bundledGamesSourceRevision(),
+      ...media,
+      featured: false,
+      minPlayers: 1,
+      maxPlayers: 1,
+      sourceKind: "animation",
+      sourceGameId: animation.id,
+    };
+  });
+}
 
 export function platformAnimationCards(catalog: PlatformGameCatalogEntry[] | null): GameCard[] {
   return (catalog || [])

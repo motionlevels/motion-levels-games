@@ -160,9 +160,13 @@ jobs:
             mcr.microsoft.com/playwright:v1.61.1-noble \
             bash -lc '
               set -euo pipefail
-              npm run playtest:browser
               if [[ "$BUILD_RELEASE_BUNDLE" == "true" ]]; then
                 npm run generate:media
+                export MOTION_LEVELS_GAMES_MEDIA_DIR=dist/media
+              fi
+              npm run test:player-menu
+              npm run playtest:browser
+              if [[ "$BUILD_RELEASE_BUNDLE" == "true" ]]; then
                 npm run build:bundle
                 npm run verify:bundle
               fi

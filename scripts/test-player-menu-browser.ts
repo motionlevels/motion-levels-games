@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright";
@@ -33,6 +34,11 @@ const viewportHeight = Number(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_HEIG
 const captureScreenshots = process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_SCREENSHOTS === "1";
 const scenarioFilter = String(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_SCENARIO || "").trim().toLowerCase();
 const baseURL = `http://127.0.0.1:${port}`;
+const generatedMediaRoot = String(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || "").trim();
+// A tiny CI-safe poster keeps the browser contract test independent from the
+// optional generated-media job. Release-bundle CI serves the real generated
+// files instead through MOTION_LEVELS_GAMES_MEDIA_DIR.
+const fallbackWebP = Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEAAUAmJaQAA3AA/vuUAAA=", "base64");
 const screenshotPath = (name: string) => path.join(tmpdir(), name);
 const viteEntry = path.join(repoRoot, "node_modules/vite/bin/vite.js");
 const server = spawn(
@@ -263,6 +269,68 @@ try {
     const lava = page.locator('.game-card[data-game-id="lava"]');
     await lava.waitFor({ state: "visible" });
     assert.equal(await lava.getAttribute("aria-pressed"), "true");
+
+    await page.getByRole("button", { name: "Ambiente", exact: true }).tap();
+    const nativeAnimation = page.locator('.game-card[data-game-id="animation-aurora"]');
+    await nativeAnimation.waitFor({ state: "visible" });
+    await nativeAnimation.tap();
+    await waitForAttribute(nativeAnimation, "aria-pressed", "true");
+    const nativePreview = nativeAnimation.locator("img.preview-media-animated");
+    await nativePreview.waitFor({ state: "visible" });
+    assert.ok(await nativePreview.evaluate((image) => (
+      image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
+    )));
+  });
+
+  await scenario("published animation previews render from the revisioned games bundle", async ({ page, platformCatalog }) => {
+    platformCatalog.push(mockCatalogEntry({
+      id: "animations",
+      engine_game: "animations",
+      label: "Animaciones",
+      catalog_category: "attract",
+      catalog_enabled: false,
+      source_kind: "animation",
+      source_game_id: "a861f0dc-3e2e-4fe9-b487-33194af75b68",
+      levels: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        slug: "aurora",
+        label: "Aurora",
+        description: "Loop publicado",
+        status: "published",
+        settings_hash: "animation-revision",
+      }],
+    }));
+
+    await startSession(page);
+    const drawer = page.locator(".team-drawer");
+    await drawer.locator(".drawer-done").tap();
+    await waitForAttribute(drawer, "aria-hidden", "true");
+    await page.getByRole("button", { name: "Ambiente", exact: true }).tap();
+
+    const card = page.locator('.game-card[data-game-id="animation-aurora"]');
+    await card.waitFor({ state: "visible" });
+    await waitForAttribute(card, "aria-pressed", "true");
+    const poster = card.locator("img.preview-media-poster");
+    const animated = card.locator("img.preview-media-animated");
+    await poster.waitFor({ state: "visible" });
+    await animated.waitFor({ state: "visible" });
+    const evidence = await card.evaluate((element) => {
+      const images = Array.from(element.querySelectorAll<HTMLImageElement>("img.preview-media"));
+      return {
+        images: images.map((image) => ({
+          complete: image.complete,
+          currentSrc: image.currentSrc,
+          naturalHeight: image.naturalHeight,
+          naturalWidth: image.naturalWidth,
+        })),
+        logoFallbacks: element.querySelectorAll(".preview-logo-fallback").length,
+      };
+    });
+    assert.equal(evidence.images.length, 2, `animation preview images did not mount: ${JSON.stringify(evidence)}`);
+    assert.ok(evidence.images.every((image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0), JSON.stringify(evidence));
+    assert.match(evidence.images[0]?.currentSrc || "", /\/media\/animations\/aurora\/aurora-thumbnail-small\.webp\?revision=/u);
+    assert.match(evidence.images[1]?.currentSrc || "", /\/media\/animations\/aurora\/aurora-preview\.webp\?revision=/u);
+    assert.equal(evidence.logoFallbacks, 0, `animation preview fell back to the logo: ${JSON.stringify(evidence)}`);
   });
 
   await scenario("recording controls stay operator-only and Welcome recovers from an unavailable service", async ({ page, status, venueSessionFailures, venueSessionRequests }) => {
@@ -526,6 +594,7 @@ async function scenario(name: string, run: (fixture: BrowserScenario) => Promise
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.stack ?? error.message));
   await installMockAPIs(context, status, platformCatalog, selectRequests, outputTestRequests, venueSessionFailures, venueSessionRequests);
+  await installBundleAnimationMedia(context);
   try {
     await run({ context, page, outputTestRequests, platformCatalog, selectRequests, status, venueSessionFailures, venueSessionRequests });
     assert.deepEqual(pageErrors, [], "the rendered menu must not raise browser errors");
@@ -647,6 +716,44 @@ async function installMockAPIs(
       status: 200,
       headers: { "access-control-allow-origin": "*", "content-type": "application/json" },
       body: JSON.stringify(status),
+    });
+  });
+}
+
+async function installBundleAnimationMedia(context: BrowserContext): Promise<void> {
+  await context.route("**/media/animations/**", async (route) => {
+    const url = new URL(route.request().url());
+    const marker = "/media/";
+    const markerIndex = url.pathname.indexOf(marker);
+    const relative = markerIndex >= 0 ? url.pathname.slice(markerIndex + marker.length) : "";
+    if (!/^animations\/[a-z0-9_-]+\/[a-z0-9_.-]+\.webp$/u.test(relative)) {
+      await route.continue();
+      return;
+    }
+
+    if (generatedMediaRoot) {
+      for (const candidate of [
+        path.resolve(generatedMediaRoot, relative),
+        path.resolve(generatedMediaRoot, "media", relative),
+      ]) {
+        try {
+          const contents = await readFile(candidate);
+          await route.fulfill({
+            status: 200,
+            headers: { "cache-control": "no-cache", "content-type": "image/webp" },
+            body: contents,
+          });
+          return;
+        } catch {
+          // Try the next supported bundle/media root.
+        }
+      }
+    }
+
+    await route.fulfill({
+      status: 200,
+      headers: { "cache-control": "no-cache", "content-type": "image/webp" },
+      body: fallbackWebP,
     });
   });
 }
