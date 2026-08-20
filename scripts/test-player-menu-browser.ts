@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Route } from "playwright";
 
 type MockEngineStatus = Record<string, unknown> & {
   revision: number;
@@ -340,6 +340,18 @@ try {
         animation: animationPreviewGeometry,
       })}`,
     );
+    const selectedAnimationDetailGeometry = await readPreviewGeometry(page.locator(".detail-preview .preview"));
+    assertUsableDetailPreview(
+      selectedAnimationDetailGeometry,
+      "the selected native animation detail preview",
+    );
+    assert.ok(
+      selectedAnimationDetailGeometry.width >= animationPreviewGeometry.width,
+      `the selected animation preview must not be smaller than its selector preview: ${JSON.stringify({
+        selector: animationPreviewGeometry,
+        detail: selectedAnimationDetailGeometry,
+      })}`,
+    );
     assert.equal(
       await page.locator('.game-card[data-game-id="animation-aurora"] .preview-logo-fallback').count(),
       0,
@@ -358,6 +370,13 @@ try {
     assert.equal(request.allowAnyPlayers, true);
     assert.deepEqual(request.config, { mode: "single", animation: "aurora" });
     assert.match(String(request.sourceRevision || ""), /^[0-9a-f]{40}$/u);
+
+    await page.getByRole("button", { name: "Destacados", exact: true }).tap();
+    const regularGame = page.locator('.game-card[data-game-id="lava"]');
+    await regularGame.waitFor({ state: "visible" });
+    await regularGame.tap();
+    const selectedGameDetailGeometry = await readPreviewGeometry(page.locator(".detail-preview .preview"));
+    assertUsableDetailPreview(selectedGameDetailGeometry, "the selected regular game detail preview");
   });
 
   await scenario("published animation previews render from the revisioned games bundle", async ({ page, platformCatalog }) => {
@@ -650,15 +669,29 @@ try {
   await stopServer(server);
 }
 
-async function readSelectorPreviewGeometry(card: import("playwright").Locator): Promise<{ width: number; height: number }> {
-  return card.locator(".preview").evaluate((preview) => {
-    const media = preview.querySelector<HTMLElement>(".preview-media-frame, canvas.floor-canvas");
+type PreviewGeometry = { width: number; height: number; aspect: number };
+
+async function readPreviewGeometry(preview: Locator): Promise<PreviewGeometry> {
+  return preview.evaluate((element) => {
+    const media = element.querySelector<HTMLElement>(".preview-media-frame, canvas.floor-canvas");
     if (!media) throw new Error("selector preview is missing its media frame");
     return {
       width: media.offsetWidth,
       height: media.offsetHeight,
+      aspect: media.offsetHeight > 0 ? media.offsetWidth / media.offsetHeight : 0,
     };
   });
+}
+
+async function readSelectorPreviewGeometry(card: Locator): Promise<PreviewGeometry> {
+  return readPreviewGeometry(card.locator(".preview"));
+}
+
+function assertUsableDetailPreview(geometry: PreviewGeometry, label: string): void {
+  const evidence = `${label}: ${JSON.stringify(geometry)}`;
+  assert.ok(geometry.width >= 180, `${label} must occupy a useful width, not collapse to a tiny thumbnail: ${evidence}`);
+  assert.ok(geometry.height >= 80, `${label} must occupy a useful height: ${evidence}`);
+  assert.ok(Math.abs(geometry.aspect - 2) <= 0.05, `${label} must retain the canonical 2:1 board aspect ratio: ${evidence}`);
 }
 
 if (failures.length > 0) {

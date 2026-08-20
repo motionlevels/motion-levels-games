@@ -80,6 +80,7 @@ import { gameForMenuIdentity } from "./gameIdentity.ts";
 import { defaultRecordingScope, migrateMotionlevelsOneRecordingScope, motionlevelsOneRecordingMigrationKey } from "./recordingDefaults.ts";
 import { floorDisplaySize } from "@motion-levels-games/game-sdk";
 import { useVenueFloorRotation } from "./venueFloorRotation";
+import { previewWidthLimitedByHeight } from "./previewGeometry";
 
 type MenuState = {
   sessionActive: boolean;
@@ -5940,9 +5941,10 @@ function LevelMysteryPreview() {
     floorPreviewMediaSpec.height,
     floorRotation,
   );
-  const previewHeightLimitedWidth = floorRotation === 90 || floorRotation === 270
-    ? "calc((100cqh - var(--preview-board-height-inset, 10px)) / 2)"
-    : "calc((100cqh - var(--preview-board-height-inset, 10px)) + (100cqh - var(--preview-board-height-inset, 10px)))";
+  const previewHeightLimitedWidth = previewWidthLimitedByHeight(
+    previewDimensions.width / previewDimensions.height,
+    "10px",
+  );
   return (
     <div
       className="preview compact-preview selector-preview"
@@ -5989,9 +5991,10 @@ function Preview({
     floorPreviewMediaSpec.height,
     floorRotation,
   );
-  const previewHeightLimitedWidth = floorRotation === 90 || floorRotation === 270
-    ? "calc((100cqh - var(--preview-board-height-inset, 14px)) / 2)"
-    : "calc((100cqh - var(--preview-board-height-inset, 14px)) + (100cqh - var(--preview-board-height-inset, 14px)))";
+  const previewHeightLimitedWidth = previewWidthLimitedByHeight(
+    previewDimensions.width / previewDimensions.height,
+    "14px",
+  );
   const [failedSrcs, setFailedSrcs] = useState<string[]>([]);
   const [loadedPosterSrc, setLoadedPosterSrc] = useState("");
   const [promotedSrc, setPromotedSrc] = useState("");

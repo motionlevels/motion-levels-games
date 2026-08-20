@@ -455,6 +455,8 @@ describe("catalog metadata sync", () => {
 
     const floorPreviewSource = fs.readFileSync(path.resolve(__dirname, "../src/FloorPreview.tsx"), "utf8");
     assert.match(floorPreviewSource, /const PITCH = floorPreviewMediaSpec\.height \/ FLOOR_COLS;/);
+    assert.match(floorPreviewSource, /previewWidthLimitedByHeight\(canvasWidth \/ canvasHeight, "18px"\)/);
+    assert.doesNotMatch(floorPreviewSource, /boardRotation === 90 \|\| boardRotation === 270/);
     assert.match(floorPreviewSource, /width=\{canvasWidth\}/);
     assert.match(floorPreviewSource, /height=\{canvasHeight\}/);
     assert.doesNotMatch(floorPreviewSource, /ResizeObserver|style\.width|clientWidth|clientHeight/);
@@ -466,6 +468,8 @@ describe("catalog metadata sync", () => {
     assert.match(styleSource, /\.preview-media-frame\[data-floor-rotation="270"\] \.preview-media[\s\S]*?rotate\(270deg\)/);
     assert.match(appSource, /setLoadedPosterSrc\(""\);\s*\}, \[posterSrc\]\);/);
     assert.match(appSource, /setPromotedSrc\(""\);\s*\}, \[posterSrc, richCandidate\]\);/);
+    assert.match(appSource, /previewWidthLimitedByHeight\(\s*previewDimensions\.width \/ previewDimensions\.height,/);
+    assert.doesNotMatch(appSource, /floorRotation === 90 \|\| floorRotation === 270\s*\n\s*\? "calc\(\(100cqh/);
   });
 
   it("publishes revisioned canonical bundle media in the local catalog", () => {

@@ -11,6 +11,7 @@ import {
 import { FLOOR_COLS, FLOOR_ROWS, type FloorAnim } from "./floor";
 import { floorPreviewMediaSpec } from "./bundleMedia";
 import { useVenueFloorRotation } from "./venueFloorRotation";
+import { previewWidthLimitedByHeight } from "./previewGeometry";
 
 const PITCH = floorPreviewMediaSpec.height / FLOOR_COLS;
 const GAP = 2;
@@ -33,9 +34,7 @@ export function FloorPreview({ anim, orientation = "portrait" }: { anim: FloorAn
   const canvasWidth = displaySize.width * PITCH;
   const canvasHeight = displaySize.height * PITCH;
   const boardRotation = floorBoardOrientationDegrees(boardOrientation);
-  const previewHeightLimitedWidth = boardRotation === 90 || boardRotation === 270
-    ? "calc((100cqh - var(--preview-board-height-inset)) / 2)"
-    : "calc((100cqh - var(--preview-board-height-inset)) + (100cqh - var(--preview-board-height-inset)))";
+  const previewHeightLimitedWidth = previewWidthLimitedByHeight(canvasWidth / canvasHeight, "18px");
 
   useEffect(() => {
     const canvas = canvasRef.current;

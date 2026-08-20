@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium } from "playwright";
+import { chromium, type Locator } from "playwright";
 
 const repoRoot = process.cwd();
 const playgroundPort = Number(process.env.MOTION_LEVELS_DEV_VENUE_PORT || 4104);
@@ -80,7 +80,9 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
     // Ambiente cards intentionally launch on selection. This must switch the
     // already-rendered display in memory instead of reloading the workbench.
     await menu.getByRole("button", { name: "Ambiente", exact: true }).click();
-    await menu.locator('.game-card[data-game-id="animation-aurora"]').click();
+    await assertUsableDetailPreview(menu.locator(".detail-preview .preview"), "no-controller ambient default");
+    const ambientAnimation = menu.locator('.game-card[data-game-id="animation-aurora"]');
+    await ambientAnimation.click();
     await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
     await assertTransparentLaunch(page, initialURL, mainNavigations, "ambient animation");
 
@@ -97,6 +99,7 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
     const regularGame = reopenedMenu.locator('.game-card[data-game-id="arkanoid"]');
     await regularGame.waitFor({ state: "visible" });
     await regularGame.click();
+    await assertUsableDetailPreview(reopenedMenu.locator(".detail-preview .preview"), "no-controller regular game");
     const play = reopenedMenu.locator(".launch-actions button.play");
     await play.waitFor({ state: "visible" });
     await play.click();
@@ -105,6 +108,22 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
   } finally {
     await browser.close();
   }
+}
+
+async function assertUsableDetailPreview(preview: Locator, label: string): Promise<void> {
+  const geometry = await preview.evaluate((element) => {
+    const media = element.querySelector<HTMLElement>(".preview-media-frame, canvas.floor-canvas");
+    if (!media) throw new Error("selected game preview is missing its media frame");
+    return {
+      width: media.offsetWidth,
+      height: media.offsetHeight,
+      aspect: media.offsetHeight > 0 ? media.offsetWidth / media.offsetHeight : 0,
+    };
+  });
+  const evidence = `${label}: ${JSON.stringify(geometry)}`;
+  assert.ok(geometry.width >= 180, `${label} must not collapse to a tiny thumbnail: ${evidence}`);
+  assert.ok(geometry.height >= 80, `${label} must occupy a useful height: ${evidence}`);
+  assert.ok(Math.abs(geometry.aspect - 2) <= 0.05, `${label} must retain the canonical 2:1 board aspect ratio: ${evidence}`);
 }
 
 async function assertTransparentLaunch(page: import("playwright").Page, initialURL: string, mainNavigations: string[], label: string): Promise<void> {
