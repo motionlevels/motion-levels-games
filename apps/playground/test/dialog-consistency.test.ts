@@ -94,6 +94,11 @@ test("effective pause blocks every player input path", () => {
   assert.match(appSource, /interactive=\{!paused\}/, "paused floor tiles must not remain interactive controls");
   assert.match(
     appSource,
+    /<FloorPreview[\s\S]*?interactive=\{!paused\}[\s\S]*?inputMode="momentary"/,
+    "the playground floor must release pointer input like the controller preview"
+  );
+  assert.match(
+    appSource,
     /if \(!pausedRef\.current && nextEffectivePaused\) \{\s*releaseActivePlayerInputs\(\);\s*\}/,
     "entering pause must release inputs that were already held"
   );

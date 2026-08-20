@@ -1693,6 +1693,7 @@ export function App() {
                 className="playground-floor-preview"
                 frame={frame}
                 interactive={!paused}
+                inputMode="momentary"
                 inputResetKey={inputResetSequence}
                 onTilePress={(x, y) => handleTilePress(x, y, "preview")}
                 onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}

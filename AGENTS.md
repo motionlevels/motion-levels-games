@@ -102,12 +102,12 @@ venue-owned.
   `countdownMillis` in the snapshot. Use the shared `PlayerReadyOverlay` for
   standard solo/cooperative displays instead of creating a one-off overlay.
 - Every multiplayer `player-ready` game must be startable in the development
-  playground by one person using one mouse. Sequential clicks on the required
-  zones must work through the playground's latched occupancy model; do not
-  require simultaneous pointer contacts. Declare `releaseGraceMillis` between
-  1,000 and 2,000 milliseconds, and browser-playtest the maximum supported
-  player count through real interactive-floor clicks rather than API presses
-  alone.
+  playground by one person. Use the public playground API to hold each required
+  zone when deterministic multi-player setup is needed; the browser floor uses
+  momentary pointer input and must not depend on sticky sequential clicks.
+  Declare `releaseGraceMillis` between 1,000 and 2,000 milliseconds, and keep
+  browser coverage for both the real pointer press/move/release contract and
+  the maximum supported player-count lifecycle.
 
 ## Player Count Policy
 
@@ -142,11 +142,13 @@ venue-owned.
 
 ## Developer UI Consistency
 
-- Interactive floor occupancy is semantic state, not a visual effect. Latched
-  mouse/touch inputs expose only `aria-pressed`; CSS must never style that
-  attribute or add a persistent active/pressed tile class. Only a real `:hover`
-  or `:focus-visible` state may decorate an input tile; the game frame owns
-  every persistent floor visual.
+- Interactive floor occupancy is semantic state, not a visual effect. The
+  playground/controller-style mouse and touch inputs are momentary: the active
+  tile is exposed through `aria-pressed` only while held and is released on
+  pointer end, cancellation, blur, or leaving the floor. CSS must never style
+  that attribute or add a persistent active/pressed tile class. Only a real
+  `:hover` or `:focus-visible` state may decorate an input tile; the game frame
+  owns every persistent floor visual.
 - Persist the last selected playground game and restore it only when its id is
   still present in the discovered game catalog. Every player count,
   difficulty, seed, or manifest setting change must restart the active game.

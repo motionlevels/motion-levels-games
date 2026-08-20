@@ -303,17 +303,18 @@ existing engine state for deterministic inspection; it does not apply blocked
 input. For deterministic input, briefly `resume()`, send the input
 synchronously, then `pause()` before stepping time.
 
-The interactive floor keeps latched mouse/touch occupancy after pointer-up so
-one gesture can represent multiple simultaneous players. Occupancy is exposed
-through `aria-pressed` for semantics and automation, but it has no persistent
-CSS treatment. Once the pointer leaves, all hover visuals must disappear; the
-game frame is the only persistent visual floor state.
+The interactive floor mirrors the controller's momentary mouse/touch behavior.
+The tile under a held pointer is exposed through `aria-pressed` for semantics
+and automation, moving to another tile releases the previous one, and
+pointer-up, pointer-cancel, blur, page hide, or leaving the floor releases the
+active tile. It has no persistent CSS treatment; the game frame is the only
+persistent visual floor state.
 
-For multiplayer readiness, click one tile in each illuminated start zone in
-sequence. Each click remains logically occupied until that tile is clicked
-again, allowing one person with one mouse to initialize the maximum supported
-player count. Multiplayer `player-ready` manifests also provide a 1–2 second
-release grace for brief input transitions.
+For multiplayer readiness, hold each illuminated start zone with
+`ml.press(x, y)` and keep those inputs active through the countdown, then call
+`ml.release(x, y)` after the game reaches `running`. Ordinary UI clicks are
+intentionally not a multi-player latch mechanism. Multiplayer `player-ready`
+manifests also provide a 1–2 second release grace for brief input transitions.
 
 ## Start Lifecycle
 

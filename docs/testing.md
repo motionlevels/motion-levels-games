@@ -19,9 +19,10 @@ job. Keep each layer focused so failures point to the relevant contract.
 - `npm run test:all`: workspace tests, repository contracts, and the generated
   game scaffold smoke test.
 - `npm run playtest:browser`: exercises the built playground with a real
-  browser, including Ping Pong initialization through the interactive floor's
-  tile seams and Duelo initialization at four and eight players through
-  sequential single-mouse floor clicks. The Duelo Jugar 3D portion additionally
+  browser, including the controller-compatible momentary floor
+  press/move/release contract, Ping Pong tile-seam input, and deterministic
+  Duelo initialization at four and eight players through the public playground
+  API. The Duelo Jugar 3D portion additionally
   verifies the product controller in the shared `GameSession`, exact retained
   replay seek/restore, and representative native 1920×1080 frames against the
   checked-in visual baselines. Parkour and Temporada 1 additionally prove

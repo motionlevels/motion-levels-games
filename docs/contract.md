@@ -242,11 +242,13 @@ should render `PlayerReadyOverlay`; bespoke versus displays may provide an
 equivalent waiting/countdown treatment.
 
 Multiplayer `player-ready` manifests must declare `releaseGraceMillis` from
-1,000 through 2,000 milliseconds. In the development playground, latched floor
-occupancy must let one person click each readiness zone sequentially with one
-mouse, including at the manifest's maximum player count. Browser coverage must
-exercise those real interactive-floor clicks instead of proving initialization
-only through simultaneous playground API presses.
+1,000 through 2,000 milliseconds. The development playground's interactive
+floor mirrors the controller and uses momentary pointer input: a tile stays
+occupied only while its pointer is held, and pointer end, cancellation, blur,
+or leaving the floor releases it. Use the public playground API to hold each
+required zone when a deterministic multi-player setup is needed. Browser
+coverage must exercise the real pointer press/move/release behavior as well as
+the maximum supported player-count lifecycle.
 
 An immediate start is deliberately noisy and must be explicit:
 

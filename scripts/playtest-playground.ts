@@ -241,6 +241,7 @@ try {
     });
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
+    await assertMomentaryFloorInput(page);
 
     if (focusedGame === "memory-challenge") {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
@@ -318,6 +319,18 @@ async function playtestPingPong(page: Page) {
   await page.mouse.down();
   await page.mouse.move(seamX, bottomBox.y + bottomBox.height / 2);
   await page.mouse.up();
+  await page.waitForFunction(() => (
+    document.querySelectorAll('.ml-floor-interactive [data-input-pressed="true"]').length === 0
+  ));
+
+  // The browser floor is momentary, so use the public API for deterministic
+  // multi-player readiness instead of relying on sticky sequential clicks.
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.press(7, 3);
+    api.press(7, 28);
+  });
 
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   const startingState = await browserState(page);
@@ -345,7 +358,7 @@ async function playtestCruceGalactico(page: Page) {
     return state?.gameId === "cruce-galactico" && state.snapshot.phase === "waiting";
   });
   await captureNativeDisplay(page, "cruce-galactico-waiting");
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="30"]').click();
+  await pressFloorZone(page, 8, 30);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await captureNativeDisplay(page, "cruce-galactico-starting");
   await page.evaluate(() => {
@@ -386,7 +399,7 @@ async function playtestCruceGalactico(page: Page) {
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "hello-world");
   await page.locator(".control-game select").selectOption("cruce-galactico");
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "waiting");
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="30"]').click();
+  await pressFloorZone(page, 8, 30);
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
@@ -926,7 +939,7 @@ async function playtestEstela(page: Page) {
   });
   await page.waitForTimeout(350);
   await captureStableNativeDisplay(page, "estela-waiting");
-  await clickFloorZones(page, [[2, 2], [13, 29]]);
+  await pressFloorZones(page, [[2, 2], [13, 29]]);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.waitForTimeout(350);
   await captureStableNativeDisplay(page, "estela-starting");
@@ -968,7 +981,7 @@ async function playtestEstela(page: Page) {
   const maxState = await browserState(page);
   const maxZones = maxState.snapshot.startPositions?.map(({ x, y }) => [x, y] as [number, number]);
   assert.equal(maxZones?.length, 8);
-  await clickFloorZones(page, maxZones ?? []);
+  await pressFloorZones(page, maxZones ?? []);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   assert.equal((await browserState(page)).snapshot.readyPlayers, 8);
   await page.evaluate(() => {
@@ -1007,7 +1020,7 @@ async function playtestEquilibrio(page: Page) {
   });
   await page.waitForTimeout(300);
   await captureStableNativeDisplay(page, "equilibrio-waiting");
-  await clickFloorZones(page, [[4, 16], [11, 16]]);
+  await pressFloorZones(page, [[4, 16], [11, 16]]);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   const starting = await browserState(page);
   assert.equal(starting.snapshot.readyPlayers, 2);
@@ -1043,7 +1056,7 @@ async function playtestEquilibrio(page: Page) {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
     return state?.gameId === "equilibrio" && state.playerCount === 8 && state.snapshot.phase === "waiting";
   });
-  await clickFloorZones(page, [[4, 16], [11, 16]]);
+  await pressFloorZones(page, [[4, 16], [11, 16]]);
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
@@ -1121,7 +1134,7 @@ async function playtestGuardianes(page: Page) {
   });
   await page.waitForTimeout(300);
   await captureStableNativeDisplay(page, "guardianes-waiting");
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   const starting = await browserState(page);
   assert.equal(starting.snapshot.readyPlayers, 1);
@@ -1165,7 +1178,7 @@ async function playtestGuardianes(page: Page) {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
     return state?.gameId === "guardianes" && state.playerCount === 8 && state.snapshot.phase === "waiting";
   });
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
@@ -1220,7 +1233,7 @@ async function playtestSueloSeguro(page: Page) {
     return state?.gameId === "suelo-seguro" && state.playerCount === 8 && state.snapshot.phase === "waiting";
   });
   await captureStableNativeDisplay(page, "suelo-seguro-waiting");
-  await clickFloorZones(page, maxPlayerZones);
+  await pressFloorZones(page, maxPlayerZones);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   const starting = await browserState(page);
   assert.equal(starting.snapshot.readyPlayers, 8);
@@ -1287,7 +1300,7 @@ async function playtestSueloSeguro(page: Page) {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
     return state?.gameId === "suelo-seguro" && state.playerCount === 8 && state.snapshot.phase === "waiting";
   });
-  await clickFloorZones(page, maxPlayerZones);
+  await pressFloorZones(page, maxPlayerZones);
   await page.evaluate((zones) => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
@@ -1339,7 +1352,7 @@ async function playtestPulso(page: Page) {
   });
   await page.waitForTimeout(300);
   await captureStableNativeDisplay(page, "pulso-waiting");
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   const starting = await browserState(page);
   assert.equal(starting.snapshot.readyPlayers, 1);
@@ -1381,7 +1394,7 @@ async function playtestPulso(page: Page) {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
     return state?.gameId === "pulso" && state.playerCount === 8 && state.snapshot.phase === "waiting";
   });
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
@@ -1451,7 +1464,7 @@ async function playtestPingPongV2(page: Page) {
     return state?.gameId === "ping-pong-v2" && state.snapshot.phase === "waiting";
   });
   await captureNativeDisplay(page, "ping-pong-v2-waiting");
-  await clickFloorZones(page, [[7, 3], [7, 28]]);
+  await pressFloorZones(page, [[7, 3], [7, 28]]);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.waitForTimeout(350);
   await captureNativeDisplay(page, "ping-pong-v2-starting");
@@ -1501,7 +1514,7 @@ async function playtestDuelo(page: Page) {
   assert.ok((waitingState.snapshot.totalTargets ?? 0) > 0);
   await captureNativeDisplay(page, "duelo-waiting");
 
-  await clickFloorZones(page, dueloFourPlayerZones);
+  await pressFloorZones(page, dueloFourPlayerZones);
   const startingState = await browserState(page);
   assert.equal(startingState.snapshot.phase, "starting");
   assert.equal(startingState.snapshot.readyPlayers, 4);
@@ -1517,7 +1530,7 @@ async function playtestDuelo(page: Page) {
   ));
   const runningState = await browserState(page);
   assert.equal(runningState.snapshot.phase, "running");
-  await clickFloorZones(page, dueloFourPlayerZones, 0);
+  await pressFloorZones(page, dueloFourPlayerZones, 0);
 
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
@@ -1585,7 +1598,7 @@ async function playtestMemoryChallenge(page: Page) {
     return state?.gameId === "memory-challenge" && state.playerCount === 4 && state.snapshot.phase === "waiting";
   });
   await captureNativeDisplay(page, "memory-challenge-waiting");
-  await clickFloorZones(page, [[0, 0], [4, 0], [8, 0], [12, 0]]);
+  await pressFloorZones(page, [[0, 0], [4, 0], [8, 0], [12, 0]]);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.waitForTimeout(250);
   await captureNativeDisplay(page, "memory-challenge-starting");
@@ -1659,7 +1672,7 @@ async function playtestWhackAMole(page: Page) {
     return state?.gameId === "whack-a-mole" && state.playerCount === 8 && state.snapshot.phase === "waiting";
   });
   await captureNativeDisplay(page, "whack-a-mole-waiting");
-  await clickFloorZones(page, dueloEightPlayerZones);
+  await pressFloorZones(page, dueloEightPlayerZones);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.waitForTimeout(250);
   await captureNativeDisplay(page, "whack-a-mole-starting");
@@ -1703,7 +1716,7 @@ async function playtestTetris(page: Page) {
     return state?.gameId === "tetris" && state.playerCount === 4 && state.snapshot.phase === "waiting";
   });
   await captureNativeDisplay(page, "tetris-waiting");
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="29"]').click();
+  await pressFloorZone(page, 8, 29);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.waitForTimeout(250);
   await captureNativeDisplay(page, "tetris-starting");
@@ -1800,8 +1813,7 @@ async function playtestSaltos(page: Page) {
   });
   await captureNativeDisplay(page, "saltos-waiting");
 
-  const startTile = page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="4"]');
-  await startTile.click();
+  await pressFloorZone(page, 8, 4);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await captureNativeDisplay(page, "saltos-starting");
 
@@ -1873,7 +1885,7 @@ async function playtestPatrones(page: Page) {
   });
   await captureNativeDisplay(page, "patrones-waiting");
 
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await captureNativeDisplay(page, "patrones-starting");
   await page.evaluate(() => {
@@ -1913,7 +1925,7 @@ async function playtestPatrones(page: Page) {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
     return state?.gameId === "patrones" && state.snapshot.phase === "waiting";
   });
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
@@ -1956,7 +1968,7 @@ async function playtestMemoriaV2(page: Page) {
     return state?.gameId === "memoria-v2" && state.snapshot.phase === "waiting";
   });
   await captureNativeDisplay(page, "memoria-v2-waiting");
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await captureNativeDisplay(page, "memoria-v2-starting");
   await page.evaluate(() => {
@@ -2008,7 +2020,7 @@ async function playtestMemoriaV2(page: Page) {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
     return state?.gameId === "memoria-v2" && state.snapshot.phase === "waiting";
   });
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
@@ -2079,7 +2091,7 @@ async function playtestLava(page: Page) {
     return state?.gameId === "lava" && state.snapshot.phase === "waiting";
   });
   await captureNativeDisplay(page, "lava-waiting");
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await captureNativeDisplay(page, "lava-starting");
   await page.evaluate(() => {
@@ -2119,7 +2131,7 @@ async function playtestLava(page: Page) {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
     return state?.gameId === "lava" && state.snapshot.phase === "waiting";
   });
-  await page.locator('.ml-floor-interactive [data-tile-x="8"][data-tile-y="16"]').click();
+  await pressFloorZone(page, 8, 16);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
   await page.evaluate(() => {
     const api = (window as BrowserPlaygroundWindow).ml;
@@ -2150,7 +2162,7 @@ async function playtestCrowdedDueloDisplay(page: Page): Promise<void> {
   });
   assert.equal((await browserState(page)).snapshot.requiredPlayers, 8);
 
-  await clickFloorZones(page, dueloEightPlayerZones);
+  await pressFloorZones(page, dueloEightPlayerZones);
   assert.equal((await browserState(page)).snapshot.phase, "starting");
 
   await page.evaluate(() => {
@@ -2167,7 +2179,7 @@ async function playtestCrowdedDueloDisplay(page: Page): Promise<void> {
   await page.waitForFunction(() => (
     (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running"
   ));
-  await clickFloorZones(page, dueloEightPlayerZones, 0);
+  await pressFloorZones(page, dueloEightPlayerZones, 0);
   await captureNativeDisplay(page, "duelo-crowded-running");
   if (captureDirectory) await captureLongNameDueloMedia(page);
 }
@@ -2211,14 +2223,72 @@ async function preparePlaygroundInput(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().paused === false);
 }
 
-async function clickFloorZones(page: Page, zones: Array<[number, number]>, delayMillis = 180): Promise<void> {
+async function assertMomentaryFloorInput(page: Page): Promise<void> {
+  await preparePlaygroundInput(page);
   const floor = page.locator(".ml-floor-interactive");
-  for (const [x, y] of zones) {
-    const tile = floor.locator(`[data-tile-x="${x}"][data-tile-y="${y}"]`);
-    await tile.click();
-    assert.equal(await tile.getAttribute("aria-pressed"), delayMillis > 0 ? "true" : "false");
-    if (delayMillis > 0) await page.waitForTimeout(delayMillis);
+  const firstTile = floor.locator('[data-tile-x="7"][data-tile-y="3"]');
+  const secondTile = floor.locator('[data-tile-x="7"][data-tile-y="28"]');
+  const [firstBox, secondBox, floorBox] = await Promise.all([
+    firstTile.boundingBox(),
+    secondTile.boundingBox(),
+    floor.boundingBox()
+  ]);
+  assert.ok(firstBox && secondBox && floorBox, "playground floor tiles must be visible for input testing");
+
+  await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
+  await page.mouse.down();
+  await page.waitForFunction(() => (
+    document.querySelector<HTMLElement>('.ml-floor-interactive [data-tile-x="7"][data-tile-y="3"]')?.getAttribute("aria-pressed") === "true"
+  ));
+
+  await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2);
+  await page.waitForFunction(() => (
+    document.querySelector<HTMLElement>('.ml-floor-interactive [data-tile-x="7"][data-tile-y="3"]')?.getAttribute("aria-pressed") === "false"
+      && document.querySelector<HTMLElement>('.ml-floor-interactive [data-tile-x="7"][data-tile-y="28"]')?.getAttribute("aria-pressed") === "true"
+  ));
+
+  await page.mouse.move(floorBox.x + floorBox.width + 20, floorBox.y + floorBox.height + 20);
+  await page.waitForFunction(() => (
+    document.querySelectorAll('.ml-floor-interactive [data-input-pressed="true"]').length === 0
+  ));
+
+  await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
+  await page.waitForFunction(() => (
+    document.querySelector<HTMLElement>('.ml-floor-interactive [data-tile-x="7"][data-tile-y="3"]')?.getAttribute("aria-pressed") === "true"
+  ));
+  await page.mouse.up();
+  await page.waitForFunction(() => (
+    document.querySelectorAll('.ml-floor-interactive [data-input-pressed="true"]').length === 0
+  ));
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.reset());
+  await preparePlaygroundInput(page);
+}
+
+async function pressFloorZone(page: Page, x: number, y: number): Promise<void> {
+  await preparePlaygroundInput(page);
+  await page.evaluate(([tileX, tileY]: [number, number]) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.press(tileX, tileY);
+  }, [x, y] as [number, number]);
+}
+
+async function pressFloorZones(page: Page, zones: Array<[number, number]>, delayMillis = 180): Promise<void> {
+  await preparePlaygroundInput(page);
+  await page.evaluate((nextZones) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (const [x, y] of nextZones) api.press(x, y);
+  }, zones);
+  if (delayMillis > 0) {
+    await page.waitForTimeout(delayMillis);
+    return;
   }
+  await page.evaluate((nextZones) => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    for (const [x, y] of nextZones) api.release(x, y);
+  }, zones);
 }
 
 async function captureNativeDisplay(page: Page, name: string): Promise<void> {

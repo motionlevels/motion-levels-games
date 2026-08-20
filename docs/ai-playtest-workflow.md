@@ -148,16 +148,18 @@ and confirm that its status says `En pausa` for both manual and temporary UI
 pause locks.
 
 After any pointer floor interaction, move the pointer completely outside the
-floor and inspect the board. Latched inputs may remain logically active, but no
-outline, glow, brightness, scale, or other tile decoration may remain; only the
-game-rendered frame may persist. Keyboard `:focus-visible` styling is allowed
-only while that tile genuinely has visible keyboard focus.
+floor and inspect the board. The playground floor is momentary: the active tile
+must release when the pointer moves outside, is released, cancelled, or the
+page loses focus. No outline, glow, brightness, scale, or other tile decoration
+may remain; only the game-rendered frame may persist. Keyboard `:focus-visible`
+styling is allowed only while that tile genuinely has visible keyboard focus.
 
-For every multiplayer `player-ready` game, use the real interactive floor to
-click all readiness zones sequentially with one mouse at the maximum supported
-player count. Confirm the clicks latch, the game reaches `starting`, and the
-countdown reaches `running`. Direct `ml.press(...)` calls are useful for
-deterministic edge cases, but they do not replace this human-input regression.
+For every multiplayer `player-ready` game, use `ml.press(...)` to hold all
+required readiness zones at the maximum supported player count, confirm the
+game reaches `starting`, and release them after the countdown reaches
+`running`. Separately exercise the real interactive floor with pointer
+press/move/release events; a sequence of ordinary clicks must not leave tiles
+latched.
 
 Generate catalog-style media when reviewing a game card or TV display:
 
