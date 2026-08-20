@@ -1,5 +1,6 @@
 import type { PlatformGameCatalogEntry } from "./api";
 import type { GameCard } from "./catalog";
+import type { FloorAnim } from "./floor";
 import {
   animationLibrary,
   animationLibraryById,
@@ -192,5 +193,38 @@ export function nativeAnimationMediaSources(
     thumbnailSrcs: [thumbnailSrc],
     previewSrc,
     previewSrcs: [previewSrc]
+  };
+}
+
+/**
+ * Render a native animation directly when generated WebP media is not
+ * available. This keeps local venue/playground menus useful before the media
+ * bundle has been generated, while the normal media path remains preferred.
+ */
+export function nativeAnimationPreview(animationID: string): FloorAnim | undefined {
+  const id = animationID.trim().toLowerCase().replace(/^animation-/u, "");
+  const animation = animationLibraryById.get(id);
+  if (!animation) return undefined;
+
+  return (x, y, cols, rows, t) => {
+    const durationMillis = Math.max(100, animation.durationMillis);
+    const atMillis = Math.max(0, t * 1_000);
+    const wrappedMillis = atMillis % durationMillis;
+    const pixel = animation.render({
+      x,
+      y,
+      xn: x / Math.max(1, cols - 1),
+      yn: y / Math.max(1, rows - 1),
+      width: cols,
+      height: rows,
+      timeSeconds: wrappedMillis / 1_000,
+      progress: wrappedMillis / durationMillis,
+      seed: 137,
+    });
+    return [
+      Math.max(0, Math.min(255, pixel.r)),
+      Math.max(0, Math.min(255, pixel.g)),
+      Math.max(0, Math.min(255, pixel.b)),
+    ];
   };
 }

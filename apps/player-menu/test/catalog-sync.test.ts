@@ -19,7 +19,7 @@ import {
   shouldPreferCatalogFallbackPreviewAnimation,
   supportedDifficultiesForGame,
 } from "../src/catalogSync.ts";
-import { ambientAnimationCards, nativeAnimationCards, nativeAnimationEngineGame, nativeAnimationGameID, platformAnimationCards } from "../src/animationCatalog.ts";
+import { ambientAnimationCards, nativeAnimationCards, nativeAnimationEngineGame, nativeAnimationGameID, nativeAnimationPreview, platformAnimationCards } from "../src/animationCatalog.ts";
 import { inferPlatformURL } from "../src/api.ts";
 import { catalogSourceMatchesBundledRuntime, isSupportedRuntimeSourceFromProducts } from "../src/runtimeSourcePolicy.ts";
 import type { PlatformGameCatalogEntry } from "../src/api.ts";
@@ -344,6 +344,19 @@ describe("catalog metadata sync", () => {
     assert.equal(aurora?.sourceKind, "motion_levels_games");
     assert.equal(aurora?.sourceGameId, nativeAnimationGameID);
     assert.equal(aurora?.sourceRevision, revision);
+  });
+
+  it("renders native animation previews when generated media is unavailable", () => {
+    const preview = nativeAnimationPreview("animation-chispas");
+    assert.ok(preview);
+
+    const signature = (seconds: number) => Array.from({ length: 16 * 32 }, (_, index) => {
+      const x = index % 16;
+      const y = Math.floor(index / 16);
+      return preview(x, y, 16, 32, seconds).map((channel) => Math.round(channel)).join(",");
+    }).join("|");
+
+    assert.notEqual(signature(0), signature(1.7), "a native preview must animate without a generated WebP");
   });
 
   it("keeps the screensaver first and native animations when a successful catalog has no animation levels", () => {

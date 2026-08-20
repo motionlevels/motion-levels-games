@@ -282,7 +282,22 @@ try {
     )));
   });
 
-  await scenario("a successful local catalog shows the screensaver first and every native ambient animation", async ({ page, selectRequests }) => {
+  await scenario("a successful local catalog shows the screensaver first and every native ambient animation", async ({ context, page, selectRequests, status }) => {
+    // Exercise the same no-generated-media path used by dev:venue:no-controller.
+    // The preview must render the native shader instead of showing the logo.
+    await context.route("**/media/animations/**", (route) => route.fulfill({
+      status: 404,
+      contentType: "text/plain",
+      body: "generated animation media not installed",
+    }));
+    const animationRuntimeEntry = (status.catalog as Array<Record<string, unknown>>).find(
+      (entry) => String(entry.game || "").includes("a861f0dc-3e2e-4fe9-b487-33194af75b68"),
+    );
+    assert.ok(animationRuntimeEntry, "the mocked runtime must expose the native animations product");
+    // Local player-menu status uses this manifest slug while individual cards
+    // use the immutable product id.
+    animationRuntimeEntry.game = "motion-levels-games:animations";
+
     await startSession(page);
     const drawer = page.locator(".team-drawer");
     await drawer.locator(".drawer-done").tap();
@@ -306,6 +321,16 @@ try {
     );
 
     await page.locator('.game-card[data-game-id="animation-aurora"]').tap();
+    const nativeCanvas = page.locator('.game-card[data-game-id="animation-aurora"] canvas.floor-canvas');
+    await nativeCanvas.waitFor({ state: "visible" });
+    assert.equal(
+      await page.locator('.game-card[data-game-id="animation-aurora"] .preview-logo-fallback').count(),
+      0,
+      "a native animation without media must not fall back to the Motion Levels logo",
+    );
+    const launchButton = page.locator(".launch-actions button.play");
+    assert.notEqual((await launchButton.textContent())?.trim(), "No disponible", "the native ambient launch action must not say No disponible");
+    assert.doesNotMatch(await page.locator('.game-card[data-game-id="animation-aurora"]').getAttribute("class") || "", /unavailable/u);
     await waitForCondition(() => selectRequests.length === 1, "native animation /api/select request");
     const request = selectRequests[0];
     assert.ok(request);

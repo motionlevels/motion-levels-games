@@ -47,7 +47,7 @@ import {
   uniquePreviewSources,
 } from "./previews";
 import { captureMenuEvent, menuKioskID, recordMenuEvent, setMenuEventForwarder } from "./analytics";
-import { ambientAnimationCards, isNativeAnimationProduct, nativeAnimationEngineGame, nativeAnimationGameID, nativeAnimationMediaSources } from "./animationCatalog";
+import { ambientAnimationCards, isNativeAnimationProduct, nativeAnimationEngineGame, nativeAnimationGameID, nativeAnimationMediaSources, nativeAnimationPreview } from "./animationCatalog";
 import { bundledGamesSourceRevision, floorPreviewMediaSpec } from "./bundleMedia";
 import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
@@ -335,7 +335,30 @@ function runtimeGameID(game: Pick<GameCard, "engineGame" | "id" | "sourceKind">)
 
 function previewAnimationID(game: GameCard): string {
   if (isScreensaverCard(game)) return "";
-  return game.previewAnimation || game.id;
+  return game.animationID || game.previewAnimation || game.id;
+}
+
+function runtimeAvailabilityIDs(game: Pick<GameCard, "engineGame" | "id" | "sourceKind" | "sourceGameId">): string[] {
+  const ids = [
+    runtimeGameID(game),
+    engineGameID(game),
+    game.sourceGameId || "",
+    game.sourceGameId ? `motion-levels-games:${game.sourceGameId}` : "",
+  ];
+  // The local player-menu catalog exposes the animations manifest using its
+  // aggregate slug, while individual Ambiente cards launch the immutable
+  // product id. Treat the manifest aliases as the same available runtime.
+  if (isNativeAnimationProduct(engineGameID(game)) || isNativeAnimationProduct(game.sourceGameId || "")) {
+    ids.push(
+      "animations",
+      "motion-levels-games:animations",
+      "salvapantallas",
+      "motion-levels-games:salvapantallas",
+      "ambient-animations",
+      "motion-levels-games:ambient-animations",
+    );
+  }
+  return [...new Set(ids.filter(Boolean))];
 }
 
 function levelFallbackPreviewAnimationID(game: GameCard, level?: NonNullable<GameCard["levels"]>[number]): string {
@@ -2256,8 +2279,7 @@ function MenuApp() {
     if (!launchGame) return false;
     if (!isSupportedRuntimeGame(launchGame)) return false;
     if (!isAmbientCard(launchGame) && status.pressureStreamConnected === false) return false;
-    if (availableGames.has(runtimeGameID(launchGame)) || availableGames.has(engineGameID(launchGame))) return true;
-    return false;
+    return runtimeAvailabilityIDs(launchGame).some((id) => availableGames.has(id));
   }, [availableGames, catalogLoading, connectionState, menuGames, status]);
   const activePlayers = menu.players.filter((player) => player.active);
   const enginePlayers = statusPlayersForDisplay(status);
@@ -6020,7 +6042,8 @@ function Preview({
     };
   }, [posterReady, posterSrc, richCandidate]);
 
-  const anim = fallbackAnim || floorAnimations[animationID];
+  const nativeFallbackAnim = useMemo(() => nativeAnimationPreview(animationID), [animationID]);
+  const anim = fallbackAnim || floorAnimations[animationID] || nativeFallbackAnim;
   const promotedToAnimation = Boolean(promoteAnimation && posterReady && !richCandidate && anim);
   const mediaSrc = promotedToAnimation ? undefined : (promotedSrc || posterSrc);
   const logoMedia = isMotionLevelsLogoSrc(mediaSrc);
