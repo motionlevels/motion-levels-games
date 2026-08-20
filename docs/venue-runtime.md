@@ -167,8 +167,13 @@ and the engine gate default to eight seconds and can be tuned with
 `MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT` and
 `MOTION_LEVELS_RUN_RECORDING_START_TIMEOUT`, respectively.
 
-For local integration, `npm run dev:venue` runs the source directly. It reads
-the current Git revision automatically; `MOTION_LEVELS_GAMES_SOURCE_REVISION`
+For local integration, `npm run dev:venue` runs the source runtime together
+with the playground at `http://127.0.0.1:4104/`. The venue API remains at
+`http://127.0.0.1:4102`; `--api-only` preserves the API-only mode. Use
+`npm run dev:venue:no-controller` for the same full experience with the
+revisioned mock controller, and use `npm run test:dev:venue` to exercise the
+whole command without opening a browser manually. The script reads the
+current Git revision automatically; `MOTION_LEVELS_GAMES_SOURCE_REVISION`
 can override it when the platform catalog is pinned to another development
 revision. The controller still uses `MOTION_LEVELS_CONTROLLER_ADDR`, while the
 HTTP bind/token use `MOTION_LEVELS_ENGINE_HTTP` and

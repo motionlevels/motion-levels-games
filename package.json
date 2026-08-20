@@ -33,6 +33,7 @@
     "test:coverage": "tsx scripts/test-coverage.ts",
     "test:all": "npm test && npm run test:contracts && npm run test:scaffold",
     "test:scaffold": "tsx scripts/test-create-game.ts",
+    "test:dev:venue": "tsx scripts/test-dev-venue.ts",
     "test:player-menu": "tsx scripts/test-player-menu-browser.ts",
     "validate:architecture": "tsx scripts/validate-architecture.ts",
     "validate:games": "tsx scripts/validate-games.ts",

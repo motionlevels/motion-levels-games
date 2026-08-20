@@ -19,6 +19,13 @@ npm run dev
 
 `npm run dev` starts the complete menu-to-game playground at
 `http://127.0.0.1:4104` using one Vite service.
+`npm run dev:venue:no-controller` starts the same playground together with the
+TypeScript venue runtime and a mock controller, so it is a complete local
+venue smoke environment at `http://127.0.0.1:4104/`. The runtime API remains
+available at `http://127.0.0.1:4102`; use `--api-only` when only the API is
+needed. `npm run test:dev:venue` starts that exact command and verifies the
+playground root, player-menu entry point, proxied health endpoint, and direct
+venue API before shutting it down.
 `npm run check:fast` runs the native linter and strict workspace typechecks for
 the normal edit loop. `npm run check` adds all tests, validation, builds, the
 scaffold smoke test, and deterministic game playtests before a commit or push.

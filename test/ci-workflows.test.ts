@@ -91,6 +91,7 @@ test("CI keeps independent quality, tests, coverage, build, and browser lanes", 
   }
   assert.match(checks, /run: npm run validate:architecture/u);
   assert.match(checks, /run: npm run test:all/u);
+  assert.match(checks, /run: npm run test:dev:venue/u);
   assert.match(checks, /run: npm run test:coverage/u);
   assert.match(checks, /run: npm run build/u);
   assert.match(checks, /run: npm run playtest/u);

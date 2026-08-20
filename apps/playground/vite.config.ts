@@ -26,6 +26,7 @@ const gamesSourceRevision = process.env.MOTION_LEVELS_GAMES_SOURCE_REVISION || g
 if (!/^[0-9a-f]{40}$/u.test(gamesSourceRevision)) throw new Error("playground requires a full games source revision");
 const { buildVersion } = resolveGamesBuildIdentity(gamesSourceRevision);
 const playgroundBase = process.env.VITE_PLAYGROUND_BASE || "/";
+const venueRuntimeTarget = toHttpURL(process.env.MOTION_LEVELS_ENGINE_HTTP?.trim() || "127.0.0.1:4102");
 
 export default defineConfig({
   base: playgroundBase,
@@ -40,11 +41,11 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:4102",
+        target: venueRuntimeTarget,
         changeOrigin: true,
       },
       "/engine": {
-        target: "http://127.0.0.1:4102",
+        target: venueRuntimeTarget,
         changeOrigin: true,
         rewrite: (reqPath) => reqPath.replace(/^\/engine/, ""),
       },
@@ -65,6 +66,10 @@ export default defineConfig({
     },
   },
 });
+
+function toHttpURL(value: string): string {
+  return /^https?:\/\//u.test(value) ? value : `http://${value}`;
+}
 
 function generatedMedia(): PluginOption {
   const install = (server: Pick<ViteDevServer, "middlewares">) => {
