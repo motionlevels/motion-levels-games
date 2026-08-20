@@ -35,6 +35,7 @@
   --pg-control-active-border: rgba(53, 215, 255, 0.76);
   --pg-control-gap: 7px;
   --pg-control-radius: 5px;
+  --pg-phase-chip-width: 96px;
   /* Shared corner radius for every framed window (header, popovers, board,
      player display) so they read as one system. */
   --pg-window-radius: 6px;
@@ -224,13 +225,18 @@ select {
   border: 0;
   border-radius: 0;
   color: rgba(211, 220, 234, 0.7);
+  flex: 0 0 var(--pg-phase-chip-width);
   font-size: 10px;
   font-weight: 800;
   height: auto;
+  inline-size: var(--pg-phase-chip-width);
   letter-spacing: 0.09em;
   line-height: 1;
+  justify-content: flex-start;
+  overflow: hidden;
   padding: 0 2px;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .phase-indicator {

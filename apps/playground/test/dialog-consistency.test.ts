@@ -35,6 +35,24 @@ test("all runtime phase surfaces share one indicator and color map", () => {
   );
 });
 
+test("the header phase label reserves a fixed slot so controls cannot move", () => {
+  assert.match(
+    styleSource,
+    /--pg-phase-chip-width:\s*96px;/,
+    "the phase slot must have one canonical width"
+  );
+  assert.match(
+    styleSource,
+    /\.phase-chip\s*\{[\s\S]*?flex:\s*0 0 var\(--pg-phase-chip-width\);[\s\S]*?inline-size:\s*var\(--pg-phase-chip-width\);[\s\S]*?justify-content:\s*flex-start;[\s\S]*?overflow:\s*hidden;[\s\S]*?white-space:\s*nowrap;/,
+    "phase text must stay inside a non-growing header slot"
+  );
+  assert.match(
+    appSource,
+    /<PhaseIndicator className="phase-chip" phase=\{displayedPhase\} \/>/,
+    "the header must use the fixed phase slot"
+  );
+});
+
 test("every playground dialog uses the shared icon close control", () => {
   const dialogs = appSource.match(/role="dialog"/g) ?? [];
   const sharedCloseControls = appSource.match(/<PopoverCloseButton\b/g) ?? [];

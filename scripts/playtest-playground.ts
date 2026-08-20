@@ -242,6 +242,7 @@ try {
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
     await assertMomentaryFloorInput(page);
+    await assertStablePhaseHeader(page);
 
     if (focusedGame === "memory-challenge") {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
@@ -2262,6 +2263,76 @@ async function assertMomentaryFloorInput(page: Page): Promise<void> {
   ));
   await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.reset());
   await preparePlaygroundInput(page);
+}
+
+async function assertStablePhaseHeader(page: Page): Promise<void> {
+  await page.locator(".control-game select").selectOption("ping-pong");
+  await page.waitForFunction(() => {
+    const state = (window as BrowserPlaygroundWindow).ml?.getState();
+    return state?.gameId === "ping-pong" && state.snapshot.phase === "waiting";
+  });
+
+  const waiting = await playgroundHeaderLayout(page);
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    if (!api) throw new Error("window.ml is not ready");
+    api.press(7, 3);
+    api.press(7, 28);
+  });
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "starting");
+  const starting = await playgroundHeaderLayout(page);
+
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.step(2_000));
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "running");
+  const running = await playgroundHeaderLayout(page);
+
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.pause());
+  await page.waitForFunction(() => (
+    (window as BrowserPlaygroundWindow).ml?.getState().paused === true
+      && document.querySelector<HTMLElement>(".phase-chip")?.textContent?.trim() === "Paused"
+  ));
+  const paused = await playgroundHeaderLayout(page);
+
+  const layouts = [waiting, starting, running, paused];
+  assert.ok(new Set(layouts.map((layout) => layout.phase)).size >= 3, "the browser gate must exercise changing phase labels");
+  for (const layout of layouts) {
+    assert.equal(layout.phaseSlot.width, waiting.phaseSlot.width, `${layout.phase} phase slot width changed`);
+    assert.equal(layout.phaseSlot.x, waiting.phaseSlot.x, `${layout.phase} phase slot moved`);
+    assert.equal(layout.controls.x, waiting.controls.x, `${layout.phase} header controls moved`);
+    assert.equal(layout.controls.width, waiting.controls.width, `${layout.phase} header controls resized`);
+    assert.equal(layout.surface.x, waiting.surface.x, `${layout.phase} surface controls moved`);
+    assert.equal(layout.surface.width, waiting.surface.width, `${layout.phase} surface controls resized`);
+  }
+
+  await page.evaluate(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    api?.resume();
+    api?.reset();
+  });
+  await preparePlaygroundInput(page);
+}
+
+async function playgroundHeaderLayout(page: Page): Promise<{
+  controls: { width: number; x: number };
+  phase: string;
+  phaseSlot: { width: number; x: number };
+  surface: { width: number; x: number };
+}> {
+  return page.evaluate(() => {
+    const phase = document.querySelector<HTMLElement>(".phase-chip");
+    const controls = document.querySelector<HTMLElement>(".playground-controls");
+    const surface = document.querySelector<HTMLElement>(".surface-toolbar");
+    if (!phase || !controls || !surface) throw new Error("playground header layout is not rendered");
+    const phaseRect = phase.getBoundingClientRect();
+    const controlsRect = controls.getBoundingClientRect();
+    const surfaceRect = surface.getBoundingClientRect();
+    return {
+      controls: { width: controlsRect.width, x: controlsRect.x },
+      phase: phase.textContent?.trim() ?? "",
+      phaseSlot: { width: phaseRect.width, x: phaseRect.x },
+      surface: { width: surfaceRect.width, x: surfaceRect.x }
+    };
+  });
 }
 
 async function pressFloorZone(page: Page, x: number, y: number): Promise<void> {
