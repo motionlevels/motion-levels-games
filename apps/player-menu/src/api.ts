@@ -89,6 +89,21 @@ export type SelectGameRequest = {
   }>;
 };
 
+/**
+ * In the integrated local experience the menu lives in a same-origin iframe.
+ * Keep its handoff in memory so selecting a game does not navigate the whole
+ * playground through the boot loading screen.
+ */
+export const localPlaygroundLaunchMessageType = "motion-levels:playground-launch" as const;
+
+export type LocalPlaygroundLaunchMessage = {
+  type: typeof localPlaygroundLaunchMessageType;
+  gameId: string;
+  playerCount: number;
+  difficulty?: string;
+  options?: Record<string, unknown>;
+};
+
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const localPortPattern = /^\d{2,5}$/u;
 
@@ -158,9 +173,30 @@ export function localPlaygroundLaunchURL(
   return target.toString();
 }
 
+export function localPlaygroundLaunchMessage(request: SelectGameRequest): LocalPlaygroundLaunchMessage {
+  const runtimeID = request.engineGame?.startsWith("motion-levels-games:")
+    ? request.engineGame.slice("motion-levels-games:".length)
+    : request.game.startsWith("motion-levels-games:")
+      ? request.game.slice("motion-levels-games:".length)
+      : request.game;
+  const message: LocalPlaygroundLaunchMessage = {
+    type: localPlaygroundLaunchMessageType,
+    gameId: runtimeID,
+    playerCount: request.playerCount,
+  };
+  if (request.difficulty) message.difficulty = request.difficulty;
+  if (request.config && Object.keys(request.config).length > 0) message.options = { ...request.config };
+  return message;
+}
+
 export function launchLocalPlayground(request: SelectGameRequest): boolean {
   const target = localPlaygroundLaunchURL(request);
   if (!target || typeof window === "undefined") return false;
+  const embedded = embeddedInPlayground(window.location, integratedExperienceMode());
+  if (embedded && window.self !== window.top) {
+    window.parent.postMessage(localPlaygroundLaunchMessage(request), window.location.origin);
+    return true;
+  }
   if (window.self !== window.top) {
     window.open(target, "_top");
     return true;

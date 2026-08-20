@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { chromium } from "playwright";
 
 const repoRoot = process.cwd();
 const playgroundPort = Number(process.env.MOTION_LEVELS_DEV_VENUE_PORT || 4104);
@@ -53,9 +54,65 @@ try {
 
   const directAPI = await fetch(`${apiURL}/api/health`);
   assert.equal(directAPI.status, 200, "the venue API must remain available beside the playground");
+
+  await verifyIntegratedLaunchDoesNotNavigate();
   console.log(`Dev venue smoke passed: ${playgroundURL}/ and ${apiURL}/api/health`);
 } finally {
   await stop(devVenue);
+}
+
+async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    const initialURL = `${playgroundURL}/?screen=menu`;
+    const mainNavigations: string[] = [];
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) mainNavigations.push(frame.url());
+    });
+
+    await page.goto(initialURL, { waitUntil: "domcontentloaded" });
+    const menu = page.frameLocator('iframe[title="Player menu"]');
+    await menu.getByRole("button", { name: "Comenzar" }).click();
+    await menu.getByRole("button", { name: "Abrir equipo" }).waitFor({ state: "visible" });
+    await menu.locator(".team-drawer .drawer-done").click();
+
+    // Ambiente cards intentionally launch on selection. This must switch the
+    // already-rendered display in memory instead of reloading the workbench.
+    await menu.getByRole("button", { name: "Ambiente", exact: true }).click();
+    await menu.locator('.game-card[data-game-id="animation-aurora"]').click();
+    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
+    await assertTransparentLaunch(page, initialURL, mainNavigations, "ambient animation");
+
+    // A regular game uses its explicit play action, but must take the same
+    // in-memory path and preserve the floor/display surfaces.
+    await page.locator('button[title="Player menu"]').click();
+    const reopenedMenu = page.frameLocator('iframe[title="Player menu"]');
+    await reopenedMenu.getByRole("button", { name: "Abrir equipo" }).waitFor({ state: "visible" });
+    const reopenedDrawer = reopenedMenu.locator(".team-drawer");
+    if (await reopenedDrawer.getAttribute("aria-hidden") === "false") {
+      await reopenedDrawer.locator(".drawer-done").click();
+    }
+    await reopenedMenu.getByRole("button", { name: "Destacados", exact: true }).click();
+    const regularGame = reopenedMenu.locator('.game-card[data-game-id="arkanoid"]');
+    await regularGame.waitFor({ state: "visible" });
+    await regularGame.click();
+    const play = reopenedMenu.locator(".launch-actions button.play");
+    await play.waitFor({ state: "visible" });
+    await play.click();
+    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
+    await assertTransparentLaunch(page, initialURL, mainNavigations, "regular game");
+  } finally {
+    await browser.close();
+  }
+}
+
+async function assertTransparentLaunch(page: import("playwright").Page, initialURL: string, mainNavigations: string[], label: string): Promise<void> {
+  assert.equal(page.url(), initialURL, `${label} must not navigate the playground document`);
+  assert.deepEqual(mainNavigations, [initialURL], `${label} must not add a full-page navigation`);
+  assert.equal(await page.locator("#app-loading-screen").count(), 0, `${label} must not show the boot loading screen`);
+  assert.equal(await page.locator(".display-preview-native .ml-display-shell").count(), 1, `${label} must keep the display mounted`);
+  assert.equal(await page.locator(".playground-floor-preview").count(), 1, `${label} must keep the floor preview mounted`);
 }
 
 async function waitFor(check: () => Promise<boolean>, process: ChildProcess, description: string): Promise<void> {

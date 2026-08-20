@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { localPlayerMenuUrl, readPrimaryScreen } from "../src/playerMenuEmbed.ts";
+import { localPlayerMenuUrl, readPlayerMenuLaunchMessage, readPrimaryScreen } from "../src/playerMenuEmbed.ts";
 
 const previewSource = readFileSync(new URL("../src/PlayerMenuPreview.tsx", import.meta.url), "utf8");
 const rootPackage = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
@@ -72,6 +72,27 @@ test("screen query restores the selected playground preview", () => {
   assert.equal(readPrimaryScreen("?screen=menu"), "menu");
   assert.equal(readPrimaryScreen("?screen=display"), "display");
   assert.equal(readPrimaryScreen("?screen=unknown"), "display");
+});
+
+test("embedded menu launches are validated without a page navigation", () => {
+  assert.deepEqual(readPlayerMenuLaunchMessage({
+    type: "motion-levels:playground-launch",
+    gameId: "animations",
+    playerCount: 0,
+    difficulty: "medium",
+    options: { mode: "single", animation: "aurora", ignored: { nested: true } },
+  }), {
+    type: "motion-levels:playground-launch",
+    gameId: "animations",
+    playerCount: 0,
+    difficulty: "medium",
+    options: { mode: "single", animation: "aurora" },
+  });
+  assert.equal(readPlayerMenuLaunchMessage({
+    type: "motion-levels:playground-launch",
+    gameId: "animations",
+    playerCount: -1,
+  }), undefined);
 });
 
 test("embedded menu permits only user-activated top navigation", () => {

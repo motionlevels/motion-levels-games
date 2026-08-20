@@ -100,7 +100,7 @@ import {
 } from "./playgroundApi.ts";
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
 import { readPlayerJourneyLaunch } from "./playerJourney.ts";
-import { localPlayerMenuUrl, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
+import { localPlayerMenuUrl, readPlayerMenuLaunchMessage, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 
 const playerDisplayMediaSpec = gameMediaAssetSpecs.playerDisplay;
@@ -541,11 +541,20 @@ export function App() {
   }, [restart]);
 
   const selectGame = useCallback(
-    (gameId: string, optionOverrides: GameConfigOptions = {}) => {
+    (
+      gameId: string,
+      optionOverrides: GameConfigOptions = {},
+      selection: { playerCount?: number; difficulty?: string } = {},
+    ) => {
       const nextGame = findPlaygroundGame(gameId) ?? defaultGame;
       const nextSeed = DEFAULT_GAME_SEED;
-      const nextPlayerCount = defaultGamePlayerCount(nextGame.manifest);
-      const nextDifficulty = defaultDifficultyFor(nextGame);
+      const playerChoices = gamePlayerCountOptions(nextGame.manifest);
+      const nextPlayerCount = selection.playerCount !== undefined && playerChoices.includes(selection.playerCount)
+        ? selection.playerCount
+        : defaultGamePlayerCount(nextGame.manifest);
+      const nextDifficulty = selection.difficulty
+        ? normalizeGameDifficulty(selection.difficulty, nextGame.manifest)
+        : defaultDifficultyFor(nextGame);
       const nextOptions = normalizeGameConfigOptions({ ...defaultConfigOptionsFor(nextGame), ...optionOverrides }, nextGame.manifest);
 
       selectedGameRef.current = nextGame;
@@ -567,6 +576,27 @@ export function App() {
     },
     [restart]
   );
+
+  useEffect(() => {
+    if (!playerMenuPreviewUrl) return undefined;
+
+    const handlePlayerMenuLaunch = (event: MessageEvent<unknown>) => {
+      if (event.origin !== window.location.origin || event.source === window) return;
+      const launch = readPlayerMenuLaunchMessage(event.data);
+      if (!launch || !findPlaygroundGame(launch.gameId)) return;
+
+      // The menu is an input surface, not a second page. Switch the existing
+      // display to the new in-memory session while the floor stays mounted.
+      changePrimaryScreen("display");
+      selectGame(launch.gameId, launch.options, {
+        difficulty: launch.difficulty,
+        playerCount: launch.playerCount,
+      });
+    };
+
+    window.addEventListener("message", handlePlayerMenuLaunch);
+    return () => window.removeEventListener("message", handlePlayerMenuLaunch);
+  }, [changePrimaryScreen, playerMenuPreviewUrl, selectGame]);
 
   const selectAnimation = useCallback((animationId: string) => {
     const animationsGame = findPlaygroundGame("animations");

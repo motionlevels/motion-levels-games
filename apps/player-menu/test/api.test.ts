@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchURL, postVenueSession, requestJSON, RequestError, selectGame, testOutput } from "../src/api.ts";
+import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchMessage, localPlaygroundLaunchURL, postVenueSession, requestJSON, RequestError, selectGame, testOutput } from "../src/api.ts";
 
 const nativeFetch = globalThis.fetch;
 
@@ -59,6 +59,22 @@ describe("kiosk API requests", () => {
     const url = new URL(target!);
     assert.equal(url.origin, "http://127.0.0.1:4104");
     assert.equal(url.searchParams.get("return"), "http://127.0.0.1:4104/?screen=menu");
+  });
+
+  it("serializes embedded launches as an in-memory handoff", () => {
+    assert.deepEqual(localPlaygroundLaunchMessage({
+      game: "motion-levels-games:animations",
+      engineGame: "motion-levels-games:animations",
+      playerCount: 0,
+      difficulty: "hard",
+      config: { mode: "single", animation: "aurora" },
+    }), {
+      type: "motion-levels:playground-launch",
+      gameId: "animations",
+      playerCount: 0,
+      difficulty: "hard",
+      options: { mode: "single", animation: "aurora" },
+    });
   });
 
   it("returns a hosted menu launch to the canonical platform playground path", () => {
