@@ -1292,11 +1292,12 @@ test("canonical animation selection remains an idle screensaver and requests pla
   let requestedUrl = "";
   const server = createServer((request, response) => {
     requestedUrl = request.url ?? "";
+    const selectedAnimationId = new URL(requestedUrl, "http://127.0.0.1").searchParams.get("animation") || "aurora";
     response.setHeader("Content-Type", "application/json");
     response.end(JSON.stringify({
       schema: "motion-levels-animation-content-v1",
       contentRevision: "b".repeat(64),
-      selectedAnimationId: "aurora",
+      selectedAnimationId,
       rotationIds: ["aurora"],
       rotationSeconds: 35
     }));
@@ -1317,13 +1318,18 @@ test("canonical animation selection remains an idle screensaver and requests pla
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     durationSeconds: 35,
+    config: { mode: "single", animation: "prism-tunnel" },
     playerCount: 0,
     allowAnyPlayers: true,
     players: []
   });
   assert.equal(status.lifecycle, "idle");
-  assert.match(requestedUrl, /\/api\/level-games\/salvapantallas\/runtime-content\?rotationSeconds=35/u);
+  const requested = new URL(requestedUrl, "http://127.0.0.1");
+  assert.equal(requested.pathname, "/api/level-games/salvapantallas/runtime-content");
+  assert.equal(requested.searchParams.get("rotationSeconds"), "35");
+  assert.equal(requested.searchParams.get("animation"), "prism-tunnel");
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 1);
+  assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).animationId, "prism-tunnel");
 });
 
 test("venue rejects platform-owned gameplay content and stays offline-capable", async () => {

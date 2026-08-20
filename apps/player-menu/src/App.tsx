@@ -47,7 +47,7 @@ import {
   uniquePreviewSources,
 } from "./previews";
 import { captureMenuEvent, menuKioskID, recordMenuEvent, setMenuEventForwarder } from "./analytics";
-import { nativeAnimationCards, nativeAnimationMediaSources, platformAnimationCards } from "./animationCatalog";
+import { ambientAnimationCards, isNativeAnimationProduct, nativeAnimationEngineGame, nativeAnimationGameID, nativeAnimationMediaSources } from "./animationCatalog";
 import { bundledGamesSourceRevision, floorPreviewMediaSpec } from "./bundleMedia";
 import { visibleActiveLevelLaunch, type ActiveLevelLaunch, type ActiveLevelLaunchPhase, type ScreenMode } from "./runtimeFlow";
 import {
@@ -334,7 +334,7 @@ function runtimeGameID(game: Pick<GameCard, "engineGame" | "id" | "sourceKind">)
 }
 
 function previewAnimationID(game: GameCard): string {
-  if (engineGameID(game) === "salvapantallas") return "";
+  if (isScreensaverCard(game)) return "";
   return game.previewAnimation || game.id;
 }
 
@@ -380,10 +380,14 @@ function isScreensaverCard(game: Pick<GameCard, "engineGame" | "id">): boolean {
 }
 
 function isInternalAnimationsAggregate(value: Pick<GameCard, "engineGame" | "id"> | PlatformGameCatalogEntry): boolean {
+  const id = String(value.id || "").trim().toLowerCase();
+  // These are player-facing cards, not the internal catalog row that stores
+  // the native animation product and its authored levels.
+  if (id === "salvapantallas" || id.startsWith("animation-")) return false;
   if ("engine_game" in value) {
-    return value.id === "animations" || platformEntryEngineGame(value) === "animations";
+    return value.id === "animations" || isNativeAnimationProduct(platformEntryEngineGame(value));
   }
-  return value.id === "animations" || engineGameID(value) === "animations";
+  return value.id === "animations" || isNativeAnimationProduct(engineGameID(value));
 }
 
 function gamesForCategory(catalogGames: GameCard[], category: CategoryID): GameCard[] {
@@ -453,10 +457,15 @@ function liveAnimationCards(catalog: EngineGame[] | undefined, existingGames: Ga
         audio: entry.music ? "Música" : "Suave",
         description: entry.description || "Animación ambiental para la pista.",
         rules: ["Pisa la pista para interactuar.", "Puedes cambiar de animación en cualquier momento."],
-        engineGame: entry.game,
+        engineGame: nativeAnimationEngineGame,
+        animationID: animationId,
         previewAnimation: nativeMedia ? undefined : entry.game,
         ...nativeMedia,
         featured: false,
+        allowAnyPlayers: true,
+        sourceKind: "motion_levels_games",
+        sourceGameId: nativeAnimationGameID,
+        sourceRevision: bundledGamesSourceRevision(),
       };
     });
 }
@@ -1650,9 +1659,7 @@ function MenuApp() {
 
   const menuGames = useMemo(() => {
     const bundledGames = bundledProductionGameCards();
-    const animationCards = platformCatalog === null
-      ? nativeAnimationCards()
-      : platformAnimationCards(platformCatalog);
+    const animationCards = ambientAnimationCards(platformCatalog);
     return applyPlatformCatalog(
       [...bundledGames, ...animationCards, ...liveAnimationCards(status?.catalog, [...bundledGames, ...animationCards])],
       platformCatalog,
@@ -2284,6 +2291,8 @@ function MenuApp() {
   const launchedLevelMode = activeLevelModeFor(launchedGame, menu, status);
   const selectedPartyMiniGames = isPartyCard(selectedGame) ? selectedGame.partyMiniGames || [] : [];
   const selectedGameActive = Boolean(status) && (
+    (isScreensaverCard(selectedGame) && animationIsIdleLoop(status?.currentGame || "", status?.phase || ""))
+    ||
     status?.currentGame === runtimeGameID(selectedGame)
     || status?.currentGame === engineGameID(selectedGame)
   );
@@ -3318,7 +3327,15 @@ function MenuApp() {
     }
     const launchChallengeRun = launchLevelMode === "challenge" ? challengeRunFor(launchGame, nextMenu) : null;
     const launchFreeRun = launchLevelMode === "free" ? freeRunFor(launchGame, nextMenu) || emptyFreeRun(nextMenu.sessionId) : null;
-    const launchConfig = menuConfigOverridesFor(launchGame, nextMenu);
+    const configuredLaunch = menuConfigOverridesFor(launchGame, nextMenu);
+    const ambientLaunchConfig: GameConfigValues = launchGame.animationID
+      ? { mode: "single", animation: launchGame.animationID }
+      : isScreensaverCard(launchGame)
+        ? { mode: "rotation" }
+        : {};
+    const launchConfig = Object.keys(ambientLaunchConfig).length || configuredLaunch
+      ? { ...ambientLaunchConfig, ...(configuredLaunch || {}) }
+      : undefined;
     const launchDifficultyLevels = launchGame.levels?.length && launchDifficulty ? levelsForDifficulty(launchGame, launchDifficulty) : [];
     if (selectedLevelID && !isLevelUnlocked(launchGame, selectedLevelID, nextMenu)) {
       captureMenuEvent("start_blocked", {
@@ -3384,7 +3401,7 @@ function MenuApp() {
         gameLabel: launchGame.label,
         // Platform level rows are editor/catalog metadata only. The venue
         // always launches the immutable games-owned product.
-        sourceKind: launchGame.sourceKind === "platform_levels"
+        sourceKind: launchGame.sourceKind === "platform_levels" || launchGame.sourceKind === "animation"
           ? "motion_levels_games"
           : launchGame.sourceKind,
         sourceRevision: launchGame.sourceRevision,

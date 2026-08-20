@@ -536,10 +536,16 @@ export class VenueRuntime {
     const venueSessionGeneration = this.venueSessionGeneration;
     if (module === gameplayRegistry.get(screensaverGameId) && isScreensaverRequest(request)) {
       const screensaverOptions: Record<string, unknown> = { mode: "rotation", ...(request.config ?? {}) };
+      const selectedAnimation = typeof screensaverOptions.animation === "string"
+        ? screensaverOptions.animation.trim().toLowerCase()
+        : undefined;
       if (screensaverOptions.rotationSeconds === undefined && durationMillis !== undefined) {
         screensaverOptions.rotationSeconds = Math.max(5, Math.min(3600, Math.round(durationSeconds)));
       }
-      await this.refreshScreensaverContent(durationMillis === undefined ? undefined : Math.round(durationSeconds));
+      await this.refreshScreensaverContent(
+        durationMillis === undefined ? undefined : Math.round(durationSeconds),
+        selectedAnimation,
+      );
       this.assertVenueSessionGeneration(venueSessionGeneration);
       if (this.recordingGateBlocksGameplay()) {
         throw new SessionHistoryConflictError("recording gate must be resolved before selecting another game");
@@ -2103,10 +2109,10 @@ export class VenueRuntime {
     });
   }
 
-  async refreshScreensaverContent(rotationSeconds?: number): Promise<boolean> {
+  async refreshScreensaverContent(rotationSeconds?: number, animation?: string): Promise<boolean> {
     if (!this.options.platformUrl) return false;
     if (this.screensaverRefreshInFlight) return this.screensaverRefreshInFlight;
-    const refresh = this.fetchScreensaverContent(rotationSeconds)
+    const refresh = this.fetchScreensaverContent(rotationSeconds, animation)
       .then(({ content, contentRevision }) => {
         if (contentRevision === this.screensaverContentRevision) return false;
         this.screensaverContent = content;
@@ -2128,12 +2134,13 @@ export class VenueRuntime {
     return refresh;
   }
 
-  private async fetchScreensaverContent(rotationSeconds?: number): Promise<{ content: GameContent; contentRevision: string }> {
+  private async fetchScreensaverContent(rotationSeconds?: number, animation?: string): Promise<{ content: GameContent; contentRevision: string }> {
     const platform = resolveRuntimeContentPlatformUrl(this.options.platformUrl, undefined);
     if (!platform) throw new RequestValidationError("platform URL is invalid");
     const endpoint = new URL(platform);
     endpoint.pathname = `${endpoint.pathname.replace(/\/$/u, "")}/api/level-games/${screensaverGameId}/runtime-content`;
     if (rotationSeconds !== undefined) endpoint.searchParams.set("rotationSeconds", String(rotationSeconds));
+    if (animation) endpoint.searchParams.set("animation", animation);
     const headers: Record<string, string> = { Accept: "application/json" };
     if (this.options.platformToken) headers.Authorization = `Bearer ${this.options.platformToken.trim()}`;
     const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(4_000) });

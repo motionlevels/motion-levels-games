@@ -19,7 +19,7 @@ import {
   shouldPreferCatalogFallbackPreviewAnimation,
   supportedDifficultiesForGame,
 } from "../src/catalogSync.ts";
-import { nativeAnimationCards, platformAnimationCards } from "../src/animationCatalog.ts";
+import { ambientAnimationCards, nativeAnimationCards, nativeAnimationEngineGame, nativeAnimationGameID, platformAnimationCards } from "../src/animationCatalog.ts";
 import { inferPlatformURL } from "../src/api.ts";
 import { catalogSourceMatchesBundledRuntime, isSupportedRuntimeSourceFromProducts } from "../src/runtimeSourcePolicy.ts";
 import type { PlatformGameCatalogEntry } from "../src/api.ts";
@@ -76,9 +76,9 @@ describe("catalog metadata sync", () => {
       /filter\(\(manifest\) => manifest\.availability\.production && manifest\.slug !== "animations"\)/,
     );
     assert.match(appSource, /const bundledGames = bundledProductionGameCards\(\);/);
-    assert.match(appSource, /const animationCards = platformCatalog === null/);
+    assert.match(appSource, /const animationCards = ambientAnimationCards\(platformCatalog\)/);
     assert.match(appSource, /\[\.\.\.bundledGames, \.\.\.animationCards/);
-    assert.match(appSource, /nativeAnimationCards\(\)/);
+    assert.match(appSource, /ambientAnimationCards\(platformCatalog\)/);
     assert.match(appSource, /featured: fallback\?\.featured === true/);
     assert.doesNotMatch(appSource, /category: fallback\.category/);
     assert.match(appSource, /Number\(right\.featured === true\) - Number\(left\.featured === true\)/);
@@ -309,7 +309,9 @@ describe("catalog metadata sync", () => {
 
     assert.deepEqual(cards.map((card) => card.id), ["animation-aurora"]);
     assert.equal(cards[0].category, "attract");
-    assert.equal(cards[0].engineGame, "animation-aurora");
+    assert.equal(cards[0].engineGame, nativeAnimationEngineGame);
+    assert.equal(cards[0].animationID, "aurora");
+    assert.equal(cards[0].allowAnyPlayers, true);
     assert.equal(cards[0].previewAnimation, undefined);
     const thumbnailURL = new URL(cards[0].thumbnailSrc || "");
     const previewURL = new URL(cards[0].previewSrc || "");
@@ -330,12 +332,31 @@ describe("catalog metadata sync", () => {
     const aurora = cards.find((card) => card.id === "animation-aurora");
     assert.ok(aurora);
     assert.equal(aurora?.category, "attract");
-    assert.equal(aurora?.sourceKind, "animation");
+    assert.equal(aurora?.sourceKind, "motion_levels_games");
     assert.equal(aurora?.previewAnimation, undefined);
     assert.equal(
       new URL(aurora?.previewSrc || "").pathname,
       `/games/${revision}/media/animations/aurora/aurora-preview.webp`,
     );
+    assert.equal(aurora?.engineGame, nativeAnimationEngineGame);
+    assert.equal(aurora?.animationID, "aurora");
+    assert.equal(aurora?.allowAnyPlayers, true);
+    assert.equal(aurora?.sourceKind, "motion_levels_games");
+    assert.equal(aurora?.sourceGameId, nativeAnimationGameID);
+    assert.equal(aurora?.sourceRevision, revision);
+  });
+
+  it("keeps the screensaver first and native animations when a successful catalog has no animation levels", () => {
+    const cards = ambientAnimationCards([]);
+    const screensaver = cards[0];
+    assert.equal(screensaver?.id, "salvapantallas");
+    assert.equal(screensaver?.category, "attract");
+    assert.equal(screensaver?.engineGame, nativeAnimationEngineGame);
+    assert.equal(screensaver?.allowAnyPlayers, true);
+    assert.equal(new URL(screensaver?.thumbnailSrc || "", "https://venue.test/menu/").pathname, "/motion-levels-icon.webp");
+    assert.equal(cards.length, nativeAnimationCards().length + 1);
+    assert.deepEqual(cards.slice(1).map((card) => card.category), cards.slice(1).map(() => "attract"));
+    assert.ok(cards.some((card) => card.id === "animation-aurora"));
   });
 
   it("keeps party inside the competitive menu category", () => {
@@ -659,7 +680,8 @@ describe("catalog metadata sync", () => {
   it("sends player config overrides with the launch request", () => {
     const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
 
-    assert.match(appSource, /const launchConfig = menuConfigOverridesFor\(launchGame, nextMenu\);/);
+    assert.match(appSource, /const configuredLaunch = menuConfigOverridesFor\(launchGame, nextMenu\);/);
+    assert.match(appSource, /const ambientLaunchConfig: GameConfigValues = launchGame\.animationID/);
     assert.match(appSource, /const launchRoster = rosterForGame\(launchGame, nextMenu\.players\);/);
     assert.match(appSource, /config: launchConfig,/);
     assert.match(appSource, /playerCount: launchGame\.allowAnyPlayers \? 0 : Math\.max\(1, launchRoster\.length\),/);

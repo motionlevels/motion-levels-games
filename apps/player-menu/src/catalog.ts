@@ -102,6 +102,7 @@ export type GameCard = {
   previewSrc?: string;
   previewSrcs?: string[];
   previewAnimation?: string;
+  animationID?: string;
   previewRevisionHash?: string;
   featured?: boolean;
   supportsLevels?: boolean;

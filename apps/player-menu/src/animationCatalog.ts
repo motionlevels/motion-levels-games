@@ -11,13 +11,55 @@ import {
   type PlayerMenuLocation,
 } from "./bundleMedia.ts";
 import { catalogDirectAssetSrc, uniquePreviewSources } from "./previews.ts";
+import { publicAssetURL } from "./utils.ts";
 
 const animationColors = ["#36d9ff", "#005af8", "#8dff6e", "#b987ff", "#ff9f45", "#ffd166"];
+// Keep the player-menu package boundary on animation-runtime. This is the
+// immutable product id owned by games/animations/src/manifest.ts.
+export const nativeAnimationGameID = "a861f0dc-3e2e-4fe9-b487-33194af75b68";
+export const nativeAnimationEngineGame = `motion-levels-games:${nativeAnimationGameID}`;
+const screensaverThumbnail = publicAssetURL("motion-levels-icon.webp");
+
+function animationProductIdentity(value: string): string {
+  return String(value || "").trim().toLowerCase().replace(/^motion-levels-games:/u, "");
+}
+
+export function isNativeAnimationProduct(value: string): boolean {
+  return [nativeAnimationGameID, "animations", "salvapantallas", "ambient-animations"].includes(animationProductIdentity(value));
+}
+
+export function screensaverCard(): GameCard {
+  return {
+    id: "salvapantallas",
+    label: "Salvapantallas",
+    category: "attract",
+    color: "#36d9ff",
+    players: "Todos",
+    difficulty: "Ambiente",
+    duration: "Bucle",
+    mode: "Rotación",
+    audio: "Suave",
+    description: "Rota automáticamente las animaciones de Motion Levels cuando la pista está en espera.",
+    rules: ["La pista rota las animaciones sin cortes.", "Pisa la pista para crear ondas y destellos."],
+    engineGame: nativeAnimationEngineGame,
+    thumbnailSrc: screensaverThumbnail,
+    thumbnailSrcs: [screensaverThumbnail],
+    previewSrc: screensaverThumbnail,
+    previewSrcs: [screensaverThumbnail],
+    featured: false,
+    minPlayers: 1,
+    maxPlayers: 8,
+    allowAnyPlayers: true,
+    sourceKind: "motion_levels_games",
+    sourceRevision: bundledGamesSourceRevision(),
+    sourceGameId: nativeAnimationGameID,
+  };
+}
 
 /**
  * The native animation library is part of the games bundle. Keep it
- * available while the platform catalog is offline; a successful platform
- * catalog still controls which editor-published animation levels are shown.
+ * available regardless of the platform catalog response; a successful
+ * platform catalog may add editor-published animation presentations.
  */
 export function nativeAnimationCards(
   options: { menuLocation?: PlayerMenuLocation; sourceRevision?: string } = {},
@@ -36,14 +78,17 @@ export function nativeAnimationCards(
       audio: "Suave",
       description: animation.description,
       rules: ["Pisa la pista para crear ondas y destellos.", "Las animaciones se repiten sin cortes."],
-      engineGame: `animation-${animation.id}`,
+      engineGame: nativeAnimationEngineGame,
+      animationID: animation.id,
       previewRevisionHash: options.sourceRevision ?? bundledGamesSourceRevision(),
       ...media,
       featured: false,
       minPlayers: 1,
       maxPlayers: 1,
-      sourceKind: "animation",
-      sourceGameId: animation.id,
+      allowAnyPlayers: true,
+      sourceKind: "motion_levels_games",
+      sourceRevision: options.sourceRevision ?? bundledGamesSourceRevision(),
+      sourceGameId: nativeAnimationGameID,
     };
   });
 }
@@ -68,17 +113,38 @@ export function platformAnimationCards(catalog: PlatformGameCatalogEntry[] | nul
         audio: entry.default_music_ref ? "Música" : "Suave",
         description: level.description || "Animación visible desde el editor.",
         rules: ["Animación visible desde el editor.", "Se guarda en caché local para abrir el menú más rápido."],
-        engineGame: `animation-${levelID}`,
+        engineGame: nativeAnimationEngineGame,
+        animationID: levelID,
         previewAnimation: media ? undefined : `animation-${levelID}`,
         previewRevisionHash,
         ...media,
         featured: false,
         minPlayers: 1,
         maxPlayers: 1,
-        sourceKind: "animation",
+        allowAnyPlayers: true,
+        sourceKind: "motion_levels_games",
+        sourceRevision: bundledGamesSourceRevision(),
+        sourceGameId: nativeAnimationGameID,
       };
     }))
     .filter((game) => game.id !== "animation-");
+}
+
+/**
+ * Build the complete Ambiente category. Published platform presentations take
+ * precedence over their native card, while the immutable native library is
+ * always retained and the idle screensaver remains the first card.
+ */
+export function ambientAnimationCards(
+  catalog: PlatformGameCatalogEntry[] | null,
+  options: { menuLocation?: PlayerMenuLocation; sourceRevision?: string } = {},
+): GameCard[] {
+  const cards = [
+    screensaverCard(),
+    ...platformAnimationCards(catalog),
+    ...nativeAnimationCards(options),
+  ];
+  return [...new Map(cards.map((card) => [card.id, card])).values()];
 }
 
 function animationCardMediaSources(

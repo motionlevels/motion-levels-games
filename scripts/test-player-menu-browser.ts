@@ -282,6 +282,42 @@ try {
     )));
   });
 
+  await scenario("a successful local catalog shows the screensaver first and every native ambient animation", async ({ page, selectRequests }) => {
+    await startSession(page);
+    const drawer = page.locator(".team-drawer");
+    await drawer.locator(".drawer-done").tap();
+    await waitForAttribute(drawer, "aria-hidden", "true");
+    await page.getByRole("button", { name: "Ambiente", exact: true }).tap();
+
+    const cards = page.locator(".game-grid .game-card");
+    await page.locator('.game-card[data-game-id="salvapantallas"]').waitFor({ state: "visible" });
+    await waitForCondition(async () => (await cards.count()) >= 25, "the complete native ambient catalog");
+    const cardIDs = await cards.evaluateAll((items) => items.map((item) => item.getAttribute("data-game-id")));
+    assert.equal(cardIDs[0], "salvapantallas", `screensaver must be the first ambient card: ${JSON.stringify(cardIDs.slice(0, 4))}`);
+    assert.ok(cardIDs.includes("animation-aurora"), "Aurora must be visible in Ambiente");
+    assert.ok(cardIDs.includes("animation-neon-ribbons"), "Neon Ribbons must be visible in Ambiente");
+    assert.ok(cardIDs.includes("animation-bioluminescence"), "Bioluminescence must be visible in Ambiente");
+
+    const screensaver = page.locator('.game-card[data-game-id="salvapantallas"]');
+    await screensaver.locator(".preview-logo-fallback img").waitFor({ state: "visible" });
+    assert.match(
+      await screensaver.locator(".preview-logo-fallback img").getAttribute("src") || "",
+      /motion-levels-icon\.webp$/u,
+    );
+
+    await page.locator('.game-card[data-game-id="animation-aurora"]').tap();
+    await waitForCondition(() => selectRequests.length === 1, "native animation /api/select request");
+    const request = selectRequests[0];
+    assert.ok(request);
+    assert.equal(request.game, "motion-levels-games:a861f0dc-3e2e-4fe9-b487-33194af75b68");
+    assert.equal(request.engineGame, request.game);
+    assert.equal(request.sourceKind, "motion_levels_games");
+    assert.equal(request.playerCount, 0);
+    assert.equal(request.allowAnyPlayers, true);
+    assert.deepEqual(request.config, { mode: "single", animation: "aurora" });
+    assert.match(String(request.sourceRevision || ""), /^[0-9a-f]{40}$/u);
+  });
+
   await scenario("published animation previews render from the revisioned games bundle", async ({ page, platformCatalog }) => {
     platformCatalog.push(mockCatalogEntry({
       id: "animations",
@@ -309,6 +345,7 @@ try {
 
     const card = page.locator('.game-card[data-game-id="animation-aurora"]');
     await card.waitFor({ state: "visible" });
+    await card.tap();
     await waitForAttribute(card, "aria-pressed", "true");
     const poster = card.locator("img.preview-media-poster");
     const animated = card.locator("img.preview-media-animated");
@@ -774,6 +811,16 @@ function idleStatus(): MockEngineStatus {
       maxPlayers: 6,
       difficulty: true,
       volume: 1,
+    }, {
+      game: "motion-levels-games:a861f0dc-3e2e-4fe9-b487-33194af75b68",
+      label: "Animaciones",
+      description: "Native ambient animations",
+      music: "",
+      players: false,
+      minPlayers: 1,
+      maxPlayers: 8,
+      difficulty: false,
+      volume: 0,
     }],
     contractVersion: 1,
     countdownRemainingMillis: 0,
