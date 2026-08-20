@@ -11,7 +11,8 @@ import {
   type GameEngine,
   type GameEngineState,
   type GameEvent,
-  type GameInstance
+  type GameInstance,
+  type GameSnapshot
 } from "@motion-levels-games/game-sdk";
 import { replayChecksum } from "@motion-levels-games/replay-runtime";
 
@@ -155,9 +156,13 @@ export class GameSession {
     const zones = resolveReadyZones(this.instance, this.engine.state.frame, snapshot);
     const assignment = assignPlayers(zones, playerCount);
     const firstZone = humanSpawnZone(zones, assignment[0] ?? 0);
+    const occupiedSpawns: Tile[] = [];
 
     this.avatars = assignment.map((playerIndex, index) => {
       const automated = allBots || index > 0;
+      const fallbackSpawn = spawnTile(index, playerCount, index === 0 ? firstZone : undefined);
+      const spawn = safeAuthoredSpawn(this.instance, fallbackSpawn, snapshot, occupiedSpawns);
+      occupiedSpawns.push(spawn);
       return createAvatar(
         index,
         playerIndex,
@@ -165,7 +170,7 @@ export class GameSession {
         players[playerIndex]?.color ??
           AVATAR_COLORS[playerIndex % AVATAR_COLORS.length] ??
           "#b8ff00",
-        spawnTile(index, playerCount, index === 0 ? firstZone : undefined),
+        spawn,
         automated ? BOT_SPEED : HUMAN_SPEED
       );
     });
@@ -294,9 +299,13 @@ export class GameSession {
     // different corner between rounds would be disorienting.
     const zones = resolveReadyZones(this.instance, this.engine.state.frame, instance.snapshot());
     const firstZone = humanSpawnZone(zones, this.avatars[0]?.playerIndex ?? 0);
+    const snapshot = instance.snapshot();
+    const occupiedSpawns: Tile[] = [];
 
     for (const [index, avatar] of this.avatars.entries()) {
-      const spawn = spawnTile(index, this.avatars.length, index === 0 ? firstZone : undefined);
+      const fallbackSpawn = spawnTile(index, this.avatars.length, index === 0 ? firstZone : undefined);
+      const spawn = safeAuthoredSpawn(this.instance, fallbackSpawn, snapshot, occupiedSpawns);
+      occupiedSpawns.push(spawn);
       resetAvatarMotion(avatar, spawn);
     }
 
@@ -470,6 +479,21 @@ export class GameSession {
       const result = controller.step(observation);
       const action = result?.action;
       if (action?.kind === "move" && isFinitePoint(action.target)) {
+        // A repository-authored level can intentionally spawn an agent on an
+        // objective. The avatar may still be holding that tile from the
+        // countdown, so moving to the same coordinate would otherwise produce
+        // no new press event. Treat the controller's one-tile path as a tap
+        // through the same authoritative engine used for every other press.
+        if (action.target.x === avatar.tile.x
+          && action.target.y === avatar.tile.y
+          && avatar.pressedTile?.x === avatar.tile.x
+          && avatar.pressedTile?.y === avatar.tile.y
+          && avatar.airborneUntil <= this.clockMillis) {
+          this.applyOps([
+            { kind: "release", x: avatar.tile.x, y: avatar.tile.y },
+            { kind: "press", x: avatar.tile.x, y: avatar.tile.y }
+          ]);
+        }
         const plannedPath = sanitizePath(action.path, avatar.tile, action.target);
         this.controllerPaths.set(avatar.id, plannedPath);
         this.advanceControllerPath(avatar);
@@ -797,6 +821,36 @@ function spawnTile(index: number, playerCount: number, zone?: Tile[]): Tile {
     x: lanes[index % lanes.length] ?? 7,
     y: 27 - Math.floor(index / lanes.length) * 3 - (index % 2) * (playerCount > 2 ? 2 : 0)
   };
+}
+
+function safeAuthoredSpawn(
+  game: GameInstance,
+  fallback: Tile,
+  snapshot: GameSnapshot,
+  occupied: readonly Tile[]
+): Tile {
+  const candidate = game as GameInstance & {
+    dangerAt?: (x: number, y: number, atMillis?: number) => number;
+    semanticTiles?: (atMillis?: number) => readonly { x: number; y: number; kind: number; present: boolean }[];
+  };
+  if (typeof candidate.dangerAt !== "function" || typeof candidate.semanticTiles !== "function") return fallback;
+  const atMillis = Math.max(0, Number(snapshot.countdownMillis ?? 0));
+  if (candidate.dangerAt(fallback.x, fallback.y, atMillis) <= 0) return fallback;
+  const playable = candidate.semanticTiles(atMillis)
+    .filter((tile) => tile.present && tile.kind !== 2)
+    .map((tile) => ({ x: tile.x, y: tile.y }))
+    .filter((tile) => !occupied.some((other) => other.x === tile.x && other.y === tile.y));
+  return playable.sort((left, right) => (
+    tileDistanceSquared(left, fallback) - tileDistanceSquared(right, fallback)
+      || left.y - right.y
+      || left.x - right.x
+  ))[0] ?? fallback;
+}
+
+function tileDistanceSquared(left: Tile, right: Tile): number {
+  const x = left.x - right.x;
+  const y = left.y - right.y;
+  return x * x + y * y;
 }
 
 function randomSeed(): number {

@@ -10,8 +10,7 @@ import { manifest } from "./manifest.ts";
 
 const product: PublishedLevelProduct = Object.freeze({
   manifest,
-  fallbackContent,
-  contentIdentity: "platform"
+  fallbackContent
 });
 
 export function createGame(config: GameConfig) {

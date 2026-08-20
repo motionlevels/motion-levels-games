@@ -64,6 +64,9 @@ type BrowserPlaygroundState = {
   gameId: string;
   paused: boolean;
   playerCount: number;
+  frame: {
+    cells: Array<{ x: number; y: number; color: string }>;
+  };
   snapshot: {
     countdownMillis?: number;
     currentPlatform?: { x: number; y: number };
@@ -731,20 +734,28 @@ async function playtestPublishedLevels(page: Page, product: PublishedLevelPlayte
   await page.evaluate((game) => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
-    if (game === "parkour") {
-      api.press(7, 5);
-      api.release(7, 5);
-    } else {
-      for (const [x, y] of [[2, 5], [13, 24]] as const) {
-        api.press(x, y);
-        api.release(x, y);
+    // These are repository-owned authored frames, so their objectives are
+    // deliberately discovered from the rendered contract instead of baking
+    // coordinates from a fixture into the browser test. Animated levels can
+    // expose different objectives on different frames.
+    for (let batch = 0; batch < 12_000; batch += 1) {
+      const state = api.getState();
+      const objectives = state.frame.cells.filter((cell) => {
+        const color = cell.color.toLowerCase();
+        return color === "#0000ff" || color === "#f526ff";
+      });
+      for (const objective of objectives) {
+        api.press(objective.x, objective.y);
+        api.release(objective.x, objective.y);
+        if (objective.color.toLowerCase() === "#f526ff") {
+          api.press(objective.x, objective.y);
+          api.release(objective.x, objective.y);
+        }
       }
-      api.press(8, 14);
-      api.release(8, 14);
-      api.press(8, 14);
-      api.release(8, 14);
+      if (api.getState().snapshot.phase === "finished") return;
+      api.step(20);
     }
-    api.step(20);
+    throw new Error(`${game} authored objectives did not reach a terminal state`);
   }, product);
   await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().snapshot.phase === "finished");
   const floorFinished = await browserState(page);
@@ -778,12 +789,15 @@ async function playtestPublishedLevels(page: Page, product: PublishedLevelPlayte
   await page.evaluate(() => {
     const lab = (window as BrowserPlaygroundWindow).ml?.agentLab;
     if (!lab) throw new Error("Published-level Jugar API is unavailable");
+    // Keep the visual baseline on a deterministic live tick. The real
+    // repository-authored Parkour board can legitimately finish its first
+    // level before the old 175-tick sample, so use an early active tick.
     lab.reset();
-    lab.step(175);
+    lab.step(50);
   });
   const liveCaptureState = await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.agentLab?.getState());
   assert.ok(liveCaptureState);
-  assert.equal(liveCaptureState.tick, 175, `${definition.label} visual baseline must use a deterministic live tick`);
+  assert.equal(liveCaptureState.tick, 50, `${definition.label} visual baseline must use a deterministic live tick`);
   assert.notEqual(liveCaptureState.metrics?.completed, true, `${definition.label} visual baseline must retain the active floor`);
 
   await prepareNativeJugarCapture(page);

@@ -28,6 +28,9 @@ export type PublishedLevelDifficultySetting = Readonly<{
 
 export type PublishedLevelRules = Readonly<{
   victory_condition?: "collect_all" | "score_at_least" | string;
+  fps?: number;
+  frame_duration_ms?: number;
+  narration_auto?: boolean;
   difficulty_settings?: Readonly<Record<string, PublishedLevelDifficultySetting>>;
   difficulty_changes_layout?: boolean;
   red_floor_animation?: "none" | "parkour_lava" | string;
@@ -38,6 +41,7 @@ export type PublishedLevelRules = Readonly<{
   green_platform_impact_ripple?: boolean;
   blue_platform_turn_green?: boolean;
   blue_platform_capture_area?: boolean;
+  catalog_featured?: boolean;
 }>;
 
 export type PublishedResultAnimations = Readonly<{
@@ -48,6 +52,7 @@ export type PublishedResultAnimations = Readonly<{
 export type PublishedLevelRecord = Readonly<{
   id: string;
   slug: string;
+  sort_order?: number;
   settings_hash?: string;
   label: string;
   description?: string;
@@ -172,8 +177,6 @@ export type PublishedLevelGameInstance = Omit<GameInstance, "snapshot"> & Readon
 export type PublishedLevelProduct = Readonly<{
   manifest: GameManifest;
   fallbackContent: PublishedLevelContent;
-  /** Platform-authored products accept the host-validated canonical catalog game id. */
-  contentIdentity?: "manifest" | "platform";
 }>;
 
 export type PublishedLevelContentInput = Readonly<{
@@ -185,4 +188,25 @@ export type PublishedLevelContentInput = Readonly<{
   mode?: PublishedLevelMode;
   levelsPayload: unknown;
   resultAnimationsPayload?: unknown;
+}>;
+
+export const AUTHORED_GAME_SOURCE_SCHEMA = "motion-levels-authored-game-source-v1";
+export const AUTHORED_GAME_EXPORT_SCHEMA = "motion-levels-authored-game-export-v1";
+
+export type AuthoredGameSourceManifest = Readonly<{
+  schema: typeof AUTHORED_GAME_SOURCE_SCHEMA;
+  gameId: string;
+  engineGame: string;
+  difficulties: readonly string[];
+  defaultDifficulty: string;
+  defaultMode: PublishedLevelMode;
+  defaultLevelSlug: string;
+}>;
+
+export type AuthoredGameRepositoryExport = Readonly<{
+  schema: typeof AUTHORED_GAME_EXPORT_SCHEMA;
+  contentRevision: string;
+  game: AuthoredGameSourceManifest;
+  levels: readonly unknown[];
+  resultAnimations: readonly unknown[];
 }>;

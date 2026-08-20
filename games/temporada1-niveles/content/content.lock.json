@@ -1,0 +1,402 @@
+{
+  "schema": "motion-levels-authored-content-lock-v1",
+  "contentRevision": "34e2c5513b5c72afdbd3a3a73788ab3f357cccabbc20f45a7c9f1f8cfc690361",
+  "files": [
+    {
+      "path": "game.json",
+      "sha256": "61993d884eecb6d35f49b3744230edcc9aba20f08b3837048d51959dba47d9b0"
+    },
+    {
+      "path": "levels/0269da5e-bb97-4306-8ace-8e5c303ab153.json",
+      "sha256": "713eac1dbedd556931cc704aad4f876e624df3a94a4363e5a711f1c44ddcd645"
+    },
+    {
+      "path": "levels/05b243c6-d345-4b3b-8455-9ca05efa670b.json",
+      "sha256": "6e7e1e7735bacd67039bc1ab1818825e9ddcd76ed19286be73155bb46092731c"
+    },
+    {
+      "path": "levels/06889ac2-ce94-4e2b-8d39-3ec686adc462.json",
+      "sha256": "a37bf396ffd62cd137f334f24a63cc5008da3fa9067426a0748bb51307ee32fb"
+    },
+    {
+      "path": "levels/0955f4c9-213b-4bff-85b6-19d804fd2c32.json",
+      "sha256": "23b190d8ec0ca0fc43be323e3b354a8283f451510115fad398c96e87676cc954"
+    },
+    {
+      "path": "levels/0a6b9a3c-85cc-4ba1-8aa8-41d160e24288.json",
+      "sha256": "8a6e7ba437528dde9986920124aac5de691675762da57ee1ecac106d4c6d962d"
+    },
+    {
+      "path": "levels/0f5c0a95-08cb-4a49-85aa-8deece3f7d04.json",
+      "sha256": "d4bceca076cdf97741b7542d3a1821bdbeacb2fa07c8fe7a72321ddecc36088c"
+    },
+    {
+      "path": "levels/0fdccd8a-9f11-4bb7-8472-fc545d653aca.json",
+      "sha256": "80c601d4a53f299681c27afb789ed9d25c5f04b154c9f4f2085ff6f7a69f1177"
+    },
+    {
+      "path": "levels/101be5b8-c3c8-4c59-86ae-20cbaec825ce.json",
+      "sha256": "e0f6341f4ffc5307e1018cdbb66b918cc50cbc45a1949fb289519757e2bdd34d"
+    },
+    {
+      "path": "levels/10cb5c6f-f3c5-4f93-8c72-6e20a97d4d57.json",
+      "sha256": "25624cfcc94967086f7e7b01beac81c3f79b4b3e20d3805eb0544c0416700b04"
+    },
+    {
+      "path": "levels/11ab59b5-b6b3-4ec8-8665-6d1e3d61678d.json",
+      "sha256": "4f95cd1c8fade5f13e78ac1a895070300510e6ef7dcef60a183baf479a2c9b29"
+    },
+    {
+      "path": "levels/11fd33be-b262-4fa4-8ad5-def69cfaaa81.json",
+      "sha256": "c7a622746ebcefb982eba834dbe45caa88bb90880285be3f21e1aac1145dcf2c"
+    },
+    {
+      "path": "levels/1379de16-180e-4b6b-85cc-7a34f137da50.json",
+      "sha256": "cc3e51a3edd4176c60b6ce141291255eeba1930b65bdaf2b7f1d281b2b758601"
+    },
+    {
+      "path": "levels/1839b4b5-860d-4608-8455-3c95d1eb2c6f.json",
+      "sha256": "faa61017bec85285fc731ba2fafc97e3247b1b8f76d16d2f1777784f52fe47ea"
+    },
+    {
+      "path": "levels/188ddde0-9534-4f72-8dc7-ca21cd068d3a.json",
+      "sha256": "b863fd18a19d182091dc9be0884099bcfaa54859ad681a640c6e05d2c3522333"
+    },
+    {
+      "path": "levels/1aed707a-cf5d-43d7-884d-31800a0ccc40.json",
+      "sha256": "391e22ca520d0f69f74f1b5c37e6c5fcd54cb3adb5a8f592cf07b0d9625bdef7"
+    },
+    {
+      "path": "levels/1bffb13c-ed36-470d-8d3d-a2e94c5ffd3a.json",
+      "sha256": "6024e82f1513a278db54ebf9368c52d234e6ce8d8f4f1c276425ec72a4125438"
+    },
+    {
+      "path": "levels/1cfbf644-d82e-4d30-8c63-c8326d8eb81b.json",
+      "sha256": "b692a10fee28a0257e1c36e2db1fc66f69c208cdc97e4c535f304d68130534f0"
+    },
+    {
+      "path": "levels/1d1514be-50da-45f9-8b0b-a90cd3bb49fa.json",
+      "sha256": "799308c06986adf24bdca0162ff5094e842b0ef1ca2a49e61aad7c7a30d59e65"
+    },
+    {
+      "path": "levels/1d3ede55-085a-4b09-8b9f-30401a7e5600.json",
+      "sha256": "117708e1c050920173cbf7e36a3673d16e45323937a1166e4e4da1b70ff4024c"
+    },
+    {
+      "path": "levels/1e01a0b2-ba12-4e21-8ca9-2bc15dca93bf.json",
+      "sha256": "6bd642f634d364f173381288fa6235c8c771650795ea09f655b7b819277d57f5"
+    },
+    {
+      "path": "levels/23a2441d-6261-434d-8d63-3e017c94d724.json",
+      "sha256": "c678fa5e86b08a8a030d4588f22cc46c9da9feb5cdf855f6463320d603e23db3"
+    },
+    {
+      "path": "levels/2715dc6f-35ea-458d-8a02-33f2c6442f33.json",
+      "sha256": "91496b387591b26443dc4cf7800275e10b54e0ddb17a99cbe22eb03e1dbf50d5"
+    },
+    {
+      "path": "levels/2fc2e0e5-c06f-4697-8884-41d0de440b25.json",
+      "sha256": "7178b4227d5eb1e82d23799f6bebb1240d6e20fe01914b81dbd12567a3c47d0c"
+    },
+    {
+      "path": "levels/310a2050-f806-4622-8b01-6e4a7a7a8ff0.json",
+      "sha256": "806bf18863be028bac6354921775ad62cd53ea8e9ca2c9c562f9f57dfdac375a"
+    },
+    {
+      "path": "levels/37524882-c45b-4957-843a-cda643c03c84.json",
+      "sha256": "8ab84042586996fddde77bdb666a72b8e41deae1bf92133c9a01957e248fec6e"
+    },
+    {
+      "path": "levels/3ac1c128-640c-49e3-8e10-b806911cd198.json",
+      "sha256": "df976cc63e6b63e8ac7963d4c1c44150a6b5c6c28c7bb2289a081a2c0b62d135"
+    },
+    {
+      "path": "levels/3cbb5e16-5b13-4ebb-8054-5277154f41fa.json",
+      "sha256": "de7835cbad46963735237f41ea9dd4cf7dc4235044260536c91771a432a278c0"
+    },
+    {
+      "path": "levels/3ceed4a0-6c70-48ca-878b-a1f680bdcfdc.json",
+      "sha256": "56605edf16775f510bef6a4055e08b3159881837c808a2c8f0fbe2a7bc1a56a6"
+    },
+    {
+      "path": "levels/3e379e70-a056-45eb-8fc0-ebf1054460da.json",
+      "sha256": "42e308ff6f34cafc4d653469450605f5f676422d90d54e4c7a590c4c6846f034"
+    },
+    {
+      "path": "levels/3fe0de9e-739b-4ded-82af-008466ef1488.json",
+      "sha256": "c59bf0850e2254519069c04ae4fecf3018f1e076f9f806a7fa5465c13b4311f7"
+    },
+    {
+      "path": "levels/40b6f4d6-eb77-4ae9-85c3-7c1f008d024b.json",
+      "sha256": "3b506ee0ae3b81cff040aa621ec34c5a33315c4227236e5ba9c28b47ced13231"
+    },
+    {
+      "path": "levels/4110ca20-14c4-4d75-8c71-2c2c6bb33cb2.json",
+      "sha256": "7f80d6283f86b78f17deae902060696027d14733e8a1bde58ff58aac539c4ecf"
+    },
+    {
+      "path": "levels/4401de3f-b789-41cf-8186-de76787bccb3.json",
+      "sha256": "5035c86a448e5e1d144e176fbe02462e3a5fcb6ce546df10346b57f0ec9b4d89"
+    },
+    {
+      "path": "levels/4708474a-9abe-4a4c-80aa-9e7d69b2175a.json",
+      "sha256": "fc67ea776ce368ead8244837d365eaa9bd2640b4d4112a9d7f5e6ef2df32d210"
+    },
+    {
+      "path": "levels/5300a9e8-23d0-4af7-8337-531ec3c4cab1.json",
+      "sha256": "334efadbe6bffb3c77a053ab53d44ea5afa6d4bbfdf0a80a302f6797d9e1e155"
+    },
+    {
+      "path": "levels/5686148f-d598-44b8-8815-63feeb296efb.json",
+      "sha256": "f4824bf1c831f84c9b2150bb805aec9c3767e1235ae900c0d84c9e580a3fc5b3"
+    },
+    {
+      "path": "levels/5bd8bb81-c9ae-4f09-8629-1b6d85e7bdd1.json",
+      "sha256": "bd9b8f29b0c5b52369ded3a521adc7bd2c03e1772f7004fe15c5aa347716e20a"
+    },
+    {
+      "path": "levels/5cfde2e5-aa16-4a79-87bb-00a3e71466a7.json",
+      "sha256": "9a0b5c52901fc074fed6f315c4c263cc14c5b193f264b0bbf00c92b225434870"
+    },
+    {
+      "path": "levels/60b76a71-5ab2-49e9-88b9-bfeddd416e50.json",
+      "sha256": "dabd7688e90e95d2bdbe1a3d58eb731d59a4725996eaa7361cf8d23e597a47d7"
+    },
+    {
+      "path": "levels/6ad0c7cb-695c-47fb-896f-6220fcc2bd49.json",
+      "sha256": "c83627b2413cbb90df94ea5cbe1566c6e81095c321186d0359398d3d12cf9720"
+    },
+    {
+      "path": "levels/6ad1b3e2-aea4-47e5-85b0-11f2b6a38b41.json",
+      "sha256": "0bd12e5d63ad18c52c39d30b92b948df334a80209607a7d6b1c00c2956751374"
+    },
+    {
+      "path": "levels/6c9e9a05-cd78-453d-8221-d5769d833cea.json",
+      "sha256": "faac23e5c2256c796288d781d304ba41482cd148c34000fbb6b05ab14d141234"
+    },
+    {
+      "path": "levels/6cf64acc-b2eb-48cb-8780-55392f52ea68.json",
+      "sha256": "9dee0f9046926c23208afff032a5e00ec079358f8fedbe240f06bb58c59f1963"
+    },
+    {
+      "path": "levels/70158e74-1e28-4060-819d-6f8cf028019a.json",
+      "sha256": "63baa0061b4282c175ef4baaa9b38bf024889851cacd588ee9ad024c0c9ceedc"
+    },
+    {
+      "path": "levels/70eccd64-3fef-48cf-8495-fa93f9b5fdb5.json",
+      "sha256": "fba95e87542463b472e5de51aaec59dc1ec102e6eb048d8bb203261ccd1be828"
+    },
+    {
+      "path": "levels/7184c387-6449-458b-80e4-d9caa3a1c279.json",
+      "sha256": "6757c9806f08258ea37f731f84d5441e89e60fce849e7db83f6fd24f915181ec"
+    },
+    {
+      "path": "levels/750e519d-087a-4dbd-8b68-14441cd16ef8.json",
+      "sha256": "206a0ddaf389821c77667b2c19c5b8ed235f35a578525fb1b04a791ae129a1a8"
+    },
+    {
+      "path": "levels/7670926b-8055-4936-817e-234a121035f2.json",
+      "sha256": "e8a3cdda509a25855d5e3147a0001c5d8d37d9059c79588c671a6e60535d2835"
+    },
+    {
+      "path": "levels/7811e991-c417-4df0-8907-ff052249c8a2.json",
+      "sha256": "cf706dd5564ea0eeca070bc7dc4745783f78237cf983a2f72cbb7f88f7949aac"
+    },
+    {
+      "path": "levels/78b70a34-3996-450d-8de7-51fb095e9618.json",
+      "sha256": "d50fbe863d9735d974c21e95b26f2596e60ed89320e50eb8b53a76d15649f623"
+    },
+    {
+      "path": "levels/79db9d3e-9af5-4b35-807b-10bee99442d1.json",
+      "sha256": "902e6b16e34f7c56959bf6186bc45e2cb0cc43584830127cd88c54546c6727a2"
+    },
+    {
+      "path": "levels/7b037fee-1ca7-498b-860f-4044d14e4b2b.json",
+      "sha256": "4ce9087b057745af6f230a214b77e57b29e9890a3b7de6d883733a06d0076ad7"
+    },
+    {
+      "path": "levels/7dc40133-306c-4618-88b9-cf059bb36949.json",
+      "sha256": "3d329e150e061b5dc4486d6c945cf05f8732af1c95f31cc9669361a86eec9ac2"
+    },
+    {
+      "path": "levels/7ea94f35-7012-42b1-85b6-40cf180993ee.json",
+      "sha256": "af95fab89ebdc31a9e5377d35d97e753d9cb8aa6f2f04fbf4d801cb54a938b3c"
+    },
+    {
+      "path": "levels/814e7bdc-e140-4b25-8b04-6532c9c66ea3.json",
+      "sha256": "6f2237328a9f43f07e3fe5c7c81ed59cc7f340498e5949bf5a7c139d27a74a4a"
+    },
+    {
+      "path": "levels/82359aad-d855-492b-8231-b9c209d7d3d9.json",
+      "sha256": "80d5e5c7449f260dc78c862b6c743c2ea3838fc2891615d12c9f931acf8be94c"
+    },
+    {
+      "path": "levels/82dc857d-2842-4461-874e-331883207174.json",
+      "sha256": "30deb7dce1c702337dde156f95c0d2f94a4badeeb06a2baae9583593c0440d84"
+    },
+    {
+      "path": "levels/83b1e03a-29c4-4928-84fa-9c87bab6ae1e.json",
+      "sha256": "d3f961bfbd282ba1bdce6e0653ff8bceab6e10e70f607c017cb416012dede48a"
+    },
+    {
+      "path": "levels/85db8823-9e66-4745-8df8-36340908ddcd.json",
+      "sha256": "410857ea88d2a4424f81912cf749ea49f26a7cb4c984f7e7b70f00f3f255a594"
+    },
+    {
+      "path": "levels/88a2aa7c-355b-4307-8efb-0e0ed5162a4c.json",
+      "sha256": "d14f1db4344e8a6ef67a9099964268d8ea74790d3359531fcacf36f8cc385223"
+    },
+    {
+      "path": "levels/8f4a18fc-4e5b-48ca-897c-b18e2be8ff98.json",
+      "sha256": "625c201fc00dbe7287f563693d57c7d8b857ad5ef74d5f4597d495cd76e56079"
+    },
+    {
+      "path": "levels/90b49c7a-d789-45df-8a31-434379b881d5.json",
+      "sha256": "ffd046f1cc303484ddf2704270e2b6a65f2f90fbc46c9636edc2a88014e2627e"
+    },
+    {
+      "path": "levels/934b8090-5343-4630-83fa-44fc8cddfd99.json",
+      "sha256": "7e7148cc062ee10264ee98c37612e52ba2704ae99d200a4f70dcbb01ae74cb52"
+    },
+    {
+      "path": "levels/95859f8c-1039-4a34-8cc7-2142d343d6f4.json",
+      "sha256": "ce45d390fcbcecdf1088b6f514fa697fc074db0fecd0656949dbfd23b05d3e69"
+    },
+    {
+      "path": "levels/988c8bd2-20ac-4822-840d-f815147c11fb.json",
+      "sha256": "4d2d41686e36c4462155dbb3bffed46808ecc458492c4a4c1bbf128613b318ef"
+    },
+    {
+      "path": "levels/98e03147-6926-4ae2-81c4-b8e86b7e92b5.json",
+      "sha256": "83d6759b0c644697ef31863683671a2812f7e8f7833587372500dfa4e6a925d3"
+    },
+    {
+      "path": "levels/9b4bcf9b-fcd3-42ff-81ba-be2a78e266a6.json",
+      "sha256": "1c3a3e8f3cc6d4318b04f454efbc390264a389b2cc8b698ee8038839fe5ce5d0"
+    },
+    {
+      "path": "levels/a0e3e13c-4fd2-424e-8646-cec5e0c2db29.json",
+      "sha256": "166b34b8042e162a30382cfb2d8248f0ee178165e6370c30d0295f3022eaf955"
+    },
+    {
+      "path": "levels/a308d6d7-9232-4e50-8b0c-6d1858fa0e87.json",
+      "sha256": "84b3db67c5395b9d35fecea431207423b4003c54ecc94c8f322fd70ee56a2d82"
+    },
+    {
+      "path": "levels/a309b618-ab9d-43f4-84f7-1bb55d817708.json",
+      "sha256": "3bb9ec9bb9f82890a29a85464e3991a8c3c0dfd40877612ffbd8893b0f91c9c6"
+    },
+    {
+      "path": "levels/a4853036-139b-4813-8e74-cc70f1d800ba.json",
+      "sha256": "84c716be135ec52144e4e740ce355ee9205ead6b91e5e71d0790d7a1f046762d"
+    },
+    {
+      "path": "levels/a944dc5b-33c0-4b11-8201-e54e449a77c2.json",
+      "sha256": "49d5852ffc6ba93445947b9bab8c456c399d5a2b44a4e6e6798bdf4581cfe0fb"
+    },
+    {
+      "path": "levels/ad79d0ed-008d-497c-8c40-e58b618c0d39.json",
+      "sha256": "924f3cd58f4460cb025f38d24af928696680fbdab37d68f80630961a40c288fb"
+    },
+    {
+      "path": "levels/af267efe-3867-4e71-894c-68742f982323.json",
+      "sha256": "6447e85214cb812282af2db140e247d1fcf1b8de2470059f9d029ac76ee35017"
+    },
+    {
+      "path": "levels/b168921f-ee0f-49b0-80d5-9de9dbc580a5.json",
+      "sha256": "b36d5557f685ddfcba26a7498a92bc7255ee5a0b18fa2f2aa36a94da5d15f695"
+    },
+    {
+      "path": "levels/b38c1b5e-5cb8-4efd-80df-8d6a69e72867.json",
+      "sha256": "dbe88ff0e526b63e34843092f9d7f7e378967bf19785f2ae7a912e83288ccd19"
+    },
+    {
+      "path": "levels/b73251ca-68dc-4a02-84bd-c8d1fc66426c.json",
+      "sha256": "bdfa1dfc8432b2d4335dc0c049ffd26d9ef006c16b5a5d915e74116a9b967b51"
+    },
+    {
+      "path": "levels/c5217a4b-199d-4de9-8f6e-57701b82bbc6.json",
+      "sha256": "1678fe3f6c21312d8a6f769625fdb1b6c4203e8467aa03aa76c68df8573129c8"
+    },
+    {
+      "path": "levels/c8188b59-57d2-4008-8983-3ede6ae24340.json",
+      "sha256": "4cb8eecc3debbd3b6e4bb3e34ee6d8ebd48c3948bad7d1f3dc75295cb57d9e78"
+    },
+    {
+      "path": "levels/cabb7dcb-0bdc-474e-86f3-799d42b3cf89.json",
+      "sha256": "6e2c89b06da838a51f76d209ac8adb46b8969128d4f5b4d75d51a21982526537"
+    },
+    {
+      "path": "levels/cb4ff5ff-0a5f-4785-8df5-12f54b9d6085.json",
+      "sha256": "d6ed0748f384c738222cc2b6de47ee0dbf65b3d3d75b4c0216933dccf516a14e"
+    },
+    {
+      "path": "levels/cc32d3c7-ff91-4c99-8555-735d19fc3b4f.json",
+      "sha256": "2c6468274a18d72591b16a707d0228bf27c3388b5ac8a635ba7cc7f4411e7c43"
+    },
+    {
+      "path": "levels/d659f5d8-35bf-490f-849b-05409a3127a4.json",
+      "sha256": "5a97a03ce9cd1e8006193bf63f382df6d13a75cbffdf36a9907e1b100f4b8bf4"
+    },
+    {
+      "path": "levels/d96eddd3-26ac-4396-8a86-6f08c1305f77.json",
+      "sha256": "0bd83b44f6ade16f34b6a7fd3839a0ba0a53bbc0d7475bfaaf30a5ca28373db4"
+    },
+    {
+      "path": "levels/dab26bea-9e7b-4d2f-8da2-43f033b223ac.json",
+      "sha256": "0c3b618f8536b7e8ebe4ab38fd2d4aec5ffdcbfd9e738c986a78ce77d4bb861c"
+    },
+    {
+      "path": "levels/dbbbccf4-97b7-4f19-8fd7-c4606ffccbfd.json",
+      "sha256": "51712abd18a80eec5e1b0f669f405aac61686033e16156c2c6a1bc892df935f9"
+    },
+    {
+      "path": "levels/dc28785a-6b65-4519-86c2-d13c2c04ac21.json",
+      "sha256": "e80fd2d86103edb7c238f8f1dcc80ca06266aef53a585f8c414d0e13167a5066"
+    },
+    {
+      "path": "levels/e10a2f04-b151-4402-861b-f38bf37536fe.json",
+      "sha256": "776267e5c600e6f017b1b5944e1840befe48d19df00b4b76e3e3baea6c3c0667"
+    },
+    {
+      "path": "levels/e1fcef96-ebaa-4c8f-80ae-16b468299dde.json",
+      "sha256": "398c2e03077f256c21292d5eea759e71e3ce203621ed7aebf8c22c9387a698d0"
+    },
+    {
+      "path": "levels/e2dcf737-c1ca-4317-8bcd-06eaa39fb24e.json",
+      "sha256": "d207c0809802c8711d1e05259389f0c3fd3a92d5ba948400c1db11fae7e51d4f"
+    },
+    {
+      "path": "levels/e7973b3f-277c-4265-819c-82b72c6e66e6.json",
+      "sha256": "9a38a6a1d07c853356644fb699cb2c3d89441a5b6edfa4564a359868ac72e405"
+    },
+    {
+      "path": "levels/e9d26f84-52d8-48e3-89af-5dc5482b6a2a.json",
+      "sha256": "c4ba4bd4be0be7a99e742feb9468a0510631607bcfa4b284afaf4a7ea901600c"
+    },
+    {
+      "path": "levels/f4a1bb0f-6aa2-4e3c-8b19-cea498395ac0.json",
+      "sha256": "9f4759a674d8dd44eb8e74360af61c230fe9a05eac310108f6a7c4edf67b9a33"
+    },
+    {
+      "path": "levels/f56b8ebf-dcbb-4c09-8922-2b423776efc2.json",
+      "sha256": "2c48ae63c277a6197f0de3ac32bb0643f8d06bdfd76569d9feaf07c557c88480"
+    },
+    {
+      "path": "levels/f988a20f-3ed9-4329-89d2-fe5cccc97ff8.json",
+      "sha256": "10434480c713a116ed942a88745989c17ac9033e1c8203dfea3eef18c96e71a5"
+    },
+    {
+      "path": "levels/fddeb3e4-0d4c-483d-8931-4f4bf2009f13.json",
+      "sha256": "075e963279b84bf5ced653e0d41c10d1788a8086ddaea542abefb319b974ff26"
+    },
+    {
+      "path": "result-animations/d8db3406-f815-4a69-840d-1cea1a43facc.json",
+      "sha256": "3185756ace0cc93675a93d22c17bf1f00a7d18ec05ae12bf90e59b188b3daf1c"
+    },
+    {
+      "path": "result-animations/f72daac4-27a5-4144-b143-a6a85a34c3ec.json",
+      "sha256": "b7ff79fadd333731f01e311e5d55520da717ede1aa6be4b532b6c3784e7c9f38"
+    }
+  ]
+}

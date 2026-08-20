@@ -4,6 +4,7 @@ import {
   FLOOR_ROWS,
   type Frame,
   type GameContent,
+  type GameContentSelection,
   type GameEvent,
   type GameManifest
 } from "@motion-levels-games/game-sdk";
@@ -64,7 +65,6 @@ export type SelectGameRequest = {
   gameLabel?: string;
   sourceKind?: string;
   sourceRevision?: string;
-  platformUrl?: string;
   venueSessionId?: string;
   recordingEnabled?: boolean;
   recordingPolicy?: unknown;
@@ -225,7 +225,7 @@ type SelectionMetadata = {
   manifest: GameManifest;
   runtimeGameId: string;
   engineGame: string;
-  sourceKind: "motion_levels_games" | "platform_levels";
+  sourceKind: "motion_levels_games";
   difficulty: string;
   teamName: string;
   level: string;
@@ -494,7 +494,7 @@ export class VenueRuntime {
       throw new RequestValidationError(`production TypeScript game is unavailable: ${gameId}`);
     }
     const publishedLevels = module.manifest.tags?.includes("published-levels") === true;
-    if (request.sourceKind !== "motion_levels_games" && !(request.sourceKind === "platform_levels" && publishedLevels)) {
+    if (request.sourceKind !== "motion_levels_games") {
       throw new RequestValidationError(`unsupported game source: ${request.sourceKind ?? ""}`);
     }
     if (request.allowAnyPlayers !== undefined && request.allowAnyPlayers !== module.manifest.players.allowAny) {
@@ -549,9 +549,6 @@ export class VenueRuntime {
       this.publishDisplay();
       return this.status();
     }
-    const contentResult = request.sourceKind === "platform_levels"
-      ? await this.fetchRuntimeContent(request)
-      : null;
     this.assertVenueSessionGeneration(venueSessionGeneration);
     if (this.recordingGateBlocksGameplay()) {
       throw new SessionHistoryConflictError("recording gate must be resolved before selecting another game");
@@ -564,6 +561,18 @@ export class VenueRuntime {
     this.clearRecordingGate();
     this.finishActiveRunReplay("superseded");
     const now = performance.now();
+    const requestedLevel = cleanText(request.level, 256);
+    const requestedLevelSlug = cleanText(request.levelSlug, 256);
+    const levelId = /^[0-9a-f]{8}-[0-9a-f-]{27,56}$/iu.test(requestedLevel) ? requestedLevel : "";
+    const contentSelection: GameContentSelection | undefined = publishedLevels ? {
+      ...(levelId ? { levelId } : {}),
+      ...(requestedLevelSlug || (!levelId && requestedLevel)
+        ? { levelSlug: requestedLevelSlug || requestedLevel }
+        : {}),
+      ...(request.levelMode === "challenge" || request.levelMode === "free"
+        ? { mode: request.levelMode }
+        : {})
+    } : undefined;
     this.state = this.session.select({
       gameId: module.manifest.id,
       playerCount,
@@ -571,7 +580,7 @@ export class VenueRuntime {
       difficulty: request.difficulty,
       ...(durationMillis === undefined ? {} : { durationMillis }),
       options: request.config ?? {},
-      ...(contentResult ? { content: contentResult.content } : {})
+      ...(contentSelection ? { contentSelection } : {})
     });
     this.reapplyHeldPressureOnNextTick = false;
     this.historyRunEngineOriginMillis = this.state.clockMillis;
@@ -590,20 +599,23 @@ export class VenueRuntime {
       this.venueSessionRecordingPolicy = recordingPolicy;
       if (venueSessionChanged) this.advanceVenueSessionGeneration();
     }
+    const authoredSnapshot = publishedLevels
+      ? this.state.snapshot as unknown as Record<string, unknown>
+      : null;
     this.selection = {
       manifest: module.manifest,
       runtimeGameId: cleanText(request.game, 256),
       engineGame: cleanText(request.engineGame, 256) || `motion-levels-games:${module.manifest.id}`,
-      sourceKind: request.sourceKind,
+      sourceKind: "motion_levels_games",
       difficulty: String(request.difficulty || module.manifest.config?.difficulty?.default || "medium"),
       teamName: requestedTeamName || this.venueSessionTeamName,
-      level: cleanText(request.level, 256),
-      levelSlug: cleanText(request.levelSlug, 256),
-      levelMode: cleanText(request.levelMode, 32),
+      level: cleanText(authoredSnapshot?.level, 256) || requestedLevel,
+      levelSlug: cleanText(authoredSnapshot?.levelSlug, 256) || requestedLevelSlug,
+      levelMode: cleanText(authoredSnapshot?.mode, 32) || cleanText(request.levelMode, 32),
       venueSessionId: requestedVenueSessionId || this.venueSessionId,
       challengeElapsedMillis: nonNegative(request.challengeElapsedMillis),
       challengeAttemptCount: nonNegativeInteger(request.challengeAttemptCount),
-      contentRevision: contentResult?.contentRevision ?? ""
+      contentRevision: cleanText(authoredSnapshot?.contentRevision, 64)
     };
     const recordingBlocked = this.runRecordingGateRequired();
     this.session.setAutomaticAttemptTransitionsBlocked(recordingBlocked);
@@ -2139,49 +2151,6 @@ export class VenueRuntime {
       || content.rotationIds.length > 100) {
       throw new RequestValidationError("screensaver content is invalid");
     }
-    return { content: content as GameContent, contentRevision };
-  }
-
-  private async fetchRuntimeContent(request: SelectGameRequest): Promise<{ content: GameContent; contentRevision: string }> {
-    const platform = resolveRuntimeContentPlatformUrl(this.options.platformUrl, request.platformUrl);
-    if (!platform) throw new RequestValidationError("platform URL is required for published-level games");
-    const canonicalGameId = String(request.game ?? "").trim().toLowerCase();
-    if (!/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{64})$/u.test(canonicalGameId)) {
-      throw new RequestValidationError("published level canonical game id is invalid");
-    }
-    const endpoint = new URL(platform);
-    endpoint.pathname = `${endpoint.pathname.replace(/\/$/u, "")}/api/level-games/${encodeURIComponent(canonicalGameId)}/runtime-content`;
-    for (const [key, value] of [
-      ["difficulty", request.difficulty], ["level", request.level], ["levelSlug", request.levelSlug], ["mode", request.levelMode]
-    ] as const) if (value) endpoint.searchParams.set(key, value);
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (this.options.platformToken) headers.Authorization = `Bearer ${this.options.platformToken.trim()}`;
-    const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(12_000) });
-    if (!response.ok) throw new RequestValidationError(`published level content returned HTTP ${response.status}`);
-    const text = await response.text();
-    if (Buffer.byteLength(text) > 32 * 1024 * 1024) throw new RequestValidationError("published level content exceeds 32 MiB");
-    const content = JSON.parse(text) as Record<string, unknown>;
-    if (content.schema !== "motion-levels-published-level-content-v1" || String(content.gameId).toLowerCase() !== canonicalGameId) {
-      throw new RequestValidationError("published level content identity mismatch");
-    }
-    const engineGame = String(content.engineGame ?? "").trim();
-    if (!engineGame || engineGame.length > 160) throw new RequestValidationError("published level engineGame is invalid");
-    const selectedModule = gameplayRegistry.get(runtimeGameId(request).trim().toLowerCase());
-    const contentModule = gameplayRegistry.get(engineGame.replace(/^motion-levels-games:/u, "").trim().toLowerCase());
-    if (!selectedModule || contentModule !== selectedModule) {
-      throw new RequestValidationError("published level engine product mismatch");
-    }
-    const selectedLevelId = String(content.selectedLevelId ?? "").trim();
-    const selectedLevelSlug = String(content.selectedLevelSlug ?? "").trim();
-    if (!selectedLevelId || !selectedLevelSlug) throw new RequestValidationError("published level selection is incomplete");
-    if (request.level && /^[0-9a-f-]{32,64}$/iu.test(request.level) && selectedLevelId.toLowerCase() !== request.level.toLowerCase()) {
-      throw new RequestValidationError("published level selection identity mismatch");
-    }
-    const mode = String(content.mode ?? "").toLowerCase();
-    if (mode !== "challenge" && mode !== "free") throw new RequestValidationError("published level mode is invalid");
-    if (request.levelMode && mode !== request.levelMode.toLowerCase()) throw new RequestValidationError("published level mode mismatch");
-    const contentRevision = String(content.contentRevision ?? "");
-    if (!/^[0-9a-f]{64}$/u.test(contentRevision)) throw new RequestValidationError("published level content revision is invalid");
     return { content: content as GameContent, contentRevision };
   }
 

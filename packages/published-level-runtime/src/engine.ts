@@ -20,7 +20,7 @@ import {
   type TickEvent
 } from "@motion-levels-games/game-sdk";
 
-import { normalizeLevelId, parsePublishedLevelContent } from "./content.ts";
+import { normalizeLevelId, parsePublishedLevelContent, selectPublishedLevelContent } from "./content.ts";
 import type {
   PublishedAnimationRecord,
   PublishedLevelAudio,
@@ -325,16 +325,22 @@ class PublishedLevelGame implements PublishedLevelGameInstance {
   }
 
   private resolveContent(config: NormalizedGameConfig): PublishedLevelContent {
-    return parsePublishedLevelContent(
+    const content = parsePublishedLevelContent(
       config.content ?? this.product.fallbackContent,
-      this.product.contentIdentity === "platform" ? undefined : this.product.manifest.id
+      this.product.manifest.id
     );
+    return selectPublishedLevelContent(content, {
+      difficulty: String(config.difficulty),
+      levelId: config.contentSelection?.levelId,
+      levelSlug: config.contentSelection?.levelSlug,
+      mode: config.contentSelection?.mode
+    });
   }
 
   private rebuild(nowMillis: number): void {
     this.levels = compileLevels(this.content, String(this.config.difficulty));
     this.animations = compileAnimations(this.content.resultAnimations);
-    this.level = selectLevel(this.levels, this.content.selectedLevelId);
+    this.level = selectLevel(this.levels, this.content.selectedLevelId, this.content.selectedLevelSlug);
     this.players = publishedPlayers(Math.max(1, this.config.playerCount), this.config.players);
     this.createdAt = nowMillis;
     this.startedAt = nowMillis + countdownDuration;
@@ -685,7 +691,16 @@ function compileLevel(raw: PublishedLevelRecord, difficulty: string, mode: "chal
   const frames = raw.frames.map((frame): CompiledFrame => {
     const points: Array<TilePoint | undefined> = Array.from({ length: frameSize });
     for (const [x, y, kind, uniq = ""] of frame.c) {
-      points[cellIndex(x, y)] = Object.freeze({ present: true, kind, uniq });
+      const index = cellIndex(x, y);
+      const previous = points[index];
+      // Platform-authored frames historically serialized the red floor first
+      // and interactive/safe tiles afterward, but some database exports place
+      // the red base tile after them at the same coordinate. Keep one
+      // deterministic visible tile per coordinate while preserving the
+      // authored interactive tile over its background hazard.
+      if (!previous || authoredTilePriority(kind) >= authoredTilePriority(previous.kind)) {
+        points[index] = Object.freeze({ present: true, kind, uniq });
+      }
       if (uniq && (kind === 1 || kind === 3)) scoreUniqs.add(uniq);
     }
     const duration = Math.max(1, frame.r) * frameTick;
@@ -776,10 +791,10 @@ function compileAnimations(records: readonly PublishedAnimationRecord[]): Map<st
   return result;
 }
 
-function selectLevel(levels: readonly CompiledLevel[], selected: string): CompiledLevel {
+function selectLevel(levels: readonly CompiledLevel[], selected: string, selectedSlug: string): CompiledLevel {
   const exact = levels.find((level) => level.id === selected.toLowerCase());
   if (exact) return exact;
-  const normalized = normalizeLevelId(selected);
+  const normalized = normalizeLevelId(selectedSlug || selected);
   const aliases = levels.filter((level) => level.aliases.includes(normalized));
   if (aliases.length === 1) return aliases[0]!;
   if (aliases.length > 1) throw new Error(`Selected level alias ${selected} is ambiguous`);
@@ -807,6 +822,13 @@ function basePointColor(point: TilePoint): RgbColor {
   if (point.kind === 3) return purple;
   if (point.kind === 4) return heldPurple;
   return black;
+}
+
+function authoredTilePriority(kind: number): number {
+  if (kind === 1 || kind === 3) return 3;
+  if (kind === 0) return 2;
+  if (kind === 2) return 1;
+  return 0;
 }
 
 function lavaColor(key: number, atMillis: number): RgbColor {

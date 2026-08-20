@@ -26,6 +26,7 @@ import {
 import { playerMenuAdapterProtocolVersion } from "../apps/player-menu/src/protocol.ts";
 import { resolveGamesBuildIdentity } from "./build-version.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
+import { authoredContentBundleSchema, compileAuthoredContent } from "./authored-content.ts";
 
 const repoRoot = process.cwd();
 const sourceRevision = String(process.env.MOTION_LEVELS_GAMES_SOURCE_REVISION || execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" })).trim();
@@ -67,10 +68,12 @@ const displayCSS = displayCSSSource.replace(
 );
 const playerExperienceSchema = await readFile(path.join(repoRoot, "packages/player-experience/schema/player-experience-state.schema.json"), "utf8");
 const sessionHistorySchema = await readFile(path.join(repoRoot, "packages/session-history/schema/session-history-v1.schema.json"), "utf8");
+const authoredGames = await compileAuthoredContent({ root: repoRoot });
 
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(path.join(outputRoot, "venue"), { recursive: true });
 await mkdir(path.join(outputRoot, "display"), { recursive: true });
+await mkdir(path.join(outputRoot, "content"), { recursive: true });
 const applicationBuildEnvironment = {
   ...process.env,
   MOTION_LEVELS_BUILD_DATE: sourceBuildDate,
@@ -144,20 +147,40 @@ await build({
   legalComments: "none"
 });
 
-for (const manifest of gameCatalog) {
-  for (const reference of Object.values(gameMediaReferences(manifest.id))) {
-    await stat(path.join(mediaRoot, path.relative("media", reference)));
+const mediaSources = new Map<string, string>();
+async function registerMedia(reference: string): Promise<void> {
+  const relative = path.relative("media", reference);
+  const direct = path.join(mediaRoot, relative);
+  try {
+    await stat(direct);
+    mediaSources.set(reference, direct);
+    return;
+  } catch {
+    // The checked-in assets submodule keeps game media under media/games while
+    // generated-media artifacts use the flatter media/<game> layout. Both
+    // resolve to the canonical bundle reference below.
   }
-  await stat(path.join(mediaRoot, path.relative("media", gameMediaMetadataReference(manifest.id))));
+  const submoduleGameMedia = path.join(mediaRoot, "games", relative);
+  await stat(submoduleGameMedia);
+  mediaSources.set(reference, submoduleGameMedia);
+}
+
+for (const manifest of gameCatalog) {
+  for (const reference of Object.values(gameMediaReferences(manifest.id))) await registerMedia(reference);
+  await registerMedia(gameMediaMetadataReference(manifest.id));
 }
 for (const animation of animationLibrary) {
   const media = animationMediaCatalogEntry(animation).media;
-  await stat(path.join(mediaRoot, path.relative("media", media.thumbnailSmall)));
-  await stat(path.join(mediaRoot, path.relative("media", media.thumbnail)));
-  await stat(path.join(mediaRoot, path.relative("media", media.animation)));
-  await stat(path.join(mediaRoot, path.relative("media", animationMediaMetadataReference(animation.id))));
+  await registerMedia(media.thumbnailSmall);
+  await registerMedia(media.thumbnail);
+  await registerMedia(media.animation);
+  await registerMedia(animationMediaMetadataReference(animation.id));
 }
-await cp(mediaRoot, path.join(outputRoot, "media"), { recursive: true });
+for (const [reference, source] of mediaSources) {
+  const destination = path.join(outputRoot, reference);
+  await mkdir(path.dirname(destination), { recursive: true });
+  await cp(source, destination);
+}
 
 const catalog = gameCatalog.map((manifest) => ({
   ...manifest,
@@ -172,6 +195,9 @@ const animationCatalog = {
   animations: animationLibrary.map(animationMediaCatalogEntry)
 };
 await writeFile(path.join(outputRoot, "animations.json"), `${JSON.stringify(animationCatalog, null, 2)}\n`);
+for (const authored of authoredGames) {
+  await cp(authored.outputPath, path.join(outputRoot, "content", `${authored.gameDir}.json`));
+}
 await writeFile(path.join(outputRoot, "player-experience-state.schema.json"), `${JSON.stringify(JSON.parse(playerExperienceSchema), null, 2)}\n`);
 await writeFile(path.join(outputRoot, "session-history-v1.schema.json"), `${JSON.stringify(JSON.parse(sessionHistorySchema), null, 2)}\n`);
 
@@ -211,6 +237,15 @@ const manifest = {
   playground: { entry: "playground/index.html", basePath: "/games/play/" },
   catalog: "catalog.json",
   animations: "animations.json",
+  authoredContent: {
+    schema: authoredContentBundleSchema,
+    games: authoredGames.map((authored) => ({
+      gameId: authored.game.gameId,
+      engineGame: authored.game.engineGame,
+      contentRevision: authored.content.contentRevision,
+      path: `content/${authored.gameDir}.json`
+    }))
+  },
   files
 };
 await writeFile(path.join(outputRoot, "bundle.json"), `${JSON.stringify(manifest, null, 2)}\n`);

@@ -37,6 +37,10 @@ const manifest = JSON.parse(await readFile(path.join(root, "bundle.json"), "utf8
   playground?: { entry?: string; basePath?: string };
   catalog?: string;
   animations?: string;
+  authoredContent?: {
+    schema?: string;
+    games?: Array<{ gameId?: string; engineGame?: string; contentRevision?: string; path?: string }>;
+  };
   sourceRevision?: string;
   buildVersion?: string;
   releaseTag?: string | null;
@@ -66,6 +70,7 @@ assert.equal(manifest.playground?.entry, "playground/index.html");
 assert.equal(manifest.playground?.basePath, "/games/play/");
 assert.equal(manifest.catalog, "catalog.json");
 assert.equal(manifest.animations, "animations.json");
+assert.equal(manifest.authoredContent?.schema, "motion-levels-authored-content-bundle-v1");
 assert.equal(manifest.sdkFps, 50);
 assert.match(String(manifest.sourceRevision), /^[0-9a-f]{40}$/u);
 assert.ok("buildVersion" in manifest, "bundle build version is missing");
@@ -93,6 +98,24 @@ assert.ok(files.some((file) => file.path === manifest.animations), "animation ca
 assert.ok(files.some((file) => file.path === manifest.catalog), "game catalog is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerExperience?.schema), "player experience schema is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.sessionHistory?.schema), "session history schema is missing from bundle files");
+assert.ok((manifest.authoredContent?.games?.length ?? 0) > 0, "authored content catalog is empty");
+for (const authored of manifest.authoredContent?.games ?? []) {
+  assert.match(String(authored.gameId), /^[0-9a-f-]{36}$/u);
+  assert.match(String(authored.contentRevision), /^[0-9a-f]{64}$/u);
+  assert.ok(files.some((file) => file.path === authored.path), `${authored.engineGame} authored content is missing`);
+  const content = JSON.parse(await readFile(path.join(root, String(authored.path)), "utf8")) as {
+    schema?: string;
+    gameId?: string;
+    engineGame?: string;
+    contentRevision?: string;
+    levels?: unknown[];
+  };
+  assert.equal(content.schema, "motion-levels-published-level-content-v1");
+  assert.equal(content.gameId, authored.gameId);
+  assert.equal(content.engineGame, authored.engineGame);
+  assert.equal(content.contentRevision, authored.contentRevision);
+  assert.ok((content.levels?.length ?? 0) > 0, `${authored.engineGame} authored content has no levels`);
+}
 
 const sessionHistorySchema = JSON.parse(
   await readFile(path.join(root, manifest.sessionHistory!.schema!), "utf8")

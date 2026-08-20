@@ -15,6 +15,7 @@ import {
   temporada1EngineGame,
   temporada1GameId
 } from "../src/index.ts";
+import { testContent } from "../src/test-fixtures-content.ts";
 
 test("Temporada 1 keeps the platform UUID canonical and supports the legacy alias", () => {
   assert.equal(manifest.id, temporada1GameId);
@@ -26,7 +27,7 @@ test("Temporada 1 keeps the platform UUID canonical and supports the legacy alia
 });
 
 test("Temporada 1 preserves blue and purple objective semantics", () => {
-  const game = createGame({ playerCount: 4, difficulty: "medium" });
+  const game = createGame({ playerCount: 4, difficulty: "medium", content: testContent });
   game.init(0);
   game.tick({ atMillis: 3_000 });
   game.press({ x: 2, y: 5, pressed: true, atMillis: 3_020 });
@@ -46,7 +47,7 @@ test("Temporada 1 preserves blue and purple objective semantics", () => {
 });
 
 test("Temporada 1 supports six Spanish-labelled players and every authored difficulty", () => {
-  const game = createGame({ playerCount: 6, difficulty: "expert" });
+  const game = createGame({ playerCount: 6, difficulty: "expert", content: testContent });
   game.init(0);
   assert.equal(game.snapshot().playerCount, 6);
   assert.deepEqual(game.snapshot().players.map((player) => player.label), [
@@ -87,7 +88,7 @@ test("free mode disables the challenge timer without freezing editor content", (
 });
 
 test("running display shows only recent semantic events, then returns to the objective", () => {
-  const game = createGame({ playerCount: 1, difficulty: "medium" });
+  const game = createGame({ playerCount: 1, difficulty: "medium", content: testContent });
   game.init(0);
   game.tick({ atMillis: 3_000 });
   game.press({ x: 0, y: 8, pressed: true, atMillis: 3_020 });

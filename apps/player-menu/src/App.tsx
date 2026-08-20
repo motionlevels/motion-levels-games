@@ -3380,9 +3380,12 @@ function MenuApp() {
         game: runtimeGameID(launchGame),
         engineGame: engineGameID(launchGame),
         gameLabel: launchGame.label,
-        sourceKind: launchGame.sourceKind,
+        // Platform level rows are editor/catalog metadata only. The venue
+        // always launches the immutable games-owned product.
+        sourceKind: launchGame.sourceKind === "platform_levels"
+          ? "motion_levels_games"
+          : launchGame.sourceKind,
         sourceRevision: launchGame.sourceRevision,
-        platformUrl: platformBaseURL() || undefined,
         venueSessionId: nextMenu.sessionId,
         recordingEnabled: nextMenu.recordingEnabled,
         recordingPolicy: { scope: nextMenu.recordingPolicy },

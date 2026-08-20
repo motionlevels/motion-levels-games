@@ -23,6 +23,7 @@ import type {
   PublishedLevelSessionControllerFactory,
   PublishedLevelSessionControllerObservation
 } from "../src/index.ts";
+import { createPublishedLevelContent } from "../src/content.ts";
 
 type Point = { x: number; y: number };
 type HarnessAvatar = PublishedLevelSessionAvatar & {
@@ -35,10 +36,49 @@ type HarnessAvatar = PublishedLevelSessionAvatar & {
 
 const seeds = [1, 137, 65_537] as const;
 
+// This matrix exercises the reusable controller protocol against a compact,
+// deterministic board. Production authored catalogs are validated and run by
+// test/authored-content.test.ts; keeping this fixture small makes controller
+// failures about the protocol rather than a particular level's choreography.
+const controllerFixtureContent = createPublishedLevelContent({
+  gameId: parkourManifest.id,
+  engineGame: "parkour",
+  selectedLevelId: "11111111-1111-4111-8111-111111111111",
+  selectedLevelSlug: "level-1",
+  mode: "challenge",
+  levelsPayload: [{
+    id: "11111111-1111-4111-8111-111111111111",
+    slug: "level-1",
+    label: "Controller fixture",
+    difficulty: "easy",
+    life: 3,
+    pass_score: 1,
+    frame_tick_ms: 100,
+    rules: {
+      victory_condition: "score_at_least",
+      difficulty_settings: { easy: { life: 3, frame_duration_ms: 100, speed_multiplier: 1 } },
+      red_floor_animation: "none",
+      green_platform_load_animation: false,
+      green_platform_disappear: false,
+      green_platform_impact_ripple: false,
+      blue_platform_turn_green: true,
+      blue_platform_capture_area: false
+    },
+    frames: [{
+      r: 100,
+      c: [
+        ...Array.from({ length: 16 }, (_, x) => [x, 31, 0, `safe-${x}`]),
+        [8, 28, 1, "goal"]
+      ]
+    }]
+  }],
+  resultAnimationsPayload: { levels: [] }
+});
+
 test("Parkour semantic controllers reach terminal for 1–8 players across seeds", () => {
   for (let playerCount = 1; playerCount <= 8; playerCount += 1) {
     for (const seed of seeds) {
-      const game = createParkourGame({ playerCount, difficulty: "easy", seed });
+      const game = createParkourGame({ playerCount, difficulty: "easy", seed, content: controllerFixtureContent });
       const result = runStructuralJugar(
         game,
         parkourManifest,
@@ -56,7 +96,7 @@ test("Parkour semantic controllers reach terminal for 1–8 players across seeds
 });
 
 test("Parkour Any roster follows the Jugar one-agent normalization", () => {
-  const game = createParkourGame({ playerCount: 0, difficulty: "easy", seed: 137 });
+  const game = createParkourGame({ playerCount: 0, difficulty: "easy", seed: 137, content: controllerFixtureContent });
   assert.equal(game.snapshot().playerCount, 1);
   const result = runStructuralJugar(game, parkourManifest, createParkourController, 1, 137);
   assert.equal(result.success, true, `Parkour Any: ${result.diagnostic}`);
@@ -174,10 +214,23 @@ function applyControllerDecision(
   if (action.kind !== "move" || !action.target) return;
   const path = [...(action.path ?? [action.target])].map((point) => ({ ...point }));
   assert.ok(path.length > 0, "a move action has at least one waypoint");
+  const underfoot = samePoint(avatar.tile, action.target);
+  if (underfoot) {
+    // Authored content may spawn on an objective. This is a semantic tap,
+    // not a travel route, and GameSession re-presses the held countdown tile
+    // through the authoritative engine.
+    assert.equal(path.length, 1, "an underfoot objective uses one tap waypoint");
+    if (avatar.pressed) {
+      observation.game.release({ ...avatar.pressed, pressed: false, atMillis: observation.atMillis });
+      avatar.pressed = null;
+    }
+  }
   let previous = avatar.tile;
   for (const point of path) {
     assert.ok(inBounds(point), `controller waypoint ${point.x},${point.y} is in floor bounds`);
-    assert.equal(manhattan(previous, point), 1, "controller waypoints are cardinally adjacent");
+    if (!underfoot || !samePoint(previous, point)) {
+      assert.equal(manhattan(previous, point), 1, "controller waypoints are cardinally adjacent");
+    }
     previous = point;
   }
   assert.deepEqual(path.at(-1), action.target, "the path terminates at the declared target");

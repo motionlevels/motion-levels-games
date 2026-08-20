@@ -19,6 +19,9 @@
     "dev:venue": "tsx scripts/dev-venue.ts",
     "dev:venue:no-controller": "tsx scripts/dev-venue.ts --no-controller",
     "build": "npm run build --workspaces --if-present",
+    "content:build": "tsx scripts/build-authored-content.ts",
+    "content:validate": "tsx scripts/build-authored-content.ts --check",
+    "content:import": "tsx scripts/import-authored-content.ts",
     "build:bundle": "tsx scripts/build-bundle.ts",
     "verify:bundle": "tsx scripts/verify-bundle.ts",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspaces --if-present",
@@ -40,8 +43,8 @@
     "playtest": "tsx scripts/playtest-games.ts",
     "playtest:browser": "tsx scripts/playtest-playground.ts",
     "generate:media": "tsx scripts/generate-media.ts",
-    "check": "npm run lint && npm run validate:architecture && npm run validate:games && npm run validate:characters && npm run benchmark:agents && npm run typecheck && npm run test:all && npm run build && npm run playtest",
-    "check:fast": "npm run lint && npm run validate:architecture && npm run typecheck"
+    "check": "npm run content:validate && npm run lint && npm run validate:architecture && npm run validate:games && npm run validate:characters && npm run benchmark:agents && npm run typecheck && npm run test:all && npm run build && npm run playtest",
+    "check:fast": "npm run content:validate && npm run lint && npm run validate:architecture && npm run typecheck"
   },
   "overrides": {
     "@gltf-transform/cli": {

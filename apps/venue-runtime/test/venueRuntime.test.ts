@@ -6,14 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { FLOOR_COLS, FLOOR_ROWS, gameEvent, type Frame } from "@motion-levels-games/game-sdk";
-import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
+import { parkourGameId } from "@motion-levels-games/parkour";
 import type { GameSessionState } from "@motion-levels-games/runtime";
 import {
   RecordingStartRejectedError,
   type RecordingAsset,
   type RecordingBoundary
 } from "@motion-levels-games/session-history";
-import { temporada1GameId } from "@motion-levels-games/temporada1-niveles/manifest";
 import { floorHeight, floorRgbBytes, floorWidth, pressureBitsetBytes, type PresentedFrame } from "../src/controllerProtocol.ts";
 import {
   floorOutputTestDurationMillis,
@@ -28,6 +27,22 @@ import {
 
 const revision = "1".repeat(40);
 const roomControllerId = "01234567-89ab-4def-8123-456789abcdef";
+const parkourMediumLevelTwoId = "e0db6120-ab2c-40d8-82e8-d9a599077005";
+
+function pressVisibleParkourObjectives(runtime: VenueRuntime): void {
+  const targets = (runtime.display().frame as Frame).cells.filter((cell) => cell.color.toLowerCase() === "#0000ff");
+  assert.ok(targets.length > 0, "the repository-owned Parkour level must expose visible objectives");
+  targets.forEach((target, index) => {
+    const sequence = BigInt(index + 1);
+    runtime.applyPressure({
+      x: target.x,
+      y: target.y,
+      pressed: true,
+      unixNanos: sequence,
+      sequence
+    });
+  });
+}
 
 test("replay inputs use the effective input time relative to an automatic run origin", () => {
   assert.equal(runRelativeEngineMillis(10_137, 10_000), 137);
@@ -1311,159 +1326,30 @@ test("canonical animation selection remains an idle screensaver and requests pla
   assert.equal((runtime.display().gameSnapshot as Record<string, unknown>).rotationSize, 1);
 });
 
-test("published levels resolve the TS product from engineGame and fetch canonical request.game content", async (context) => {
-  const canonicalGameId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-  let responseGameId = parkourGameId;
-  let requestedPath = "";
-  const server = createServer((request, response) => {
-    requestedPath = request.url ?? "";
-    response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ ...parkourContent, gameId: responseGameId, contentRevision: "a".repeat(64) }));
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  context.after(() => { server.close(); });
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
-  const runtime = new VenueRuntime({
-    sourceRevision: revision,
-    controllerAddress: "127.0.0.1:4201",
-    platformUrl: `http://127.0.0.1:${address.port}`
-  });
-  const selection: Parameters<VenueRuntime["select"]>[0] = {
-    game: canonicalGameId,
-    engineGame: `motion-levels-games:${parkourGameId}`,
-    sourceKind: "platform_levels",
-    sourceRevision: revision,
-    playerCount: 0,
-    allowAnyPlayers: true,
-    players: []
-  };
-  await assert.rejects(runtime.select(selection), /content identity mismatch/);
-  responseGameId = canonicalGameId;
+test("venue rejects platform-owned gameplay content and stays offline-capable", async () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   await assert.rejects(runtime.select({
-    ...selection,
-    engineGame: `motion-levels-games:${temporada1GameId}`,
-    playerCount: 1,
-    allowAnyPlayers: false,
-    players: [{ index: 0, label: "Equipo", color: { r: 255, g: 0, b: 0 } }]
-  }), /engine product mismatch/);
-  const status = await runtime.select(selection);
-  assert.match(requestedPath, new RegExp(`/api/level-games/${canonicalGameId}/runtime-content`));
-  assert.equal(status.currentGame, canonicalGameId);
-  assert.equal(status.engineGame, `motion-levels-games:${parkourGameId}`);
-  assert.equal(status.sourceKind, "platform_levels");
-  assert.equal(runtime.display().sourceKind, "motion_levels_games");
-});
-
-test("ending a venue session while published content loads aborts selection before mutation", async (context) => {
-  const canonicalGameId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-  let releaseResponse = () => {};
-  let observeRequest = () => {};
-  const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
-  const requestObserved = new Promise<void>((resolve) => { observeRequest = resolve; });
-  const server = createServer((_request, response) => {
-    observeRequest();
-    void responseGate.then(() => {
-      response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify({ ...parkourContent, gameId: canonicalGameId, contentRevision: "b".repeat(64) }));
-    });
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  context.after(() => { server.close(); });
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
-  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-select-end-race-"));
-  context.after(() => rmSync(directory, { recursive: true, force: true }));
-  const runtime = new VenueRuntime({
-    sourceRevision: revision,
-    controllerAddress: "127.0.0.1:4201",
-    platformUrl: `http://127.0.0.1:${address.port}`,
-    sessionHistoryDir: directory
-  });
-  const venueSessionId = "visit-select-end-race";
-  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "off" } });
-  const selection = runtime.select({
-    game: canonicalGameId,
+    game: `motion-levels-games:${parkourGameId}`,
     engineGame: `motion-levels-games:${parkourGameId}`,
     sourceKind: "platform_levels",
     sourceRevision: revision,
-    venueSessionId,
-    recordingPolicy: { scope: "off" },
+    playerCount: 0,
+    allowAnyPlayers: true,
+    players: []
+  }), /unsupported game source/u);
+  const parkour = await runtime.select({
+    game: `motion-levels-games:${parkourGameId}`,
+    engineGame: `motion-levels-games:${parkourGameId}`,
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    difficulty: "medium",
+    levelSlug: "level-1",
     playerCount: 0,
     allowAnyPlayers: true,
     players: []
   });
-  await requestObserved;
-  runtime.updateVenueSession({ action: "end", venueSessionId, reason: "remote_end" });
-  releaseResponse();
-
-  await assert.rejects(selection, /venue session changed while selecting/u);
-  const status = runtime.status();
-  assert.equal(status.lifecycle, "idle");
-  assert.equal(status.currentGame, "salvapantallas");
-  assert.equal(status.venueSessionId, "");
-  assert.equal(runtime.historySession(venueSessionId).session.status, "ended");
-  await runtime.stop();
-});
-
-test("turning recording off while published content loads cannot restore stale policy or restart camera", async (context) => {
-  const canonicalGameId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-  let releaseResponse = () => {};
-  let observeRequest = () => {};
-  const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
-  const requestObserved = new Promise<void>((resolve) => { observeRequest = resolve; });
-  const server = createServer((_request, response) => {
-    observeRequest();
-    void responseGate.then(() => {
-      response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify({ ...parkourContent, gameId: canonicalGameId, contentRevision: "c".repeat(64) }));
-    });
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  context.after(() => { server.close(); });
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
-  const directory = mkdtempSync(join(tmpdir(), "motion-levels-runtime-select-off-race-"));
-  context.after(() => rmSync(directory, { recursive: true, force: true }));
-  const cameraCalls: RecordingBoundary[] = [];
-  const runtime = new VenueRuntime({
-    sourceRevision: revision,
-    controllerAddress: "127.0.0.1:4201",
-    platformUrl: `http://127.0.0.1:${address.port}`,
-    sessionHistoryDir: directory,
-    recordingClient: {
-      onBoundary(boundary) {
-        cameraCalls.push(boundary);
-        return { ...boundary.recording, status: boundary.type === "start" ? "recording" : "complete" };
-      }
-    }
-  });
-  const venueSessionId = "visit-select-off-race";
-  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "visit" } });
-  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "start"));
-  const selection = runtime.select({
-    game: canonicalGameId,
-    engineGame: `motion-levels-games:${parkourGameId}`,
-    sourceKind: "platform_levels",
-    sourceRevision: revision,
-    venueSessionId,
-    recordingPolicy: { scope: "visit" },
-    playerCount: 0,
-    allowAnyPlayers: true,
-    players: []
-  });
-  await requestObserved;
-  runtime.updateVenueSession({ action: "start", venueSessionId, recordingPolicy: { scope: "off" } });
-  await waitFor(() => cameraCalls.some((boundary) => boundary.type === "stop"));
-  releaseResponse();
-
-  await assert.rejects(selection, /venue session changed while selecting/u);
-  assert.deepEqual(runtime.status().venueSessionRecordingPolicy, { scope: "off" });
-  assert.deepEqual(cameraCalls.map((boundary) => boundary.type), ["start", "stop"]);
-  assert.deepEqual(runtime.historySession(venueSessionId).session.recordingPolicy, { scope: "off" });
+  assert.equal(parkour.sourceKind, "motion_levels_games");
+  assert.match(parkour.contentRevision || "", /^[0-9a-f]{64}$/u);
   await runtime.stop();
 });
 
@@ -1507,6 +1393,7 @@ test("failed published-level attempts create a new run and run-scoped recording 
     venueSessionId,
     recordingPolicy: { scope: "run" },
     difficulty: "medium",
+    level: parkourMediumLevelTwoId,
     playerCount: 0,
     allowAnyPlayers: true,
     players: []
@@ -1595,6 +1482,7 @@ test("successful published-level advances create a new run and expose the actual
     venueSessionId,
     recordingPolicy: { scope: "run" },
     difficulty: "medium",
+    level: parkourMediumLevelTwoId,
     playerCount: 0,
     allowAnyPlayers: true,
     players: []
@@ -1607,7 +1495,7 @@ test("successful published-level advances create a new run and expose the actual
   const base = performance.now();
   internal.gameStartedAt = base - 3_000;
   internal.tick(base);
-  runtime.applyPressure({ x: 7, y: 5, pressed: true, unixNanos: 1n, sequence: 1n });
+  pressVisibleParkourObjectives(runtime);
   assert.equal(runtime.status().phase, "finished");
   assert.equal(runtime.status().success, true);
 
@@ -1663,6 +1551,7 @@ test("selection recording opens a new capture when a published game advances lev
     venueSessionId,
     recordingPolicy: { scope: "selection" },
     difficulty: "medium",
+    level: parkourMediumLevelTwoId,
     playerCount: 0,
     allowAnyPlayers: true,
     players: []
@@ -1674,7 +1563,7 @@ test("selection recording opens a new capture when a published game advances lev
   const base = performance.now();
   internal.gameStartedAt = base - 3_000;
   internal.tick(base);
-  runtime.applyPressure({ x: 7, y: 5, pressed: true, unixNanos: 1n, sequence: 1n });
+  pressVisibleParkourObjectives(runtime);
   assert.equal(runtime.status().phase, "finished");
   assert.equal(runtime.status().success, true);
 

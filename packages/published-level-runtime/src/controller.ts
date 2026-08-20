@@ -167,6 +167,19 @@ function decide(
     .flatMap((avatar) => [avatar.tile, ...(avatar.target ? [avatar.target] : [])]);
   const route = bestRoute(shared.game, observation.self.tile, target.tiles, semantic, occupied, profile, observation.atMillis);
   if (!route || route.length === 0) {
+    if (current && !current.removed && (current.originalKind === 1 || current.originalKind === 3)) {
+      const underfoot = Object.freeze({ x: current.x, y: current.y });
+      const explanation = `Pressing objective ${target.uniq} underfoot`;
+      return Object.freeze({
+        action: Object.freeze({
+          kind: "move",
+          target: underfoot,
+          path: Object.freeze([underfoot]),
+          explanation
+        }),
+        explanation
+      });
+    }
     return {
       explanation: current?.originalKind === 3 && current.primed
         ? "Purple objective is primed; allow the avatar to land and press it a second time"

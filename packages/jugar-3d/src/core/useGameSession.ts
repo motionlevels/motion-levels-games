@@ -12,6 +12,7 @@ export type UseGameSessionOptions = Readonly<{
 }>;
 
 const mountCounts = new WeakMap<GameSession, number>();
+const SESSION_DISPOSE_GRACE_MILLIS = 100;
 
 /**
  * Owns a GameSession for the lifetime of a play screen. The session advances
@@ -51,14 +52,17 @@ export function useGameSession(
       session.stop();
       const remaining = Math.max(0, (mountCounts.get(session) ?? 1) - 1);
       mountCounts.set(session, remaining);
-      queueMicrotask(() => {
+      // React can tear down one surface and mount the next one in separate
+      // passive-effect turns. Defer disposal through a macrotask so a surface
+      // switch can reattach the shared session before it is finalized.
+      setTimeout(() => {
         if ((mountCounts.get(session) ?? 0) === 0) {
           mountCounts.delete(session);
           session.dispose();
           const globals = window as unknown as Record<string, unknown>;
           if (globals["__jugar3dSession"] === session) delete globals["__jugar3dSession"];
         }
-      });
+      }, SESSION_DISPOSE_GRACE_MILLIS);
     };
   }, [hookOptions.exposeOnWindow, session]);
 

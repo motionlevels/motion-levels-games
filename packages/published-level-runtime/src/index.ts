@@ -1,4 +1,14 @@
-export { createPublishedLevelContent, normalizeLevelId, parsePublishedLevelContent } from "./content.ts";
+export {
+  createPublishedLevelContent,
+  normalizeLevelId,
+  parsePublishedLevelContent,
+  selectPublishedLevelContent
+} from "./content.ts";
+export {
+  authoredContentRevisionPayload,
+  createRepositoryAuthoredLevelContent,
+  validateAuthoredGameSourceManifest
+} from "./source.ts";
 export {
   createPublishedLevelSessionController,
   type PublishedLevelSessionAvatar,
@@ -13,6 +23,10 @@ export { PublishedLevelPlayerDisplay } from "./display.tsx";
 export { createPublishedLevelGame } from "./engine.ts";
 export {
   PUBLISHED_LEVEL_CONTENT_SCHEMA,
+  AUTHORED_GAME_EXPORT_SCHEMA,
+  AUTHORED_GAME_SOURCE_SCHEMA,
+  type AuthoredGameRepositoryExport,
+  type AuthoredGameSourceManifest,
   type PublishedAnimationRecord,
   type PublishedLevelAudio,
   type PublishedLevelAttemptTransition,

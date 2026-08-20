@@ -307,6 +307,15 @@ export type GameContent = Readonly<{
   [key: string]: unknown;
 }>;
 
+/** Host selection inside repository-owned authored content. The content
+ * document remains immutable; only this small launch cursor changes between
+ * sessions. */
+export type GameContentSelection = Readonly<{
+  levelId?: string;
+  levelSlug?: string;
+  mode?: "challenge" | "free";
+}>;
+
 export type GameConfig = {
   seed?: number;
   playerCount?: number;
@@ -316,6 +325,7 @@ export type GameConfig = {
   difficulty?: GameDifficulty;
   options?: GameConfigOptions;
   content?: GameContent;
+  contentSelection?: GameContentSelection;
 };
 
 export type GameConfigOptions = Record<string, unknown>;
@@ -332,6 +342,7 @@ export type NormalizedGameConfig = {
   difficulty: GameDifficulty;
   options: GameConfigOptions;
   content?: GameContent;
+  contentSelection?: GameContentSelection;
 };
 
 export type PressEvent = {
@@ -417,6 +428,7 @@ export function inFloorBounds(x: number, y: number): boolean {
 
 export function normalizeGameConfig(config: GameConfig, manifest: GameManifest): NormalizedGameConfig {
   const content = normalizeGameContent(config.content);
+  const contentSelection = normalizeGameContentSelection(config.contentSelection);
   return {
     seed: normalizeGameSeed(config.seed),
     playerCount: normalizePlayerCount(config.playerCount, manifest),
@@ -425,8 +437,32 @@ export function normalizeGameConfig(config: GameConfig, manifest: GameManifest):
     nowMillis: normalizeNonNegativeNumber(config.nowMillis, 0),
     difficulty: normalizeGameDifficulty(config.difficulty, manifest),
     options: normalizeGameConfigOptions(config.options, manifest),
-    ...(content ? { content } : {})
+    ...(content ? { content } : {}),
+    ...(contentSelection ? { contentSelection } : {})
   };
+}
+
+export function normalizeGameContentSelection(value: unknown): GameContentSelection | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const levelId = cleanContentSelectionText(source.levelId);
+  const levelSlug = cleanContentSelectionText(source.levelSlug);
+  const rawMode = cleanContentSelectionText(source.mode).toLowerCase();
+  const mode = rawMode === "challenge" || rawMode === "free" ? rawMode : undefined;
+  if (!levelId && !levelSlug && !mode) return undefined;
+  return Object.freeze({
+    ...(levelId ? { levelId } : {}),
+    ...(levelSlug ? { levelSlug } : {}),
+    ...(mode ? { mode } : {})
+  });
+}
+
+function cleanContentSelectionText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return [...value.trim()]
+    .filter((character) => character.codePointAt(0)! >= 32 && character.codePointAt(0) !== 127)
+    .join("")
+    .slice(0, 120);
 }
 
 export function normalizeGameContent(value: unknown): GameContent | undefined {

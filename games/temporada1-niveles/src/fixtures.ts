@@ -1,6 +1,7 @@
 import { createGame } from "./game.ts";
+import { testContent } from "./test-fixtures-content.ts";
 
-const game = createGame({ playerCount: 4, difficulty: "medium" });
+const game = createGame({ playerCount: 4, difficulty: "medium", content: testContent });
 
 export const initEvents = game.init(0);
 game.tick({ atMillis: 1_500 });

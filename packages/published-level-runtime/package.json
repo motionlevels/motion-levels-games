@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./content": "./src/content.ts",
+    "./source": "./src/source.ts",
     "./game": "./src/game.ts",
     "./display": "./src/display.tsx"
   },

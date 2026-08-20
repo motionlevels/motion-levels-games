@@ -25,14 +25,16 @@ header. A non-loopback bind fails at startup when the token is missing.
 
 Selection accepts only production entries in the bundled gameplay registry.
 `sourceRevision` must exactly match the compiled release revision. `sourceKind`
-must be `motion_levels_games`, except `platform_levels` is accepted only when
-`engineGame` resolves to a bundled TypeScript product tagged
-`published-levels`. Those products fetch immutable
-`motion-levels-published-level-content-v1` content from the platform and pass
-that document directly to the tagged TypeScript product; there is no Go
-fallback. Production content always uses `MOTION_LEVELS_PLATFORM_URL`; a
-request-provided origin is accepted only when no origin is configured and the
-request points to loopback development.
+must be `motion_levels_games`. A platform catalog row may still identify an
+editor-authored game as `platform_levels` in control-plane metadata, but the
+player menu translates that metadata before issuing a launch. The venue only
+resolves the bundled game module and its repository-owned fallback content. It
+never calls the platform level-content endpoint to start gameplay, so Parkour
+and Temporada 1 continue to work with the platform completely unavailable.
+
+`MOTION_LEVELS_PLATFORM_URL` remains optional for ambient screensaver refresh,
+live-floor telemetry, and recording/replay integration; it is not a gameplay
+content dependency.
 
 The engine and controller remain at 50 fps. Display SSE is capped at 4 fps and
 the observed live-floor SSE is a latest-value feed at 20 fps by default, capped

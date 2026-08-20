@@ -66,7 +66,6 @@ export type SelectGameRequest = {
   gameLabel?: string;
   sourceKind?: string;
   sourceRevision?: string;
-  platformUrl?: string;
   venueSessionId?: string;
   recordingEnabled?: boolean;
   recordingPolicy?: RecordingPolicy;

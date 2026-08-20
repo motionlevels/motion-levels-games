@@ -15,6 +15,7 @@ import {
   runningFrame,
   runningSnapshot
 } from "../src/index.ts";
+import { testContent } from "../src/test-fixtures-content.ts";
 
 test("Parkour keeps the platform UUID canonical and the legacy engine name as an alias", () => {
   assert.equal(manifest.id, parkourGameId);
@@ -29,14 +30,14 @@ test("Parkour keeps the platform UUID canonical and the legacy engine name as an
 });
 
 test("Parkour Any mode normalizes an unspecified roster to one live player", () => {
-  const game = createGame({ playerCount: 0, difficulty: "easy" });
+  const game = createGame({ playerCount: 0, difficulty: "easy", content: testContent });
   game.init(0);
   assert.equal(game.snapshot().playerCount, 1);
   assert.ok(game.playerReadyZones().length >= 1);
 });
 
 test("Parkour captures a connected blue platform and advances after its result animation", () => {
-  const game = createGame({ playerCount: 1, difficulty: "medium" });
+  const game = createGame({ playerCount: 1, difficulty: "medium", content: testContent });
   game.init(0);
   assert.equal(game.snapshot().phase, "countdown");
   game.tick({ atMillis: 3_000 });
@@ -56,7 +57,7 @@ test("Parkour captures a connected blue platform and advances after its result a
 });
 
 test("Parkour lava uses per-tile damage cooldown and difficulty lives", () => {
-  const game = createGame({ playerCount: 1, difficulty: "hard" });
+  const game = createGame({ playerCount: 1, difficulty: "hard", content: testContent });
   game.init(0);
   game.tick({ atMillis: 3_000 });
   assert.equal(game.snapshot().maxLives, 2);
@@ -85,7 +86,7 @@ test("Parkour fixtures and shared Spanish display render", () => {
   assert.doesNotMatch(html, /Prepárate/);
   assert.doesNotMatch(html, />Player /);
 
-  const elapsedGame = createGame({ playerCount: 1, difficulty: "medium" });
+  const elapsedGame = createGame({ playerCount: 1, difficulty: "medium", content: testContent });
   elapsedGame.init(0);
   elapsedGame.tick({ atMillis: 5_000 });
   const elapsedHtml = renderToStaticMarkup(React.createElement(PlayerDisplay, {

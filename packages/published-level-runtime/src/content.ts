@@ -108,6 +108,48 @@ export function parsePublishedLevelContent(
   return parsed;
 }
 
+/** Selects one difficulty-specific level from immutable repository content.
+ * The source revision remains unchanged because selection is session state,
+ * not authored content. */
+export function selectPublishedLevelContent(
+  content: PublishedLevelContent,
+  selection: Readonly<{
+    difficulty?: string;
+    levelId?: string;
+    levelSlug?: string;
+    mode?: PublishedLevelMode;
+  }> = {}
+): PublishedLevelContent {
+  const difficulty = optionalText(selection.difficulty, 40).toLowerCase();
+  const requestedId = optionalText(selection.levelId, 120).toLowerCase();
+  const explicitId = requestedId
+    ? content.levels.find((level) => level.id.toLowerCase() === requestedId)
+    : undefined;
+  const requestedSlug = normalizeLevelId(
+    optionalText(selection.levelSlug, 120)
+      || explicitId?.slug
+      || content.selectedLevelSlug
+  );
+  const variants = content.levels.filter((level) => normalizeLevelId(level.slug) === requestedSlug);
+  if (variants.length === 0) throw new Error(`Selected level ${requestedSlug} is not present in content`);
+  const selected = (difficulty
+    ? variants.find((level) => optionalText(level.difficulty, 40).toLowerCase() === difficulty)
+      || variants.find((level) => !optionalText(level.difficulty, 40))
+      || variants.find((level) => Boolean(level.rules?.difficulty_settings?.[difficulty]))
+    : undefined)
+    || explicitId
+    || variants[0];
+  if (!selected) throw new Error(`Selected level ${requestedSlug} is unavailable for ${difficulty || "default"}`);
+  const mode = selection.mode ?? content.mode;
+  if (mode !== "challenge" && mode !== "free") throw new Error("mode must be challenge or free");
+  return deepFreeze({
+    ...content,
+    selectedLevelId: selected.id,
+    selectedLevelSlug: normalizeLevelId(selected.slug),
+    mode
+  }) as PublishedLevelContent;
+}
+
 export function normalizeLevelId(value: string): string {
   const clean = optionalText(value, 120).toLowerCase();
   if (!clean || clean === "starter") return "level-1";
@@ -141,6 +183,7 @@ function normalizeLevelRecord(value: unknown, path: string): PublishedLevelRecor
   return compactObject({
     id,
     slug,
+    sort_order: optionalInteger(record.sort_order, 0, 1_000_000, `${path}.sort_order`),
     settings_hash: optionalText(record.settings_hash, 160) || undefined,
     label: optionalText(record.label, 160) || levelLabel(slug),
     description: optionalText(record.description, 500) || undefined,
@@ -252,6 +295,26 @@ function normalizeCell(value: unknown, path: string): PublishedLevelCell {
 
 function normalizeRules(value: unknown, path: string): PublishedLevelRules {
   const rules = value === undefined ? {} : requiredRecord(value, path);
+  const supportedKeys = new Set([
+    "victory_condition",
+    "fps",
+    "frame_duration_ms",
+    "narration_auto",
+    "difficulty_settings",
+    "difficulty_changes_layout",
+    "red_floor_animation",
+    "red_damage_grace_period",
+    "green_platform_load_animation",
+    "green_platform_load_side",
+    "green_platform_disappear",
+    "green_platform_impact_ripple",
+    "blue_platform_turn_green",
+    "blue_platform_capture_area",
+    "catalog_featured"
+  ]);
+  for (const key of Object.keys(rules)) {
+    if (!supportedKeys.has(key)) throw new Error(`${path}.${key} is not a supported authored rule`);
+  }
   const victoryCondition = optionalText(rules.victory_condition, 40);
   if (victoryCondition && victoryCondition !== "collect_all" && victoryCondition !== "score_at_least") {
     throw new Error(`${path}.victory_condition is not supported`);
@@ -264,20 +327,41 @@ function normalizeRules(value: unknown, path: string): PublishedLevelRules {
   if (loadSide && loadSide !== "left" && loadSide !== "right") {
     throw new Error(`${path}.green_platform_load_side is not supported`);
   }
+  const fps = optionalInteger(rules.fps, 1, 1_000, `${path}.fps`);
+  const frameDuration = optionalInteger(rules.frame_duration_ms, 1, 60_000, `${path}.frame_duration_ms`);
+  const narrationAuto = optionalBoolean(rules.narration_auto, `${path}.narration_auto`);
+  const difficultyChangesLayout = optionalBoolean(
+    rules.difficulty_changes_layout,
+    `${path}.difficulty_changes_layout`
+  );
+  const redDamageGracePeriod = optionalBoolean(rules.red_damage_grace_period, `${path}.red_damage_grace_period`);
+  const greenLoadAnimation = optionalBoolean(
+    rules.green_platform_load_animation,
+    `${path}.green_platform_load_animation`
+  );
+  const greenDisappear = optionalBoolean(rules.green_platform_disappear, `${path}.green_platform_disappear`);
+  const greenRipple = optionalBoolean(rules.green_platform_impact_ripple, `${path}.green_platform_impact_ripple`);
+  const blueTurnGreen = optionalBoolean(rules.blue_platform_turn_green, `${path}.blue_platform_turn_green`);
+  const blueCaptureArea = optionalBoolean(rules.blue_platform_capture_area, `${path}.blue_platform_capture_area`);
+  const catalogFeatured = optionalBoolean(rules.catalog_featured, `${path}.catalog_featured`);
 
-  return {
+  return compactObject({
     victory_condition: victoryCondition,
-    difficulty_changes_layout: rules.difficulty_changes_layout === true,
+    fps,
+    frame_duration_ms: frameDuration,
+    narration_auto: narrationAuto,
+    difficulty_changes_layout: difficultyChangesLayout,
     difficulty_settings: normalizeDifficultySettings(rules.difficulty_settings, `${path}.difficulty_settings`),
     red_floor_animation: redAnimation,
-    red_damage_grace_period: rules.red_damage_grace_period === true,
-    green_platform_load_animation: rules.green_platform_load_animation !== false,
+    red_damage_grace_period: redDamageGracePeriod,
+    green_platform_load_animation: greenLoadAnimation,
     green_platform_load_side: loadSide === "right" ? "right" : "left",
-    green_platform_disappear: rules.green_platform_disappear === true,
-    green_platform_impact_ripple: rules.green_platform_impact_ripple === true,
-    blue_platform_turn_green: rules.blue_platform_turn_green === true,
-    blue_platform_capture_area: rules.blue_platform_capture_area === true
-  };
+    green_platform_disappear: greenDisappear,
+    green_platform_impact_ripple: greenRipple,
+    blue_platform_turn_green: blueTurnGreen,
+    blue_platform_capture_area: blueCaptureArea,
+    catalog_featured: catalogFeatured
+  }) as PublishedLevelRules;
 }
 
 function normalizeResultAnimations(value: unknown, path: string): PublishedResultAnimations {
@@ -414,6 +498,12 @@ function optionalFinite(
     throw new Error(`${path} must be a number from ${min} through ${max}`);
   }
   return number;
+}
+
+function optionalBoolean(value: unknown, path: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") throw new Error(`${path} must be a boolean`);
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

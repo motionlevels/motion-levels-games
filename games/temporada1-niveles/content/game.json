@@ -1,0 +1,14 @@
+{
+  "schema": "motion-levels-authored-game-source-v1",
+  "gameId": "4773837e-3565-49d7-8953-3b40f59fca7b",
+  "engineGame": "temporada1-niveles",
+  "difficulties": [
+    "easy",
+    "medium",
+    "hard",
+    "expert"
+  ],
+  "defaultDifficulty": "medium",
+  "defaultMode": "challenge",
+  "defaultLevelSlug": "level-1"
+}
