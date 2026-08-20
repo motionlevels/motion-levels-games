@@ -444,9 +444,13 @@ describe("catalog metadata sync", () => {
     assert.match(appSource, /promoteAnimation=\{rich\}/);
     assert.match(appSource, /richPreviewCandidates\(posterCandidates, \[richSrc, \.\.\.richSrcs\]\)/);
     assert.match(appSource, /renderPartyPreview\(game, \{ compact: true, rich: selected \|\| active \}\)/);
+    assert.match(appSource, /className="preview compact-preview selector-preview"/);
+    assert.match(appSource, /compact \? "compact-preview selector-preview" : ""/);
     assert.match(styleSource, /--preview-board-max-width: min\(78%, 560px\);/);
     assert.match(styleSource, /\.preview\s*\{[\s\S]*?--preview-board-height-inset: 18px;[\s\S]*?container-type: size;/);
     assert.match(styleSource, /\.floor-canvas,\s*\.preview-media-frame\s*\{[\s\S]*?width: min\([\s\S]*?var\(--preview-media-width\),[\s\S]*?var\(--preview-board-max-width\),[\s\S]*?var\(--preview-media-height-limited-width\)[\s\S]*?\);[\s\S]*?aspect-ratio: var\(--preview-media-aspect\);/);
+    assert.match(styleSource, /\.preview\.selector-preview\s*\{[\s\S]*?--selector-preview-max-width: 256px;[\s\S]*?--selector-preview-aspect: 2 \/ 1;/);
+    assert.match(styleSource, /\.preview\.selector-preview > \.floor-canvas,[\s\S]*?\.preview\.selector-preview > \.preview-media-frame\s*\{[\s\S]*?width: min\([\s\S]*?var\(--selector-preview-max-width\),[\s\S]*?calc\(100% - 28px\),[\s\S]*?calc\(\(100cqh - 20px\) \* 2\)[\s\S]*?\);[\s\S]*?aspect-ratio: var\(--selector-preview-aspect\);/);
     assert.match(styleSource, /\.party-preview-tile \.preview\s*\{\s*--preview-board-height-inset: 4px;\s*--preview-board-max-width: calc\(100% - 4px\);/);
 
     const floorPreviewSource = fs.readFileSync(path.resolve(__dirname, "../src/FloorPreview.tsx"), "utf8");

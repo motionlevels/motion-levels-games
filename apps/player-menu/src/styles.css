@@ -2402,6 +2402,27 @@ button.capsule:disabled,
   background: #060a12;
 }
 
+/* Selector media has one canonical thumbnail slot. Keep native animation
+   canvases, generated game art, and fallback frames visually interchangeable;
+   only the available selector space may make this slot smaller. */
+.preview.selector-preview {
+  --selector-preview-max-width: 256px;
+  --selector-preview-aspect: 2 / 1;
+}
+
+.preview.selector-preview > .floor-canvas,
+.preview.selector-preview > .preview-media-frame {
+  width: min(
+    var(--selector-preview-max-width),
+    calc(100% - 28px),
+    calc((100cqh - 20px) * 2)
+  );
+  height: auto;
+  max-width: var(--selector-preview-max-width);
+  max-height: calc(100cqh - 20px);
+  aspect-ratio: var(--selector-preview-aspect);
+}
+
 .game-card:hover .preview-media-frame,
 .game-card:hover .floor-canvas {
   transform: rotateX(8deg) rotateZ(0deg) translateY(-2px) scale(1.02);

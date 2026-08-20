@@ -5945,7 +5945,7 @@ function LevelMysteryPreview() {
     : "calc((100cqh - var(--preview-board-height-inset, 10px)) + (100cqh - var(--preview-board-height-inset, 10px)))";
   return (
     <div
-      className="preview compact-preview"
+      className="preview compact-preview selector-preview"
       style={{
         "--preview-media-width": `${previewDimensions.width}px`,
         "--preview-media-aspect": `${previewDimensions.width} / ${previewDimensions.height}`,
@@ -6053,7 +6053,7 @@ function Preview({
 
   return (
     <div
-      className={`preview ${compact ? "compact-preview" : ""} ${logoMedia || showLogoFallback ? "logo-preview" : ""}`}
+      className={`preview ${compact ? "compact-preview selector-preview" : ""} ${logoMedia || showLogoFallback ? "logo-preview" : ""}`}
       style={{
         "--preview-media-width": `${previewDimensions.width}px`,
         "--preview-media-aspect": `${previewDimensions.width} / ${previewDimensions.height}`,

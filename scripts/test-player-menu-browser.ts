@@ -302,6 +302,12 @@ try {
     const drawer = page.locator(".team-drawer");
     await drawer.locator(".drawer-done").tap();
     await waitForAttribute(drawer, "aria-hidden", "true");
+
+    await page.getByRole("button", { name: "Destacados", exact: true }).tap();
+    const regularGameCard = page.locator('.game-card[data-game-id="lava"]');
+    await regularGameCard.waitFor({ state: "visible" });
+    const regularGamePreviewGeometry = await readSelectorPreviewGeometry(regularGameCard);
+
     await page.getByRole("button", { name: "Ambiente", exact: true }).tap();
 
     const cards = page.locator(".game-grid .game-card");
@@ -323,6 +329,17 @@ try {
     await page.locator('.game-card[data-game-id="animation-aurora"]').tap();
     const nativeCanvas = page.locator('.game-card[data-game-id="animation-aurora"] canvas.floor-canvas');
     await nativeCanvas.waitFor({ state: "visible" });
+    const animationPreviewGeometry = await readSelectorPreviewGeometry(
+      page.locator('.game-card[data-game-id="animation-aurora"]'),
+    );
+    assert.deepEqual(
+      animationPreviewGeometry,
+      regularGamePreviewGeometry,
+      `game and animation selector previews must use one shared media geometry: ${JSON.stringify({
+        game: regularGamePreviewGeometry,
+        animation: animationPreviewGeometry,
+      })}`,
+    );
     assert.equal(
       await page.locator('.game-card[data-game-id="animation-aurora"] .preview-logo-fallback').count(),
       0,
@@ -631,6 +648,17 @@ try {
 } finally {
   await browser?.close();
   await stopServer(server);
+}
+
+async function readSelectorPreviewGeometry(card: import("playwright").Locator): Promise<{ width: number; height: number }> {
+  return card.locator(".preview").evaluate((preview) => {
+    const media = preview.querySelector<HTMLElement>(".preview-media-frame, canvas.floor-canvas");
+    if (!media) throw new Error("selector preview is missing its media frame");
+    return {
+      width: media.offsetWidth,
+      height: media.offsetHeight,
+    };
+  });
 }
 
 if (failures.length > 0) {
