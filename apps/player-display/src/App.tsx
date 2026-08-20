@@ -1002,7 +1002,6 @@ function HeartMeter({ compact = false, lives, model, showAllUpTo = 8 }: { lives?
     return (
       <div
         className={`heart-meter ${compact ? "compact" : ""} many`}
-        style={{ "--heart-count": compact ? 3 : 5 } as CSSProperties}
       >
         {Array.from({ length: compact ? 3 : 5 }, (_, index) => <span className="heart filled" key={index} />)}
         <b>x{currentLives}</b>
@@ -1013,7 +1012,6 @@ function HeartMeter({ compact = false, lives, model, showAllUpTo = 8 }: { lives?
   return (
     <div
       className={`heart-meter ${compact ? "compact" : ""} ${sizeClass}`}
-      style={{ "--heart-count": Math.max(1, slots) } as CSSProperties}
     >
       {Array.from({ length: slots }, (_, index) => (
         <span className={`heart ${index < currentLives ? "filled" : "empty"}`} key={index} />

@@ -96,6 +96,14 @@ test("LivesMeter renders red remaining hearts and gray lost hearts", () => {
   assert.match(styleSource, /\.ml-life-heart\.is-lost\s*\{[^}]*color:\s*#566171;/s);
 });
 
+test("LivesMeter wraps excess hearts and keeps each cell inside its metric", () => {
+  const html = renderToStaticMarkup(React.createElement(LivesMeter, { lives: 12, maxLives: 12 }));
+
+  assert.equal((html.match(/data-life-state="remaining"/g) ?? []).length, 12);
+  assert.match(styleSource, /\.ml-lives-meter\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-auto-flow:\s*row;[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*var\(--ml-life-size\)\),\s*1fr\)\);[\s\S]*overflow:\s*hidden;[\s\S]*container-type:\s*inline-size;/s);
+  assert.match(styleSource, /\.ml-life-heart\s*\{[\s\S]*font-size:\s*var\(--ml-life-size\);[\s\S]*max-width:\s*100%;/s);
+});
+
 test("LivesMeter owns calm idle and life-change motion", () => {
   assert.match(componentSource, /const previousLivesRef = useRef\(remainingLives\)/);
   assert.match(componentSource, /lifeChange\.to > lifeChange\.from[\s\S]*?"is-regained"[\s\S]*?"is-losing"/);
@@ -130,7 +138,7 @@ test("primary solo metrics use distance-readable typography", () => {
   );
   assert.match(
     styleSource,
-    /\.ml-solo-number-row \.ml-life-heart\s*\{[^}]*font-size:\s*clamp\(116px, 6\.8vw, 136px\);/s
+    /\.ml-solo-number-row \.ml-lives-meter\s*\{[^}]*--ml-life-size:\s*clamp\(64px, 13cqw, 136px\);/s
   );
 });
 

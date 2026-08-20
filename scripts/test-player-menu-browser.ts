@@ -61,6 +61,81 @@ try {
   await waitForServer(baseURL, server);
   browser = await chromium.launch({ headless: true });
 
+  await scenario("lives meters wrap and stay inside their cards", async ({ page }) => {
+    const [displayKitStyles, playerDisplayStyles] = await Promise.all([
+      readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8"),
+      readFile(path.join(repoRoot, "apps/player-display/src/styles.css"), "utf8"),
+    ]);
+    const sharedHearts = Array.from({ length: 12 }, (_, index) => `
+      <span class="ml-life-heart is-remaining" data-index="${index}">
+        <span class="ml-life-heart-glyph">♥</span>
+      </span>
+    `).join("");
+    const legacyHearts = Array.from({ length: 12 }, (_, index) => `
+      <span class="heart filled" data-index="${index}"></span>
+    `).join("");
+
+    await page.setContent(`
+      <style>${displayKitStyles}</style>
+      <style>${playerDisplayStyles}</style>
+      <main style="display:grid;gap:20px;padding:20px;width:520px;background:#111">
+        <article class="ml-metric ml-metric-red" style="width:480px;height:220px">
+          <span class="ml-metric-label">Vidas</span>
+          <strong class="ml-metric-value">
+            <div class="ml-lives-meter">${sharedHearts}</div>
+          </strong>
+        </article>
+        <article class="arcade-metric arcade-metric--lives red" style="width:480px;height:380px">
+          <span>Vidas</span>
+          <strong>
+            <div class="heart-meter medium">${legacyHearts}</div>
+          </strong>
+        </article>
+      </main>
+    `);
+
+    const measure = (cardSelector: string, meterSelector: string, itemSelector: string) => page.locator(cardSelector).evaluate(
+      (card, selectors) => {
+        const meter = card.querySelector<HTMLElement>(selectors.meterSelector);
+        if (!meter) throw new Error(`missing ${selectors.meterSelector}`);
+        const items = [...meter.querySelectorAll<HTMLElement>(selectors.itemSelector)];
+        const cardRect = card.getBoundingClientRect();
+        const meterRect = meter.getBoundingClientRect();
+        const itemRects = items.map((item) => {
+          const rect = item.getBoundingClientRect();
+          return { bottom: rect.bottom, right: rect.right, top: rect.top };
+        });
+        return {
+          cardBottom: cardRect.bottom,
+          cardRight: cardRect.right,
+          itemCount: itemRects.length,
+          maxBottom: Math.max(...itemRects.map((rect) => rect.bottom)),
+          maxRight: Math.max(...itemRects.map((rect) => rect.right)),
+          meterBottom: meterRect.bottom,
+          meterClientWidth: meter.clientWidth,
+          meterRight: meterRect.right,
+          meterScrollWidth: meter.scrollWidth,
+          rows: new Set(itemRects.map((rect) => Math.round(rect.top))).size,
+        };
+      },
+      { itemSelector, meterSelector },
+    );
+    const geometry = {
+      legacy: await measure(".arcade-metric--lives", ".heart-meter", ".heart"),
+      shared: await measure(".ml-metric", ".ml-lives-meter", ".ml-life-heart"),
+    };
+    const evidence = JSON.stringify(geometry);
+    for (const [label, layout] of Object.entries(geometry)) {
+      assert.equal(layout.itemCount, 12, `${label} must render every life: ${evidence}`);
+      assert.ok(layout.rows > 1, `${label} must wrap excess lives onto another row: ${evidence}`);
+      assert.ok(layout.maxRight <= layout.meterRight + 1, `${label} hearts must stay inside the meter horizontally: ${evidence}`);
+      assert.ok(layout.maxRight <= layout.cardRight + 1, `${label} hearts must stay inside the card horizontally: ${evidence}`);
+      assert.ok(layout.maxBottom <= layout.meterBottom + 1, `${label} hearts must stay inside the meter vertically: ${evidence}`);
+      assert.ok(layout.maxBottom <= layout.cardBottom + 1, `${label} hearts must stay inside the card vertically: ${evidence}`);
+      assert.ok(layout.meterScrollWidth <= layout.meterClientWidth + 1, `${label} meter must not have horizontal overflow: ${evidence}`);
+    }
+  });
+
   await scenario("team name accepts multiple words and Done stays dismissed on touch", async ({ page }) => {
     await startSession(page);
     if (captureScreenshots) await page.screenshot({ path: screenshotPath(`player-menu-drawer-${viewportWidth}.png`) });

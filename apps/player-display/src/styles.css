@@ -1748,18 +1748,20 @@ body {
 }
 
 .arcade-metric--lives .heart-meter {
-  --heart-count: 5;
   --heart-size: min(12cqw, 30cqh, 145px);
   --heart-gap: min(2.35cqw, calc(var(--heart-size) * 0.24));
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: repeat(var(--heart-count), minmax(0, var(--heart-size)));
+  grid-auto-flow: row;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--heart-size)), 1fr));
   align-items: center;
   align-content: center;
   justify-content: start;
   gap: var(--heart-gap);
   max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .arcade-metric--lives .heart-meter.single {
@@ -1778,7 +1780,6 @@ body {
 .arcade-metric--lives .heart-meter.full {
   --heart-size: min(7cqw, 18cqh, 86px);
   --heart-gap: min(1.2cqw, calc(var(--heart-size) * 0.16));
-  grid-template-columns: repeat(10, minmax(0, var(--heart-size)));
 }
 
 .level-points-display .arcade-metric--lives .heart-meter {
@@ -1801,8 +1802,12 @@ body {
 
 .arcade-metric--lives .heart-meter.many {
   --heart-size: min(10.5cqw, 27cqh, 128px);
-  grid-template-columns: repeat(var(--heart-count), minmax(0, var(--heart-size))) auto;
   align-items: center;
+}
+
+.arcade-metric--lives .heart-meter > * {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .arcade-metric--lives .heart {
@@ -1811,12 +1816,13 @@ body {
 }
 
 .arcade-metric--lives .heart::before {
-  font-size: calc(var(--heart-size) * 1.18);
+  font-size: var(--heart-size);
 }
 
 .arcade-metric--lives .heart-meter b {
   align-self: center;
   font-size: min(8cqw, 20cqh, 5.8rem);
+  overflow-wrap: anywhere;
 }
 
 .arcade-metric--time > strong {

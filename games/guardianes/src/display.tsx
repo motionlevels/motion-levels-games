@@ -17,7 +17,7 @@ const guardianesStyles = `
 .guardianes-shield i{background:var(--lane);border-radius:999px 999px 20px 20px;box-shadow:0 0 26px var(--lane);height:46px;width:70px}.guardianes-shield strong{color:#fff;font-size:24px;margin-top:10px}
 .guardianes-sidebar{align-content:center;display:grid;gap:17px}
 .guardianes-card{background:rgba(5,12,29,.9);border:1px solid rgba(255,255,255,.12);border-radius:22px;display:grid;gap:8px;padding:20px 24px}.guardianes-card span{color:#9baec5;font-size:18px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.guardianes-card strong{color:#fff;font-size:56px;line-height:1}
-.guardianes-lives .ml-lives-meter{justify-content:flex-start;margin-top:7px}.guardianes-lives .ml-life-heart-glyph{font-size:52px}
+.guardianes-lives .ml-lives-meter{justify-content:flex-start;margin-top:7px}
 .guardianes-progress{background:#152038;border-radius:999px;height:14px;overflow:hidden}.guardianes-progress i{background:linear-gradient(90deg,#35d7ff,#ff3bd7,#ffe176,#5fff9e);display:block;height:100%;width:var(--guardian-progress)}
 .guardianes-event{background:rgba(53,215,255,.09);border:1px solid rgba(53,215,255,.3);border-radius:20px;color:#fff;font-size:24px;font-weight:900;min-height:84px;padding:21px}
 .guardianes-result{align-content:center;background:#050814;display:grid;inset:0;justify-items:center;padding:60px;position:absolute;text-align:center;z-index:5}.guardianes-result strong{color:#fff;font-size:clamp(78px,8vw,142px);line-height:.94}.guardianes-result span{color:#b8eefd;font-size:31px;font-weight:900;margin-top:25px}

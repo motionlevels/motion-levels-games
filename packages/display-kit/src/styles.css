@@ -323,16 +323,29 @@
 }
 
 .ml-lives-meter {
+  --ml-life-gap: clamp(6px, 1.5cqw, 16px);
+  --ml-life-size: clamp(32px, 10cqw, 72px);
+  align-content: center;
   align-items: center;
-  display: flex;
-  gap: 16px;
+  display: grid;
+  gap: var(--ml-life-gap);
+  grid-auto-flow: row;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--ml-life-size)), 1fr));
+  max-width: 100%;
   min-height: 78px;
+  min-width: 0;
+  overflow: hidden;
+  container-type: inline-size;
+  width: 100%;
 }
 
 .ml-life-heart {
   display: inline-flex;
-  font-size: 72px;
+  font-size: var(--ml-life-size);
+  justify-self: center;
   line-height: 1;
+  max-width: 100%;
+  min-width: 0;
   transform-origin: 50% 58%;
 }
 
@@ -1957,12 +1970,9 @@
 }
 
 .ml-solo-number-row .ml-lives-meter {
-  gap: 14px;
+  --ml-life-gap: clamp(8px, 1.2cqw, 14px);
+  --ml-life-size: clamp(64px, 13cqw, 136px);
   min-height: 124px;
-}
-
-.ml-solo-number-row .ml-life-heart {
-  font-size: clamp(116px, 6.8vw, 136px);
 }
 
 .ml-solo-message {

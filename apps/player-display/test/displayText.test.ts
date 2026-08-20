@@ -109,6 +109,15 @@ describe("arcade display readability", () => {
     assert.match(cssSource, /\.arcade-player-card > strong\s*\{[^}]*font-size:\s*7\.25rem;/);
     assert.match(cssSource, /\.memory-player-score__name span\s*\{[^}]*font-size:\s*1\.72rem;/);
   });
+
+  it("wraps and scales level lives instead of allowing hearts to overflow the card", () => {
+    const cssSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+
+    assert.match(cssSource, /\.arcade-metric--lives\s*\{[^}]*container-type:\s*size;/s);
+    assert.match(cssSource, /\.arcade-metric--lives \.heart-meter\s*\{[\s\S]*grid-auto-flow:\s*row;[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*var\(--heart-size\)\),\s*1fr\)\);[\s\S]*overflow:\s*hidden;/s);
+    assert.match(cssSource, /\.arcade-metric--lives \.heart::before\s*\{[^}]*font-size:\s*var\(--heart-size\);/s);
+    assert.doesNotMatch(cssSource, /grid-template-columns:\s*repeat\((?:var\(--heart-count\)|10),/);
+  });
 });
 
 describe("kiosk preview viewport", () => {
