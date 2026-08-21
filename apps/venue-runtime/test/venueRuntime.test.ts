@@ -416,6 +416,32 @@ test("publishes the renderer feed at 20 Hz without increasing the menu feed cade
   assert.deepEqual(displays, [...displays].sort((left, right) => left - right));
 });
 
+test("paused gameplay stops ordinary floor frames until resume", async () => {
+  const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
+  await selectPingPong(runtime);
+  const sent: Array<{ sequence: bigint; rgb: Uint8Array }> = [];
+  const internals = runtime as unknown as {
+    controller: { sendFrame(frame: { sequence: bigint; rgb: Uint8Array }): void };
+    tick(now: number): void;
+  };
+  internals.controller.sendFrame = (frame) => sent.push({ sequence: frame.sequence, rgb: frame.rgb.slice() });
+
+  const firstTick = performance.now();
+  internals.tick(firstTick);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.sequence, 1n);
+
+  runtime.control("pause");
+  internals.tick(firstTick + 20);
+  internals.tick(firstTick + 40);
+  assert.equal(sent.length, 1, "paused gameplay must not keep publishing ordinary floor frames");
+
+  runtime.control("resume");
+  internals.tick(firstTick + 60);
+  assert.equal(sent.length, 2, "resuming gameplay must publish the next floor frame");
+  assert.equal(sent[1]?.sequence, 2n);
+});
+
 test("idle screensaver keeps game state idle while tracking the venue session", () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   const before = (runtime.display().frame as Frame).cells.map((cell) => cell.color);

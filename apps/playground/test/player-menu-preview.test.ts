@@ -4,6 +4,8 @@ import test from "node:test";
 import { localPlayerMenuUrl, readPrimaryScreen } from "../src/playerMenuEmbed.ts";
 
 const previewSource = readFileSync(new URL("../src/PlayerMenuPreview.tsx", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const rootPackage = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
   scripts: Record<string, string>;
 };
@@ -72,6 +74,12 @@ test("screen query restores the selected playground preview", () => {
   assert.equal(readPrimaryScreen("?screen=menu"), "menu");
   assert.equal(readPrimaryScreen("?screen=display"), "display");
   assert.equal(readPrimaryScreen("?screen=unknown"), "display");
+});
+
+test("the menu iframe stays mounted while the primary screen changes", () => {
+  assert.match(appSource, /<PlayerMenuPreview active=\{primaryScreen === "menu"\} src=\{playerMenuPreviewUrl\} \/>/u);
+  assert.match(previewSource, /data-active=\{active\}/u);
+  assert.match(styleSource, /\.player-menu-preview-native\.is-background\s*\{[\s\S]*?visibility:\s*hidden;/u);
 });
 
 test("embedded menu does not define a private launch handoff", () => {

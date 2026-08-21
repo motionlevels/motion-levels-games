@@ -1,12 +1,17 @@
 /* oxlint-disable react/iframe-missing-sandbox */
 
 type PlayerMenuPreviewProps = Readonly<{
+  active?: boolean;
   src: string;
 }>;
 
-export function PlayerMenuPreview({ src }: PlayerMenuPreviewProps) {
+export function PlayerMenuPreview({ active = true, src }: PlayerMenuPreviewProps) {
   return (
-    <div className="display-preview-native player-menu-preview-native">
+    <div
+      aria-hidden={!active}
+      className={`display-preview-native player-menu-preview-native ${active ? "is-active" : "is-background"}`}
+      data-active={active}
+    >
       {/* The menu has its own document and styles, but is served by the same
           Vite process as the playground. */}
       <iframe

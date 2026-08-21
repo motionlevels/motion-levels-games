@@ -117,26 +117,36 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
     await assertTransparentLaunch(page, initialURL, mainNavigations, "regular game");
 
     await menu.locator("main.app.playing").waitFor({ state: "visible" });
+    const menuFrame = await page.locator(".player-menu-preview-frame").elementHandle();
+    assert.ok(menuFrame, "the menu iframe must be mounted before switching surfaces");
     await page.locator('button[title="Player display"]').click();
-    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
+    await page.locator('.player-menu-preview-native[data-active="false"]').waitFor({ state: "attached" });
+    assert.equal(
+      await page.locator(".player-menu-preview-frame").evaluate((node, original) => node === original, menuFrame),
+      true,
+      "switching to Display must keep the menu iframe mounted"
+    );
     await waitForRuntimeState(page, "arkanoid", false);
     await pressRuntimeZone(page, 7, 30);
     await waitForRuntimeState(page, "arkanoid", false, "running");
 
-    // Returning to the menu pauses the authoritative runtime. Remounting the
-    // iframe must recover the active paused game, not the welcome/browse view.
+    // Returning to the menu pauses the authoritative runtime. The already
+    // mounted iframe must immediately show the active paused game, not a
+    // loading/welcome/browse view.
     await page.locator('button[title="Player menu"]').click();
+    await page.locator('.player-menu-preview-native[data-active="true"]').waitFor({ state: "visible" });
     const reopenedMenu = page.frameLocator('iframe[title="Player menu"]');
     await reopenedMenu.locator("main.app.playing").waitFor({ state: "visible" });
     await waitForRuntimeState(page, "arkanoid", true);
     assert.equal(await reopenedMenu.locator(".welcome-screen").count(), 0, "returning to menu must not show Welcome");
     assert.equal(await reopenedMenu.locator("main.app.playing").count(), 1, "returning to menu must show active game controls");
 
-    // A second unmount/remount must preserve the same runtime-derived screen.
+    // A second surface switch must preserve the same runtime-derived screen.
     await page.locator('button[title="Player display"]').click();
-    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
+    await page.locator('.player-menu-preview-native[data-active="false"]').waitFor({ state: "attached" });
     await waitForRuntimeState(page, "arkanoid", false);
     await page.locator('button[title="Player menu"]').click();
+    await page.locator('.player-menu-preview-native[data-active="true"]').waitFor({ state: "visible" });
     const remountedMenu = page.frameLocator('iframe[title="Player menu"]');
     await remountedMenu.locator("main.app.playing").waitFor({ state: "visible" });
     await waitForRuntimeState(page, "arkanoid", true);

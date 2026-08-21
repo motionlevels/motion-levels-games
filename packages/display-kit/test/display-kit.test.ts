@@ -30,6 +30,14 @@ test("Ping Pong motion is namespaced and honors reduced motion", () => {
   assert.match(styleSource, /\.ping-pong-display \*/);
 });
 
+test("paused display shells freeze presentation keyframes", () => {
+  assert.match(
+    styleSource,
+    /\.ml-display-shell\.is-paused \*,[\s\S]*?animation-play-state:\s*paused !important;/,
+    "runtime pause must freeze game-owned CSS animations"
+  );
+});
+
 test("Ping Pong start countdown fits the center scoreboard card", () => {
   assert.match(styleSource, /\.ping-pong-display\.is-phase-starting \.ml-versus-center strong \{[\s\S]*font-size: clamp\(68px, 4\.4vw, 86px\);[\s\S]*white-space: nowrap;/u);
 });

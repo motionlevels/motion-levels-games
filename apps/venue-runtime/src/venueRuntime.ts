@@ -1507,23 +1507,32 @@ export class VenueRuntime {
     if (!this.state.paused && !this.recordingGateBlocksGameplay()) {
       this.acceptSessionState(this.session.tick(this.elapsedAt(now)), now);
     }
-    const frame = this.state.frame;
-    this.frameSequence += 1n;
-    const frameContext = this.historyState(this.state);
-    if (this.gameSessionId) {
-      this.sentFrameContexts.set(this.frameSequence, {
-        runId: this.gameSessionId,
-        engineAtMillis: frameContext.clockMillis
+    const nextFrameSequence = this.frameSequence + 1n;
+    const floorOutputTestWasSending = this.floorOutputTestRun?.sendingComplete ?? false;
+    const outputTestRgb = this.floorOutputTestFrame(nextFrameSequence, now);
+    const floorOutputTestJustFinishedSending = !floorOutputTestWasSending
+      && this.floorOutputTestRun?.sendingComplete === true;
+    // A paused game must hold the physical floor exactly where it was. Do not
+    // keep publishing ordinary gameplay frames while the menu owns the pause;
+    // diagnostic output tests are the one deliberate exception.
+    if (!this.state.paused || outputTestRgb !== null || floorOutputTestJustFinishedSending) {
+      const frame = this.state.frame;
+      this.frameSequence = nextFrameSequence;
+      const frameContext = this.historyState(this.state);
+      if (this.gameSessionId) {
+        this.sentFrameContexts.set(this.frameSequence, {
+          runId: this.gameSessionId,
+          engineAtMillis: frameContext.clockMillis
+        });
+      }
+      this.controller.sendFrame({
+        sequence: this.frameSequence,
+        unixNanos: BigInt(Date.now()) * 1_000_000n,
+        width: FLOOR_COLS,
+        height: FLOOR_ROWS,
+        rgb: outputTestRgb ?? frameToRgb(frame, this.options.brightness ?? 1)
       });
     }
-    const outputTestRgb = this.floorOutputTestFrame(this.frameSequence, now);
-    this.controller.sendFrame({
-      sequence: this.frameSequence,
-      unixNanos: BigInt(Date.now()) * 1_000_000n,
-      width: FLOOR_COLS,
-      height: FLOOR_ROWS,
-      rgb: outputTestRgb ?? frameToRgb(frame, this.options.brightness ?? 1)
-    });
     if (String(this.state.snapshot.phase) === "finished"
       && this.replayFinishRequestedRunId !== this.gameSessionId) {
       this.requestRunReplayFinish(this.gameSessionId, this.state.snapshot.success ? "success" : "finished");

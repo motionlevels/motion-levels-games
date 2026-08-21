@@ -1862,8 +1862,8 @@ export function App() {
                 <PlayerDisplay snapshot={displaySnapshot} frame={displayFrame} />
               </PlayerDisplayRuntimeProvider>
             </div>
-            {primaryScreen === "menu" && playerMenuPreviewUrl ? (
-              <PlayerMenuPreview src={playerMenuPreviewUrl} />
+            {playerMenuPreviewUrl ? (
+              <PlayerMenuPreview active={primaryScreen === "menu"} src={playerMenuPreviewUrl} />
             ) : null}
           </div>
 

@@ -1024,6 +1024,12 @@ select {
   z-index: 2;
 }
 
+.player-menu-preview-native.is-background {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .player-menu-preview-frame {
   background: #080b10;
   border: 0;

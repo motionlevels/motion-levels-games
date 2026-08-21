@@ -60,6 +60,15 @@
   transition: none !important;
 }
 
+/* Runtime pause is authoritative for presentation too. Game displays may
+ * own their CSS keyframes, so freeze every descendant, including pseudo
+ * elements, while the physical game is paused. */
+.ml-display-shell.is-paused *,
+.ml-display-shell.is-paused *::before,
+.ml-display-shell.is-paused *::after {
+  animation-play-state: paused !important;
+}
+
 .ml-display-header {
   align-items: center;
   display: grid;
