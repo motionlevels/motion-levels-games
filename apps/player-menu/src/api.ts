@@ -89,122 +89,6 @@ export type SelectGameRequest = {
   }>;
 };
 
-/**
- * In the integrated local experience the menu lives in a same-origin iframe.
- * Keep its handoff in memory so selecting a game does not navigate the whole
- * playground through the boot loading screen.
- */
-export const localPlaygroundLaunchMessageType = "motion-levels:playground-launch" as const;
-
-export type LocalPlaygroundLaunchMessage = {
-  type: typeof localPlaygroundLaunchMessageType;
-  gameId: string;
-  playerCount: number;
-  difficulty?: string;
-  options?: Record<string, unknown>;
-};
-
-const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-const localPortPattern = /^\d{2,5}$/u;
-
-function integratedExperienceMode(): boolean {
-  return import.meta.env?.DEV === true || import.meta.env?.VITE_HOSTED_PLAYER_EXPERIENCE === "true";
-}
-
-function embeddedInPlayground(menuLocation: Location | undefined, integratedExperience: boolean): boolean {
-  if (!integratedExperience || !menuLocation) return false;
-  const params = new URLSearchParams(menuLocation.search || "");
-  return params.get("embed") === "playground";
-}
-
-function embeddedPlaygroundURL(menuLocation: Location): URL {
-  const playgroundPath = (menuLocation.pathname || "/player-menu/").replace(/player-menu\/?$/u, "");
-  return new URL(playgroundPath || "/", menuLocation.origin);
-}
-
-function configuredLocalPlaygroundPort(): string | undefined {
-  return import.meta.env?.DEV ? import.meta.env.VITE_LOCAL_PLAYGROUND_PORT : undefined;
-}
-
-export function localPlaygroundEnabled(
-  playgroundPort: string | undefined = undefined,
-  menuLocation = typeof window === "undefined" ? undefined : window.location,
-  integratedExperience = integratedExperienceMode(),
-): boolean {
-  const embedded = embeddedInPlayground(menuLocation, integratedExperience);
-  const resolvedPort = playgroundPort ?? configuredLocalPlaygroundPort();
-  return Boolean(
-    menuLocation
-    && (embedded || (loopbackHosts.has(menuLocation.hostname) && resolvedPort && localPortPattern.test(resolvedPort))),
-  );
-}
-
-export function localPlaygroundLaunchURL(
-  request: SelectGameRequest,
-  playgroundPort: string | undefined = undefined,
-  menuLocation = typeof window === "undefined" ? undefined : window.location,
-  integratedExperience = integratedExperienceMode(),
-): string | undefined {
-  const embedded = embeddedInPlayground(menuLocation, integratedExperience);
-  const resolvedPort = playgroundPort ?? configuredLocalPlaygroundPort();
-  if (!localPlaygroundEnabled(resolvedPort, menuLocation, integratedExperience) || !menuLocation) {
-    return undefined;
-  }
-  const runtimeID = request.engineGame?.startsWith("motion-levels-games:")
-    ? request.engineGame.slice("motion-levels-games:".length)
-    : request.game.startsWith("motion-levels-games:")
-      ? request.game.slice("motion-levels-games:".length)
-      : request.game;
-  const target = embedded
-    ? embeddedPlaygroundURL(menuLocation)
-    : new URL(`http://${menuLocation.hostname}:${resolvedPort}/`);
-  target.searchParams.set("journey", "1");
-  target.searchParams.set("game", runtimeID);
-  target.searchParams.set("players", String(request.playerCount));
-  if (request.difficulty) target.searchParams.set("difficulty", request.difficulty);
-  if (request.config && Object.keys(request.config).length > 0) {
-    target.searchParams.set("options", JSON.stringify(request.config));
-  }
-  const returnTarget = embedded
-    ? embeddedPlaygroundURL(menuLocation)
-    : new URL(`${menuLocation.protocol}//${menuLocation.host}/`);
-  if (embedded) returnTarget.searchParams.set("screen", "menu");
-  target.searchParams.set("return", returnTarget.toString());
-  return target.toString();
-}
-
-export function localPlaygroundLaunchMessage(request: SelectGameRequest): LocalPlaygroundLaunchMessage {
-  const runtimeID = request.engineGame?.startsWith("motion-levels-games:")
-    ? request.engineGame.slice("motion-levels-games:".length)
-    : request.game.startsWith("motion-levels-games:")
-      ? request.game.slice("motion-levels-games:".length)
-      : request.game;
-  const message: LocalPlaygroundLaunchMessage = {
-    type: localPlaygroundLaunchMessageType,
-    gameId: runtimeID,
-    playerCount: request.playerCount,
-  };
-  if (request.difficulty) message.difficulty = request.difficulty;
-  if (request.config && Object.keys(request.config).length > 0) message.options = { ...request.config };
-  return message;
-}
-
-export function launchLocalPlayground(request: SelectGameRequest): boolean {
-  const target = localPlaygroundLaunchURL(request);
-  if (!target || typeof window === "undefined") return false;
-  const embedded = embeddedInPlayground(window.location, integratedExperienceMode());
-  if (embedded && window.self !== window.top) {
-    window.parent.postMessage(localPlaygroundLaunchMessage(request), window.location.origin);
-    return true;
-  }
-  if (window.self !== window.top) {
-    window.open(target, "_top");
-    return true;
-  }
-  window.location.assign(target);
-  return true;
-}
-
 const enginePort = "4102";
 const localEngineURL = `http://127.0.0.1:${enginePort}`;
 const publicPlatformHost = "platform.motionlevels.obis.dev";
@@ -249,21 +133,6 @@ export function platformBaseURL(): string {
 }
 
 export async function fetchEngineStatus(): Promise<EngineStatus> {
-  if (localPlaygroundEnabled()) {
-    const { localPlayerExperienceCatalog } = await import("./localCatalog");
-    const catalog = localPlayerExperienceCatalog().map((game): EngineGame => ({
-      game: game.engine_game,
-      label: game.label,
-      description: game.description,
-      music: "",
-      players: game.allow_any_players !== true,
-      minPlayers: game.min_players,
-      maxPlayers: game.max_players,
-      difficulty: (game.difficulties?.length ?? 0) > 1,
-      volume: 0,
-    }));
-    return localIdleEngineStatus(catalog);
-  }
   return requestJSON<EngineStatus>(`${engineBaseURL()}/api/player-state`, { cache: "no-store" }, statusTimeoutMillis);
 }
 
@@ -271,50 +140,7 @@ export function playerExperienceEventSource(): EventSource {
   return new EventSource(`${engineBaseURL()}/api/player-state/events`);
 }
 
-function localIdleEngineStatus(catalog: EngineGame[]): EngineStatus {
-  return {
-    contractVersion: 1,
-    revision: 1,
-    runId: "",
-    lifecycle: "idle",
-    allowedControls: [],
-    currentGame: "salvapantallas",
-    venueSessionId: "",
-    label: "Playground local",
-    difficulty: "medium",
-    teamName: "",
-    playerCount: 0,
-    players: [],
-    score: 0,
-    lives: -1,
-    music: "",
-    musicVolume: 0,
-    audioEnabled: false,
-    audioMuted: true,
-    paused: false,
-    phase: "idle",
-    success: false,
-    introRemainingMillis: 0,
-    countdownRemainingMillis: 0,
-    startedUnix: 0,
-    endsUnix: 0,
-    elapsedMillis: 0,
-    remainingMillis: 0,
-    activeTargets: 0,
-    sessionId: "",
-    lastPressureUnix: Math.floor(Date.now() / 1000),
-    lastEventUnixNanos: 0,
-    lastEventCue: "",
-    lastEventMessage: "",
-    catalog,
-  };
-}
-
 export async function fetchGameCatalog(): Promise<PlatformGameCatalogEntry[]> {
-  if (localPlaygroundEnabled()) {
-    const { localPlayerExperienceCatalog } = await import("./localCatalog");
-    return localPlayerExperienceCatalog();
-  }
   const baseURL = platformBaseURL();
   if (!baseURL) return [];
   try {
@@ -466,7 +292,6 @@ let menuStateRetryDelayMillis = 500;
 // one FIFO so a recording-policy update cannot overtake a close/recovery (or a
 // later policy update) when the engine is slow.
 export async function postVenueSession(request: VenueSessionRequest): Promise<EngineStatus | null> {
-  if (localPlaygroundEnabled()) return null;
   return enqueueVenueSessionCommand(() => requestJSON<EngineStatus>(`${engineBaseURL()}/api/venue-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -476,7 +301,6 @@ export async function postVenueSession(request: VenueSessionRequest): Promise<En
 }
 
 export function postMenuEvent(request: MenuEventRequest) {
-  if (localPlaygroundEnabled()) return;
   postBestEffort(`${engineBaseURL()}/api/menu-event`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -502,7 +326,6 @@ export function menuStateEventSource(): EventSource {
 }
 
 export function postMenuState<TSnapshot>(request: MenuStateWrite<TSnapshot>, observer: MenuStateWriteObserver<TSnapshot> = {}) {
-  if (localPlaygroundEnabled()) return;
   pendingMenuStateWrite = {
     request,
     onAccepted: observer.onAccepted

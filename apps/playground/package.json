@@ -15,6 +15,7 @@
     "@motion-levels-games/display-kit": "0.1.0",
     "@motion-levels-games/game-sdk": "0.1.0",
     "@motion-levels-games/jugar-3d": "0.1.0",
+    "@motion-levels-games/player-experience": "0.1.0",
     "@motion-levels-games/replay-runtime": "0.1.0",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",

@@ -11,9 +11,14 @@ window.ml
 The root `<html>` element gets `data-motion-levels-playground-api="ready"`
 when the API has been installed.
 
-The API is intentionally local tooling, not part of the game contract.
-The playground runs games through the shared TypeScript SDK engine at a 50fps
-baseline. `ml.step()` with no argument advances exactly one engine frame.
+The API is intentionally local tooling, not part of the game contract. In the
+standalone `npm run dev` authoring path, the playground runs games through the
+shared TypeScript SDK engine at a 50fps baseline. `ml.step()` with no argument
+advances exactly one engine frame. In the integrated `npm run
+dev:venue:no-controller` path, the same API is a façade over the canonical
+VenueRuntime display/control/floor endpoints; the runtime owns the live clock,
+snapshot, frame, pause state, and input handling, so `ml.step()` only refreshes
+the latest runtime display rather than simulating a second game.
 
 ## Deterministic Playthrough
 

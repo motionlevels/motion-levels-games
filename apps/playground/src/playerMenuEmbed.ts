@@ -1,16 +1,4 @@
-import type { GameConfigOptions } from "@motion-levels-games/game-sdk";
-
 export type PrimaryScreen = "display" | "menu";
-
-export const playerMenuLaunchMessageType = "motion-levels:playground-launch" as const;
-
-export type PlayerMenuLaunchMessage = Readonly<{
-  type: typeof playerMenuLaunchMessageType;
-  gameId: string;
-  playerCount: number;
-  difficulty?: string;
-  options: GameConfigOptions;
-}>;
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -33,33 +21,6 @@ export function readPrimaryScreen(
   search = typeof window === "undefined" ? "" : window.location.search,
 ): PrimaryScreen {
   return new URLSearchParams(search).get("screen") === "menu" ? "menu" : "display";
-}
-
-export function readPlayerMenuLaunchMessage(value: unknown): PlayerMenuLaunchMessage | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const message = value as Record<string, unknown>;
-  if (message.type !== playerMenuLaunchMessageType) return undefined;
-  if (typeof message.gameId !== "string" || message.gameId.trim() === "") return undefined;
-  if (!Number.isSafeInteger(message.playerCount) || Number(message.playerCount) < 0) return undefined;
-  if (message.difficulty !== undefined && typeof message.difficulty !== "string") return undefined;
-
-  const options: GameConfigOptions = {};
-  if (message.options !== undefined) {
-    if (!message.options || typeof message.options !== "object" || Array.isArray(message.options)) return undefined;
-    for (const [key, option] of Object.entries(message.options)) {
-      if (typeof option === "string" || typeof option === "number" || typeof option === "boolean") {
-        options[key] = option;
-      }
-    }
-  }
-
-  return {
-    type: playerMenuLaunchMessageType,
-    gameId: message.gameId.trim(),
-    playerCount: Number(message.playerCount),
-    ...(message.difficulty ? { difficulty: message.difficulty } : {}),
-    options,
-  };
 }
 
 export function localPlayerMenuUrl(

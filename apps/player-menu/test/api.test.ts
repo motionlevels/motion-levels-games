@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { controlGame, friendlyRequestError, localPlaygroundEnabled, localPlaygroundLaunchMessage, localPlaygroundLaunchURL, postVenueSession, requestJSON, RequestError, selectGame, testOutput } from "../src/api.ts";
+import { controlGame, friendlyRequestError, postVenueSession, requestJSON, RequestError, selectGame, testOutput } from "../src/api.ts";
 
 const nativeFetch = globalThis.fetch;
 
@@ -9,105 +9,22 @@ afterEach(() => {
 });
 
 describe("kiosk API requests", () => {
-  it("maps a kiosk selection into a loopback-only full-playthrough route", () => {
-    const target = localPlaygroundLaunchURL({
-      game: "motion-levels-games:ping-pong",
-      engineGame: "motion-levels-games:ping-pong",
-      playerCount: 2,
-      difficulty: "hard",
-      config: { points: 7 },
-    }, "4104", {
-      hostname: "127.0.0.1",
-      host: "127.0.0.1:4103",
-      protocol: "http:",
-    } as Location, true);
-    const url = new URL(target!);
-    assert.equal(url.origin, "http://127.0.0.1:4104");
-    assert.equal(url.searchParams.get("journey"), "1");
-    assert.equal(url.searchParams.get("game"), "ping-pong");
-    assert.equal(url.searchParams.get("players"), "2");
-    assert.equal(url.searchParams.get("difficulty"), "hard");
-    assert.equal(url.searchParams.get("options"), JSON.stringify({ points: 7 }));
-    assert.equal(url.searchParams.get("return"), "http://127.0.0.1:4103/");
-  });
+  it("uses the canonical runtime select endpoint for every menu launch", async () => {
+    let requestURL = "";
+    let requestBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (url, init) => {
+      requestURL = String(url);
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ revision: 1 }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as typeof fetch;
 
-  it("never sends a local playthrough launch to a non-loopback host", () => {
-    assert.equal(localPlaygroundLaunchURL({ game: "ping-pong", playerCount: 2 }, "4104", {
-      hostname: "venue.example.com",
-      host: "venue.example.com",
-      protocol: "https:",
-    } as Location), undefined);
-    assert.equal(localPlaygroundEnabled("4104", {
-      hostname: "venue.example.com",
-    } as Location), false);
-  });
-
-  it("returns an embedded menu launch to its current playground", () => {
-    const target = localPlaygroundLaunchURL({
-      game: "motion-levels-games:ping-pong",
-      playerCount: 2,
-      difficulty: "medium",
-    }, undefined, {
-      hostname: "127.0.0.1",
-      host: "127.0.0.1:4104",
-      origin: "http://127.0.0.1:4104",
-      pathname: "/player-menu/",
-      protocol: "http:",
-      search: "?embed=playground",
-    } as Location, true);
-
-    const url = new URL(target!);
-    assert.equal(url.origin, "http://127.0.0.1:4104");
-    assert.equal(url.searchParams.get("return"), "http://127.0.0.1:4104/?screen=menu");
-  });
-
-  it("serializes embedded launches as an in-memory handoff", () => {
-    assert.deepEqual(localPlaygroundLaunchMessage({
-      game: "motion-levels-games:animations",
-      engineGame: "motion-levels-games:animations",
-      playerCount: 0,
-      difficulty: "hard",
-      config: { mode: "single", animation: "aurora" },
-    }), {
-      type: "motion-levels:playground-launch",
-      gameId: "animations",
-      playerCount: 0,
-      difficulty: "hard",
-      options: { mode: "single", animation: "aurora" },
-    });
-  });
-
-  it("returns a hosted menu launch to the canonical platform playground path", () => {
-    const target = localPlaygroundLaunchURL({
-      game: "motion-levels-games:ping-pong",
-      playerCount: 2,
-      difficulty: "hard",
-    }, undefined, {
-      hostname: "platform.motionlevels.obis.dev",
-      host: "platform.motionlevels.obis.dev",
-      origin: "https://platform.motionlevels.obis.dev",
-      pathname: "/games/play/player-menu/",
-      protocol: "https:",
-      search: "?embed=playground",
-    } as Location, true);
-
-    const url = new URL(target!);
-    assert.equal(url.pathname, "/games/play/");
-    assert.equal(url.searchParams.get("return"), "https://platform.motionlevels.obis.dev/games/play/?screen=menu");
-  });
-
-  it("ignores embedded playground parameters outside development", () => {
-    assert.equal(localPlaygroundLaunchURL({
-      game: "motion-levels-games:ping-pong",
-      playerCount: 2,
-    }, undefined, {
-      hostname: "127.0.0.1",
-      host: "127.0.0.1:4104",
-      origin: "http://127.0.0.1:4104",
-      pathname: "/player-menu/",
-      protocol: "http:",
-      search: "?embed=playground",
-    } as Location, false), undefined);
+    await selectGame({ game: "motion-levels-games:ping-pong", playerCount: 2, sourceKind: "motion_levels_games" });
+    assert.equal(new URL(requestURL).pathname, "/api/select");
+    assert.equal(requestBody.game, "motion-levels-games:ping-pong");
+    assert.match(String(requestBody.commandId), /^[0-9a-f-]{36}$/u);
   });
 
   it("returns decoded JSON and forwards request options", async () => {

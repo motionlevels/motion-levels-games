@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium, type Locator } from "playwright";
 
@@ -10,12 +13,14 @@ const playgroundURL = `http://127.0.0.1:${playgroundPort}`;
 const apiURL = `http://127.0.0.1:${apiPort}`;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const output: string[] = [];
+const sessionHistoryDir = await mkdtemp(path.join(tmpdir(), "motion-levels-dev-venue-"));
 const devVenue = spawn(npmCommand, ["run", "dev:venue:no-controller"], {
   cwd: repoRoot,
   env: {
     ...process.env,
     MOTION_LEVELS_PLAYGROUND_PORT: String(playgroundPort),
-    MOTION_LEVELS_ENGINE_HTTP: `127.0.0.1:${apiPort}`
+    MOTION_LEVELS_ENGINE_HTTP: `127.0.0.1:${apiPort}`,
+    MOTION_LEVELS_SESSION_HISTORY_DIR: sessionHistoryDir,
   },
   stdio: ["ignore", "pipe", "pipe"],
   detached: process.platform !== "win32"
@@ -42,9 +47,13 @@ try {
     return true;
   }, devVenue, "the playground root");
 
-  const health = await fetch(`${playgroundURL}/api/health`);
-  assert.equal(health.status, 200, "the playground must proxy the venue health endpoint");
-  const healthPayload = await health.json() as { status?: string; controllerConnected?: boolean };
+  let healthPayload: { status?: string; controllerConnected?: boolean } = {};
+  await waitFor(async () => {
+    const health = await fetch(`${playgroundURL}/api/health`);
+    if (health.status !== 200) return false;
+    healthPayload = await health.json() as { status?: string; controllerConnected?: boolean };
+    return healthPayload.status === "ok" && healthPayload.controllerConnected === true;
+  }, devVenue, "the venue health endpoint");
   assert.equal(healthPayload.status, "ok");
   assert.equal(healthPayload.controllerConnected, true, "no-controller mode must provide the mock controller");
 
@@ -59,6 +68,7 @@ try {
   console.log(`Dev venue smoke passed: ${playgroundURL}/ and ${apiURL}/api/health`);
 } finally {
   await stop(devVenue);
+  await rm(sessionHistoryDir, { recursive: true, force: true });
 }
 
 async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
@@ -73,8 +83,17 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
 
     await page.goto(initialURL, { waitUntil: "domcontentloaded" });
     const menu = page.frameLocator('iframe[title="Player menu"]');
-    await menu.getByRole("button", { name: "Comenzar" }).click();
+    // VenueRuntime owns the kiosk visit/session, so a freshly mounted menu
+    // either hydrates directly into its browse screen or shows the normal
+    // production welcome action until that runtime visit is started.
+    await menu.locator(".welcome-screen, main.app").first().waitFor({ state: "visible" });
+    if (await menu.locator(".welcome-screen").isVisible()) {
+      await menu.getByRole("button", { name: "Comenzar" }).click();
+    }
     await menu.getByRole("button", { name: "Abrir equipo" }).waitFor({ state: "visible" });
+    if (await menu.getByRole("button", { name: "Abrir equipo" }).getAttribute("aria-expanded") !== "true") {
+      await menu.getByRole("button", { name: "Abrir equipo" }).click();
+    }
     await menu.locator(".team-drawer .drawer-done").click();
 
     // Ambiente cards intentionally launch on selection. This must switch the
@@ -83,28 +102,44 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
     await assertUsableDetailPreview(menu.locator(".detail-preview .preview"), "no-controller ambient default");
     const ambientAnimation = menu.locator('.game-card[data-game-id="animation-aurora"]');
     await ambientAnimation.click();
-    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
     await assertTransparentLaunch(page, initialURL, mainNavigations, "ambient animation");
 
-    // A regular game uses its explicit play action, but must take the same
-    // in-memory path and preserve the floor/display surfaces.
-    await page.locator('button[title="Player menu"]').click();
-    const reopenedMenu = page.frameLocator('iframe[title="Player menu"]');
-    await reopenedMenu.getByRole("button", { name: "Abrir equipo" }).waitFor({ state: "visible" });
-    const reopenedDrawer = reopenedMenu.locator(".team-drawer");
-    if (await reopenedDrawer.getAttribute("aria-hidden") === "false") {
-      await reopenedDrawer.locator(".drawer-done").click();
-    }
-    await reopenedMenu.getByRole("button", { name: "Destacados", exact: true }).click();
-    const regularGame = reopenedMenu.locator('.game-card[data-game-id="arkanoid"]');
+    // A regular game uses its explicit play action. The menu remains mounted
+    // and derives its active screen from the same runtime snapshot.
+    await menu.getByRole("button", { name: "Individual", exact: true }).click();
+    const regularGame = menu.locator('.game-card[data-game-id="arkanoid"]');
     await regularGame.waitFor({ state: "visible" });
     await regularGame.click();
-    await assertUsableDetailPreview(reopenedMenu.locator(".detail-preview .preview"), "no-controller regular game");
-    const play = reopenedMenu.locator(".launch-actions button.play");
+    await assertUsableDetailPreview(menu.locator(".detail-preview .preview"), "no-controller regular game");
+    const play = menu.locator(".launch-actions button.play");
     await play.waitFor({ state: "visible" });
     await play.click();
-    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
     await assertTransparentLaunch(page, initialURL, mainNavigations, "regular game");
+
+    await menu.locator("main.app.playing").waitFor({ state: "visible" });
+    await page.locator('button[title="Player display"]').click();
+    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
+    await waitForRuntimeState(page, "arkanoid", false);
+    await pressRuntimeZone(page, 7, 30);
+    await waitForRuntimeState(page, "arkanoid", false, "running");
+
+    // Returning to the menu pauses the authoritative runtime. Remounting the
+    // iframe must recover the active paused game, not the welcome/browse view.
+    await page.locator('button[title="Player menu"]').click();
+    const reopenedMenu = page.frameLocator('iframe[title="Player menu"]');
+    await reopenedMenu.locator("main.app.playing").waitFor({ state: "visible" });
+    await waitForRuntimeState(page, "arkanoid", true);
+    assert.equal(await reopenedMenu.locator(".welcome-screen").count(), 0, "returning to menu must not show Welcome");
+    assert.equal(await reopenedMenu.locator("main.app.playing").count(), 1, "returning to menu must show active game controls");
+
+    // A second unmount/remount must preserve the same runtime-derived screen.
+    await page.locator('button[title="Player display"]').click();
+    await page.locator(".player-menu-preview-frame").waitFor({ state: "detached" });
+    await waitForRuntimeState(page, "arkanoid", false);
+    await page.locator('button[title="Player menu"]').click();
+    const remountedMenu = page.frameLocator('iframe[title="Player menu"]');
+    await remountedMenu.locator("main.app.playing").waitFor({ state: "visible" });
+    await waitForRuntimeState(page, "arkanoid", true);
   } finally {
     await browser.close();
   }
@@ -132,6 +167,53 @@ async function assertTransparentLaunch(page: import("playwright").Page, initialU
   assert.equal(await page.locator("#app-loading-screen").count(), 0, `${label} must not show the boot loading screen`);
   assert.equal(await page.locator(".display-preview-native .ml-display-shell").count(), 1, `${label} must keep the display mounted`);
   assert.equal(await page.locator(".playground-floor-preview").count(), 1, `${label} must keep the floor preview mounted`);
+}
+
+async function waitForRuntimeState(
+  page: import("playwright").Page,
+  currentGame: string,
+  paused: boolean,
+  phase?: string,
+): Promise<void> {
+  await page.waitForFunction(async ({ expectedGame, expectedPaused, expectedPhase }) => {
+    const response = await fetch(`/api/player-state?wait=${Date.now()}`, { cache: "no-store" });
+    const state = await response.json() as { currentGame?: string; paused?: boolean; phase?: string };
+    const runtimeGame = String(state.currentGame || "").replace(/^motion-levels-games:/u, "");
+    return runtimeGame === expectedGame
+      && state.paused === expectedPaused
+      && (expectedPhase === undefined || state.phase === expectedPhase);
+  }, { expectedGame: currentGame, expectedPaused: paused, expectedPhase: phase });
+}
+
+async function pressRuntimeZone(page: import("playwright").Page, x: number, y: number): Promise<void> {
+  const clientId = await page.evaluate(() => crypto.randomUUID());
+  await page.evaluate(async ({ clientId: nextClientId, x: tileX, y: tileY }) => {
+    const response = await fetch("/api/floor-input", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        commandId: crypto.randomUUID(),
+        clientId: nextClientId,
+        clientSequence: 1,
+        changes: [{ x: tileX, y: tileY, pressed: true }],
+      }),
+    });
+    if (!response.ok) throw new Error(`floor input returned HTTP ${response.status}`);
+  }, { clientId, x, y });
+  await page.waitForTimeout(2_100);
+  await page.evaluate(async ({ clientId: nextClientId, x: tileX, y: tileY }) => {
+    const response = await fetch("/api/floor-input", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        commandId: crypto.randomUUID(),
+        clientId: nextClientId,
+        clientSequence: 2,
+        changes: [{ x: tileX, y: tileY, pressed: false }],
+      }),
+    });
+    if (!response.ok) throw new Error(`floor input release returned HTTP ${response.status}`);
+  }, { clientId, x, y });
 }
 
 async function waitFor(check: () => Promise<boolean>, process: ChildProcess, description: string): Promise<void> {

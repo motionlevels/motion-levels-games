@@ -94,10 +94,21 @@ the visit open.
 
 ## Local full playthrough
 
-`npm run dev` starts one Vite service at `http://127.0.0.1:4104`. It serves the
-playground at `/` and the embedded player menu at `/player-menu/`. The menu
-serves a catalog projection directly from the checked-out manifests. A launch
-transfers only game id, player count, difficulty, and public game configuration
-within that origin; names, team identity, session ids, and recording state
-never leave the menu. The playground provides a return-to-menu action. This
-path is development-only and cannot target a remote host.
+`npm run dev:venue:no-controller` starts the complete local venue at
+`http://127.0.0.1:4104`, with the same `VenueRuntime` API used by production
+and a mock controller. The Vite service serves the playground at `/` and the
+embedded player menu at `/player-menu/`; its `/api` and `/engine` routes proxy
+to that runtime.
+
+The menu launches with the normal `POST /api/select` command. The playground
+does not create a second live game engine in this mode: it renders
+`GET /api/display` and `/api/display/events`, sends controls through
+`POST /api/control`, and sends floor interaction through
+`POST /api/floor-input`. Switching to Menu acquires the same canonical pause
+state as the venue, and remounting the menu derives its active-game screen from
+the runtime snapshot.
+
+Plain `npm run dev` remains the standalone deterministic authoring/media path
+when no venue runtime is available. That fallback is intentionally separate
+from the integrated venue smoke path and must not be used to validate
+production lifecycle behavior.

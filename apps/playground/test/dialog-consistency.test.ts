@@ -72,7 +72,7 @@ test("every playground dialog uses the shared icon close control", () => {
 });
 
 test("dialogs and selectors use composable pause locks", () => {
-  assert.match(appSource, /const paused = isPlaygroundPaused\(manuallyPaused, pauseLocks\)/);
+  assert.match(appSource, /const localPaused = isPlaygroundPaused\(manuallyPaused, pauseLocks\)/);
   assert.match(appSource, /setInteractionPauseState\("debug-dialog", open\)/);
   assert.match(appSource, /setInteractionPauseState\("settings-dialog", open\)/);
   assert.match(appSource, /setInteractionPauseState\("player-menu", nextScreen === "menu"\)/);
@@ -122,7 +122,7 @@ test("effective pause blocks every player input path", () => {
   );
   assert.match(
     appSource,
-    /<PlayerDisplayRuntimeProvider paused=\{paused\} floorRotationDegrees=\{floorRotationDegrees\}>[\s\S]*?<PlayerDisplay snapshot=\{snapshot\} frame=\{frame\} \/>/,
+    /<PlayerDisplayRuntimeProvider paused=\{paused\} floorRotationDegrees=\{floorRotationDegrees\}>[\s\S]*?<PlayerDisplay snapshot=\{displaySnapshot\} frame=\{displayFrame\} \/>/,
     "the shared runtime provider must always carry effective pause into every TV display"
   );
 });

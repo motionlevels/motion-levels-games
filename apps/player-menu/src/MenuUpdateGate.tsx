@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { fetchEngineStatus, localPlaygroundEnabled } from "./api";
+import { fetchEngineStatus } from "./api";
 import { bundledGamesSourceRevision } from "./bundleMedia";
 import {
   cleanGamesSourceRevision,
@@ -59,7 +59,6 @@ export default function MenuUpdateGate({ children }: { children: ReactNode }) {
   }), []);
   const enabled = useMemo(
     () => import.meta.env.DEV !== true
-      && !localPlaygroundEnabled()
       && currentBuild.menuBuildRevision !== "dev"
       && currentBuild.gamesSourceRevision !== "dev",
     [currentBuild],

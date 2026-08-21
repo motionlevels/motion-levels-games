@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, launchLocalPlayground, localPlaygroundEnabled, menuStateEventSource, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, testOutput, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
+import { controlGame, fetchAnimationPreview, fetchEngineStatus, fetchGameCatalog, fetchMenuState, friendlyRequestError, menuStateEventSource, platformBaseURL, playerExperienceEventSource, postMenuEvent, postMenuState, postVenueSession, selectGame, testOutput, type AnimationPreview, type ControlGameAction, type EngineGame, type EngineStatus, type MenuStateEnvelope, type PlatformGameCatalogEntry, type RecordingScope, type SelectGameRequest } from "./api";
 import { PlayerExperienceStateGate, playerExperienceView } from "@motion-levels-games/player-experience";
 import { categories, colors, difficulties, games, playerColorNames, playerColors, type CategoryID, type DifficultyID, type GameCard, type GameConfigVar, type PartyMiniGame } from "./catalog";
 import { partyCatalogIsComplete, partyLaunchGame } from "./party";
@@ -1481,8 +1481,7 @@ function MenuApp() {
     []
   );
   const readOnlyMirror = menuAccess.readOnly;
-  const localPlayground = useMemo(() => localPlaygroundEnabled(), []);
-  const followsMenuMirror = menuAccess.followMirror && !localPlayground;
+  const followsMenuMirror = menuAccess.followMirror;
   const [menu, setMenu] = useState<MenuState>(() => menuAccess.persistLocalState ? loadMenuState() : defaultMenuState());
   const [status, setStatus] = useState<PlayerMenuEngineStatus | null>(null);
   const statusGate = useRef(new PlayerExperienceStateGate());
@@ -1899,7 +1898,6 @@ function MenuApp() {
       setConnectionState("connection-on");
     };
     const attach = () => {
-      if (localPlayground) return;
       source?.close();
       source = playerExperienceEventSource();
       source.addEventListener("player-state", (event) => {
@@ -1922,7 +1920,7 @@ function MenuApp() {
         if (!cancelled) setConnectionState("connection-off");
       } finally {
         if (!cancelled) {
-          if (!localPlayground && Date.now() - streamFreshAt > 5_000 && source?.readyState === EventSource.CLOSED) attach();
+          if (Date.now() - streamFreshAt > 5_000 && source?.readyState === EventSource.CLOSED) attach();
           nextRefresh = window.setTimeout(refresh, 2500);
         }
       }
@@ -1934,7 +1932,7 @@ function MenuApp() {
       source?.close();
       if (nextRefresh !== undefined) window.clearTimeout(nextRefresh);
     };
-  }, [acceptStatus, localPlayground]);
+  }, [acceptStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1982,9 +1980,10 @@ function MenuApp() {
   }, [menu.sessionActive, menu.sessionStartedUnix, status?.lastPressureUnix]);
 
   useEffect(() => {
-    // The embedded playground intentionally has no canonical venue-session
-    // service. Its synthetic idle snapshot must not close the local menu state.
-    if (!status || !menuAccess.publishMirror || localPlayground) return;
+    // VenueRuntime owns the kiosk visit in every renderer. A fresh runtime may
+    // still be empty, while an existing runtime session must hydrate the menu
+    // so remounting cannot reset the active-game screen.
+    if (!status || !menuAccess.publishMirror) return;
     const decision = venueSessionSyncDecision(status, venueSessionObservationRef.current, menu);
     venueSessionObservationRef.current = decision.observation;
     persistVenueSessionObservation(decision.observation);
@@ -2046,7 +2045,7 @@ function MenuApp() {
       cancelled = true;
       if (retry !== undefined) window.clearTimeout(retry);
     };
-  }, [acceptStatus, localPlayground, menu.sessionActive, menu.sessionId, menu.sessionStartedUnix, menu.teamName, menu.recordingEnabled, menu.recordingPolicy, menuAccess.publishMirror, menuGames, status]);
+  }, [acceptStatus, menu.sessionActive, menu.sessionId, menu.sessionStartedUnix, menu.teamName, menu.recordingEnabled, menu.recordingPolicy, menuAccess.publishMirror, menuGames, status]);
 
   useEffect(() => {
     if (!status) return;
@@ -3450,7 +3449,6 @@ function MenuApp() {
           color: hexToColor(player.color),
         })),
       };
-      if (launchLocalPlayground(launchRequest)) return true;
       const nextStatus = await selectGame(launchRequest);
       acceptStatus(nextStatus);
       const gateProjection = recordingGateMenuProjection(nextStatus.recordingGate, nextStatus.allowedControls);

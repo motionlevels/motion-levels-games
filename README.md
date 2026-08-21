@@ -17,7 +17,7 @@ npm run check
 npm run dev
 ```
 
-`npm run dev` starts the complete menu-to-game playground at
+`npm run dev` starts the standalone deterministic authoring playground at
 `http://127.0.0.1:4104` using one Vite service.
 `npm run dev:venue:no-controller` starts the same playground together with the
 TypeScript venue runtime and a mock controller, so it is a complete local

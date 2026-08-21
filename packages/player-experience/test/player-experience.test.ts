@@ -95,6 +95,8 @@ describe("canonical player experience", () => {
   it("derives menu routing and controls from canonical state", () => {
     assert.equal(playerExperienceView(base).screen, "game");
     assert.equal(playerExperienceView({ ...base, lifecycle: "idle" }).screen, "browse");
+    assert.equal(playerExperienceView({ ...base, phase: "ambient" }).screen, "browse");
+    assert.equal(playerExperienceView({ ...base, phase: "ambient" }).lifecycle, "running");
     assert.deepEqual(controlsForState(base), ["pause", "restart", "exit", "narration", "mute", "toggle_mute"]);
     assert.deepEqual(controlsForState({ ...base, lifecycle: "paused" }), ["resume", "restart", "exit", "narration", "mute", "toggle_mute"]);
     const recordingGate = {

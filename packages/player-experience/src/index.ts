@@ -281,6 +281,16 @@ export function playerExperienceView(state: PlayerExperienceState | null): Playe
   if (!state || state.lifecycle === "idle") {
     return { screen: "browse", active: false, game: "", level: "", lifecycle: "idle", pending: false };
   }
+  if (state.phase.trim().toLowerCase() === "ambient") {
+    return {
+      screen: "browse",
+      active: false,
+      game: state.currentGame,
+      level: state.level ?? "",
+      lifecycle: state.lifecycle,
+      pending: false,
+    };
+  }
   return {
     screen: "game",
     active: !["finished", "error"].includes(state.lifecycle),

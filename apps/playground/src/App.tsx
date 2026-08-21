@@ -100,8 +100,17 @@ import {
 } from "./playgroundApi.ts";
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
 import { readPlayerJourneyLaunch } from "./playerJourney.ts";
-import { localPlayerMenuUrl, readPlayerMenuLaunchMessage, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
+import { localPlayerMenuUrl, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
+import {
+  controlVenueRuntime,
+  fetchVenueRuntimeDisplay,
+  sendVenueRuntimeFloorInput,
+  venueRuntimeDisplayEventSource,
+  type VenueRuntimeControl,
+  type VenueRuntimeDisplay,
+  type VenueRuntimeFloorChange
+} from "./venueRuntimeClient.ts";
 
 const playerDisplayMediaSpec = gameMediaAssetSpecs.playerDisplay;
 const playerDisplayAnimationSpec = gameMediaAssetSpecs.playerDisplayAnimation;
@@ -165,8 +174,14 @@ export function App() {
   const [pauseLocks, setPauseLocks] = useState<PauseLockSet>(
     () => new Set(initialPrimaryScreen === "menu" ? ["player-menu"] : [])
   );
-  const paused = isPlaygroundPaused(manuallyPaused, pauseLocks);
-  const agentLabActive = surfaceMode === "agents" && selectedGame.createSessionController !== undefined;
+  const [venueDisplay, setVenueDisplay] = useState<VenueRuntimeDisplay | null>(null);
+  const runtimeIntegrated = playerMenuPreviewUrl !== undefined;
+  const localPaused = isPlaygroundPaused(manuallyPaused, pauseLocks);
+  const paused = runtimeIntegrated
+    ? Boolean(venueDisplay?.paused || localPaused)
+    : localPaused;
+  const runtimeLive = runtimeIntegrated && venueDisplay !== null;
+  const agentLabActive = !runtimeLive && surfaceMode === "agents" && selectedGame.createSessionController !== undefined;
   const started = useMemo(
     () => {
       const startedGame = createStartedGame(
@@ -223,7 +238,19 @@ export function App() {
   const snapshotRef = useRef(snapshot);
   const frameRef = useRef(frame);
   const eventsRef = useRef(events);
-  const PlayerDisplay = selectedGame.PlayerDisplay;
+  const venueDisplayRef = useRef<VenueRuntimeDisplay | null>(null);
+  const venueFloorClientIDRef = useRef<string | null>(null);
+  const venueFloorSequenceRef = useRef(0);
+  const venueFloorCommandTailRef = useRef<Promise<void>>(Promise.resolve());
+  const runtimePauseOwnersRef = useRef(new Set<string>());
+  const runtimeControlTailRef = useRef<Promise<void>>(Promise.resolve());
+  const lastVenueEventKeyRef = useRef("");
+  const displayGame = runtimeLive
+    ? findPlaygroundGame(venueDisplay?.gameSnapshot?.currentGame || venueDisplay?.currentGame || "") ?? selectedGame
+    : selectedGame;
+  const displaySnapshot = runtimeLive && venueDisplay?.gameSnapshot ? venueDisplay.gameSnapshot : snapshot;
+  const displayFrame = runtimeLive && venueDisplay?.frame ? venueDisplay.frame : frame;
+  const PlayerDisplay = displayGame.PlayerDisplay;
   const gameConfigVars = selectedGame.manifest.config?.vars ?? [];
   const difficultyChoices = gameDifficultyOptions(selectedGame.manifest);
   const playerCountChoices = gamePlayerCountOptions(selectedGame.manifest);
@@ -264,6 +291,12 @@ export function App() {
     pauseLocksRef.current = pauseLocks;
     pausedRef.current = isPlaygroundPaused(manuallyPausedRef.current, pauseLocks);
   }, [pauseLocks]);
+
+  useEffect(() => {
+    if (venueDisplay) pausedRef.current = runtimeIntegrated
+      ? Boolean(venueDisplay.paused || isPlaygroundPaused(manuallyPausedRef.current, pauseLocksRef.current))
+      : venueDisplay.paused;
+  }, [manuallyPaused, pauseLocks, runtimeIntegrated, venueDisplay]);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -356,6 +389,116 @@ export function App() {
     return () => document.removeEventListener("fullscreenchange", updateFullscreen);
   }, []);
 
+  const acceptVenueDisplay = useCallback((next: VenueRuntimeDisplay) => {
+    const current = venueDisplayRef.current;
+    if (current
+      && current.runId === next.runId
+      && next.revision < current.revision) {
+      return;
+    }
+    if (current && current.runId !== next.runId) {
+      // A restarted runtime has no knowledge of pause/input ownership from
+      // the previous process. Reacquire only what the current screen needs.
+      runtimePauseOwnersRef.current.clear();
+      venueFloorClientIDRef.current = null;
+      venueFloorSequenceRef.current = 0;
+    }
+
+    venueDisplayRef.current = next;
+    setVenueDisplay(next);
+    if (next.gameSnapshot) {
+      snapshotRef.current = next.gameSnapshot;
+      setSnapshot(next.gameSnapshot);
+    }
+    if (next.frame) {
+      frameRef.current = next.frame;
+      setFrame(next.frame);
+    }
+
+    const runtimeGameID = next.gameSnapshot?.currentGame || next.currentGame;
+    const nextGame = findPlaygroundGame(runtimeGameID)
+      || findPlaygroundGame(next.currentGame)
+      || (next.engineGame ? findPlaygroundGame(next.engineGame) : undefined);
+    if (nextGame) {
+      selectedGameRef.current = nextGame;
+      setSelectedGameId((currentID) => currentID === nextGame.manifest.id ? currentID : nextGame.manifest.id);
+      const playerChoices = gamePlayerCountOptions(nextGame.manifest);
+      if (playerChoices.includes(next.playerCount)) {
+        playerCountRef.current = next.playerCount;
+        setPlayerCount((currentCount) => currentCount === next.playerCount ? currentCount : next.playerCount);
+      }
+      const nextDifficulty = normalizeGameDifficulty(next.difficulty, nextGame.manifest);
+      difficultyRef.current = nextDifficulty;
+      setDifficulty((currentDifficulty) => currentDifficulty === nextDifficulty ? currentDifficulty : nextDifficulty);
+    }
+
+    const runtimeEventKey = [
+      next.runId,
+      next.lastEventSequence ?? 0,
+      next.lastEventUnixNanos,
+      next.lastEventCue,
+      next.lastEventMessage,
+    ].join(":");
+    if (next.lastEventMessage && runtimeEventKey !== lastVenueEventKeyRef.current) {
+      lastVenueEventKeyRef.current = runtimeEventKey;
+      const runtimeEvent: GameEvent = {
+        atMillis: Math.max(0, next.elapsedMillis),
+        cue: next.lastEventCue,
+        message: next.lastEventMessage,
+      };
+      const mergedEvents = [runtimeEvent, ...eventsRef.current.filter((event) => (
+        event.atMillis !== runtimeEvent.atMillis
+        || event.cue !== runtimeEvent.cue
+        || event.message !== runtimeEvent.message
+      ))].slice(0, 50);
+      eventsRef.current = mergedEvents;
+      setEvents(mergedEvents);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!runtimeIntegrated) return undefined;
+    let cancelled = false;
+    let nextRefresh: number | undefined;
+    let source: EventSource | null = null;
+
+    const attach = () => {
+      try {
+        source?.close();
+        source = venueRuntimeDisplayEventSource();
+        source.addEventListener("display", (event) => {
+          try {
+            acceptVenueDisplay(JSON.parse((event as MessageEvent).data) as VenueRuntimeDisplay);
+          } catch {
+            // Keep the last complete runtime display when an event is malformed.
+          }
+        });
+      } catch {
+        source = null;
+      }
+    };
+
+    const refresh = async () => {
+      try {
+        acceptVenueDisplay(await fetchVenueRuntimeDisplay());
+      } catch {
+        // Standalone Vite remains useful for deterministic authoring when no
+        // venue runtime is present. A real dev-venue process will connect on
+        // the first successful poll and become the only live state owner.
+      } finally {
+        if (!cancelled) nextRefresh = window.setTimeout(refresh, 1_000);
+      }
+    };
+
+    attach();
+    void refresh();
+    return () => {
+      cancelled = true;
+      source?.close();
+      if (nextRefresh !== undefined) window.clearTimeout(nextRefresh);
+    };
+  }, [acceptVenueDisplay, runtimeIntegrated]);
+
   const syncEngineState = useCallback((state: GameEngineState) => {
     snapshotRef.current = state.snapshot;
     frameRef.current = state.frame;
@@ -369,7 +512,36 @@ export function App() {
     }
   }, []);
 
+  const enqueueVenueControl = useCallback((action: VenueRuntimeControl): Promise<VenueRuntimeDisplay> => {
+    const command = runtimeControlTailRef.current.then(async () => {
+      await controlVenueRuntime(action);
+      const next = await fetchVenueRuntimeDisplay();
+      acceptVenueDisplay(next);
+      return next;
+    });
+    runtimeControlTailRef.current = command.then(() => undefined, () => undefined);
+    return command;
+  }, [acceptVenueDisplay]);
+
+  const enqueueVenueFloorInput = useCallback((changes: readonly VenueRuntimeFloorChange[] = [], releaseAll = false) => {
+    venueFloorClientIDRef.current ??= crypto.randomUUID();
+    const clientId = venueFloorClientIDRef.current;
+    const clientSequence = ++venueFloorSequenceRef.current;
+    const command = venueFloorCommandTailRef.current.then(async () => {
+      await sendVenueRuntimeFloorInput({ clientId, clientSequence, changes, releaseAll });
+    });
+    venueFloorCommandTailRef.current = command.then(() => undefined, () => undefined);
+    return command;
+  }, []);
+
   const releaseActivePlayerInputs = useCallback(() => {
+    if (runtimeLive) {
+      activePlayerInputsRef.current.clear();
+      setInputResetSequence((current) => current + 1);
+      void enqueueVenueFloorInput([], true).catch(() => {});
+      return;
+    }
+
     let nextState: GameEngineState | undefined;
     const emittedEvents: GameEvent[] = [];
 
@@ -382,7 +554,7 @@ export function App() {
     if (nextState) {
       syncEngineState({ ...nextState, events: emittedEvents });
     }
-  }, [syncEngineState]);
+  }, [enqueueVenueFloorInput, runtimeLive, syncEngineState]);
 
   const setManuallyPausedState = useCallback((nextPaused: boolean) => {
     const nextEffectivePaused = isPlaygroundPaused(nextPaused, pauseLocksRef.current);
@@ -393,9 +565,19 @@ export function App() {
     manuallyPausedRef.current = nextPaused;
     pausedRef.current = nextEffectivePaused;
     setManuallyPaused(nextPaused);
-  }, [releaseActivePlayerInputs]);
+    if (runtimeLive) {
+      if (nextPaused) {
+        runtimePauseOwnersRef.current.add("manual");
+        void enqueueVenueControl("pause").catch(() => {});
+      } else {
+        runtimePauseOwnersRef.current.delete("manual");
+        if (pauseLocksRef.current.size === 0) void enqueueVenueControl("resume").catch(() => {});
+      }
+    }
+  }, [enqueueVenueControl, releaseActivePlayerInputs, runtimeLive]);
 
   const setInteractionPauseState = useCallback((lockId: string, active: boolean) => {
+    const wasPaused = pausedRef.current;
     const nextLocks = updatePauseLocks(pauseLocksRef.current, lockId, active);
     if (nextLocks === pauseLocksRef.current) {
       return;
@@ -409,13 +591,38 @@ export function App() {
     pauseLocksRef.current = nextLocks;
     pausedRef.current = nextEffectivePaused;
     setPauseLocks(nextLocks);
-  }, [releaseActivePlayerInputs]);
+    if (runtimeLive) {
+      if (active && !wasPaused) {
+        runtimePauseOwnersRef.current.add(lockId);
+        void enqueueVenueControl("pause").catch(() => {});
+      } else if (!active && runtimePauseOwnersRef.current.delete(lockId)) {
+        if (nextLocks.size > 0) {
+          // Keep the automatic pause owned while another UI lock remains.
+          const nextOwner = nextLocks.values().next().value;
+          if (nextOwner) runtimePauseOwnersRef.current.add(nextOwner);
+        } else if (!manuallyPausedRef.current) {
+          void enqueueVenueControl("resume").catch(() => {});
+        }
+      }
+    }
+  }, [enqueueVenueControl, releaseActivePlayerInputs, runtimeLive]);
 
   const changePrimaryScreen = useCallback((nextScreen: PrimaryScreen) => {
     if (nextScreen === "menu" && !playerMenuPreviewUrl) return;
     setInteractionPauseState("player-menu", nextScreen === "menu");
     setPrimaryScreen(nextScreen);
   }, [playerMenuPreviewUrl, setInteractionPauseState]);
+
+  useEffect(() => {
+    if (!runtimeLive
+      || primaryScreen !== "menu"
+      || venueDisplay?.lifecycle === "idle"
+      || venueDisplay?.phase === "ambient"
+      || venueDisplay?.paused
+      || runtimePauseOwnersRef.current.has("player-menu")) return;
+    runtimePauseOwnersRef.current.add("player-menu");
+    void enqueueVenueControl("pause").catch(() => {});
+  }, [enqueueVenueControl, primaryScreen, runtimeLive, venueDisplay?.lifecycle, venueDisplay?.paused, venueDisplay?.phase]);
 
   const setDebugOpenState = useCallback((open: boolean) => {
     setInteractionPauseState("debug-dialog", open);
@@ -458,6 +665,13 @@ export function App() {
       nextDifficulty = difficultyRef.current,
       nextOptions = gameOptionsRef.current
     ) => {
+      if (runtimeLive) {
+        releaseActivePlayerInputs();
+        setInputResetSequence((current) => current + 1);
+        void enqueueVenueControl("restart").catch(() => {});
+        return;
+      }
+
       const normalizedOptions = normalizeGameConfigOptions(nextOptions, nextGame.manifest);
       const next = createStartedGame(nextGame, nextSeed, nextPlayerCount, nextDifficulty, normalizedOptions);
       const nextEngine = createGameEngine(next.game, {
@@ -482,7 +696,7 @@ export function App() {
       setDifficulty(nextDifficulty);
       setGameOptions(normalizedOptions);
     },
-    []
+    [enqueueVenueControl, releaseActivePlayerInputs, runtimeLive]
   );
 
   const changeSeed = useCallback((nextSeed: number) => {
@@ -546,6 +760,7 @@ export function App() {
       optionOverrides: GameConfigOptions = {},
       selection: { playerCount?: number; difficulty?: string } = {},
     ) => {
+      if (runtimeLive) return;
       const nextGame = findPlaygroundGame(gameId) ?? defaultGame;
       const nextSeed = DEFAULT_GAME_SEED;
       const playerChoices = gamePlayerCountOptions(nextGame.manifest);
@@ -574,29 +789,8 @@ export function App() {
       setGameOptions(nextOptions);
       restart(nextSeed, nextPlayerCount, nextGame, nextDifficulty, nextOptions);
     },
-    [restart]
+    [restart, runtimeLive]
   );
-
-  useEffect(() => {
-    if (!playerMenuPreviewUrl) return undefined;
-
-    const handlePlayerMenuLaunch = (event: MessageEvent<unknown>) => {
-      if (event.origin !== window.location.origin || event.source === window) return;
-      const launch = readPlayerMenuLaunchMessage(event.data);
-      if (!launch || !findPlaygroundGame(launch.gameId)) return;
-
-      // The menu is an input surface, not a second page. Switch the existing
-      // display to the new in-memory session while the floor stays mounted.
-      changePrimaryScreen("display");
-      selectGame(launch.gameId, launch.options, {
-        difficulty: launch.difficulty,
-        playerCount: launch.playerCount,
-      });
-    };
-
-    window.addEventListener("message", handlePlayerMenuLaunch);
-    return () => window.removeEventListener("message", handlePlayerMenuLaunch);
-  }, [changePrimaryScreen, playerMenuPreviewUrl, selectGame]);
 
   const selectAnimation = useCallback((animationId: string) => {
     const animationsGame = findPlaygroundGame("animations");
@@ -627,7 +821,7 @@ export function App() {
   }, [releaseActivePlayerInputs, restart]);
 
   useEffect(() => {
-    if (paused || agentLabActive) {
+    if (paused || agentLabActive || runtimeLive) {
       return undefined;
     }
 
@@ -673,7 +867,7 @@ export function App() {
 
     frameId = window.requestAnimationFrame(runFrame);
     return () => window.cancelAnimationFrame(frameId);
-  }, [agentLabActive, paused, syncEngineState]);
+  }, [agentLabActive, paused, runtimeLive, syncEngineState]);
 
   const handleTilePress = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
@@ -686,9 +880,13 @@ export function App() {
 
       const tile = pointToPhysicalTile(x, y, space);
       activePlayerInputsRef.current.set(`${tile.x}:${tile.y}`, tile);
+      if (runtimeLive) {
+        void enqueueVenueFloorInput([{ ...tile, pressed: true }]).catch(() => {});
+        return;
+      }
       syncEngineState(engineRef.current.press(tile.x, tile.y));
     },
-    [syncEngineState]
+    [enqueueVenueFloorInput, runtimeLive, syncEngineState]
   );
 
   const handleTileRelease = useCallback(
@@ -702,9 +900,13 @@ export function App() {
 
       const tile = pointToPhysicalTile(x, y, space);
       activePlayerInputsRef.current.delete(`${tile.x}:${tile.y}`);
+      if (runtimeLive) {
+        void enqueueVenueFloorInput([{ ...tile, pressed: false }]).catch(() => {});
+        return;
+      }
       syncEngineState(engineRef.current.release(tile.x, tile.y));
     },
-    [syncEngineState]
+    [enqueueVenueFloorInput, runtimeLive, syncEngineState]
   );
 
   const captureSurfaces = useCallback(
@@ -767,9 +969,9 @@ export function App() {
       try {
         const animationFrames: Array<{ dataUrl: string; delayMs: number }> = [];
         let stillCapture = "";
-        for (const [index, displayFrame] of frames.entries()) {
+        for (const [index, mediaFrame] of frames.entries()) {
           flushSync(() => {
-            root.render(<MediaPlayerDisplay snapshot={displayFrame.snapshot} frame={displayFrame.frame} />);
+            root.render(<MediaPlayerDisplay snapshot={mediaFrame.snapshot} frame={mediaFrame.frame} />);
           });
           await waitForPaint();
           const capture = await captureDisplayElement(host);
@@ -782,7 +984,7 @@ export function App() {
               playerDisplayAnimationSpec.width,
               playerDisplayAnimationSpec.height
             ),
-            delayMs: displayFrame.delayMs
+            delayMs: mediaFrame.delayMs
           });
         }
         if (!stillCapture) {
@@ -854,6 +1056,10 @@ export function App() {
 
   const stepGame = useCallback(
     (millis = DEFAULT_ENGINE_FRAME_MILLIS) => {
+      if (runtimeLive) {
+        void fetchVenueRuntimeDisplay().then(acceptVenueDisplay).catch(() => {});
+        return;
+      }
       if (surfaceModeRef.current === "agents" && agentLabControllerRef.current) {
         const ticks = Math.max(1, Math.round(millis / DEFAULT_ENGINE_FRAME_MILLIS));
         agentLabControllerRef.current.step(ticks);
@@ -862,7 +1068,7 @@ export function App() {
       const stepMillis = Number.isFinite(millis) ? Math.max(0, millis) : DEFAULT_ENGINE_FRAME_MILLIS;
       syncEngineState(engineRef.current.step(stepMillis));
     },
-    [syncEngineState]
+    [acceptVenueDisplay, runtimeLive, syncEngineState]
   );
 
   const handleAgentLabController = useCallback((controller: JugarAgentSurfaceController | null) => {
@@ -921,25 +1127,30 @@ export function App() {
 
   const api = useMemo<PlaygroundApi>(
     () => ({
-      getState: () => ({
-        gameId: selectedGameRef.current.manifest.id,
-        status: snapshotRef.current.phase,
-        paused: pausedRef.current || (
-          surfaceModeRef.current === "agents" && (agentLabControllerRef.current?.getState().paused ?? false)
-        ),
-        rotatedBoard: false,
-        snapshot: snapshotRef.current,
-        frame: frameRef.current,
-        previewFrame: previewFrameFor(),
-        events: eventsRef.current,
-        clockMillis: engineRef.current.clockMillis,
-        fps: engineRef.current.fps,
-        frameMillis: engineRef.current.frameMillis,
-        difficulty: difficultyRef.current,
-        options: gameOptionsRef.current,
-        playerCount: playerCountRef.current,
-        seed: seedRef.current
-      }),
+      getState: () => {
+        const liveDisplay = venueDisplayRef.current;
+        const liveSnapshot = liveDisplay?.gameSnapshot ?? snapshotRef.current;
+        const liveFrame = liveDisplay?.frame ?? frameRef.current;
+        return {
+          gameId: liveSnapshot.currentGame || selectedGameRef.current.manifest.id,
+          status: liveSnapshot.phase,
+          paused: (liveDisplay?.paused ?? pausedRef.current) || (
+            surfaceModeRef.current === "agents" && (agentLabControllerRef.current?.getState().paused ?? false)
+          ),
+          rotatedBoard: false,
+          snapshot: liveSnapshot,
+          frame: liveFrame,
+          previewFrame: liveFrame,
+          events: eventsRef.current,
+          clockMillis: liveDisplay?.elapsedMillis ?? engineRef.current.clockMillis,
+          fps: liveDisplay ? 50 : engineRef.current.fps,
+          frameMillis: liveDisplay ? DEFAULT_ENGINE_FRAME_MILLIS : engineRef.current.frameMillis,
+          difficulty: difficultyRef.current,
+          options: gameOptionsRef.current,
+          playerCount: liveDisplay?.playerCount ?? playerCountRef.current,
+          seed: seedRef.current
+        };
+      },
       pause: () => setManuallyPausedState(true),
       resume: () => setManuallyPausedState(false),
       reset: () => {
@@ -976,7 +1187,7 @@ export function App() {
       animationMedia: generateAnimationMediaBundle,
       agentLab: agentLabApi
     }),
-    [agentLabApi, captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, previewFrameFor, restart, setManuallyPausedState, stepGame]
+    [agentLabApi, captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, restart, setManuallyPausedState, stepGame]
   );
 
   useEffect(() => installPlaygroundApi(api), [api]);
@@ -1126,22 +1337,23 @@ export function App() {
   const libraryHasVisibleContent = (libraryTab !== "animations" && visibleLibraryGames.length > 0)
     || (libraryTab !== "games" && visibleLibraryAnimations.length > 0);
   const effectivePresentationPaused = paused || (agentLabActive && (agentLabState?.paused ?? false));
-  const displayedPhase = effectivePresentationPaused ? "paused" : snapshot.phase;
-  const frameMillis = engineRef.current.frameMillis;
-  const frameNumber = frameMillis > 0 ? Math.round(engineRef.current.clockMillis / frameMillis) : 0;
+  const displayedPhase = effectivePresentationPaused ? "paused" : displaySnapshot.phase;
+  const runtimeClockMillis = runtimeLive ? Math.max(0, displaySnapshot.elapsedMillis) : engineRef.current.clockMillis;
+  const frameMillis = runtimeLive ? DEFAULT_ENGINE_FRAME_MILLIS : engineRef.current.frameMillis;
+  const frameNumber = frameMillis > 0 ? Math.round(runtimeClockMillis / frameMillis) : 0;
   const debugStats: [string, ReactNode][] = [
-    ["Game", selectedGame.manifest.label],
+    ["Game", displayGame.manifest.label],
     ["Screen", primaryScreen === "menu" ? "Player menu" : "Player display"],
     ["Surface", agentLabActive ? "Jugar 3D" : "Floor"],
-    ["Phase", snapshot.phase],
-    ["Clock", formatElapsedClock(engineRef.current.clockMillis)],
-    ["FPS", engineRef.current.fps],
+    ["Phase", displaySnapshot.phase],
+    ["Clock", formatElapsedClock(runtimeClockMillis)],
+    ["FPS", runtimeLive ? 50 : engineRef.current.fps],
     ["Seed", seed],
     ["Players", playerCount],
     ["Difficulty", difficulty],
-    ["Score", snapshot.score],
-    ["Targets", snapshot.activeTargets],
-    ["Grid", `${frame.width}x${frame.height}`],
+    ["Score", displaySnapshot.score],
+    ["Targets", displaySnapshot.activeTargets],
+    ["Grid", `${displayFrame.width}x${displayFrame.height}`],
     ["Frame", frameNumber],
     ["API", "ready"]
   ];
@@ -1388,7 +1600,7 @@ export function App() {
                     <div className="debug-popover-head">
                       <div>
                         <span>Playground</span>
-                        <strong>{snapshot.phase}</strong>
+                        <strong>{displaySnapshot.phase}</strong>
                       </div>
                       <PopoverCloseButton
                         label="Close debug panel"
@@ -1446,9 +1658,9 @@ export function App() {
                     <article className="debug-snapshot">
                       <div className="debug-section-heading">
                         <span>Snapshot</span>
-                        <strong>{snapshot.score} pts</strong>
+                        <strong>{displaySnapshot.score} pts</strong>
                       </div>
-                      <pre>{JSON.stringify(snapshot, null, 2)}</pre>
+                      <pre>{JSON.stringify(displaySnapshot, null, 2)}</pre>
                     </article>
                   </div>
                 ) : null}
@@ -1647,7 +1859,7 @@ export function App() {
           <div className="display-preview-box" ref={displayPreviewRef}>
             <div className="display-preview-native" ref={displayNativeRef}>
               <PlayerDisplayRuntimeProvider paused={paused} floorRotationDegrees={floorRotationDegrees}>
-                <PlayerDisplay snapshot={snapshot} frame={frame} />
+                <PlayerDisplay snapshot={displaySnapshot} frame={displayFrame} />
               </PlayerDisplayRuntimeProvider>
             </div>
             {primaryScreen === "menu" && playerMenuPreviewUrl ? (
@@ -1658,17 +1870,17 @@ export function App() {
           <PlaygroundStatusDock
             activeRunSettings={activeRunSettings}
             autoFollow={eventAutoFollow}
-            clockMillis={engineRef.current.clockMillis}
+            clockMillis={runtimeClockMillis}
             eventStreamRef={eventStreamRef}
             events={events}
-            fps={engineRef.current.fps}
+            fps={runtimeLive ? 50 : engineRef.current.fps}
             frameNumber={frameNumber}
-            gameLabel={selectedGame.manifest.label}
+            gameLabel={displayGame.manifest.label}
             onAutoFollowChange={setEventAutoFollowState}
             onEventStreamScroll={handleEventStreamScroll}
             phase={displayedPhase}
-            score={snapshot.score}
-            targets={snapshot.activeTargets}
+            score={displaySnapshot.score}
+            targets={displaySnapshot.activeTargets}
           />
         </article>
 
@@ -1691,7 +1903,7 @@ export function App() {
             ) : (
               <FloorPreview
                 className="playground-floor-preview"
-                frame={frame}
+                frame={displayFrame}
                 interactive={!paused}
                 inputMode="momentary"
                 inputResetKey={inputResetSequence}
