@@ -13,8 +13,10 @@ test("hard refresh starts behind an inline loading screen", () => {
   assert.match(htmlSource, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
-test("the playground is revealed only after fonts and two stable paints", () => {
-  assert.match(mainSource, /await document\.fonts\.ready/);
+test("the playground is revealed after bounded font readiness and two stable paints", () => {
+  assert.match(mainSource, /FONT_READY_TIMEOUT_MILLIS\s*=\s*1_500/);
+  assert.match(mainSource, /document\.fonts\.ready\.then\(finish, finish\)/);
+  assert.match(mainSource, /setTimeout\(finish, FONT_READY_TIMEOUT_MILLIS\)/);
   assert.equal(mainSource.match(/await afterNextPaint\(\)/g)?.length, 2);
   assert.match(mainSource, /classList\.add\("playground-ready"\)/);
   assert.match(mainSource, /setAttribute\("aria-busy", "false"\)/);

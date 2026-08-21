@@ -82,6 +82,7 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
     });
 
     await page.goto(initialURL, { waitUntil: "domcontentloaded" });
+    await page.locator("#app-loading-screen").waitFor({ state: "detached", timeout: 5_000 });
     const menu = page.frameLocator('iframe[title="Player menu"]');
     // VenueRuntime owns the kiosk visit/session, so a freshly mounted menu
     // either hydrates directly into its browse screen or shows the normal
