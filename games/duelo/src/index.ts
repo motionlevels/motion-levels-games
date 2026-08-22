@@ -6,6 +6,7 @@ export * from "./session-controller.ts";
 export {
   createGame,
   dueloPlayerPalette,
+  dueloReadyZoneAnimation,
   dueloReadyZones,
   winAnimationMillis,
   type DueloClaimSnapshot,

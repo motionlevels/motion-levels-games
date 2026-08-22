@@ -37,6 +37,7 @@ import {
   readGameConfigOption,
   paintFrameCell,
   rgbToHex,
+  sampleSmoothPulse,
   scaleRgb,
   setFrameCell,
   MAX_GAME_SEED,
@@ -182,6 +183,49 @@ test("shared floor effects paint deterministic diamond rings and waves", () => {
 
   assert.equal(frameCell(wave, 8, 13)?.color, "#35d7ff");
   assert.equal(frameCell(wave, 8, 16)?.color, "#000000");
+});
+
+test("smooth pulses are deterministic, periodic, and normalize unsafe inputs", () => {
+  const unreadyPulse = (atMillis: number) => sampleSmoothPulse({
+    atMillis,
+    minValue: 60,
+    maxValue: 100,
+    periodMillis: 1_600
+  });
+
+  assert.equal(unreadyPulse(0), 60);
+  assert.equal(unreadyPulse(400), 80);
+  assert.equal(unreadyPulse(800), 100);
+  assert.equal(unreadyPulse(1_200), 80);
+  assert.equal(unreadyPulse(1_600), 60);
+  assert.equal(unreadyPulse(-800), 100);
+  assert.equal(unreadyPulse(16_800), 100);
+
+  assert.equal(sampleSmoothPulse({
+    atMillis: 320,
+    minValue: 22,
+    maxValue: 42,
+    periodMillis: 640
+  }), 42);
+  assert.equal(sampleSmoothPulse({
+    atMillis: 0,
+    minValue: 100,
+    maxValue: 60,
+    periodMillis: 1_600
+  }), 60);
+  assert.equal(sampleSmoothPulse({
+    atMillis: Number.NaN,
+    minValue: Number.NaN,
+    maxValue: Number.POSITIVE_INFINITY,
+    periodMillis: 0
+  }), 0);
+  assert.equal(sampleSmoothPulse({
+    atMillis: 0,
+    minValue: 10,
+    maxValue: 20,
+    periodMillis: 100,
+    phaseOffsetMillis: 50
+  }), 20);
 });
 
 test("floor bounds match the physical grid", () => {

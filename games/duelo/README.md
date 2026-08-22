@@ -9,6 +9,13 @@ Every player receives a color, a 4×4 perimeter start zone, and an equal number
 of colored targets on the floor. Once every player remains in their start zone
 through the three-second countdown, the mosaic becomes active.
 
+Each start zone is a homogeneous 4×4 field. An unoccupied zone breathes from
+60% to 100% intensity every 1.6 seconds so the missing position is unmistakable.
+Once occupied, it transitions over 160 milliseconds to a lower 22–42% band and
+pulses every 640 milliseconds as calm, rapid confirmation. Zones in the same
+state share the engine clock, keep the player's hue, and render above ambient
+waiting/countdown effects so no individual tile can break the field.
+
 In the development playground, hold one tile in every illuminated start zone
 through the countdown. Floor input is momentary just like the venue
 controller. For deterministic solo testing of the 2–8-player layouts, use the

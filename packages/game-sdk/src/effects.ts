@@ -27,6 +27,33 @@ export type DiamondWaveOptions = {
   step: number;
 };
 
+export type SmoothPulseOptions = {
+  atMillis: number;
+  maxValue: number;
+  minValue: number;
+  periodMillis: number;
+  phaseOffsetMillis?: number;
+};
+
+/** Samples a continuous cosine pulse from explicit engine time. */
+export function sampleSmoothPulse(options: SmoothPulseOptions): number {
+  const firstValue = finiteNumber(options.minValue, 0);
+  const secondValue = finiteNumber(options.maxValue, firstValue);
+  const minValue = Math.min(firstValue, secondValue);
+  const maxValue = Math.max(firstValue, secondValue);
+  if (!Number.isFinite(options.periodMillis) || options.periodMillis <= 0 || minValue === maxValue) {
+    return minValue;
+  }
+
+  const periodMillis = options.periodMillis;
+  const atMillis = finiteNumber(options.atMillis, 0);
+  const phaseOffsetMillis = finiteNumber(options.phaseOffsetMillis, 0);
+  const phase = positiveModulo(atMillis + phaseOffsetMillis, periodMillis) / periodMillis;
+  const unitPulse = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+
+  return minValue + (maxValue - minValue) * unitPulse;
+}
+
 /** Paints a Manhattan-distance ring, useful for player-ready and target cues. */
 export function paintDiamondRing(frame: Frame, options: DiamondRingOptions): void {
   const centerX = options.centerX ?? (frame.width - 1) / 2;
@@ -88,4 +115,8 @@ function manhattanDistance(x: number, y: number, centerX: number, centerY: numbe
 
 function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
+}
+
+function finiteNumber(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }

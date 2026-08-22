@@ -3,11 +3,19 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FLOOR_COLS, FLOOR_ROWS, frameCell, type GameEvent } from "@motion-levels-games/game-sdk";
+import {
+  FLOOR_COLS,
+  FLOOR_ROWS,
+  frameCell,
+  type Frame,
+  type GameEvent,
+  type PlayerReadyZone
+} from "@motion-levels-games/game-sdk";
 import {
   PlayerDisplay,
   createGame,
   crowdedRunningSnapshot,
+  dueloReadyZoneAnimation,
   dueloReadyZones,
   finishedFrame,
   finishedSnapshot,
@@ -48,6 +56,121 @@ test("every supported player count has distinct in-bounds readiness zones", () =
       }
     }
   }
+});
+
+test("readiness animation keeps its occupied signal below the unoccupied band", () => {
+  assert.deepEqual(dueloReadyZoneAnimation, {
+    occupied: {
+      maxIntensity: 42,
+      minIntensity: 22,
+      periodMillis: 640
+    },
+    transitionMillis: 160,
+    unoccupied: {
+      maxIntensity: 100,
+      minIntensity: 60,
+      periodMillis: 1_600
+    }
+  });
+  assert.ok(
+    dueloReadyZoneAnimation.occupied.maxIntensity
+      < dueloReadyZoneAnimation.unoccupied.minIntensity
+  );
+  assert.ok(
+    dueloReadyZoneAnimation.occupied.periodMillis
+      < dueloReadyZoneAnimation.unoccupied.periodMillis
+  );
+});
+
+test("every unoccupied 4x4 zone pulses homogeneously above ambient effects", () => {
+  for (let playerCount = 2; playerCount <= 8; playerCount += 1) {
+    const game = createGame({
+      playerCount,
+      players: Array.from({ length: playerCount }, () => ({ color: "#646464" }))
+    });
+    game.init(0);
+
+    game.tick({ atMillis: 0 });
+    const minimumFrame = game.render();
+    for (const zone of game.playerReadyZones()) {
+      assert.deepEqual(uniqueZoneColors(minimumFrame, zone), ["#3c3c3c"]);
+    }
+
+    game.tick({ atMillis: 540 });
+    const ambientOverlapFrame = game.render();
+    for (const zone of game.playerReadyZones()) {
+      assert.equal(zoneColors(ambientOverlapFrame, zone).length, 16);
+      assert.equal(uniqueZoneColors(ambientOverlapFrame, zone).length, 1);
+    }
+
+    game.tick({ atMillis: 800 });
+    const maximumFrame = game.render();
+    for (const zone of game.playerReadyZones()) {
+      assert.deepEqual(uniqueZoneColors(maximumFrame, zone), ["#646464"]);
+    }
+  }
+});
+
+test("occupied zones transition smoothly and keep a faster low-intensity pulse", () => {
+  const game = createGame({
+    playerCount: 2,
+    players: [{ color: "#646464" }, { color: "#646464" }]
+  });
+  game.init(0);
+  const [firstZone, secondZone] = game.playerReadyZones();
+  assert.ok(firstZone && secondZone);
+
+  game.tick({ atMillis: 100 });
+  const beforePress = singleZoneColor(game.render(), firstZone);
+  game.press({ x: firstZone.minX, y: firstZone.minY, pressed: true, atMillis: 100 });
+  assert.equal(singleZoneColor(game.render(), firstZone), beforePress);
+
+  game.tick({ atMillis: 180 });
+  const midway = singleZoneColor(game.render(), firstZone);
+  game.tick({ atMillis: 260 });
+  const transitioned = singleZoneColor(game.render(), firstZone);
+  assert.equal(beforePress, "#3e3e3e");
+  assert.equal(midway, "#303030");
+  assert.equal(transitioned, "#282828");
+  assert.ok(hexChannel(beforePress) > hexChannel(midway));
+  assert.ok(hexChannel(midway) > hexChannel(transitioned));
+
+  game.press({ x: secondZone.minX, y: secondZone.minY, pressed: true, atMillis: 260 });
+  assert.equal(game.snapshot().phase, "starting");
+  game.tick({ atMillis: 420 });
+
+  game.tick({ atMillis: 640 });
+  const readyMinimum = game.render();
+  game.tick({ atMillis: 960 });
+  const readyMaximum = game.render();
+  for (const zone of game.playerReadyZones()) {
+    assert.deepEqual(uniqueZoneColors(readyMinimum, zone), ["#161616"]);
+    assert.deepEqual(uniqueZoneColors(readyMaximum, zone), ["#2a2a2a"]);
+  }
+});
+
+test("release grace retains the ready pulse before transitioning back", () => {
+  const game = createGame({
+    playerCount: 2,
+    players: [{ color: "#646464" }, { color: "#646464" }]
+  });
+  game.init(0);
+  occupyReadyZones(game, 0);
+  const zone = game.playerReadyZones()[0];
+  assert.ok(zone);
+
+  game.release({ x: zone.minX, y: zone.minY, pressed: false, atMillis: 200 });
+  game.tick({ atMillis: 2_200 });
+  assert.equal(game.snapshot().phase, "starting");
+  assert.equal(singleZoneColor(game.render(), zone), "#292929");
+
+  game.tick({ atMillis: 2_201 });
+  assert.equal(game.snapshot().phase, "waiting");
+  const transitionStart = singleZoneColor(game.render(), zone);
+  game.tick({ atMillis: 2_361 });
+  const unoccupiedTarget = singleZoneColor(game.render(), zone);
+  assert.equal(transitionStart, "#292929");
+  assert.equal(unoccupiedTarget, "#646464");
 });
 
 test("board targets are exactly fair and difficulty controls density", () => {
@@ -268,4 +391,29 @@ function claimAll(game: DueloGameInstance, owner: number, atMillis: number): Gam
 
 function renderDisplay(snapshot: DueloSnapshot): string {
   return renderToStaticMarkup(React.createElement(PlayerDisplay, { snapshot }));
+}
+
+function zoneColors(frame: Frame, zone: PlayerReadyZone): string[] {
+  const colors: string[] = [];
+  for (let y = zone.minY; y <= zone.maxY; y += 1) {
+    for (let x = zone.minX; x <= zone.maxX; x += 1) {
+      const color = frameCell(frame, x, y)?.color;
+      if (color) colors.push(color);
+    }
+  }
+  return colors;
+}
+
+function uniqueZoneColors(frame: Frame, zone: PlayerReadyZone): string[] {
+  return [...new Set(zoneColors(frame, zone))];
+}
+
+function singleZoneColor(frame: Frame, zone: PlayerReadyZone): string {
+  const colors = uniqueZoneColors(frame, zone);
+  assert.equal(colors.length, 1);
+  return colors[0] ?? "";
+}
+
+function hexChannel(color: string): number {
+  return Number.parseInt(color.slice(1, 3), 16);
 }

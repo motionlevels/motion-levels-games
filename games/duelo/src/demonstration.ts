@@ -27,7 +27,7 @@ export function createCuratedDueloDemonstrationReplay(): GameReplay {
 }
 
 /** Updated only when an intentional replay, brain, or authoritative game change is accepted. */
-export const CURATED_DUELO_GOLDEN_REPLAY_CHECKSUM = "7f66d79b";
+export const CURATED_DUELO_GOLDEN_REPLAY_CHECKSUM = "490af50f";
 export const CURATED_DUELO_FINAL_AUTHORITATIVE_CHECKSUM = "56f64b64";
 
 /**

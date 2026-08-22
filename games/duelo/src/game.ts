@@ -7,6 +7,7 @@ import {
   createFrame,
   createPlayerReadyGate,
   createSeededRng,
+  fillFrameRect,
   gameEvent,
   inFloorBounds,
   normalizeGameConfig,
@@ -30,7 +31,11 @@ import {
   type SeededRng,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
-import { paintDiamondRing, paintDiamondWave } from "@motion-levels-games/game-sdk/effects";
+import {
+  paintDiamondRing,
+  paintDiamondWave,
+  sampleSmoothPulse
+} from "@motion-levels-games/game-sdk/effects";
 import { dueloConfigVars, manifest } from "./manifest.ts";
 
 const startPadSize = 4;
@@ -40,6 +45,20 @@ const recentClaimMillis = 700;
 export const winAnimationMillis = 5_000;
 const idleColor: HexColor = "#03060b";
 const white: RgbColor = { r: 255, g: 255, b: 255 };
+
+export const dueloReadyZoneAnimation = {
+  occupied: {
+    maxIntensity: 42,
+    minIntensity: 22,
+    periodMillis: 640
+  },
+  transitionMillis: 160,
+  unoccupied: {
+    maxIntensity: 100,
+    minIntensity: 60,
+    periodMillis: 1_600
+  }
+} as const;
 
 export const dueloPlayerPalette = [
   "#ff3048",
@@ -104,6 +123,12 @@ type RecentClaim = {
   y: number;
 };
 
+type ReadyZoneVisualState = {
+  changedAtMillis: number;
+  fromIntensity: number;
+  ready: boolean;
+};
+
 export function createGame(config: GameConfig): DueloGameInstance {
   return new DueloGame(config);
 }
@@ -151,6 +176,7 @@ class DueloGame implements DueloGameInstance {
   private phase: DueloPhase = "waiting";
   private players: GamePlayer[] = [];
   private readyGate: PlayerReadyGate;
+  private readyZoneVisualStates: ReadyZoneVisualState[] = [];
   private readyZones: PlayerReadyZone[] = [];
   private recentClaim: RecentClaim | null = null;
   private rng: SeededRng;
@@ -175,7 +201,9 @@ class DueloGame implements DueloGameInstance {
   press(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
     if (this.phase === "waiting" || this.phase === "starting") {
-      return this.recordEvents(this.applyReadyTransition(this.readyGate.update(event), event.atMillis));
+      const transition = this.readyGate.update(event);
+      this.syncReadyZoneVisualStates(event.atMillis);
+      return this.recordEvents(this.applyReadyTransition(transition, event.atMillis));
     }
     if (this.phase !== "running" || !event.pressed || !inFloorBounds(event.x, event.y)) {
       return [];
@@ -188,10 +216,9 @@ class DueloGame implements DueloGameInstance {
   release(event: PressEvent): GameEvent[] {
     this.nowMillis = event.atMillis;
     if (this.phase === "waiting" || this.phase === "starting") {
-      return this.recordEvents(this.applyReadyTransition(
-        this.readyGate.update({ ...event, pressed: false }),
-        event.atMillis
-      ));
+      const transition = this.readyGate.update({ ...event, pressed: false });
+      this.syncReadyZoneVisualStates(event.atMillis);
+      return this.recordEvents(this.applyReadyTransition(transition, event.atMillis));
     }
     return [];
   }
@@ -200,7 +227,9 @@ class DueloGame implements DueloGameInstance {
     this.nowMillis = event.atMillis;
 
     if (this.phase === "waiting" || this.phase === "starting") {
-      return this.recordEvents(this.applyReadyTransition(this.readyGate.tick(event.atMillis), event.atMillis));
+      const transition = this.readyGate.tick(event.atMillis);
+      this.syncReadyZoneVisualStates(event.atMillis);
+      return this.recordEvents(this.applyReadyTransition(transition, event.atMillis));
     }
     if (this.phase === "finished" && event.atMillis - this.finishAtMillis >= winAnimationMillis) {
       this.resetGame(event.atMillis);
@@ -318,6 +347,7 @@ class DueloGame implements DueloGameInstance {
     this.claimed.fill(0);
     this.claimedAt.fill(0);
     this.readyGate.reset(nowMillis);
+    this.resetReadyZoneVisualStates(nowMillis);
     this.players = this.createPlayers();
     this.fillPercent = this.readFillPercent();
     this.rng = createSeededRng(this.config.seed);
@@ -427,16 +457,12 @@ class DueloGame implements DueloGameInstance {
   }
 
   private drawWaiting(frame: Frame): void {
-    const pulse = 0.5 + 0.5 * Math.sin(this.nowMillis / 310);
-    this.readyZones.forEach((zone, index) => {
-      const ready = this.readyGate.zoneReady(index, this.nowMillis);
-      this.drawReadyZone(frame, zone, this.players[index]?.color ?? dueloPlayerPalette[0], ready, pulse);
-    });
     paintDiamondRing(frame, {
       color: "#13263a",
       radius: 2 + Math.floor(this.nowMillis / 180) % 20,
       thickness: 0.35
     });
+    this.drawReadyZones(frame);
   }
 
   private drawStarting(frame: Frame): void {
@@ -450,8 +476,14 @@ class DueloGame implements DueloGameInstance {
         return dimColor(player?.color ?? dueloPlayerPalette[0], 58);
       }
     });
+    this.drawReadyZones(frame);
+  }
+
+  private drawReadyZones(frame: Frame): void {
     this.readyZones.forEach((zone, index) => {
-      this.drawReadyZone(frame, zone, this.players[index]?.color ?? dueloPlayerPalette[0], true, 1);
+      const ready = this.readyGate.zoneReady(index, this.nowMillis);
+      const intensity = this.readyZoneVisualIntensity(index, ready, this.nowMillis);
+      this.drawReadyZone(frame, zone, this.players[index]?.color ?? dueloPlayerPalette[0], intensity);
     });
   }
 
@@ -459,16 +491,78 @@ class DueloGame implements DueloGameInstance {
     frame: Frame,
     zone: PlayerReadyZone,
     color: HexColor,
-    ready: boolean,
-    pulse: number
+    intensity: number
   ): void {
-    for (let y = zone.minY; y <= zone.maxY; y += 1) {
-      for (let x = zone.minX; x <= zone.maxX; x += 1) {
-        const edge = x === zone.minX || x === zone.maxX || y === zone.minY || y === zone.maxY;
-        const intensity = ready ? (edge ? 100 : 78) : edge ? 26 + pulse * 24 : 12 + pulse * 12;
-        paintFrameCell(frame, x, y, dimColor(color, intensity));
+    fillFrameRect(
+      frame,
+      zone.minX,
+      zone.minY,
+      zone.maxX - zone.minX + 1,
+      zone.maxY - zone.minY + 1,
+      dimColor(color, intensity)
+    );
+  }
+
+  private resetReadyZoneVisualStates(nowMillis: number): void {
+    this.readyZoneVisualStates = this.readyZones.map((_, index) => {
+      const ready = this.readyGate.zoneReady(index, nowMillis);
+      return {
+        changedAtMillis: nowMillis - dueloReadyZoneAnimation.transitionMillis,
+        fromIntensity: this.readyZonePulseIntensity(ready, nowMillis),
+        ready
+      };
+    });
+  }
+
+  private syncReadyZoneVisualStates(atMillis: number): void {
+    this.readyZones.forEach((_, index) => {
+      const ready = this.readyGate.zoneReady(index, atMillis);
+      const current = this.readyZoneVisualStates[index];
+      if (!current) {
+        this.readyZoneVisualStates[index] = {
+          changedAtMillis: atMillis - dueloReadyZoneAnimation.transitionMillis,
+          fromIntensity: this.readyZonePulseIntensity(ready, atMillis),
+          ready
+        };
+        return;
       }
-    }
+      if (current.ready === ready) return;
+
+      const fromIntensity = this.readyZoneVisualIntensity(index, current.ready, atMillis);
+      this.readyZoneVisualStates[index] = {
+        changedAtMillis: atMillis,
+        fromIntensity,
+        ready
+      };
+    });
+  }
+
+  private readyZoneVisualIntensity(index: number, ready: boolean, atMillis: number): number {
+    const targetIntensity = this.readyZonePulseIntensity(ready, atMillis);
+    const visualState = this.readyZoneVisualStates[index];
+    if (!visualState || visualState.ready !== ready) return targetIntensity;
+
+    const progress = clamp(
+      (atMillis - visualState.changedAtMillis) / dueloReadyZoneAnimation.transitionMillis,
+      0,
+      1
+    );
+    if (progress >= 1) return targetIntensity;
+
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    return visualState.fromIntensity + (targetIntensity - visualState.fromIntensity) * easedProgress;
+  }
+
+  private readyZonePulseIntensity(ready: boolean, atMillis: number): number {
+    const profile = ready
+      ? dueloReadyZoneAnimation.occupied
+      : dueloReadyZoneAnimation.unoccupied;
+    return sampleSmoothPulse({
+      atMillis,
+      maxValue: profile.maxIntensity,
+      minValue: profile.minIntensity,
+      periodMillis: profile.periodMillis
+    });
   }
 
   private drawBoard(frame: Frame): void {

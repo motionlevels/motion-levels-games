@@ -22,10 +22,12 @@ export {
 export {
   paintDiamondRing,
   paintDiamondWave,
+  sampleSmoothPulse,
   type DiamondRingOptions,
   type DiamondWaveOptions,
   type FloorEffectCell,
-  type FloorEffectColor
+  type FloorEffectColor,
+  type SmoothPulseOptions
 } from "./effects.ts";
 
 export {
