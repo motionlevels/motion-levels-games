@@ -11,10 +11,36 @@ npm run create:game -- whack-a-mole "Atrapa al topo"
 ## Gameplay
 
 One to eight players occupy distinct start platforms, then chase simultaneous
-2x2 targets around the full floor for 60 seconds. Targets fade as their
+2x2 targets around the full floor for 60 seconds. Targets pulse faster as their
 deadline approaches, respawn immediately after a hit, and grant four to twelve
 points according to reaction speed. A missed target returns with catch-up time.
 The highest score wins a locked four-second celebration.
+
+The waiting floor composes the shared sparse tile pulses with homogeneous 4x4
+player platforms. Empty platforms pulse brightly and slowly; occupied
+platforms retain their color at lower intensity with a quicker pulse. The
+three-second start reveals the first real targets tile by tile. During play,
+targets use an appearance, steady, urgency, and colored-hit sequence rather
+than fading out of view. Victory reveals the winner color through seeded
+appearing tiles before settling into a restrained pulse and sparkle.
+
+Ordinary movement over an empty tile is silent and does not create a miss
+event. Only an expired target emits `target-expired`; a successful target emits
+`mole-hit` and is scored for the target's color owner.
+
+## Audio
+
+The game has calm waiting music, more energetic running music, a rate-varied
+illuminated-tile hit, start and victory stings, an Atrapa al topo introduction,
+and Spanish player-color victory lines. Shared Duelo assets are intentionally
+referenced rather than duplicated; the reuse provenance and the generated
+introduction recipe live under `assets/audio/whack-a-mole/`.
+
+## Playtest scenarios
+
+The standalone playground exposes deterministic `countdown`, `hit`, `expired`,
+and `victory` recordings so animation and display work never requires replaying
+the complete minute-long match.
 
 ## Development
 
