@@ -9,10 +9,11 @@ Every player receives a color, a 4×4 perimeter start zone, and an equal number
 of colored targets on the floor. Once every player remains in their start zone
 through the three-second countdown, the mosaic becomes active.
 
-In the development playground, click one tile in each illuminated start zone
-in sequence. Floor clicks remain latched after pointer-up, and Duelo keeps a
-two-second release grace, so one person can initialize even the eight-player
-layout with a single mouse. Click a latched tile again to release it.
+In the development playground, hold one tile in every illuminated start zone
+through the countdown. Floor input is momentary just like the venue
+controller. For deterministic solo testing of the 2–8-player layouts, use the
+public playground API to press every required zone simultaneously; Duelo keeps
+a two-second release grace for brief transitions.
 
 Step on colored tiles to claim them for that color. Claimed tiles flash white
 and then dim, while the remaining targets keep a calm pulse. The first player
@@ -161,11 +162,12 @@ positions or actions back into `GameSession` or GameEngine.
 ```sh
 npm run test --workspace @motion-levels-games/duelo
 npm run typecheck --workspace @motion-levels-games/duelo
-npm run dev --workspace @motion-levels-games/playground
+npm run dev
 ```
 
-Use either sequential mouse clicks on the interactive floor or the playground
-API with physical floor coordinates to occupy every readiness zone, advance
-the countdown, and claim deterministic targets. Native 1920×1080 display
-captures are required for waiting, starting, running, and finished phases
-before publishing material display changes.
+Use the playground API with physical floor coordinates to occupy every
+readiness zone simultaneously, advance the countdown, and claim deterministic
+targets. Use `npm run dev:standalone` when frame-stepped direct-engine control
+is specifically required. Native 1920×1080 display captures are required for
+waiting, starting, running, and finished phases before publishing material
+display changes.

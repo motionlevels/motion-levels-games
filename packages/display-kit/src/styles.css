@@ -1395,6 +1395,14 @@
   overflow-wrap: break-word;
 }
 
+.ml-player-card.is-label-long .ml-player-card-head > strong {
+  font-size: clamp(19px, 1.35vw, 26px);
+}
+
+.ml-player-card.is-label-extra-long .ml-player-card-head > strong {
+  font-size: clamp(18px, 1.2vw, 23px);
+}
+
 .ml-player-card-head > b {
   color: var(--ml-player);
   font-size: 16px;
@@ -1433,6 +1441,59 @@
 
 .ml-player-card .ml-player-card-progress {
   --ml-tone: var(--ml-player);
+}
+
+/* Four-column rosters are the dense venue layout. Keep every card on the same
+ * score scale and give long labels a full line so configured player names
+ * cannot collide with the primary score. */
+.ml-player-roster[data-roster-columns="4"] .ml-player-card {
+  gap: 8px;
+  padding: 14px 18px;
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-player-card-head > strong {
+  font-size: clamp(19px, 1.3vw, 25px);
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-player-card.is-label-long .ml-player-card-head,
+.ml-player-roster[data-roster-columns="4"] .ml-player-card.is-label-extra-long .ml-player-card-head {
+  align-items: start;
+  grid-template-columns: 10px minmax(0, 1fr);
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-player-card.is-label-long .ml-player-card-head > b,
+.ml-player-roster[data-roster-columns="4"] .ml-player-card.is-label-extra-long .ml-player-card-head > b {
+  grid-column: 2;
+  text-align: left;
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-player-card-score {
+  gap: 5px;
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-player-card-score > strong {
+  font-size: clamp(62px, 4vw, 78px);
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-player-card-score > span,
+.ml-player-roster[data-roster-columns="4"] .ml-player-card footer {
+  font-size: 14px;
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-progress-meter {
+  gap: 6px;
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-progress-meter-head span {
+  font-size: 13px;
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-progress-meter-head strong {
+  font-size: 16px;
+}
+
+.ml-player-roster[data-roster-columns="4"] .ml-progress-meter-track {
+  height: 8px;
 }
 
 @keyframes ml-player-card-recent {

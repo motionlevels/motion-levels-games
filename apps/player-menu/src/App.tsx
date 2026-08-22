@@ -191,6 +191,7 @@ const maxTeamNameLength = 24;
 const maxPlayerNameLength = 12;
 const noPressureSessionLimitMillis = 60 * 60 * 1000;
 const maxProcessedAttemptIDs = 128;
+const menuMirrorFailureThreshold = 2;
 // Spanish QWERTY adapted for a kiosk touch surface.
 const keyboardLetterRows = ["qwertyuiop", "asdfghjklñ", "zxcvbnm"];
 const keyboardNumberRows = ["1234567890", "-_/&()'\"", ".,!?"];
@@ -1537,6 +1538,7 @@ function MenuApp() {
   const syncedEngineSession = useRef("");
   const mirroredMenuVersion = useRef(0);
   const mirroredMenuUpdatedUnixMillis = useRef(0);
+  const menuMirrorFailureCount = useRef(0);
   const canonicalMenuSnapshot = useRef("");
   const canonicalMenuApplicationPending = useRef(false);
   const dirtyMenuFields = useRef(new Set<MenuMirrorField>());
@@ -1865,11 +1867,19 @@ function MenuApp() {
       try {
         const envelope = await fetchMenuState<MenuMirrorSnapshot>();
         if (!cancelled) {
+          menuMirrorFailureCount.current = 0;
           setError((current) => current === "Sin conexión con el menú principal" ? "" : current);
           applyEnvelope(envelope);
         }
       } catch {
-        if (!cancelled) setError("Sin conexión con el menú principal");
+        if (!cancelled) {
+          menuMirrorFailureCount.current += 1;
+          if (menuMirrorFailureCount.current >= menuMirrorFailureThreshold) {
+            setError((current) => current && current !== "Sin conexión con el menú principal"
+              ? current
+              : "Sin conexión con el menú principal");
+          }
+        }
       } finally {
         if (!cancelled) {
           if (source?.readyState === EventSource.CLOSED) attach();

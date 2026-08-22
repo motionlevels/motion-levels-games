@@ -133,6 +133,8 @@ describe("runtime screen flow", () => {
     const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 
     assert.match(source, /current === "Sin conexión con el menú principal" \? "" : current/);
+    assert.match(source, /menuMirrorFailureCount\.current \+= 1/);
+    assert.match(source, /menuMirrorFailureCount\.current >= menuMirrorFailureThreshold/);
     assert.match(source, /<header className="topbar" inert=\{teamOpen\}>/);
     assert.match(source, /<section className="main-panel" inert=\{teamOpen\}>/);
     assert.match(source, /onKeyDown=\{\(event\) => trapKioskFocus\(event, \(\) => setTeamOpen\(false\)\)\}/);

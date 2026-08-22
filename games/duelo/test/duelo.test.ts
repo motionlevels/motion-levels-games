@@ -213,6 +213,8 @@ test("fixtures cover every phase and displays keep long names without ellipses",
     assert.doesNotMatch(html, /…|\.\.\./);
   }
   assert.match(renderDisplay(crowdedRunningSnapshot), /Alejandra del Equipo Relámpago/);
+  assert.match(renderDisplay(crowdedRunningSnapshot), /Objetivo/);
+  assert.match(renderDisplay(crowdedRunningSnapshot), /Jugadores/);
   assert.match(renderDisplay(finishedSnapshot), /Nueva partida en/);
 });
 

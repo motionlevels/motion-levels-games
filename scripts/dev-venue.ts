@@ -37,6 +37,10 @@ await import("../apps/venue-runtime/src/main.ts");
 if (apiOnly) {
   console.log("[dev-venue] API-only mode; use npm run dev for the browser playground");
 } else {
+  // Vite exposes VITE_* variables to the browser. Only the integrated venue
+  // process opts the playground into mounting the runtime-backed kiosk menu;
+  // the standalone authoring server must not impersonate a connected venue.
+  process.env.VITE_VENUE_RUNTIME_INTEGRATED = "true";
   const playgroundHost = process.env.MOTION_LEVELS_PLAYGROUND_HOST?.trim() || "127.0.0.1";
   const playgroundPort = process.env.MOTION_LEVELS_PLAYGROUND_PORT?.trim() || "4104";
   const viteEntry = path.resolve(process.cwd(), "node_modules/vite/bin/vite.js");

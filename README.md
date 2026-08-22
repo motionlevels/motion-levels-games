@@ -17,15 +17,23 @@ npm run check
 npm run dev
 ```
 
-`npm run dev` starts the standalone deterministic authoring playground at
-`http://127.0.0.1:4104` using one Vite service.
-`npm run dev:venue:no-controller` starts the same playground together with the
-TypeScript venue runtime and a mock controller, so it is a complete local
-venue smoke environment at `http://127.0.0.1:4104/`. The runtime API remains
-available at `http://127.0.0.1:4102`; use `--api-only` when only the API is
-needed. `npm run test:dev:venue` starts that exact command and verifies the
+`npm run dev` starts the production-shaped local venue at
+`http://127.0.0.1:4104/`: the playground, TypeScript venue runtime, embedded
+player menu, and a revision-matched mock controller run together. The runtime
+API remains available at `http://127.0.0.1:4102`. `npm run
+dev:venue:no-controller` is a compatibility alias for the same command, while
+`npm run dev:venue` connects to a real controller.
+
+Use `npm run dev:standalone` only for deterministic in-browser authoring and
+media generation. It deliberately omits the venue runtime and kiosk menu, so
+it cannot show venue connectivity failures or validate production lifecycle
+behavior. Use `--api-only` with the venue script when only the API is needed.
+`npm run test:dev:venue` starts the default environment and verifies the
 playground root, player-menu entry point, proxied health endpoint, and direct
-venue API before shutting it down.
+venue API before shutting it down. Its playground, API, and mock-controller
+ports can be isolated with `MOTION_LEVELS_DEV_VENUE_PORT`,
+`MOTION_LEVELS_DEV_VENUE_API_PORT`, and
+`MOTION_LEVELS_DEV_VENUE_CONTROLLER_PORT`.
 `npm run check:fast` runs the native linter and strict workspace typechecks for
 the normal edit loop. `npm run check` adds all tests, validation, builds, the
 scaffold smoke test, and deterministic game playtests before a commit or push.

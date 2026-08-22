@@ -94,11 +94,12 @@ the visit open.
 
 ## Local full playthrough
 
-`npm run dev:venue:no-controller` starts the complete local venue at
+`npm run dev` starts the complete local venue at
 `http://127.0.0.1:4104`, with the same `VenueRuntime` API used by production
 and a mock controller. The Vite service serves the playground at `/` and the
 embedded player menu at `/player-menu/`; its `/api` and `/engine` routes proxy
-to that runtime.
+to that runtime. `npm run dev:venue:no-controller` remains an alias for this
+default command.
 
 The menu launches with the normal `POST /api/select` command. The playground
 does not create a second live game engine in this mode: it renders
@@ -108,7 +109,6 @@ does not create a second live game engine in this mode: it renders
 state as the venue, and remounting the menu derives its active-game screen from
 the runtime snapshot.
 
-Plain `npm run dev` remains the standalone deterministic authoring/media path
-when no venue runtime is available. That fallback is intentionally separate
-from the integrated venue smoke path and must not be used to validate
-production lifecycle behavior.
+`npm run dev:standalone` is the deterministic authoring/media path when no
+venue runtime is needed. It does not mount the embedded kiosk menu and must not
+be used to validate production lifecycle behavior.

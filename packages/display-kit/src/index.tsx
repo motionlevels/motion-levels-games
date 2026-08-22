@@ -625,11 +625,17 @@ export function PlayerCard({
 }) {
   const validTarget = target !== undefined && Number.isFinite(target) && target > 0 ? target : undefined;
   const resolvedScoreUnit = scoreUnit.trim() || "puntos";
+  const labelLength = typeof player.label === "string" ? player.label.trim().length : 0;
+  const labelClass = labelLength > 28
+    ? "is-label-extra-long"
+    : labelLength > 18
+      ? "is-label-long"
+      : "";
 
   return (
     <article
       aria-label={ariaLabel ?? `${player.label}: ${player.score} ${resolvedScoreUnit}`}
-      className={`ml-player-card${featured ? " is-featured" : ""} ${className}`.trim()}
+      className={`ml-player-card${featured ? " is-featured" : ""} ${labelClass} ${className}`.trim()}
       data-display-containment="player-card"
       data-player-featured={featured || undefined}
       style={{

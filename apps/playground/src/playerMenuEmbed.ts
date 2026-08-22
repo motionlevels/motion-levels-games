@@ -10,9 +10,10 @@ type PlayerMenuTargetOptions = Readonly<{
 
 function defaultTargetOptions(): PlayerMenuTargetOptions {
   const hosted = import.meta.env?.VITE_HOSTED_PLAYER_EXPERIENCE === "true";
+  const venueIntegrated = import.meta.env?.VITE_VENUE_RUNTIME_INTEGRATED === "true";
   return {
     basePath: import.meta.env?.BASE_URL || "/",
-    enabled: import.meta.env?.DEV === true || hosted,
+    enabled: venueIntegrated || hosted,
     loopbackOnly: !hosted,
   };
 }

@@ -154,12 +154,16 @@ test("feedback, progress, and roster primitives normalize values and retain sema
     scoreUnit: "rondas ganadas",
     target: 15
   });
+  const longLabelCard = React.createElement(PlayerCard, {
+    player: { ...player, label: "Alejandra del Equipo Relámpago" }
+  });
   const html = renderToStaticMarkup(React.createElement(
     "div",
     null,
     roster,
     progress,
     nonPointCard,
+    longLabelCard,
     React.createElement(ResultOverlay, {
       message: "Gran partida",
       title: "Victoria",
@@ -172,6 +176,7 @@ test("feedback, progress, and roster primitives normalize values and retain sema
   assert.match(html, /aria-label="Equipo Norte: 12 rondas ganadas"/);
   assert.match(html, /aria-valuetext="12 de 15 rondas ganadas"/);
   assert.match(html, /data-player-featured="true"/);
+  assert.match(html, /ml-player-card is-label-extra-long/);
   assert.match(html, /aria-valuenow="1"/);
   assert.match(html, /aria-valuemax="1"/);
   assert.match(html, /data-display-contained-by="content"/);

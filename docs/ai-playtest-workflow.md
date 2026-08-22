@@ -25,11 +25,14 @@ npm run create:game -- <game-id> "Display Name"
    should appear in the selector automatically while Vite is running.
 3. Inspect the target game under `games/<game-id>/`, especially `README.md`, `game.ts`,
    `display.tsx`, `manifest.ts`, fixtures, and tests.
-4. Start the playground:
+4. Start the deterministic playground for frame-stepped game authoring:
 
 ```sh
-npm run dev --workspace apps/playground
+npm run dev:standalone
 ```
+
+   Use the default `npm run dev` for venue-matched manual and end-to-end
+   playtesting through the real TypeScript venue runtime and mock controller.
 
 5. Open the Vite URL and wait for:
 

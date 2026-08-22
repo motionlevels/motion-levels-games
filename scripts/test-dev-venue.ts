@@ -9,6 +9,7 @@ import { chromium, type Locator } from "playwright";
 const repoRoot = process.cwd();
 const playgroundPort = Number(process.env.MOTION_LEVELS_DEV_VENUE_PORT || 4104);
 const apiPort = Number(process.env.MOTION_LEVELS_DEV_VENUE_API_PORT || 4102);
+const controllerPort = Number(process.env.MOTION_LEVELS_DEV_VENUE_CONTROLLER_PORT || 4201);
 const playgroundURL = `http://127.0.0.1:${playgroundPort}`;
 const apiURL = `http://127.0.0.1:${apiPort}`;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -20,6 +21,7 @@ const devVenue = spawn(npmCommand, ["run", "dev:venue:no-controller"], {
     ...process.env,
     MOTION_LEVELS_PLAYGROUND_PORT: String(playgroundPort),
     MOTION_LEVELS_ENGINE_HTTP: `127.0.0.1:${apiPort}`,
+    MOTION_LEVELS_CONTROLLER_ADDR: `127.0.0.1:${controllerPort}`,
     MOTION_LEVELS_SESSION_HISTORY_DIR: sessionHistoryDir,
   },
   stdio: ["ignore", "pipe", "pipe"],
@@ -88,6 +90,11 @@ async function verifyIntegratedLaunchDoesNotNavigate(): Promise<void> {
     // either hydrates directly into its browse screen or shows the normal
     // production welcome action until that runtime visit is started.
     await menu.locator(".welcome-screen, main.app").first().waitFor({ state: "visible" });
+    assert.equal(
+      await menu.getByText("Sin conexión con el menú principal", { exact: true }).count(),
+      0,
+      "the integrated local venue must not render a false menu disconnection",
+    );
     if (await menu.locator(".welcome-screen").isVisible()) {
       await menu.getByRole("button", { name: "Comenzar" }).click();
     }

@@ -32,10 +32,20 @@ test("the full local experience serves the menu from the playground origin", () 
   assert.equal(url.searchParams.get("kioskViewport"), "1920x1080");
 });
 
-test("the root development command starts one fixed full-experience server", () => {
-  assert.match(rootPackage.scripts.dev, /@motion-levels-games\/playground/u);
-  assert.match(rootPackage.scripts.dev, /--port 4104/u);
+test("the root development command starts the production-shaped venue environment", () => {
+  assert.match(rootPackage.scripts.dev, /scripts\/dev-venue\.ts --mock-controller/u);
+  assert.match(rootPackage.scripts["dev:standalone"], /@motion-levels-games\/playground/u);
+  assert.match(rootPackage.scripts["dev:standalone"], /--port 4104/u);
+  assert.equal(rootPackage.scripts["dev:venue:no-controller"], "npm run dev");
   assert.match(rootPackage.scripts["dev:game"], /scripts\/dev-game\.ts/u);
+});
+
+test("standalone authoring does not mount a disconnected venue menu", () => {
+  assert.equal(localPlayerMenuUrl(loopbackPlayground, {
+    basePath: "/",
+    enabled: false,
+    loopbackOnly: true,
+  }), undefined);
 });
 
 test("player menu preview stays loopback-only", () => {

@@ -1,7 +1,9 @@
 # Playground AI API
 
 The playground exposes a browser-only development API for local playtesting.
-Open the app with `npm run dev`, then use either global:
+Open the production-shaped venue environment with `npm run dev`, or the direct
+deterministic authoring environment with `npm run dev:standalone`, then use
+either global:
 
 ```js
 window.motionLevelsPlayground
@@ -12,13 +14,13 @@ The root `<html>` element gets `data-motion-levels-playground-api="ready"`
 when the API has been installed.
 
 The API is intentionally local tooling, not part of the game contract. In the
-standalone `npm run dev` authoring path, the playground runs games through the
-shared TypeScript SDK engine at a 50fps baseline. `ml.step()` with no argument
-advances exactly one engine frame. In the integrated `npm run
-dev:venue:no-controller` path, the same API is a façade over the canonical
-VenueRuntime display/control/floor endpoints; the runtime owns the live clock,
-snapshot, frame, pause state, and input handling, so `ml.step()` only refreshes
-the latest runtime display rather than simulating a second game.
+standalone `npm run dev:standalone` authoring path, the playground runs games
+through the shared TypeScript SDK engine at a 50fps baseline. `ml.step()` with
+no argument advances exactly one engine frame. In the default integrated `npm
+run dev` path, the same API is a façade over the canonical VenueRuntime
+display/control/floor endpoints; the runtime owns the live clock, snapshot,
+frame, pause state, and input handling, so `ml.step()` only refreshes the latest
+runtime display rather than simulating a second game.
 
 ## Deterministic Playthrough
 

@@ -29,8 +29,8 @@ export function PlayerDisplay({
   const heroMetrics = (
     <MetricRow columns={3}>
       <MetricPanel label="Tiempo" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
-      <MetricPanel label="Restantes" tone="cyan" value={snapshot.remainingTargets} />
-      <MetricPanel label="Densidad" tone="magenta" value={`${snapshot.fillPercent}%`} />
+      <MetricPanel label="Objetivo" tone="cyan" value={snapshot.matchTarget} />
+      <MetricPanel label="Jugadores" tone="magenta" value={snapshot.playerCount} />
     </MetricRow>
   );
   const event = (
