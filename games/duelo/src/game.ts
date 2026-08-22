@@ -32,8 +32,10 @@ import {
   type TickEvent
 } from "@motion-levels-games/game-sdk";
 import {
-  paintDiamondRing,
-  paintDiamondWave,
+  paintProgressiveTileReveal,
+  paintSparseTilePulses,
+  paintStaggeredTileReveal,
+  sampleBeatPulse,
   sampleSmoothPulse
 } from "@motion-levels-games/game-sdk/effects";
 import { dueloConfigVars, manifest } from "./manifest.ts";
@@ -59,6 +61,46 @@ export const dueloReadyZoneAnimation = {
     periodMillis: 1_600
   }
 } as const;
+
+export const dueloWaitingIdleAnimation = {
+  cycleMillis: 4_000,
+  density: 0.25,
+  exclusionPadding: 2,
+  maxIntensity: 16,
+  pulseMillis: 1_100
+} as const;
+
+export const dueloStartingAnimation = {
+  beatAttackMillis: 80,
+  beatReleaseMillis: 300,
+  confirmationMillis: 220,
+  launchFlashIntensity: 96,
+  launchFlashMillis: 220,
+  previewMaxIntensity: 40,
+  revealFadeSpan: 0.16,
+  zoneBaseIntensity: 48,
+  zoneBeatIntensity: 72
+} as const;
+
+export const dueloVictoryAnimation = {
+  celebrationEndMillis: 4_400,
+  celebrationPulseMaxIntensity: 58,
+  celebrationPulseMinIntensity: 48,
+  celebrationPulsePeriodMillis: 1_800,
+  celebrationSparkleCycleMillis: 1_100,
+  celebrationSparkleDensity: 0.25,
+  celebrationSparkleIntensity: 96,
+  celebrationSparkleMillis: 700,
+  fadeMillis: 600,
+  impactMillis: 350,
+  revealBaseIntensity: 58,
+  revealFadeSpan: 0.08,
+  revealMillis: 1_450,
+  revealVariationIntensity: 12
+} as const;
+
+const dueloWaitingIdleSeedSalt = 0xa5a5_5a5a;
+const dueloVictorySeedSalt = 0x51f1_7e5d;
 
 export const dueloPlayerPalette = [
   "#ff3048",
@@ -167,6 +209,7 @@ class DueloGame implements DueloGameInstance {
   private claimedAt = new Float64Array(FRAME_SIZE);
   private claims: number[] = [];
   private config: NormalizedGameConfig;
+  private countdownStartedAtMillis = 0;
   private fillPercent = 60;
   private finishAtMillis = 0;
   private lastEvent: GameEvent = gameEvent("none", "Listo", 0);
@@ -338,6 +381,7 @@ class DueloGame implements DueloGameInstance {
 
   private resetGame(nowMillis: number): void {
     this.nowMillis = nowMillis;
+    this.countdownStartedAtMillis = 0;
     this.startedAtMillis = nowMillis;
     this.finishAtMillis = 0;
     this.phase = "waiting";
@@ -389,16 +433,20 @@ class DueloGame implements DueloGameInstance {
   private applyReadyTransition(transition: PlayerReadyTransition, nowMillis: number): GameEvent[] {
     if (transition === "players-ready") {
       this.phase = "starting";
+      this.countdownStartedAtMillis = nowMillis;
       this.motionEventId += 1;
       return [gameEvent("start", "Todos en posición", nowMillis)];
     }
     if (transition === "players-left") {
+      this.transitionReadyZonesFromStarting(nowMillis);
       this.phase = "waiting";
+      this.countdownStartedAtMillis = 0;
       this.motionEventId += 1;
       return [gameEvent("ready", "Vuelve a tu zona iluminada", nowMillis)];
     }
     if (transition === "started") {
       this.phase = "running";
+      this.countdownStartedAtMillis = 0;
       this.startedAtMillis = nowMillis;
       this.motionEventId += 1;
       return [gameEvent("start", "Reclama todas las baldosas de tu color", nowMillis)];
@@ -457,32 +505,113 @@ class DueloGame implements DueloGameInstance {
   }
 
   private drawWaiting(frame: Frame): void {
-    paintDiamondRing(frame, {
-      color: "#13263a",
-      radius: 2 + Math.floor(this.nowMillis / 180) % 20,
-      thickness: 0.35
+    paintSparseTilePulses(frame, {
+      atMillis: this.nowMillis,
+      color: ({ intensity, variant }) => this.waitingIdleTileColor(intensity, variant),
+      cycleMillis: dueloWaitingIdleAnimation.cycleMillis,
+      density: dueloWaitingIdleAnimation.density,
+      exclude: ({ x, y }) => this.waitingIdleCellExcluded(x, y),
+      pulseMillis: dueloWaitingIdleAnimation.pulseMillis,
+      seed: (this.config.seed ^ dueloWaitingIdleSeedSalt) >>> 0
     });
     this.drawReadyZones(frame);
+  }
+
+  private waitingIdleCellExcluded(x: number, y: number): boolean {
+    const padding = dueloWaitingIdleAnimation.exclusionPadding;
+    return this.readyZones.some((zone) => (
+      x >= zone.minX - padding
+      && x <= zone.maxX + padding
+      && y >= zone.minY - padding
+      && y <= zone.maxY + padding
+    ));
+  }
+
+  private waitingIdleTileColor(intensity: number, variant: number): HexColor {
+    const playerIndex = Math.min(
+      this.players.length - 1,
+      Math.floor(variant * this.players.length)
+    );
+    const playerColor = this.players[playerIndex]?.color ?? dueloPlayerPalette[0];
+    const glow = addRgb(
+      parseHexColor(idleColor),
+      scaleRgb(parseHexColor(playerColor), intensity * dueloWaitingIdleAnimation.maxIntensity)
+    );
+    return rgbToHex(glow);
   }
 
   private drawStarting(frame: Frame): void {
-    const step = Math.floor(this.nowMillis / 110);
-    paintDiamondWave(frame, {
-      bandWidth: 2,
-      period: 8,
-      step,
-      color: ({ distance }) => {
-        const player = this.players[Math.floor(distance) % this.players.length];
-        return dimColor(player?.color ?? dueloPlayerPalette[0], 58);
-      }
+    const countdownDuration = manifest.start.countdownMillis ?? 0;
+    const elapsed = clamp(this.nowMillis - this.countdownStartedAtMillis, 0, countdownDuration);
+    const revealDuration = Math.max(1, countdownDuration - dueloStartingAnimation.confirmationMillis);
+    const revealProgress = clamp(
+      (elapsed - dueloStartingAnimation.confirmationMillis) / revealDuration,
+      0,
+      1
+    );
+
+    paintProgressiveTileReveal(frame, {
+      color: ({ intensity, x, y }) => {
+        const owner = this.owners[y * FLOOR_COLS + x] ?? -1;
+        if (owner < 0) return undefined;
+        const color = this.players[owner]?.color ?? dueloPlayerPalette[0];
+        return dimColor(color, intensity * dueloStartingAnimation.previewMaxIntensity);
+      },
+      fadeSpan: dueloStartingAnimation.revealFadeSpan,
+      progress: revealProgress,
+      threshold: ({ x, y }) => this.startingRevealThreshold(x, y)
     });
-    this.drawReadyZones(frame);
+
+    const zoneIntensity = this.startingZoneIntensity(elapsed);
+    this.drawReadyZones(frame, zoneIntensity);
   }
 
-  private drawReadyZones(frame: Frame): void {
+  private startingZoneIntensity(elapsed: number): number {
+    const beat = sampleBeatPulse({
+      atMillis: elapsed,
+      attackMillis: dueloStartingAnimation.beatAttackMillis,
+      periodMillis: 1_000,
+      releaseMillis: dueloStartingAnimation.beatReleaseMillis
+    });
+    return dueloStartingAnimation.zoneBaseIntensity
+      + beat * (dueloStartingAnimation.zoneBeatIntensity - dueloStartingAnimation.zoneBaseIntensity);
+  }
+
+  private transitionReadyZonesFromStarting(atMillis: number): void {
+    const fromIntensity = this.startingZoneIntensity(
+      Math.max(0, atMillis - this.countdownStartedAtMillis)
+    );
+    this.readyZoneVisualStates = this.readyZones.map((_, index) => ({
+      changedAtMillis: atMillis,
+      fromIntensity,
+      ready: this.readyGate.zoneReady(index, atMillis)
+    }));
+  }
+
+  private startingRevealThreshold(x: number, y: number): number | undefined {
+    const owner = this.owners[y * FLOOR_COLS + x] ?? -1;
+    const zone = this.readyZones[owner];
+    if (owner < 0 || !zone) return undefined;
+
+    const maxDistance = Math.max(
+      this.distanceFromReadyZone(0, 0, zone),
+      this.distanceFromReadyZone(FLOOR_COLS - 1, 0, zone),
+      this.distanceFromReadyZone(0, FLOOR_ROWS - 1, zone),
+      this.distanceFromReadyZone(FLOOR_COLS - 1, FLOOR_ROWS - 1, zone)
+    );
+    return maxDistance > 0 ? this.distanceFromReadyZone(x, y, zone) / maxDistance : 0;
+  }
+
+  private distanceFromReadyZone(x: number, y: number, zone: PlayerReadyZone): number {
+    const distanceX = x < zone.minX ? zone.minX - x : x > zone.maxX ? x - zone.maxX : 0;
+    const distanceY = y < zone.minY ? zone.minY - y : y > zone.maxY ? y - zone.maxY : 0;
+    return distanceX + distanceY;
+  }
+
+  private drawReadyZones(frame: Frame, fixedIntensity?: number): void {
     this.readyZones.forEach((zone, index) => {
       const ready = this.readyGate.zoneReady(index, this.nowMillis);
-      const intensity = this.readyZoneVisualIntensity(index, ready, this.nowMillis);
+      const intensity = fixedIntensity ?? this.readyZoneVisualIntensity(index, ready, this.nowMillis);
       this.drawReadyZone(frame, zone, this.players[index]?.color ?? dueloPlayerPalette[0], intensity);
     });
   }
@@ -567,6 +696,12 @@ class DueloGame implements DueloGameInstance {
 
   private drawBoard(frame: Frame): void {
     const progress = this.playerProgress();
+    const launchProgress = clamp(
+      (this.nowMillis - this.startedAtMillis) / dueloStartingAnimation.launchFlashMillis,
+      0,
+      1
+    );
+    const launchBoost = 1 - launchProgress * launchProgress * (3 - 2 * launchProgress);
     for (let index = 0; index < FRAME_SIZE; index += 1) {
       const owner = this.owners[index] ?? -1;
       if (owner < 0) continue;
@@ -586,27 +721,83 @@ class DueloGame implements DueloGameInstance {
 
       const urgency = (progress[owner]?.progress ?? 0) >= 0.88 ? 16 : 0;
       const pulse = 0.5 + 0.5 * Math.sin(this.nowMillis / 360 + x * 0.74 + y * 0.18 + owner);
-      paintFrameCell(frame, x, y, dimColor(color, 58 + urgency + pulse * 24));
+      const runningIntensity = 58 + urgency + pulse * 24;
+      const intensity = runningIntensity
+        + (dueloStartingAnimation.launchFlashIntensity - runningIntensity) * launchBoost;
+      paintFrameCell(frame, x, y, dimColor(color, intensity));
     }
   }
 
   private drawVictory(frame: Frame): void {
     const winnerColor = this.players[this.winnerIndex]?.color ?? dueloPlayerPalette[0];
-    const winnerRgb = parseHexColor(winnerColor);
     const elapsed = Math.max(0, this.nowMillis - this.finishAtMillis);
-    for (let y = 0; y < FLOOR_ROWS; y += 1) {
-      for (let x = 0; x < FLOOR_COLS; x += 1) {
-        const shimmer = 0.5 + 0.5 * Math.sin(elapsed / 170 + x * 0.58 + y * 0.19);
-        const glow = addRgb(scaleRgb(winnerRgb, 48 + shimmer * 42), scaleRgb(white, shimmer * 16));
-        paintFrameCell(frame, x, y, rgbToHex(glow));
-      }
+    const revealSeed = (this.config.seed ^ dueloVictorySeedSalt ^ (this.winnerIndex + 1) * 1_009) >>> 0;
+
+    this.drawBoard(frame);
+
+    if (elapsed < dueloVictoryAnimation.impactMillis) {
+      return;
     }
-    paintDiamondWave(frame, {
-      bandWidth: 2,
-      period: 9,
-      step: Math.floor(elapsed / 90),
-      color: "#ffffff"
+
+    const revealProgress = clamp(
+      (elapsed - dueloVictoryAnimation.impactMillis) / dueloVictoryAnimation.revealMillis,
+      0,
+      1
+    );
+    paintStaggeredTileReveal(frame, {
+      color: ({ intensity, variant }) => dimColor(
+        winnerColor,
+        Math.max(
+          8,
+          (dueloVictoryAnimation.revealBaseIntensity
+            + variant * dueloVictoryAnimation.revealVariationIntensity) * intensity
+        )
+      ),
+      fadeSpan: dueloVictoryAnimation.revealFadeSpan,
+      progress: revealProgress,
+      seed: revealSeed
     });
+
+    const celebrationStartedAt = dueloVictoryAnimation.impactMillis + dueloVictoryAnimation.revealMillis;
+    if (elapsed >= celebrationStartedAt) {
+      const celebrationMillis = elapsed - celebrationStartedAt;
+      const pulseIntensity = sampleSmoothPulse({
+        atMillis: celebrationMillis,
+        maxValue: dueloVictoryAnimation.celebrationPulseMaxIntensity,
+        minValue: dueloVictoryAnimation.celebrationPulseMinIntensity,
+        periodMillis: dueloVictoryAnimation.celebrationPulsePeriodMillis
+      });
+      fillFrameRect(frame, 0, 0, FLOOR_COLS, FLOOR_ROWS, dimColor(winnerColor, pulseIntensity));
+      paintSparseTilePulses(frame, {
+        atMillis: celebrationMillis,
+        color: ({ intensity }) => dimColor(
+          winnerColor,
+          pulseIntensity
+            + (dueloVictoryAnimation.celebrationSparkleIntensity - pulseIntensity) * intensity
+        ),
+        cycleMillis: dueloVictoryAnimation.celebrationSparkleCycleMillis,
+        density: dueloVictoryAnimation.celebrationSparkleDensity,
+        pulseMillis: dueloVictoryAnimation.celebrationSparkleMillis,
+        seed: revealSeed
+      });
+    }
+
+    if (elapsed >= dueloVictoryAnimation.celebrationEndMillis) {
+      const fadeProgress = clamp(
+        (elapsed - dueloVictoryAnimation.celebrationEndMillis) / dueloVictoryAnimation.fadeMillis,
+        0,
+        1
+      );
+      const fade = 1 - fadeProgress * fadeProgress * (3 - 2 * fadeProgress);
+      fillFrameRect(
+        frame,
+        0,
+        0,
+        FLOOR_COLS,
+        FLOOR_ROWS,
+        dimColor(winnerColor, dueloVictoryAnimation.celebrationPulseMinIntensity * fade)
+      );
+    }
   }
 }
 

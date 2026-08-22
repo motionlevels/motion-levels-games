@@ -1,5 +1,6 @@
 /** @jsxRuntime automatic */
 import {
+  CountdownValue,
   DisplayStack,
   DisplayStage,
   EventRail,
@@ -47,7 +48,7 @@ export function PlayerDisplay({
       <DisplayStack
         bottom={event}
         label="Progreso del duelo"
-        top={<DisplayStage detail={hero.caption} eyebrow={hero.eyebrow} title={hero.title} tone="cyan">{heroMetrics}</DisplayStage>}
+        top={<DisplayStage detail={hero.caption} eyebrow={hero.eyebrow} label={snapshot.phase === "starting" ? "Cuenta atrás para comenzar" : undefined} title={hero.title} tone="cyan">{heroMetrics}</DisplayStage>}
       >
         <PlayerRoster columns={columns} label="Progreso de jugadores">
           {snapshot.playerProgress.map((player) => (
@@ -63,9 +64,11 @@ export function PlayerDisplay({
           ))}
         </PlayerRoster>
         <ResultOverlay
+          accent={winner?.color}
+          eyebrow="Victoria"
           message={winner ? `${winner.claimed}/${winner.target} baldosas reclamadas` : undefined}
-          title={`¡Gana ${snapshot.winnerLabel}!`}
-          tone="green"
+          title={snapshot.winnerLabel}
+          variant="victory"
           visible={snapshot.phase === "finished"}
         >
           <span>Nueva partida en {restartCountdown}</span>
@@ -132,7 +135,7 @@ function heroContent(snapshot: DueloSnapshot, countdown: number, restartCountdow
   if (snapshot.phase === "starting") {
     return {
       eyebrow: "Todos listos",
-      title: String(countdown),
+      title: <CountdownValue label="Comienza en" value={countdown} />,
       caption: "El duelo está a punto de empezar"
     };
   }

@@ -34,9 +34,13 @@ import {
   normalizeGameSeed,
   paintDiamondRing,
   paintDiamondWave,
+  paintProgressiveTileReveal,
+  paintSparseTilePulses,
+  paintStaggeredTileReveal,
   readGameConfigOption,
   paintFrameCell,
   rgbToHex,
+  sampleBeatPulse,
   sampleSmoothPulse,
   scaleRgb,
   setFrameCell,
@@ -226,6 +230,149 @@ test("smooth pulses are deterministic, periodic, and normalize unsafe inputs", (
     periodMillis: 100,
     phaseOffsetMillis: 50
   }), 20);
+});
+
+test("beat pulses have one deterministic attack and release per period", () => {
+  const pulse = (atMillis: number) => sampleBeatPulse({
+    atMillis,
+    attackMillis: 80,
+    periodMillis: 1_000,
+    releaseMillis: 320
+  });
+
+  assert.equal(pulse(0), 0);
+  assert.equal(pulse(40), 0.5);
+  assert.equal(pulse(80), 1);
+  assert.equal(pulse(240), 0.5);
+  assert.equal(pulse(400), 0);
+  assert.equal(pulse(1_080), 1);
+  assert.equal(pulse(-920), 1);
+  assert.equal(sampleBeatPulse({
+    atMillis: Number.NaN,
+    attackMillis: Number.NaN,
+    periodMillis: 0,
+    releaseMillis: Number.POSITIVE_INFINITY
+  }), 0);
+});
+
+test("progressive tile reveals are smooth, ordered, bounded, and deterministic", () => {
+  const paint = (progress: number) => {
+    const frame = createFrame("#000000");
+    const samples: Array<{ intensity: number; progress: number; threshold: number; x: number; y: number }> = [];
+    paintProgressiveTileReveal(frame, {
+      color: (cell) => {
+        samples.push(cell);
+        const channel = Math.round(cell.intensity * 255).toString(16).padStart(2, "0");
+        return `#${channel}0000`;
+      },
+      fadeSpan: 0.2,
+      progress,
+      threshold: ({ x, y }) => y === 0 ? x / (FLOOR_COLS - 1) : undefined
+    });
+    return { frame, samples };
+  };
+
+  const start = paint(0);
+  const quarter = paint(0.25);
+  const repeat = paint(0.25);
+  const middle = paint(0.5);
+  const complete = paint(1);
+
+  assert.ok(start.frame.cells.every((cell) => cell.color === "#000000"));
+  assert.deepEqual(repeat, quarter);
+  assert.ok(quarter.samples.length > 0);
+  assert.ok(middle.samples.length > quarter.samples.length);
+  assert.equal(complete.samples.length, FLOOR_COLS);
+  assert.ok(complete.samples.every((sample) => sample.intensity === 1));
+  assert.ok(complete.samples.every((sample) => sample.progress === 1));
+  assert.ok(complete.samples.every((sample) => sample.threshold >= 0 && sample.threshold <= 1));
+  assert.ok(complete.frame.cells.filter((cell) => cell.y > 0).every((cell) => cell.color === "#000000"));
+
+  const disabled = createFrame("#102030");
+  paintProgressiveTileReveal(disabled, {
+    color: "#ffffff",
+    fadeSpan: Number.NaN,
+    progress: Number.NaN,
+    threshold: () => Number.POSITIVE_INFINITY
+  });
+  assert.ok(disabled.cells.every((cell) => cell.color === "#102030"));
+});
+
+test("staggered tile reveals use a deterministic seeded appearance order", () => {
+  const paint = (progress: number, seed = 137) => {
+    const frame = createFrame("#101820");
+    const samples: Array<{ intensity: number; threshold: number; variant: number }> = [];
+    paintStaggeredTileReveal(frame, {
+      color: (cell) => {
+        samples.push(cell);
+        return cell.variant > 0.5 ? "#ff7080" : "#ff3048";
+      },
+      fadeSpan: 0.08,
+      progress,
+      seed
+    });
+    return { frame, samples };
+  };
+
+  const start = paint(0);
+  const middle = paint(0.5);
+  const repeat = paint(0.5);
+  const otherSeed = paint(0.5, 2026);
+  const complete = paint(1);
+
+  assert.ok(start.frame.cells.every((cell) => cell.color === "#101820"));
+  assert.deepEqual(repeat, middle);
+  assert.notDeepEqual(otherSeed.frame, middle.frame);
+  assert.ok(middle.samples.length > 0 && middle.samples.length < FLOOR_COLS * FLOOR_ROWS);
+  assert.equal(complete.samples.length, FLOOR_COLS * FLOOR_ROWS);
+  assert.ok(complete.samples.every((sample) => sample.intensity === 1));
+  assert.ok(complete.samples.every((sample) => sample.threshold >= 0 && sample.threshold < 1));
+});
+
+test("sparse tile pulses are deterministic, animated, seeded, and respect exclusions", () => {
+  const paint = (atMillis: number, seed: number) => {
+    const frame = createFrame("#000000");
+    const samples: Array<{ intensity: number; variant: number; x: number; y: number }> = [];
+    paintSparseTilePulses(frame, {
+      atMillis,
+      color: (cell) => {
+        samples.push(cell);
+        const channel = Math.round(cell.intensity * 255).toString(16).padStart(2, "0");
+        return cell.variant < 0.5 ? `#${channel}0000` : `#00${channel}00`;
+      },
+      cycleMillis: 1_200,
+      density: 0.45,
+      exclude: ({ x }) => x >= 8,
+      pulseMillis: 700,
+      seed
+    });
+    return { frame, samples };
+  };
+
+  const first = paint(420, 137);
+  const repeat = paint(420, 137);
+  const later = paint(760, 137);
+  const otherSeed = paint(420, 2026);
+
+  assert.deepEqual(repeat, first);
+  assert.notDeepEqual(later.frame, first.frame);
+  assert.notDeepEqual(otherSeed.frame, first.frame);
+  assert.ok(first.samples.length > 0);
+  assert.ok(first.samples.every((sample) => sample.x < 8));
+  assert.ok(first.samples.every((sample) => sample.intensity > 0 && sample.intensity <= 1));
+  assert.ok(first.samples.every((sample) => sample.variant >= 0 && sample.variant < 1));
+  assert.ok(first.frame.cells.filter((cell) => cell.x >= 8).every((cell) => cell.color === "#000000"));
+
+  const disabled = createFrame("#102030");
+  paintSparseTilePulses(disabled, {
+    atMillis: Number.NaN,
+    color: "#ffffff",
+    cycleMillis: 0,
+    density: 2,
+    pulseMillis: Number.POSITIVE_INFINITY,
+    seed: Number.NaN
+  });
+  assert.ok(disabled.cells.every((cell) => cell.color === "#102030"));
 });
 
 test("floor bounds match the physical grid", () => {

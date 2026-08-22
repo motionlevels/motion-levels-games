@@ -1,6 +1,6 @@
 /** @jsxRuntime automatic */
 import type { CSSProperties, ReactNode } from "react";
-import type { GamePlayer, GameSnapshot } from "@motion-levels-games/game-sdk";
+import type { GamePlayer, GameSnapshot, HexColor } from "@motion-levels-games/game-sdk";
 import { usePlayerDisplayRuntime } from "./player-display-runtime.tsx";
 
 export { FloorPreview, FramePreviewPanel, floorTileAfterKeyboardNavigation } from "./floor-preview.tsx";
@@ -128,6 +128,26 @@ export function PlayerReadyOverlay({ snapshot }: { snapshot: GameSnapshot }) {
       <strong>{starting ? countdown : `${readyPlayers}/${requiredPlayers}`}</strong>
       <b>{starting ? "El juego está a punto de empezar" : "Entra y permanece en la zona iluminada"}</b>
     </section>
+  );
+}
+
+export function CountdownValue({
+  label = "Cuenta atrás",
+  value
+}: {
+  label?: string;
+  value: number;
+}) {
+  const normalizedValue = Math.max(1, Math.ceil(Number.isFinite(value) ? value : 1));
+  return (
+    <span
+      key={normalizedValue}
+      aria-label={`${label}: ${normalizedValue}`}
+      className="ml-countdown-value"
+      data-countdown-value={normalizedValue}
+    >
+      {normalizedValue}
+    </span>
   );
 }
 
@@ -484,20 +504,24 @@ export function EventRail({
 }
 
 export function ResultOverlay({
+  accent,
   children,
   className = "",
   eyebrow = "Resultado",
   message,
   title,
   tone = "neutral",
+  variant = "default",
   visible = true
 }: {
+  accent?: HexColor;
   children?: ReactNode;
   className?: string;
   eyebrow?: ReactNode;
   message?: ReactNode;
   title: ReactNode;
   tone?: Tone;
+  variant?: "default" | "victory";
   visible?: boolean;
 }) {
   if (!visible) {
@@ -508,11 +532,13 @@ export function ResultOverlay({
     <section
       aria-atomic="true"
       aria-live="assertive"
-      className={`ml-result-overlay ml-result-overlay-${tone} ${className}`.trim()}
+      className={`ml-result-overlay ml-result-overlay-${tone} ml-result-overlay-${variant} ${className}`.trim()}
       data-display-contained-by="content"
       data-display-containment="result-overlay"
       data-display-tone={tone}
+      data-result-variant={variant}
       role="status"
+      style={accent ? ({ "--ml-tone": accent } as CSSProperties) : undefined}
     >
       <div className="ml-result-overlay-glow" aria-hidden="true" data-display-geometry="ignore" />
       <div className="ml-result-overlay-card" data-display-containment="result-card">

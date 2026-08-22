@@ -35,6 +35,69 @@ export type SmoothPulseOptions = {
   phaseOffsetMillis?: number;
 };
 
+export type BeatPulseOptions = {
+  atMillis: number;
+  attackMillis: number;
+  periodMillis: number;
+  phaseOffsetMillis?: number;
+  releaseMillis: number;
+};
+
+export type ProgressiveTileRevealCell = {
+  intensity: number;
+  progress: number;
+  threshold: number;
+  x: number;
+  y: number;
+};
+
+export type ProgressiveTileRevealColor = HexColor | ((cell: ProgressiveTileRevealCell) => HexColor | undefined);
+
+export type ProgressiveTileRevealOptions = {
+  color: ProgressiveTileRevealColor;
+  fadeSpan?: number;
+  progress: number;
+  threshold: (cell: { x: number; y: number }) => number | undefined;
+};
+
+export type StaggeredTileRevealCell = {
+  intensity: number;
+  progress: number;
+  threshold: number;
+  variant: number;
+  x: number;
+  y: number;
+};
+
+export type StaggeredTileRevealColor = HexColor | ((cell: StaggeredTileRevealCell) => HexColor | undefined);
+
+export type StaggeredTileRevealOptions = {
+  color: StaggeredTileRevealColor;
+  fadeSpan?: number;
+  progress: number;
+  seed: number;
+};
+
+export type SparseTilePulseCell = {
+  cycle: number;
+  intensity: number;
+  variant: number;
+  x: number;
+  y: number;
+};
+
+export type SparseTilePulseColor = HexColor | ((cell: SparseTilePulseCell) => HexColor | undefined);
+
+export type SparseTilePulseOptions = {
+  atMillis: number;
+  color: SparseTilePulseColor;
+  cycleMillis: number;
+  density: number;
+  exclude?: (cell: { x: number; y: number }) => boolean;
+  pulseMillis: number;
+  seed: number;
+};
+
 /** Samples a continuous cosine pulse from explicit engine time. */
 export function sampleSmoothPulse(options: SmoothPulseOptions): number {
   const firstValue = finiteNumber(options.minValue, 0);
@@ -52,6 +115,129 @@ export function sampleSmoothPulse(options: SmoothPulseOptions): number {
   const unitPulse = (1 - Math.cos(phase * Math.PI * 2)) / 2;
 
   return minValue + (maxValue - minValue) * unitPulse;
+}
+
+/** Samples a short attack/release pulse repeated from an explicit local clock. */
+export function sampleBeatPulse(options: BeatPulseOptions): number {
+  const periodMillis = finiteNumber(options.periodMillis, 0);
+  if (periodMillis <= 0) return 0;
+
+  const attackMillis = Math.min(periodMillis, Math.max(0, finiteNumber(options.attackMillis, 0)));
+  const releaseMillis = Math.min(
+    periodMillis - attackMillis,
+    Math.max(0, finiteNumber(options.releaseMillis, 0))
+  );
+  if (attackMillis <= 0 && releaseMillis <= 0) return 0;
+
+  const atMillis = finiteNumber(options.atMillis, 0);
+  const phaseOffsetMillis = finiteNumber(options.phaseOffsetMillis, 0);
+  const phaseMillis = positiveModulo(atMillis + phaseOffsetMillis, periodMillis);
+  if (attackMillis > 0 && phaseMillis < attackMillis) {
+    return smoothstep(phaseMillis / attackMillis);
+  }
+  if (phaseMillis < attackMillis + releaseMillis) {
+    return 1 - smoothstep((phaseMillis - attackMillis) / releaseMillis);
+  }
+  return 0;
+}
+
+/** Paints a deterministic per-cell reveal from normalized thresholds and progress. */
+export function paintProgressiveTileReveal(frame: Frame, options: ProgressiveTileRevealOptions): void {
+  const progress = clampUnit(finiteNumber(options.progress, 0));
+  const fadeSpan = clampUnit(finiteNumber(options.fadeSpan, 0.12));
+  if (progress <= 0 || fadeSpan <= 0) return;
+
+  for (let y = 0; y < frame.height; y += 1) {
+    for (let x = 0; x < frame.width; x += 1) {
+      const rawThreshold = options.threshold({ x, y });
+      if (typeof rawThreshold !== "number" || !Number.isFinite(rawThreshold)) continue;
+
+      const threshold = clampUnit(rawThreshold);
+      const revealAt = threshold * (1 - fadeSpan);
+      const localProgress = clampUnit((progress - revealAt) / fadeSpan);
+      if (localProgress <= 0) continue;
+
+      const reveal = {
+        intensity: smoothstep(localProgress),
+        progress,
+        threshold,
+        x,
+        y
+      };
+      const resolvedColor = typeof options.color === "function" ? options.color(reveal) : options.color;
+      if (resolvedColor) {
+        frame.cells[y * frame.width + x] = { x, y, color: resolvedColor };
+      }
+    }
+  }
+}
+
+/** Reveals every tile in a deterministic seeded order with independent soft attacks. */
+export function paintStaggeredTileReveal(frame: Frame, options: StaggeredTileRevealOptions): void {
+  const progress = clampUnit(finiteNumber(options.progress, 0));
+  const fadeSpan = clampUnit(finiteNumber(options.fadeSpan, 0.08));
+  const seed = Math.trunc(finiteNumber(options.seed, 0));
+  if (progress <= 0 || fadeSpan <= 0) return;
+
+  for (let y = 0; y < frame.height; y += 1) {
+    for (let x = 0; x < frame.width; x += 1) {
+      const threshold = effectHash(seed, x, y, 71);
+      const revealAt = threshold * (1 - fadeSpan);
+      const localProgress = clampUnit((progress - revealAt) / fadeSpan);
+      if (localProgress <= 0) continue;
+
+      const reveal = {
+        intensity: smoothstep(localProgress),
+        progress,
+        threshold,
+        variant: effectHash(seed, x, y, 97),
+        x,
+        y
+      };
+      const resolvedColor = typeof options.color === "function" ? options.color(reveal) : options.color;
+      if (resolvedColor) {
+        frame.cells[y * frame.width + x] = { x, y, color: resolvedColor };
+      }
+    }
+  }
+}
+
+/** Paints sparse, stateless tile pulses with deterministic per-cell timing. */
+export function paintSparseTilePulses(frame: Frame, options: SparseTilePulseOptions): void {
+  const cycleMillis = finiteNumber(options.cycleMillis, 0);
+  const pulseMillis = Math.min(cycleMillis, finiteNumber(options.pulseMillis, 0));
+  const density = Math.min(1, Math.max(0, finiteNumber(options.density, 0)));
+  if (cycleMillis <= 0 || pulseMillis <= 0 || density <= 0) return;
+
+  const atMillis = finiteNumber(options.atMillis, 0);
+  const seed = Math.trunc(finiteNumber(options.seed, 0));
+  for (let y = 0; y < frame.height; y += 1) {
+    for (let x = 0; x < frame.width; x += 1) {
+      if (options.exclude?.({ x, y })) continue;
+
+      const phaseOffsetMillis = effectHash(seed, x, y, 17) * cycleMillis;
+      const shiftedMillis = atMillis + phaseOffsetMillis;
+      const cycle = Math.floor(shiftedMillis / cycleMillis);
+      const localMillis = positiveModulo(shiftedMillis, cycleMillis);
+      if (localMillis >= pulseMillis || effectHash(seed, x, y, cycle, 31) >= density) continue;
+
+      const progress = localMillis / pulseMillis;
+      const intensity = Math.sin(progress * Math.PI) ** 2;
+      if (intensity <= Number.EPSILON) continue;
+
+      const pulse = {
+        cycle,
+        intensity,
+        variant: effectHash(seed, cycle, y, x, 47),
+        x,
+        y
+      };
+      const resolvedColor = typeof options.color === "function" ? options.color(pulse) : options.color;
+      if (resolvedColor) {
+        frame.cells[y * frame.width + x] = { x, y, color: resolvedColor };
+      }
+    }
+  }
 }
 
 /** Paints a Manhattan-distance ring, useful for player-ready and target cues. */
@@ -119,4 +305,23 @@ function positiveModulo(value: number, divisor: number): number {
 
 function finiteNumber(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function smoothstep(value: number): number {
+  const normalized = clampUnit(value);
+  return normalized * normalized * (3 - 2 * normalized);
+}
+
+function effectHash(...values: number[]): number {
+  let state = 2_166_136_261;
+  for (const value of values) {
+    state ^= Math.trunc(value * 1_000_003);
+    state = Math.imul(state, 16_777_619);
+    state ^= state >>> 13;
+  }
+  return (state >>> 0) / 0x1_0000_0000;
 }

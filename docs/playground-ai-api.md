@@ -39,6 +39,42 @@ const feedback = await ml.capture(["display", "boardPhysical", "combined"]);
 console.log(ml.getState(), feedback.combined.dataUrl);
 ```
 
+## Prepared Playtest Scenarios
+
+Games may expose deterministic, game-owned setup scenarios for animation and
+edge-case iteration. Preparation drives the ordinary engine inputs quickly and
+stops immediately before the interesting transition; it does not restore the
+display-only `GameSnapshot` as mutable authority.
+
+Duelo exposes a victory scenario that leaves player 1 one real tile from
+winning:
+
+```js
+ml.scenario.list();
+// [{ id: "victory", label: "One tile before victory" }]
+
+ml.scenario.prepare("victory");
+// The board is now running with exactly one player-1 target remaining.
+
+ml.scenario.trigger();
+// Claims the final tile through normal input and starts the victory animation.
+
+const review = await ml.scenario.record("victory");
+// Deterministically prepares, triggers, and records the TV plus physical floor.
+console.log(review.clip.dataUrl, review.contactSheet.dataUrl);
+```
+
+Prepared scenarios are available only in the standalone playground because the
+integrated venue runtime remains the sole owner of its live game state.
+Recording defaults belong to the game-owned scenario. Duelo records 400 ms of
+pre-roll and its complete five-second victory transition at 10 fps. The
+playground stops only its automatic clock while recording, advances the real
+engine explicitly, and scrubs TV CSS animations to the matching timestamp. It
+returns a 1230x540 animated WebP plus a timestamped six-frame PNG contact sheet.
+For browser tools that cannot call page globals directly, launch the same flow
+with `?recordScenario=victory`; the standalone playground renders the generated
+clip, contact sheet, and download links beneath the workbench.
+
 ## Methods
 
 ```ts
@@ -124,6 +160,35 @@ type PlaygroundApi = {
       playerCount?: number;
     }
   ): Promise<PlaygroundMediaBundle>;
+
+  scenario: {
+    list(): Array<{ id: string; label: string }>;
+    prepare(id: string): {
+      description?: string;
+      gameId: string;
+      id: string;
+      label: string;
+      triggerActions: number;
+    };
+    record(id: string, options?: {
+      durationMillis?: number;
+      frameIntervalMillis?: number;
+      leadInMillis?: number;
+    }): Promise<{
+      clip: { dataUrl: string; fileName: string; width: number; height: number; mimeType: "image/webp" };
+      contactSheet: { dataUrl: string; fileName: string; width: number; height: number; mimeType: "image/png" };
+      durationMillis: number;
+      frameCount: number;
+      frameIntervalMillis: number;
+      gameId: string;
+      id: string;
+      label: string;
+      leadInMillis: number;
+      playerCount: number;
+      seed: number;
+    }>;
+    trigger(): ReturnType<PlaygroundApi["getState"]>;
+  };
 
   agentLab?: AgentLabApi;
 };

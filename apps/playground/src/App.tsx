@@ -50,6 +50,8 @@ import {
   type GameDifficulty,
   type GameEngineState,
   type GameEvent,
+  type GamePlaytestAction,
+  type GamePlaytestDriver,
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
 import { GameSession, buildGameplayRegistry } from "@motion-levels-games/runtime";
@@ -61,6 +63,7 @@ import {
   downscaleCaptureToWebp,
   waitForPaint
 } from "./captureImages.ts";
+import { combinedCapture, frameToCapture } from "./boardCapture.ts";
 import motionLevelsLogo from "./assets/motion-levels-icon.webp";
 import { nativeDisplayHeight, nativeDisplayWidth } from "./displayConstants.ts";
 import { eventKey, isEventStreamAtLatest } from "./eventStream.ts";
@@ -95,12 +98,24 @@ import {
   type AgentLabState,
   type PlaygroundApi,
   type PlaygroundCaptureSurface,
-  type PlaygroundPointSpace
+  type PlaygroundPointSpace,
+  type PlaygroundScenarioPreparation,
+  type PlaygroundScenarioRecording,
+  type PlaygroundScenarioRecordingOptions,
+  type PlaygroundState
 } from "./playgroundApi.ts";
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
 import { readPlayerJourneyLaunch } from "./playerJourney.ts";
 import { localPlayerMenuUrl, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
+import {
+  encodeScenarioRecording,
+  normalizeScenarioRecordingOptions,
+  scenarioRecordingHeight,
+  scenarioRecordingTimeline,
+  scenarioRecordingWidth,
+  type ScenarioRecordingFrame
+} from "./scenarioRecording.ts";
 import {
   controlVenueRuntime,
   fetchVenueRuntimeDisplay,
@@ -206,6 +221,9 @@ export function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
   const [captureMessage, setCaptureMessage] = useState("");
+  const [scenarioRecordingPreview, setScenarioRecordingPreview] = useState<PlaygroundScenarioRecording | null>(null);
+  const [scenarioRecordingError, setScenarioRecordingError] = useState("");
+  const [scenarioRecordingUrls, setScenarioRecordingUrls] = useState<{ clip: string; contactSheet: string } | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryQuery, setLibraryQuery] = useState("");
@@ -244,6 +262,9 @@ export function App() {
   const runtimePauseOwnersRef = useRef(new Set<string>());
   const runtimeControlTailRef = useRef<Promise<void>>(Promise.resolve());
   const lastVenueEventKeyRef = useRef("");
+  const pendingScenarioActionsRef = useRef<readonly GamePlaytestAction[] | null>(null);
+  const scenarioRecordingRef = useRef(false);
+  const scenarioAutoRecordStartedRef = useRef(false);
   const displayGame = runtimeLive
     ? findPlaygroundGame(venueDisplay?.gameSnapshot?.currentGame || venueDisplay?.currentGame || "") ?? selectedGame
     : selectedGame;
@@ -537,6 +558,7 @@ export function App() {
   const releaseActivePlayerInputs = useCallback(() => {
     if (runtimeLive) {
       activePlayerInputsRef.current.clear();
+      pendingScenarioActionsRef.current = null;
       setInputResetSequence((current) => current + 1);
       void enqueueVenueFloorInput([], true).catch(() => {});
       return;
@@ -683,6 +705,7 @@ export function App() {
       );
       if (pausedRef.current) sessionRef.current.pause(nextState.clockMillis);
       activePlayerInputsRef.current.clear();
+      pendingScenarioActionsRef.current = null;
       setInputResetSequence((current) => current + 1);
       eventAutoFollowRef.current = true;
       previousLatestEventRef.current = "";
@@ -841,6 +864,12 @@ export function App() {
     let accumulatedMillis = 0;
 
     const runFrame = (runtimeMillis: number) => {
+      if (scenarioRecordingRef.current) {
+        previousRuntimeMillis = runtimeMillis;
+        accumulatedMillis = 0;
+        frameId = window.requestAnimationFrame(runFrame);
+        return;
+      }
       const elapsedMillis = Math.min(
         sessionRef.current.frameMillis * DEFAULT_ENGINE_MAX_CATCH_UP_STEPS,
         Math.max(0, runtimeMillis - previousRuntimeMillis)
@@ -1135,32 +1164,217 @@ export function App() {
     };
   }, [changeSurfaceMode]);
 
+  const readPlaygroundState = useCallback((): PlaygroundState => {
+    const liveDisplay = venueDisplayRef.current;
+    const liveSnapshot = liveDisplay?.gameSnapshot ?? snapshotRef.current;
+    const liveFrame = liveDisplay?.frame ?? frameRef.current;
+    return {
+      gameId: liveSnapshot.currentGame || selectedGameRef.current.manifest.id,
+      status: liveSnapshot.phase,
+      paused: (liveDisplay?.paused ?? pausedRef.current) || (
+        surfaceModeRef.current === "agents" && (agentLabControllerRef.current?.getState().paused ?? false)
+      ),
+      rotatedBoard: false,
+      snapshot: liveSnapshot,
+      frame: liveFrame,
+      previewFrame: liveFrame,
+      events: eventsRef.current,
+      clockMillis: liveDisplay?.elapsedMillis ?? localClockMillisRef.current,
+      fps: liveDisplay ? 50 : sessionRef.current.fps,
+      frameMillis: liveDisplay ? DEFAULT_ENGINE_FRAME_MILLIS : sessionRef.current.frameMillis,
+      difficulty: difficultyRef.current,
+      options: gameOptionsRef.current,
+      playerCount: liveDisplay?.playerCount ?? playerCountRef.current,
+      seed: seedRef.current
+    };
+  }, []);
+
+  const preparePlaytestScenario = useCallback((id: string): PlaygroundScenarioPreparation => {
+    if (venueDisplayRef.current) {
+      throw new Error("Playtest scenarios are available in the standalone playground only");
+    }
+    if (surfaceModeRef.current === "agents") {
+      throw new Error("Switch to the floor surface before preparing a playtest scenario");
+    }
+
+    const game = selectedGameRef.current;
+    const scenario = game.playtestScenarios?.find((candidate) => candidate.id === id);
+    if (!scenario) throw new Error(`Unknown ${game.manifest.label} playtest scenario: ${id}`);
+
+    const normalizedOptions = normalizeGameConfigOptions(gameOptionsRef.current, game.manifest);
+    selectGameSession(
+      sessionRef.current,
+      game,
+      seedRef.current,
+      playerCountRef.current,
+      difficultyRef.current,
+      normalizedOptions
+    );
+    activePlayerInputsRef.current.clear();
+    eventsRef.current = [];
+    setEvents([]);
+    manuallyPausedRef.current = false;
+    pausedRef.current = isPlaygroundPaused(false, pauseLocksRef.current);
+    setManuallyPaused(false);
+
+    const driver: GamePlaytestDriver = {
+      get game() { return sessionRef.current.instance; },
+      get clockMillis() { return sessionRef.current.clockMillis; },
+      get state() { return sessionRef.current.engineState(); },
+      press: (x, y) => sessionRef.current.press(x, y),
+      release: (x, y) => sessionRef.current.release(x, y),
+      step: (deltaMillis) => sessionRef.current.step(deltaMillis)
+    };
+    const preparation = scenario.prepare(driver);
+    pendingScenarioActionsRef.current = preparation.trigger;
+    syncEngineState({ ...sessionRef.current.engineState(), events: [] });
+
+    return {
+      description: preparation.description,
+      gameId: game.manifest.id,
+      id: scenario.id,
+      label: scenario.label,
+      triggerActions: preparation.trigger.length
+    };
+  }, [syncEngineState]);
+
+  const triggerPreparedScenario = useCallback((): PlaygroundState => {
+    const actions = pendingScenarioActionsRef.current;
+    if (!actions) throw new Error("Prepare a playtest scenario before triggering it");
+
+    const emittedEvents: GameEvent[] = [];
+    for (const action of actions) {
+      const nextState = action.type === "press"
+        ? sessionRef.current.press(action.x, action.y)
+        : action.type === "release"
+          ? sessionRef.current.release(action.x, action.y)
+          : sessionRef.current.step(action.deltaMillis);
+      emittedEvents.push(...nextState.events);
+    }
+    pendingScenarioActionsRef.current = null;
+    syncEngineState({ ...sessionRef.current.engineState(), events: emittedEvents });
+    return readPlaygroundState();
+  }, [readPlaygroundState, syncEngineState]);
+
+  const captureScenarioRecordingFrame = useCallback(async (atMillis: number): Promise<ScenarioRecordingFrame> => {
+    syncEngineState({ ...sessionRef.current.engineState(), events: [] });
+    await waitForPaint();
+    const displayElement = displayNativeRef.current;
+    if (!displayElement) throw new Error("Player display is not mounted");
+    seekElementAnimations(displayElement, Math.max(0, atMillis));
+    await waitForPaint();
+
+    const displayCapture = await captureDisplayElement(displayElement);
+    const boardCapture = frameToCapture(frameRef.current, "boardPhysical");
+    const combined = await combinedCapture(displayCapture, boardCapture);
+    return {
+      atMillis,
+      dataUrl: await downscaleCaptureToPng(
+        combined.dataUrl,
+        scenarioRecordingWidth,
+        scenarioRecordingHeight
+      )
+    };
+  }, [syncEngineState]);
+
+  const recordPlaytestScenario = useCallback(async (
+    id: string,
+    options: PlaygroundScenarioRecordingOptions = {}
+  ): Promise<PlaygroundScenarioRecording> => {
+    if (scenarioRecordingRef.current) throw new Error("A playtest scenario recording is already running");
+    const game = selectedGameRef.current;
+    const scenario = game.playtestScenarios?.find((candidate) => candidate.id === id);
+    if (!scenario) throw new Error(`Unknown ${game.manifest.label} playtest scenario: ${id}`);
+    if (!scenario.recording) throw new Error(`${scenario.label} does not define recording defaults`);
+
+    const recording = normalizeScenarioRecordingOptions(scenario.recording, options);
+    const timeline = scenarioRecordingTimeline(recording);
+    const frames: ScenarioRecordingFrame[] = [];
+    scenarioRecordingRef.current = true;
+
+    try {
+      preparePlaytestScenario(id);
+      await waitForPaint();
+      let triggered = false;
+      let previousAnimationMillis = 0;
+
+      for (const atMillis of timeline) {
+        if (atMillis >= 0 && !triggered) {
+          triggerPreparedScenario();
+          triggered = true;
+        }
+        if (triggered && atMillis > previousAnimationMillis) {
+          sessionRef.current.step(atMillis - previousAnimationMillis);
+          previousAnimationMillis = atMillis;
+        }
+        frames.push(await captureScenarioRecordingFrame(atMillis));
+      }
+
+      const assets = await encodeScenarioRecording(
+        frames,
+        `${game.manifest.id}-${scenario.id}-review`,
+        recording.frameIntervalMillis
+      );
+      preparePlaytestScenario(id);
+
+      return {
+        ...assets,
+        durationMillis: recording.durationMillis,
+        frameCount: frames.length,
+        frameIntervalMillis: recording.frameIntervalMillis,
+        gameId: game.manifest.id,
+        id: scenario.id,
+        label: scenario.label,
+        leadInMillis: recording.leadInMillis,
+        playerCount: playerCountRef.current,
+        seed: seedRef.current
+      };
+    } finally {
+      scenarioRecordingRef.current = false;
+    }
+  }, [captureScenarioRecordingFrame, preparePlaytestScenario, triggerPreparedScenario]);
+
+  useEffect(() => {
+    const scenarioId = new URLSearchParams(window.location.search).get("recordScenario")?.trim();
+    if (!scenarioId || scenarioAutoRecordStartedRef.current) return;
+    scenarioAutoRecordStartedRef.current = true;
+    setScenarioRecordingError("");
+    void recordPlaytestScenario(scenarioId).then(
+      (recording) => setScenarioRecordingPreview(recording),
+      (error) => setScenarioRecordingError(error instanceof Error ? error.message : "Could not record scenario")
+    );
+  }, [recordPlaytestScenario]);
+
+  useEffect(() => {
+    if (!scenarioRecordingPreview) return undefined;
+    setScenarioRecordingUrls(null);
+    let cancelled = false;
+    let urls: { clip: string; contactSheet: string } | null = null;
+
+    void Promise.all([
+      fetch(scenarioRecordingPreview.clip.dataUrl).then((response) => response.blob()),
+      fetch(scenarioRecordingPreview.contactSheet.dataUrl).then((response) => response.blob())
+    ]).then(([clip, contactSheet]) => {
+      if (cancelled) return;
+      urls = {
+        clip: URL.createObjectURL(clip),
+        contactSheet: URL.createObjectURL(contactSheet)
+      };
+      setScenarioRecordingUrls(urls);
+    });
+
+    return () => {
+      cancelled = true;
+      if (urls) {
+        URL.revokeObjectURL(urls.clip);
+        URL.revokeObjectURL(urls.contactSheet);
+      }
+    };
+  }, [scenarioRecordingPreview]);
+
   const api = useMemo<PlaygroundApi>(
     () => ({
-      getState: () => {
-        const liveDisplay = venueDisplayRef.current;
-        const liveSnapshot = liveDisplay?.gameSnapshot ?? snapshotRef.current;
-        const liveFrame = liveDisplay?.frame ?? frameRef.current;
-        return {
-          gameId: liveSnapshot.currentGame || selectedGameRef.current.manifest.id,
-          status: liveSnapshot.phase,
-          paused: (liveDisplay?.paused ?? pausedRef.current) || (
-            surfaceModeRef.current === "agents" && (agentLabControllerRef.current?.getState().paused ?? false)
-          ),
-          rotatedBoard: false,
-          snapshot: liveSnapshot,
-          frame: liveFrame,
-          previewFrame: liveFrame,
-          events: eventsRef.current,
-          clockMillis: liveDisplay?.elapsedMillis ?? localClockMillisRef.current,
-          fps: liveDisplay ? 50 : sessionRef.current.fps,
-          frameMillis: liveDisplay ? DEFAULT_ENGINE_FRAME_MILLIS : sessionRef.current.frameMillis,
-          difficulty: difficultyRef.current,
-          options: gameOptionsRef.current,
-          playerCount: liveDisplay?.playerCount ?? playerCountRef.current,
-          seed: seedRef.current
-        };
-      },
+      getState: readPlaygroundState,
       pause: () => setManuallyPausedState(true),
       resume: () => setManuallyPausedState(false),
       reset: () => {
@@ -1195,9 +1409,15 @@ export function App() {
       },
       media: generateMedia,
       animationMedia: generateAnimationMediaBundle,
+      scenario: {
+        list: () => (selectedGameRef.current.playtestScenarios ?? []).map(({ id, label }) => ({ id, label })),
+        prepare: preparePlaytestScenario,
+        record: recordPlaytestScenario,
+        trigger: triggerPreparedScenario
+      },
       agentLab: agentLabApi
     }),
-    [agentLabApi, captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, restart, setManuallyPausedState, stepGame]
+    [agentLabApi, captureSurfaces, copySurface, generateMedia, handleTilePress, handleTileRelease, preparePlaytestScenario, readPlaygroundState, recordPlaytestScenario, restart, setManuallyPausedState, stepGame, triggerPreparedScenario]
   );
 
   useEffect(() => installPlaygroundApi(api), [api]);
@@ -1924,6 +2144,39 @@ export function App() {
           </div>
         </article>
       </section>
+      {scenarioRecordingPreview || scenarioRecordingError ? (
+        <section aria-label="Scenario recording review" className="scenario-recording-review">
+          <header className="scenario-recording-review-header">
+            <div>
+              <span className="eyebrow">Scenario review</span>
+              <strong>{scenarioRecordingPreview?.label ?? "Recording failed"}</strong>
+            </div>
+            {scenarioRecordingPreview ? (
+              <div className="scenario-recording-review-actions">
+                <a download={scenarioRecordingPreview.clip.fileName} href={scenarioRecordingUrls?.clip ?? scenarioRecordingPreview.clip.dataUrl}>Download clip</a>
+                <a download={scenarioRecordingPreview.contactSheet.fileName} href={scenarioRecordingUrls?.contactSheet ?? scenarioRecordingPreview.contactSheet.dataUrl}>Download keyframes</a>
+              </div>
+            ) : null}
+          </header>
+          {scenarioRecordingError ? <p role="alert">{scenarioRecordingError}</p> : null}
+          {scenarioRecordingPreview ? (
+            <div className="scenario-recording-review-media">
+              <img
+                alt={`${scenarioRecordingPreview.gameId} ${scenarioRecordingPreview.id} review clip`}
+                data-scenario-recording-source={scenarioRecordingPreview.clip.dataUrl}
+                data-scenario-recording="clip"
+                src={scenarioRecordingUrls?.clip ?? scenarioRecordingPreview.clip.dataUrl}
+              />
+              <img
+                alt={`${scenarioRecordingPreview.gameId} ${scenarioRecordingPreview.id} keyframes`}
+                data-scenario-recording-source={scenarioRecordingPreview.contactSheet.dataUrl}
+                data-scenario-recording="contact-sheet"
+                src={scenarioRecordingUrls?.contactSheet ?? scenarioRecordingPreview.contactSheet.dataUrl}
+              />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <div
         aria-atomic="true"
         aria-live="polite"
@@ -1989,6 +2242,13 @@ function pointToPhysicalTile(x: number, y: number, _space: PlaygroundPointSpace)
 
 function randomSeed(): number {
   return MIN_GAME_SEED + Math.floor(Math.random() * (MAX_GAME_SEED - MIN_GAME_SEED + 1));
+}
+
+function seekElementAnimations(element: HTMLElement, currentTimeMillis: number): void {
+  for (const animation of element.getAnimations({ subtree: true })) {
+    animation.pause();
+    animation.currentTime = currentTimeMillis;
+  }
 }
 
 function inactiveAgentLabState(available: boolean, active: boolean, seed: number): AgentLabState {

@@ -13,8 +13,20 @@ Each start zone is a homogeneous 4×4 field. An unoccupied zone breathes from
 60% to 100% intensity every 1.6 seconds so the missing position is unmistakable.
 Once occupied, it transitions over 160 milliseconds to a lower 22–42% band and
 pulses every 640 milliseconds as calm, rapid confirmation. Zones in the same
-state share the engine clock, keep the player's hue, and render above ambient
-waiting/countdown effects so no individual tile can break the field.
+state share the engine clock and keep the player's hue.
+
+The waiting floor stays almost black while a sparse, seeded selection of
+individual tiles fades in and out with the current players' colors. These
+ambient pulses peak below even an occupied start zone, change deterministically
+between cycles, and never enter the two-tile moat around any start zone. Start
+zones render last, so no ambient tile can break their homogeneous 4×4 signal.
+
+Once every player is ready, the ambient pulses clear and all start zones lock
+to one synchronized countdown beat. The real target mosaic then reveals from
+each player's own zone toward the rest of the floor, staying below normal play
+intensity until the countdown completes. Entering play gives every target one
+short player-color launch flash before settling into its normal pulse; no white
+is used because white remains reserved for successful claim feedback.
 
 In the development playground, hold one tile in every illuminated start zone
 through the countdown. Floor input is momentary just like the venue
@@ -24,9 +36,12 @@ a two-second release grace for brief transitions.
 
 Step on colored tiles to claim them for that color. Claimed tiles flash white
 and then dim, while the remaining targets keep a calm pulse. The first player
-whose color has no targets left wins. The final standings remain visible during
-a five-second winner animation, then the game returns to player readiness
-automatically.
+whose color has no targets left wins. The decisive tile keeps its white claim
+flash, then winner-colored tiles appear across the whole floor in a seeded,
+deterministic order. A restrained full-field pulse with sparse brighter tiles
+holds the completed result before fading into the next readiness layout. Final
+standings remain visible throughout the five-second transition, then the game
+returns to player readiness automatically.
 
 Floor input has no player identity, so—as in the original game—claiming a tile
 always advances the owner of that tile. The physical challenge is to follow and

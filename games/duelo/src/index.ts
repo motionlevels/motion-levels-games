@@ -8,6 +8,9 @@ export {
   dueloPlayerPalette,
   dueloReadyZoneAnimation,
   dueloReadyZones,
+  dueloStartingAnimation,
+  dueloVictoryAnimation,
+  dueloWaitingIdleAnimation,
   winAnimationMillis,
   type DueloClaimSnapshot,
   type DueloGameInstance,
@@ -27,3 +30,4 @@ export {
   waitingSnapshot
 } from "./fixtures.ts";
 export { dueloConfigVars, manifest } from "./manifest.ts";
+export { playtestScenarios } from "./playtest.ts";

@@ -83,6 +83,13 @@ export type PlayerDisplayAssetRenderer = (input: {
   game: PlaygroundGame;
 }) => Promise<Pick<PlaygroundMediaBundle["assets"], "playerDisplay" | "playerDisplayAnimation">>;
 
+export type AnimatedWebpImage = {
+  dataUrl: string;
+  height: number;
+  mimeType: "image/webp";
+  width: number;
+};
+
 type WebPEncoderModule = {
   HEAP8: Int8Array;
   calledRun?: boolean;
@@ -299,11 +306,25 @@ export async function imagesToAnimatedWebpAsset(
   frames: Array<{ dataUrl: string; delayMs: number }>,
   fileName: string
 ): Promise<PlaygroundMediaAsset> {
+  const { width, height } = gameMediaAssetSpecs.playerDisplayAnimation;
+  const image = await imagesToAnimatedWebp(frames, { width, height });
+  return {
+    kind: "playerDisplayAnimation",
+    fileName,
+    ...image
+  };
+}
+
+export async function imagesToAnimatedWebp(
+  frames: Array<{ dataUrl: string; delayMs: number }>,
+  options: { width: number; height: number }
+): Promise<AnimatedWebpImage> {
   if (frames.length === 0) {
-    throw new Error("Cannot render a player display animation without frames.");
+    throw new Error("Cannot render an animation without frames.");
   }
 
-  const { width, height } = gameMediaAssetSpecs.playerDisplayAnimation;
+  const width = positiveImageDimension(options.width, "animation width");
+  const height = positiveImageDimension(options.height, "animation height");
   const encoder = GIFEncoder();
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -326,13 +347,19 @@ export async function imagesToAnimatedWebpAsset(
   encoder.finish();
   const webpBytes = await encodeGifBytesToWebp(encoder.bytesView());
   return {
-    kind: "playerDisplayAnimation",
     width,
     height,
     mimeType: "image/webp",
-    fileName,
     dataUrl: bytesToDataUrl(webpBytes, "image/webp")
   };
+}
+
+function positiveImageDimension(value: number, label: string): number {
+  const normalized = Math.round(value);
+  if (!Number.isFinite(value) || normalized <= 0) {
+    throw new Error(`${label} must be a positive number`);
+  }
+  return normalized;
 }
 
 async function encodeGifBytesToWebp(gifBytes: Uint8Array): Promise<Uint8Array> {

@@ -5,6 +5,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-games/game-sdk";
 import {
+  CountdownValue,
   DisplayStack,
   DisplayStage,
   EventRail,
@@ -59,6 +60,20 @@ test("MetricPanel renders label and value without app dependencies", () => {
 
   assert.match(html, /Score/);
   assert.match(html, /42/);
+});
+
+test("CountdownValue restarts one contained beat per normalized number", () => {
+  const html = renderToStaticMarkup(React.createElement(CountdownValue, {
+    label: "Comienza en",
+    value: 2.2
+  }));
+
+  assert.match(html, /aria-label="Comienza en: 3"/);
+  assert.match(html, /class="ml-countdown-value"/);
+  assert.match(html, /data-countdown-value="3"/);
+  assert.match(styleSource, /\.ml-countdown-value \{[\s\S]*animation: ml-countdown-value-enter 680ms/u);
+  assert.match(styleSource, /@keyframes ml-countdown-value-enter/u);
+  assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.ml-countdown-value/u);
 });
 
 test("score primitives clamp progress and preserve both team identities", () => {
@@ -165,9 +180,11 @@ test("feedback, progress, and roster primitives normalize values and retain sema
     nonPointCard,
     longLabelCard,
     React.createElement(ResultOverlay, {
+      accent: "#ff3048",
       message: "Gran partida",
       title: "Victoria",
-      tone: "green"
+      tone: "green",
+      variant: "victory"
     })
   ));
 
@@ -182,6 +199,8 @@ test("feedback, progress, and roster primitives normalize values and retain sema
   assert.match(html, /data-display-contained-by="content"/);
   assert.match(html, /data-display-containment="result-overlay"/);
   assert.match(html, /aria-live="assertive"/);
+  assert.match(html, /data-result-variant="victory"/);
+  assert.match(html, /--ml-tone:#ff3048/);
   assert.match(styleSource, /\.ml-player-card\.is-muted\s*\{[^}]*filter:\s*saturate\(0\.54\) brightness\(0\.72\);[^}]*opacity:\s*0\.58;/s);
   assert.match(styleSource, /\.ml-player-card\.is-recent\s*\{[^}]*animation:\s*ml-player-card-recent 720ms/s);
   assert.equal(renderToStaticMarkup(React.createElement(ResultOverlay, {
@@ -289,6 +308,7 @@ test("LivesMeter normalizes invalid snapshots and caps visual DOM growth", () =>
 test("shared result motion is contained and honors reduced motion", () => {
   assert.match(styleSource, /\.ml-result-overlay-card\s*\{[^}]*animation:\s*ml-result-overlay-enter/s);
   assert.match(styleSource, /@keyframes ml-result-overlay-enter/);
+  assert.match(styleSource, /@keyframes ml-result-overlay-victory-glow/);
   assert.match(
     styleSource,
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.ml-result-overlay-card[\s\S]*?animation:\s*none;/

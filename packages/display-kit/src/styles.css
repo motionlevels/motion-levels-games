@@ -1190,6 +1190,21 @@
   width: min(70vw, 900px);
 }
 
+.ml-result-overlay-victory {
+  background: rgba(3, 6, 11, 0.8);
+}
+
+.ml-result-overlay-victory .ml-result-overlay-glow {
+  animation: ml-result-overlay-victory-glow 1.8s ease-in-out infinite;
+}
+
+.ml-result-overlay-victory .ml-result-overlay-card {
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--ml-tone) 16%, transparent), transparent 58%),
+    color-mix(in srgb, var(--ml-surface-2) 94%, transparent);
+  border-color: color-mix(in srgb, var(--ml-tone) 68%, var(--ml-border));
+}
+
 .ml-result-overlay-card {
   animation: ml-result-overlay-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
   background:
@@ -1223,8 +1238,21 @@
   }
 }
 
+@keyframes ml-result-overlay-victory-glow {
+  0%, 100% {
+    opacity: 0.62;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+
+  50% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ml-result-overlay-card {
+  .ml-result-overlay-card,
+  .ml-result-overlay-victory .ml-result-overlay-glow {
     animation: none;
   }
 }
@@ -1261,6 +1289,13 @@
 .ml-result-overlay-extra {
   max-width: 100%;
   min-width: 0;
+}
+
+.ml-result-overlay-victory .ml-result-overlay-extra {
+  color: var(--ml-muted);
+  font-size: clamp(22px, 1.8vw, 34px);
+  font-weight: 800;
+  line-height: 1.1;
 }
 
 .ml-progress-meter {
@@ -1843,6 +1878,12 @@
   border-color: rgba(255, 225, 118, 0.88);
 }
 
+.ml-countdown-value {
+  animation: ml-countdown-value-enter 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  display: inline-block;
+  transform-origin: center;
+}
+
 @keyframes ml-status-breathe {
   0%, 100% { opacity: 0.45; transform: scale(0.78); }
   50% { opacity: 1; transform: scale(1.18); }
@@ -1862,6 +1903,18 @@
 @keyframes ml-ready-number {
   0%, 100% { opacity: 0.75; transform: scale(0.94); }
   50% { opacity: 1; transform: scale(1.04); }
+}
+
+@keyframes ml-countdown-value-enter {
+  0% { filter: brightness(1.55); opacity: 0.38; transform: scale(0.72); }
+  42% { filter: brightness(1.18); opacity: 1; transform: scale(1.12); }
+  100% { filter: brightness(1); opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ml-countdown-value {
+    animation: none;
+  }
 }
 
 .ml-solo-summary {

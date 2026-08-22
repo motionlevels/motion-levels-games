@@ -22,11 +22,25 @@ export {
 export {
   paintDiamondRing,
   paintDiamondWave,
+  paintProgressiveTileReveal,
+  paintSparseTilePulses,
+  paintStaggeredTileReveal,
+  sampleBeatPulse,
   sampleSmoothPulse,
+  type BeatPulseOptions,
   type DiamondRingOptions,
   type DiamondWaveOptions,
   type FloorEffectCell,
   type FloorEffectColor,
+  type ProgressiveTileRevealCell,
+  type ProgressiveTileRevealColor,
+  type ProgressiveTileRevealOptions,
+  type SparseTilePulseCell,
+  type SparseTilePulseColor,
+  type SparseTilePulseOptions,
+  type StaggeredTileRevealCell,
+  type StaggeredTileRevealColor,
+  type StaggeredTileRevealOptions,
   type SmoothPulseOptions
 } from "./effects.ts";
 
@@ -368,6 +382,43 @@ export type GameInstance = {
   reset(config?: Partial<GameConfig>): void;
 };
 
+/** Imperative development driver used by game-owned playground scenarios. */
+export type GamePlaytestDriver = {
+  readonly game: GameInstance;
+  readonly clockMillis: number;
+  readonly state: GameEngineState;
+  press(x: number, y: number): void;
+  release(x: number, y: number): void;
+  step(deltaMillis?: number): void;
+};
+
+export type GamePlaytestAction =
+  | Readonly<{ type: "press"; x: number; y: number }>
+  | Readonly<{ type: "release"; x: number; y: number }>
+  | Readonly<{ type: "step"; deltaMillis?: number }>;
+
+export type GamePlaytestScenarioPreparation = Readonly<{
+  description?: string;
+  trigger: readonly GamePlaytestAction[];
+}>;
+
+export type GamePlaytestRecordingDefaults = Readonly<{
+  durationMillis: number;
+  frameIntervalMillis?: number;
+  leadInMillis?: number;
+}>;
+
+/**
+ * Game-owned deterministic setup for reaching an interesting state quickly.
+ * It is tooling-only: every mutation still goes through ordinary engine input.
+ */
+export type GamePlaytestScenario = Readonly<{
+  id: string;
+  label: string;
+  prepare(driver: GamePlaytestDriver): GamePlaytestScenarioPreparation;
+  recording?: GamePlaytestRecordingDefaults;
+}>;
+
 export const DEFAULT_ENGINE_FPS = 50;
 export const DEFAULT_ENGINE_FRAME_MILLIS = 1000 / DEFAULT_ENGINE_FPS;
 export const DEFAULT_ENGINE_MAX_CATCH_UP_STEPS = 5;
@@ -404,6 +455,7 @@ export type GameModule<TSnapshot extends GameSnapshot = GameSnapshot> = {
   manifest: GameManifest;
   createGame(config: GameConfig): GameInstance;
   PlayerDisplay?: (props: PlayerDisplayProps<TSnapshot>) => unknown;
+  playtestScenarios?: readonly GamePlaytestScenario[];
 };
 
 export type PlayerDisplayProps<TSnapshot extends GameSnapshot = GameSnapshot> = {

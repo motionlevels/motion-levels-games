@@ -99,6 +99,49 @@ export type PlaygroundState = {
   events: GameEvent[];
 };
 
+export type PlaygroundScenarioPreparation = {
+  description?: string;
+  gameId: string;
+  id: string;
+  label: string;
+  triggerActions: number;
+};
+
+export type PlaygroundScenarioRecordingOptions = {
+  durationMillis?: number;
+  frameIntervalMillis?: number;
+  leadInMillis?: number;
+};
+
+export type PlaygroundScenarioRecordingAsset = {
+  dataUrl: string;
+  fileName: string;
+  height: number;
+  mimeType: "image/png" | "image/webp";
+  width: number;
+};
+
+export type PlaygroundScenarioRecording = {
+  clip: PlaygroundScenarioRecordingAsset;
+  contactSheet: PlaygroundScenarioRecordingAsset;
+  durationMillis: number;
+  frameCount: number;
+  frameIntervalMillis: number;
+  gameId: string;
+  id: string;
+  label: string;
+  leadInMillis: number;
+  playerCount: number;
+  seed: number;
+};
+
+export type PlaygroundScenarioApi = {
+  list(): Array<{ id: string; label: string }>;
+  prepare(id: string): PlaygroundScenarioPreparation;
+  record(id: string, options?: PlaygroundScenarioRecordingOptions): Promise<PlaygroundScenarioRecording>;
+  trigger(): PlaygroundState;
+};
+
 export type PlaygroundApi = {
   getState(): PlaygroundState;
   pause(): void;
@@ -112,6 +155,7 @@ export type PlaygroundApi = {
   copy(surface: PlaygroundCaptureSurface): Promise<PlaygroundCapture>;
   media(gameId?: string, options?: PlaygroundMediaOptions): Promise<PlaygroundMediaBundle>;
   animationMedia(animationId: string): Promise<AnimationMediaBundle>;
+  scenario: PlaygroundScenarioApi;
   /** Present in current playgrounds; optional in the type for older embedded clients. */
   agentLab?: AgentLabApi;
 };

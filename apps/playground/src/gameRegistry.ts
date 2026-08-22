@@ -6,6 +6,7 @@ import {
   type GameConfig,
   type GameInstance,
   type GameManifest,
+  type GamePlaytestScenario,
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
 import type { SessionControllerFactory } from "@motion-levels-games/jugar-3d";
@@ -23,6 +24,7 @@ export type PlaygroundGame = {
   manifest: GameManifest;
   createGame: (config: GameConfig) => GameInstance;
   PlayerDisplay: ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>;
+  playtestScenarios?: readonly GamePlaytestScenario[];
   /** Product-owned controller attached to the shared Jugar 3D GameSession. */
   createSessionController?: SessionControllerFactory;
 };
@@ -31,6 +33,7 @@ export type GameModule = {
   manifest?: GameManifest;
   createGame?: (config: GameConfig) => GameInstance;
   PlayerDisplay?: ComponentType<{ snapshot: GameSnapshot; frame?: Frame }>;
+  playtestScenarios?: readonly GamePlaytestScenario[];
   createSessionController?: SessionControllerFactory;
 };
 
@@ -74,6 +77,7 @@ function normalizeGameModule(modulePath: string, module: GameModule): Playground
     manifest: module.manifest,
     createGame: module.createGame,
     PlayerDisplay: module.PlayerDisplay,
+    ...(module.playtestScenarios ? { playtestScenarios: module.playtestScenarios } : {}),
     ...(module.createSessionController
       ? { createSessionController: module.createSessionController }
       : {})

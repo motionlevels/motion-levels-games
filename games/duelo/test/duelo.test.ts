@@ -17,6 +17,9 @@ import {
   crowdedRunningSnapshot,
   dueloReadyZoneAnimation,
   dueloReadyZones,
+  dueloStartingAnimation,
+  dueloVictoryAnimation,
+  dueloWaitingIdleAnimation,
   finishedFrame,
   finishedSnapshot,
   manifest,
@@ -82,6 +85,83 @@ test("readiness animation keeps its occupied signal below the unoccupied band", 
   );
 });
 
+test("waiting idle uses sparse seeded player-color pulses outside every readiness moat", () => {
+  assert.deepEqual(dueloWaitingIdleAnimation, {
+    cycleMillis: 4_000,
+    density: 0.25,
+    exclusionPadding: 2,
+    maxIntensity: 16,
+    pulseMillis: 1_100
+  });
+  assert.ok(
+    dueloWaitingIdleAnimation.maxIntensity
+      < dueloReadyZoneAnimation.occupied.minIntensity
+  );
+
+  for (let playerCount = 2; playerCount <= 8; playerCount += 1) {
+    const game = createGame({ playerCount, seed: 137 });
+    game.init(0);
+    const zones = game.playerReadyZones();
+    const patterns = new Set<string>();
+    let ambientTilesSeen = 0;
+
+    for (let atMillis = 0; atMillis <= 12_000; atMillis += 400) {
+      game.tick({ atMillis });
+      const frame = game.render();
+      assert.deepEqual(game.render(), frame, "rendering the same clock must not consume randomness");
+      const active: string[] = [];
+
+      for (const cell of frame.cells) {
+        if (zones.some((zone) => cellInsideZone(cell.x, cell.y, zone))) continue;
+        const insideMoat = zones.some((zone) => cellInsideZone(
+          cell.x,
+          cell.y,
+          zone,
+          dueloWaitingIdleAnimation.exclusionPadding
+        ));
+        if (insideMoat) {
+          assert.equal(cell.color, "#03060b", `${playerCount} players leaked idle color at ${cell.x},${cell.y}`);
+          continue;
+        }
+        if (cell.color === "#03060b") continue;
+        active.push(`${cell.x},${cell.y}`);
+        assert.ok(maxHexChannel(cell.color) <= 52, `idle tile ${cell.color} overpowered readiness`);
+      }
+
+      assert.ok(active.length <= 72, `${playerCount} players produced ${active.length} ambient tiles`);
+      ambientTilesSeen += active.length;
+      patterns.add(active.sort().join("|"));
+    }
+
+    assert.ok(ambientTilesSeen > 0, `${playerCount} players never showed an ambient tile`);
+    assert.ok(patterns.size >= 4, `${playerCount} players did not change the random idle pattern`);
+  }
+
+  const customColors = createGame({
+    playerCount: 2,
+    players: [{ color: "#ff0000" }, { color: "#00ff00" }],
+    seed: 137
+  });
+  customColors.init(0);
+  const seenColors = new Set<string>();
+  for (let atMillis = 0; atMillis <= 16_000; atMillis += 200) {
+    customColors.tick({ atMillis });
+    for (const cell of customColors.render().cells) {
+      if (cell.color !== "#03060b" && maxHexChannel(cell.color) < 60) seenColors.add(cell.color);
+    }
+  }
+  assert.ok([...seenColors].some((color) => hexRgb(color).r > hexRgb(color).g * 2));
+  assert.ok([...seenColors].some((color) => hexRgb(color).g > hexRgb(color).r * 2));
+
+  const firstSeed = createGame({ playerCount: 2, seed: 137 });
+  const secondSeed = createGame({ playerCount: 2, seed: 2026 });
+  firstSeed.init(0);
+  secondSeed.init(0);
+  firstSeed.tick({ atMillis: 800 });
+  secondSeed.tick({ atMillis: 800 });
+  assert.notDeepEqual(firstSeed.render(), secondSeed.render());
+});
+
 test("every unoccupied 4x4 zone pulses homogeneously above ambient effects", () => {
   for (let playerCount = 2; playerCount <= 8; playerCount += 1) {
     const game = createGame({
@@ -135,18 +215,94 @@ test("occupied zones transition smoothly and keep a faster low-intensity pulse",
   assert.ok(hexChannel(beforePress) > hexChannel(midway));
   assert.ok(hexChannel(midway) > hexChannel(transitioned));
 
-  game.press({ x: secondZone.minX, y: secondZone.minY, pressed: true, atMillis: 260 });
-  assert.equal(game.snapshot().phase, "starting");
-  game.tick({ atMillis: 420 });
-
   game.tick({ atMillis: 640 });
   const readyMinimum = game.render();
   game.tick({ atMillis: 960 });
   const readyMaximum = game.render();
-  for (const zone of game.playerReadyZones()) {
-    assert.deepEqual(uniqueZoneColors(readyMinimum, zone), ["#161616"]);
-    assert.deepEqual(uniqueZoneColors(readyMaximum, zone), ["#2a2a2a"]);
+  assert.deepEqual(uniqueZoneColors(readyMinimum, firstZone), ["#161616"]);
+  assert.deepEqual(uniqueZoneColors(readyMaximum, firstZone), ["#2a2a2a"]);
+});
+
+test("starting reveals the real player territories outward with synchronized zone beats", () => {
+  assert.deepEqual(dueloStartingAnimation, {
+    beatAttackMillis: 80,
+    beatReleaseMillis: 300,
+    confirmationMillis: 220,
+    launchFlashIntensity: 96,
+    launchFlashMillis: 220,
+    previewMaxIntensity: 40,
+    revealFadeSpan: 0.16,
+    zoneBaseIntensity: 48,
+    zoneBeatIntensity: 72
+  });
+
+  for (let playerCount = 2; playerCount <= 8; playerCount += 1) {
+    const game = createGame({
+      playerCount,
+      players: Array.from({ length: playerCount }, () => ({ color: "#646464" })),
+      seed: 137
+    });
+    game.init(0);
+    occupyReadyZones(game, 100);
+    assert.equal(game.snapshot().phase, "starting");
+    const zones = game.playerReadyZones();
+
+    const renderAt = (atMillis: number) => {
+      game.tick({ atMillis });
+      const frame = game.render();
+      assert.deepEqual(game.render(), frame, "starting render must not mutate reveal state");
+      return frame;
+    };
+    const targetCount = (frame: Frame) => frame.cells.filter((cell) => (
+      game.targetOwner(cell.x, cell.y) >= 0
+      && !zones.some((zone) => cellInsideZone(cell.x, cell.y, zone))
+      && cell.color !== "#03060b"
+    )).length;
+
+    const zoneBase = renderAt(100);
+    const zonePeak = renderAt(180);
+    const confirmation = renderAt(319);
+    const firstReveal = renderAt(900);
+    const middleReveal = renderAt(1_900);
+    const completeReveal = renderAt(3_080);
+    const totalTargetsOutsideZones = completeReveal.cells.filter((cell) => (
+      game.targetOwner(cell.x, cell.y) >= 0
+      && !zones.some((zone) => cellInsideZone(cell.x, cell.y, zone))
+    )).length;
+
+    assert.equal(targetCount(confirmation), 0);
+    assert.ok(targetCount(firstReveal) > 0);
+    assert.ok(targetCount(middleReveal) > targetCount(firstReveal));
+    assert.equal(targetCount(completeReveal), totalTargetsOutsideZones);
+    for (const frame of [firstReveal, middleReveal, completeReveal]) {
+      for (const cell of frame.cells) {
+        if (cell.color === "#03060b" || zones.some((zone) => cellInsideZone(cell.x, cell.y, zone))) continue;
+        assert.ok(game.targetOwner(cell.x, cell.y) >= 0, `revealed neutral tile at ${cell.x},${cell.y}`);
+        assert.ok(maxHexChannel(cell.color) <= 40, `starting tile ${cell.color} reached play intensity`);
+      }
+    }
+
+    for (const zone of zones) {
+      assert.deepEqual(uniqueZoneColors(zoneBase, zone), ["#303030"]);
+      assert.deepEqual(uniqueZoneColors(zonePeak, zone), ["#484848"]);
+    }
   }
+
+  const launch = createGame({
+    playerCount: 2,
+    players: [{ color: "#646464" }, { color: "#646464" }],
+    seed: 137
+  });
+  launch.init(0);
+  occupyReadyZones(launch, 100);
+  launch.tick({ atMillis: 3_100 });
+  assert.equal(launch.snapshot().phase, "running");
+  const launchFrame = launch.render();
+  assert.ok(launchFrame.cells
+    .filter((cell) => launch.targetOwner(cell.x, cell.y) >= 0)
+    .every((cell) => cell.color === "#606060"));
+  launch.tick({ atMillis: 3_320 });
+  assert.ok(averageTargetChannel(launch, launchFrame) > averageTargetChannel(launch, launch.render()));
 });
 
 test("release grace retains the ready pulse before transitioning back", () => {
@@ -162,14 +318,16 @@ test("release grace retains the ready pulse before transitioning back", () => {
   game.release({ x: zone.minX, y: zone.minY, pressed: false, atMillis: 200 });
   game.tick({ atMillis: 2_200 });
   assert.equal(game.snapshot().phase, "starting");
-  assert.equal(singleZoneColor(game.render(), zone), "#292929");
+  const startingColor = singleZoneColor(game.render(), zone);
+  assert.ok(hexChannel(startingColor) >= dueloStartingAnimation.zoneBaseIntensity);
+  assert.ok(hexChannel(startingColor) <= dueloStartingAnimation.zoneBeatIntensity);
 
   game.tick({ atMillis: 2_201 });
   assert.equal(game.snapshot().phase, "waiting");
   const transitionStart = singleZoneColor(game.render(), zone);
   game.tick({ atMillis: 2_361 });
   const unoccupiedTarget = singleZoneColor(game.render(), zone);
-  assert.equal(transitionStart, "#292929");
+  assert.ok(Math.abs(hexChannel(transitionStart) - hexChannel(startingColor)) <= 1);
   assert.equal(unoccupiedTarget, "#646464");
 });
 
@@ -311,6 +469,36 @@ test("winner celebration locks scoring and automatically resets after five secon
   assert.equal(game.snapshot().score, score);
 
   const winAt = finished.elapsedMillis + 3_100;
+  game.tick({ atMillis: winAt + 120 });
+  const impactFrame = game.render();
+  game.tick({ atMillis: winAt + 1_050 });
+  const revealFrame = game.render();
+  game.tick({ atMillis: winAt + 2_600 });
+  const celebrationFrame = game.render();
+  game.tick({ atMillis: winAt + 4_850 });
+  const fadeFrame = game.render();
+
+  assert.deepEqual(dueloVictoryAnimation, {
+    celebrationEndMillis: 4_400,
+    celebrationPulseMaxIntensity: 58,
+    celebrationPulseMinIntensity: 48,
+    celebrationPulsePeriodMillis: 1_800,
+    celebrationSparkleCycleMillis: 1_100,
+    celebrationSparkleDensity: 0.25,
+    celebrationSparkleIntensity: 96,
+    celebrationSparkleMillis: 700,
+    fadeMillis: 600,
+    impactMillis: 350,
+    revealBaseIntensity: 58,
+    revealFadeSpan: 0.08,
+    revealMillis: 1_450,
+    revealVariationIntensity: 12
+  });
+  assert.notDeepEqual(revealFrame.cells, impactFrame.cells);
+  assert.ok(new Set(celebrationFrame.cells.map((cell) => cell.color)).size > 1);
+  assert.ok(celebrationFrame.cells.every((cell) => cell.color !== "#ffffff"));
+  assert.equal(new Set(fadeFrame.cells.map((cell) => cell.color)).size, 1);
+
   game.tick({ atMillis: winAt + winAnimationMillis - 1 });
   assert.equal(game.snapshot().phase, "finished");
   const resetEvents = game.tick({ atMillis: winAt + winAnimationMillis });
@@ -338,12 +526,16 @@ test("fixtures cover every phase and displays keep long names without ellipses",
   assert.match(renderDisplay(crowdedRunningSnapshot), /Alejandra del Equipo Relámpago/);
   assert.match(renderDisplay(crowdedRunningSnapshot), /Objetivo/);
   assert.match(renderDisplay(crowdedRunningSnapshot), /Jugadores/);
+  assert.match(renderDisplay(startingSnapshot), /data-countdown-value="2"/);
   assert.match(renderDisplay(finishedSnapshot), /Nueva partida en/);
+  assert.match(renderDisplay(finishedSnapshot), /data-result-variant="victory"/);
+  assert.match(renderDisplay(finishedSnapshot), /style="--ml-tone:#24d9ff"/);
 });
 
 test("Duelo display composes the shared display system", () => {
   const source = readFileSync(new URL("../src/display.tsx", import.meta.url), "utf8");
   assert.match(source, /DisplayStack/);
+  assert.match(source, /CountdownValue/);
   assert.match(source, /PlayerRoster/);
   assert.match(source, /ProgressMeter/);
   assert.match(source, /ResultOverlay/);
@@ -416,4 +608,31 @@ function singleZoneColor(frame: Frame, zone: PlayerReadyZone): string {
 
 function hexChannel(color: string): number {
   return Number.parseInt(color.slice(1, 3), 16);
+}
+
+function cellInsideZone(x: number, y: number, zone: PlayerReadyZone, padding = 0): boolean {
+  return x >= zone.minX - padding
+    && x <= zone.maxX + padding
+    && y >= zone.minY - padding
+    && y <= zone.maxY + padding;
+}
+
+function hexRgb(color: string): { b: number; g: number; r: number } {
+  return {
+    r: Number.parseInt(color.slice(1, 3), 16),
+    g: Number.parseInt(color.slice(3, 5), 16),
+    b: Number.parseInt(color.slice(5, 7), 16)
+  };
+}
+
+function maxHexChannel(color: string): number {
+  const rgb = hexRgb(color);
+  return Math.max(rgb.r, rgb.g, rgb.b);
+}
+
+function averageTargetChannel(game: DueloGameInstance, frame: Frame): number {
+  const channels = frame.cells.flatMap((cell) => (
+    game.targetOwner(cell.x, cell.y) >= 0 ? [maxHexChannel(cell.color)] : []
+  ));
+  return channels.reduce((sum, value) => sum + value, 0) / Math.max(1, channels.length);
 }
