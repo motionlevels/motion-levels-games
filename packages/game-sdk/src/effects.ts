@@ -98,6 +98,27 @@ export type SparseTilePulseOptions = {
   seed: number;
 };
 
+export type SparseBlockPulseCell = SparseTilePulseCell & {
+  height: number;
+  width: number;
+};
+
+export type SparseBlockPulseColor = HexColor | ((cell: SparseBlockPulseCell) => HexColor | undefined);
+
+export type SparseBlockPulseOptions = {
+  atMillis: number;
+  blockHeight: number;
+  blockWidth: number;
+  color: SparseBlockPulseColor;
+  cycleMillis: number;
+  density: number;
+  exclude?: (cell: { x: number; y: number }) => boolean;
+  gapX?: number;
+  gapY?: number;
+  pulseMillis: number;
+  seed: number;
+};
+
 /** Samples a continuous cosine pulse from explicit engine time. */
 export function sampleSmoothPulse(options: SmoothPulseOptions): number {
   const firstValue = finiteNumber(options.minValue, 0);
@@ -235,6 +256,64 @@ export function paintSparseTilePulses(frame: Frame, options: SparseTilePulseOpti
       const resolvedColor = typeof options.color === "function" ? options.color(pulse) : options.color;
       if (resolvedColor) {
         frame.cells[y * frame.width + x] = { x, y, color: resolvedColor };
+      }
+    }
+  }
+}
+
+/** Paints sparse, stateless rectangular pulses whose cells share one color and clock. */
+export function paintSparseBlockPulses(frame: Frame, options: SparseBlockPulseOptions): void {
+  const cycleMillis = finiteNumber(options.cycleMillis, 0);
+  const pulseMillis = Math.min(cycleMillis, finiteNumber(options.pulseMillis, 0));
+  const density = Math.min(1, Math.max(0, finiteNumber(options.density, 0)));
+  const blockWidth = Math.max(1, Math.trunc(finiteNumber(options.blockWidth, 0)));
+  const blockHeight = Math.max(1, Math.trunc(finiteNumber(options.blockHeight, 0)));
+  const strideX = blockWidth + Math.max(0, Math.trunc(finiteNumber(options.gapX, 0)));
+  const strideY = blockHeight + Math.max(0, Math.trunc(finiteNumber(options.gapY, 0)));
+  if (cycleMillis <= 0 || pulseMillis <= 0 || density <= 0) return;
+
+  const atMillis = finiteNumber(options.atMillis, 0);
+  const seed = Math.trunc(finiteNumber(options.seed, 0));
+  for (let y = 0; y + blockHeight <= frame.height; y += strideY) {
+    for (let x = 0; x + blockWidth <= frame.width; x += strideX) {
+      let excluded = false;
+      for (let dy = 0; dy < blockHeight && !excluded; dy += 1) {
+        for (let dx = 0; dx < blockWidth; dx += 1) {
+          if (options.exclude?.({ x: x + dx, y: y + dy })) {
+            excluded = true;
+            break;
+          }
+        }
+      }
+      if (excluded) continue;
+
+      const phaseOffsetMillis = effectHash(seed, x, y, blockWidth, blockHeight, 19) * cycleMillis;
+      const shiftedMillis = atMillis + phaseOffsetMillis;
+      const cycle = Math.floor(shiftedMillis / cycleMillis);
+      const localMillis = positiveModulo(shiftedMillis, cycleMillis);
+      if (localMillis >= pulseMillis || effectHash(seed, x, y, cycle, 37) >= density) continue;
+
+      const progress = localMillis / pulseMillis;
+      const intensity = Math.sin(progress * Math.PI) ** 2;
+      if (intensity <= Number.EPSILON) continue;
+
+      const pulse = {
+        cycle,
+        height: blockHeight,
+        intensity,
+        variant: effectHash(seed, cycle, y, x, 53),
+        width: blockWidth,
+        x,
+        y
+      };
+      const resolvedColor = typeof options.color === "function" ? options.color(pulse) : options.color;
+      if (!resolvedColor) continue;
+      for (let dy = 0; dy < blockHeight; dy += 1) {
+        for (let dx = 0; dx < blockWidth; dx += 1) {
+          const cellX = x + dx;
+          const cellY = y + dy;
+          frame.cells[cellY * frame.width + cellX] = { x: cellX, y: cellY, color: resolvedColor };
+        }
       }
     }
   }

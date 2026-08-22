@@ -16,10 +16,11 @@ deadline approaches, respawn immediately after a hit, and grant four to twelve
 points according to reaction speed. A missed target returns with catch-up time.
 The highest score wins a locked four-second celebration.
 
-The waiting floor composes the shared sparse tile pulses with homogeneous 4x4
-player platforms. Empty platforms pulse brightly and slowly; occupied
+The waiting floor composes shared sparse 2x2 block pulses in the active player
+colors with homogeneous 4x4 player platforms. Empty platforms pulse brightly and slowly; occupied
 platforms retain their color at lower intensity with a quicker pulse. The
-three-second start reveals the first real targets tile by tile. During play,
+three-second start follows Duelo's confirmation, spatial reveal, synchronized
+platform beats, and launch-flash cadence while previewing the first real targets. During play,
 targets use an appearance, steady, urgency, and colored-hit sequence rather
 than fading out of view. Victory reveals the winner color through seeded
 appearing tiles before settling into a restrained pulse and sparkle.

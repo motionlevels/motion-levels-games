@@ -92,6 +92,30 @@ test("waiting platforms pulse homogeneously and become calmer when occupied", ()
   assert.ok(colorEnergy(occupied[0]!) < colorEnergy(unoccupied[0]!));
 });
 
+test("waiting ambience appears only as homogeneous two-by-two player-color blocks", () => {
+  const game = createGame({ playerCount: 2, seed: 404 });
+  game.init(0);
+  game.tick({ atMillis: 400 });
+  const frame = game.render();
+  const zones = game.playerReadyZones();
+  let visibleBlocks = 0;
+  for (let y = 0; y + 1 < frame.height; y += 3) {
+    for (let x = 0; x + 1 < frame.width; x += 3) {
+      if (zones.some((zone) => x <= zone.maxX + 2 && x + 1 >= zone.minX - 2
+        && y <= zone.maxY + 2 && y + 1 >= zone.minY - 2)) continue;
+      const colors = [
+        frame.cells[y * frame.width + x]?.color,
+        frame.cells[y * frame.width + x + 1]?.color,
+        frame.cells[(y + 1) * frame.width + x]?.color,
+        frame.cells[(y + 1) * frame.width + x + 1]?.color
+      ];
+      assert.equal(new Set(colors).size, 1);
+      if (colors[0] !== "#03060b") visibleBlocks += 1;
+    }
+  }
+  assert.ok(visibleBlocks > 0);
+});
+
 test("starting reveals future targets beyond the occupied platforms", () => {
   const game = createGame({ playerCount: 4, seed: 404 });
   game.init(0);
@@ -103,6 +127,30 @@ test("starting reveals future targets beyond the occupied platforms", () => {
     && !zones.some((zone) => cell.x >= zone.minX && cell.x <= zone.maxX && cell.y >= zone.minY && cell.y <= zone.maxY)
   ));
   assert.ok(outsideLit.length > 0);
+});
+
+test("starting holds for confirmation, reveals spatially, and launches with a flash", () => {
+  const game = createGame({ playerCount: 2, seed: 404 });
+  game.init(0);
+  game.playerReadyZones().forEach((zone) => game.press({
+    x: zone.minX,
+    y: zone.minY,
+    pressed: true,
+    atMillis: 100
+  }));
+  const zones = game.playerReadyZones();
+  game.tick({ atMillis: 300 });
+  assert.equal(outsideReadyZoneColors(game.render(), zones).length, 0);
+  game.tick({ atMillis: 1_600 });
+  assert.ok(outsideReadyZoneColors(game.render(), zones).length > 0);
+  game.tick({ atMillis: 3_100 });
+  const launchEnergy = outsideReadyZoneColors(game.render(), zones)
+    .reduce((sum, color) => sum + colorEnergy(color), 0);
+  game.tick({ atMillis: 3_400 });
+  const settledEnergy = outsideReadyZoneColors(game.render(), zones)
+    .reduce((sum, color) => sum + colorEnergy(color), 0);
+  assert.equal(game.snapshot().phase, "running");
+  assert.ok(launchEnergy > settledEnergy);
 });
 
 test("a fast target hit awards the owner points and immediately respawns", () => {
@@ -186,6 +234,14 @@ function zoneColors(frame: Frame, zone: PlayerReadyZone): string[] {
 function colorEnergy(color: string): number {
   const value = color.replace("#", "");
   return [0, 2, 4].reduce((sum, offset) => sum + Number.parseInt(value.slice(offset, offset + 2), 16), 0);
+}
+
+function outsideReadyZoneColors(frame: Frame, zones: PlayerReadyZone[]): string[] {
+  return frame.cells
+    .filter((cell) => cell.color !== "#03060b" && !zones.some((zone) => (
+      cell.x >= zone.minX && cell.x <= zone.maxX && cell.y >= zone.minY && cell.y <= zone.maxY
+    )))
+    .map((cell) => cell.color);
 }
 
 function applyScenarioAction(

@@ -7,6 +7,7 @@ import {
 } from "@motion-levels-games/game-sdk";
 import {
   paintProgressiveTileReveal,
+  paintSparseBlockPulses,
   paintSparseTilePulses,
   paintStaggeredTileReveal,
   sampleBeatPulse,
@@ -35,17 +36,22 @@ export const moleWaitingIdleAnimation = {
   cycleMillis: 4_000,
   density: 0.25,
   exclusionPadding: 2,
-  maxIntensity: 16,
-  pulseMillis: 1_100
+  gap: 1,
+  maxIntensity: 14,
+  pulseMillis: 1_300,
+  size: 2
 } as const;
 
 export const moleStartingAnimation = {
   beatAttackMillis: 80,
   beatReleaseMillis: 300,
-  previewMaxIntensity: 72,
-  revealFadeSpan: 0.24,
+  confirmationMillis: 220,
+  launchFlashIntensity: 96,
+  launchFlashMillis: 220,
+  previewMaxIntensity: 40,
+  revealFadeSpan: 0.16,
   zoneBaseIntensity: 48,
-  zoneBeatIntensity: 76
+  zoneBeatIntensity: 72
 } as const;
 
 export const moleVictoryAnimation = {
@@ -104,6 +110,7 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
   private hitFlash: Array<{ x: number; y: number; startedMillis: number; untilMillis: number; color: HexColor }> = [];
   private phase: WhackAMoleSnapshot["phase"] = "waiting";
   private nowMillis = 0;
+  private countdownStartedAtMillis = 0;
   private startedAtMillis = 0;
   private finishAtMillis = 0;
   private winnerIndex = -1;
@@ -231,13 +238,14 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
       lastHitAtMillis: Number.NEGATIVE_INFINITY
     }));
     this.targets = []; this.startingTargets = []; this.lastPositions = []; this.catchUp = []; this.hitFlash = [];
-    this.phase = "waiting"; this.nowMillis = nowMillis; this.startedAtMillis = nowMillis; this.finishAtMillis = 0; this.winnerIndex = -1; this.motionEventId = 0;
+    this.phase = "waiting"; this.nowMillis = nowMillis; this.countdownStartedAtMillis = 0; this.startedAtMillis = nowMillis; this.finishAtMillis = 0; this.winnerIndex = -1; this.motionEventId = 0;
     this.lastEvent = gameEvent("ready", "Busca tu plataforma de color", nowMillis);
   }
 
   private applyReady(transition: PlayerReadyTransition, nowMillis: number): GameEvent[] {
     if (transition === "players-ready") {
       this.phase = "starting";
+      this.countdownStartedAtMillis = nowMillis;
       this.startingTargets = [];
       this.players.forEach((_, playerIndex) => {
         this.startingTargets.push({
@@ -248,9 +256,9 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
       this.motionEventId += 1;
       return [gameEvent("ready", "Todos listos para cazar", nowMillis)];
     }
-    if (transition === "players-left") { this.phase = "waiting"; this.startingTargets = []; this.motionEventId += 1; return [gameEvent("ready", "Vuelve a tu plataforma", nowMillis)]; }
+    if (transition === "players-left") { this.phase = "waiting"; this.countdownStartedAtMillis = 0; this.startingTargets = []; this.motionEventId += 1; return [gameEvent("ready", "Vuelve a tu plataforma", nowMillis)]; }
     if (transition === "started") {
-      this.phase = "running"; this.startedAtMillis = nowMillis;
+      this.phase = "running"; this.countdownStartedAtMillis = 0; this.startedAtMillis = nowMillis;
       this.targets = this.startingTargets.map((target) => this.createTarget(target.playerIndex, target.x, target.y, nowMillis));
       this.startingTargets = [];
       this.motionEventId += 1; return [gameEvent("start", "¡Atrapa los topos de colores!", nowMillis)];
@@ -323,8 +331,10 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
   }
 
   private drawWaiting(frame: Frame): void {
-    paintSparseTilePulses(frame, {
+    paintSparseBlockPulses(frame, {
       atMillis: this.nowMillis,
+      blockHeight: moleWaitingIdleAnimation.size,
+      blockWidth: moleWaitingIdleAnimation.size,
       color: ({ intensity, variant }) => {
         const index = Math.min(this.players.length - 1, Math.floor(variant * this.players.length));
         return scaleHex(this.players[index]?.color ?? "#36d9ff", intensity * moleWaitingIdleAnimation.maxIntensity / 100);
@@ -335,6 +345,8 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
         const padding = moleWaitingIdleAnimation.exclusionPadding;
         return x >= zone.minX - padding && x <= zone.maxX + padding && y >= zone.minY - padding && y <= zone.maxY + padding;
       }),
+      gapX: moleWaitingIdleAnimation.gap,
+      gapY: moleWaitingIdleAnimation.gap,
       pulseMillis: moleWaitingIdleAnimation.pulseMillis,
       seed: (this.config.seed ^ waitingSeedSalt) >>> 0
     });
@@ -343,8 +355,9 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
 
   private drawStarting(frame: Frame): void {
     const countdownDuration = manifest.start.mode === "player-ready" ? (manifest.start.countdownMillis ?? 2_000) : 0;
-    const countdownRemaining = this.readyGate.state(this.nowMillis).countdownMillis;
-    const progress = clamp(1 - countdownRemaining / Math.max(1, countdownDuration), 0, 1);
+    const elapsed = clamp(this.nowMillis - this.countdownStartedAtMillis, 0, countdownDuration);
+    const revealDuration = Math.max(1, countdownDuration - moleStartingAnimation.confirmationMillis);
+    const progress = clamp((elapsed - moleStartingAnimation.confirmationMillis) / revealDuration, 0, 1);
     paintProgressiveTileReveal(frame, {
       color: ({ intensity, x, y }) => {
         const target = this.startingTargets.find((candidate) => containsTarget(candidate, x, y));
@@ -354,16 +367,10 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
       },
       fadeSpan: moleStartingAnimation.revealFadeSpan,
       progress,
-      threshold: ({ x, y }) => {
-        const targetIndex = this.startingTargets.findIndex((candidate) => containsTarget(candidate, x, y));
-        if (targetIndex < 0) return undefined;
-        const target = this.startingTargets[targetIndex]!;
-        const cellIndex = (y - target.y) * targetSize + (x - target.x);
-        return (targetIndex + cellIndex / (targetSize * targetSize)) / Math.max(1, this.startingTargets.length);
-      }
+      threshold: ({ x, y }) => this.startingRevealThreshold(x, y)
     });
     const beat = sampleBeatPulse({
-      atMillis: Math.max(0, countdownDuration - countdownRemaining),
+      atMillis: elapsed,
       attackMillis: moleStartingAnimation.beatAttackMillis,
       periodMillis: 1_000,
       releaseMillis: moleStartingAnimation.beatReleaseMillis
@@ -371,6 +378,25 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
     const intensity = moleStartingAnimation.zoneBaseIntensity
       + beat * (moleStartingAnimation.zoneBeatIntensity - moleStartingAnimation.zoneBaseIntensity);
     this.drawReadyZones(frame, intensity);
+  }
+
+  private startingRevealThreshold(x: number, y: number): number | undefined {
+    const target = this.startingTargets.find((candidate) => containsTarget(candidate, x, y));
+    const zone = target ? this.readyZones[target.playerIndex] : undefined;
+    if (!target || !zone) return undefined;
+    const maxDistance = Math.max(
+      this.distanceFromReadyZone(0, 0, zone),
+      this.distanceFromReadyZone(FLOOR_COLS - 1, 0, zone),
+      this.distanceFromReadyZone(0, FLOOR_ROWS - 1, zone),
+      this.distanceFromReadyZone(FLOOR_COLS - 1, FLOOR_ROWS - 1, zone)
+    );
+    return maxDistance > 0 ? this.distanceFromReadyZone(x, y, zone) / maxDistance : 0;
+  }
+
+  private distanceFromReadyZone(x: number, y: number, zone: PlayerReadyZone): number {
+    const distanceX = x < zone.minX ? zone.minX - x : x > zone.maxX ? x - zone.maxX : 0;
+    const distanceY = y < zone.minY ? zone.minY - y : y > zone.maxY ? y - zone.maxY : 0;
+    return distanceX + distanceY;
   }
 
   private drawReadyZones(frame: Frame, fixedIntensity?: number): void {
@@ -396,6 +422,12 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
   }
 
   private drawTargets(frame: Frame): void {
+    const launchProgress = clamp(
+      (this.nowMillis - this.startedAtMillis) / moleStartingAnimation.launchFlashMillis,
+      0,
+      1
+    );
+    const launchBoost = 1 - launchProgress * launchProgress * (3 - 2 * launchProgress);
     for (const target of this.targets) {
       const player = this.players[target.playerIndex]!;
       const age = Math.max(0, this.nowMillis - target.bornMillis);
@@ -408,11 +440,13 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
         periodMillis: 360,
         phaseOffsetMillis: target.playerIndex * 47
       });
-      const steadyIntensity = remaining <= targetUrgencyMillis ? urgentPulse : 88;
+      const runningIntensity = remaining <= targetUrgencyMillis ? urgentPulse : 88;
+      const steadyIntensity = runningIntensity
+        + (moleStartingAnimation.launchFlashIntensity - runningIntensity) * launchBoost;
       for (let dy = 0; dy < targetSize; dy += 1) {
         for (let dx = 0; dx < targetSize; dx += 1) {
           const cellIndex = dy * targetSize + dx;
-          const cellReveal = clamp((reveal * 1.6) - cellIndex * 0.2, 0, 1);
+          const cellReveal = Math.max(launchBoost, clamp((reveal * 1.6) - cellIndex * 0.2, 0, 1));
           if (cellReveal <= 0) continue;
           paintFrameCell(frame, target.x + dx, target.y + dy, scaleHex(player.color, steadyIntensity * cellReveal / 100));
         }

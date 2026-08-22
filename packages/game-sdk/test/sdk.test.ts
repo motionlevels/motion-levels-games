@@ -37,6 +37,7 @@ import {
   paintDiamondRing,
   paintDiamondWave,
   paintProgressiveTileReveal,
+  paintSparseBlockPulses,
   paintSparseTilePulses,
   paintStaggeredTileReveal,
   readGameConfigOption,
@@ -375,6 +376,50 @@ test("sparse tile pulses are deterministic, animated, seeded, and respect exclus
     seed: Number.NaN
   });
   assert.ok(disabled.cells.every((cell) => cell.color === "#102030"));
+});
+
+test("sparse block pulses stay homogeneous, bounded, deterministic, and skip excluded blocks", () => {
+  const paint = (atMillis: number, seed: number) => {
+    const frame = createFrame("#000000");
+    const samples: Array<{ height: number; intensity: number; width: number; x: number; y: number }> = [];
+    paintSparseBlockPulses(frame, {
+      atMillis,
+      blockHeight: 2,
+      blockWidth: 2,
+      color: (cell) => {
+        samples.push(cell);
+        const channel = Math.round(cell.intensity * 255).toString(16).padStart(2, "0");
+        return `#${channel}0000`;
+      },
+      cycleMillis: 1_200,
+      density: 1,
+      exclude: ({ x, y }) => x === 3 && y === 3,
+      gapX: 1,
+      gapY: 1,
+      pulseMillis: 1_200,
+      seed
+    });
+    return { frame, samples };
+  };
+
+  const first = paint(420, 137);
+  const repeat = paint(420, 137);
+  const later = paint(760, 137);
+  assert.deepEqual(repeat, first);
+  assert.notDeepEqual(later.frame, first.frame);
+  assert.ok(first.samples.length > 0);
+  assert.ok(first.samples.every((sample) => sample.width === 2 && sample.height === 2));
+  assert.equal(frameCell(first.frame, 3, 3)?.color, "#000000");
+  assert.equal(frameCell(first.frame, 4, 3)?.color, "#000000");
+  for (const sample of first.samples) {
+    const colors = [
+      frameCell(first.frame, sample.x, sample.y)?.color,
+      frameCell(first.frame, sample.x + 1, sample.y)?.color,
+      frameCell(first.frame, sample.x, sample.y + 1)?.color,
+      frameCell(first.frame, sample.x + 1, sample.y + 1)?.color
+    ];
+    assert.equal(new Set(colors).size, 1);
+  }
 });
 
 test("floor bounds match the physical grid", () => {
