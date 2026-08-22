@@ -2671,49 +2671,164 @@ select {
 }
 
 .scenario-recording-review {
+  background:
+    radial-gradient(circle at 82% 0%, rgba(53, 215, 255, 0.1), transparent 32%),
+    linear-gradient(155deg, rgba(13, 20, 30, 0.98), rgba(5, 9, 15, 0.98));
+  border: 1px solid var(--pg-border-strong);
+  border-radius: 14px;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
   display: grid;
-  gap: 14px;
-  margin: 0 10px 18px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #08111c;
+  gap: 18px;
+  margin: 0;
+  min-width: 0;
+  padding: clamp(16px, 2vw, 26px);
 }
 
 .scenario-recording-review-header,
 .scenario-recording-review-actions {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
+  display: flex;
   gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
 }
 
 .scenario-recording-review-header > div:first-child {
   display: grid;
-  gap: 4px;
+  gap: 5px;
+  min-width: 0;
+}
+
+.scenario-recording-review-header h1,
+.scenario-recording-review-header p {
+  margin: 0;
+}
+
+.scenario-recording-review-header h1 {
+  color: var(--pg-text);
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1.05;
+}
+
+.scenario-recording-review-header p {
+  color: var(--pg-muted);
+  font-size: 13px;
 }
 
 .scenario-recording-review-actions a {
-  padding: 7px 10px;
-  border: 1px solid var(--line);
+  background: var(--pg-control-bg);
+  border: 1px solid var(--pg-control-border);
   border-radius: 7px;
-  color: var(--text);
+  color: var(--pg-text);
   font-size: 12px;
+  font-weight: 750;
+  padding: 9px 12px;
   text-decoration: none;
+}
+
+.scenario-recording-review-actions a:hover,
+.scenario-recording-review-actions a:focus-visible {
+  background: var(--pg-control-hover-bg);
+  border-color: var(--pg-control-hover-border);
+  outline: none;
 }
 
 .scenario-recording-review-media {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
+  gap: 18px;
+  min-width: 0;
+}
+
+.scenario-recording-review-media figure {
+  background: rgba(3, 7, 12, 0.72);
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.scenario-recording-review-media figcaption {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.scenario-recording-review-media figcaption span {
+  color: var(--pg-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.scenario-recording-review-media figcaption strong {
+  color: var(--pg-muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-align: right;
 }
 
 .scenario-recording-review-media img {
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
   background: #05070a;
+  border: 1px solid var(--pg-border);
+  border-radius: 6px;
+  display: block;
+  height: auto;
+  max-width: 100%;
+  width: 100%;
+}
+
+.scenario-recording-loading,
+.scenario-recording-error {
+  align-items: center;
+  background: rgba(5, 10, 17, 0.68);
+  border: 1px solid var(--pg-border);
+  border-radius: 10px;
+  display: grid;
+  justify-items: center;
+  min-height: min(52dvh, 460px);
+  padding: 32px;
+  text-align: center;
+}
+
+.scenario-recording-loading {
+  grid-template-rows: auto auto auto;
+  row-gap: 9px;
+}
+
+.scenario-recording-loading svg {
+  animation: capture-toast-spin 900ms linear infinite;
+  color: var(--pg-accent);
+  margin-bottom: 8px;
+}
+
+.scenario-recording-loading strong,
+.scenario-recording-error strong {
+  color: var(--pg-text);
+  font-size: 18px;
+}
+
+.scenario-recording-loading span,
+.scenario-recording-error span {
+  color: var(--pg-muted);
+  font-size: 13px;
+}
+
+.scenario-recording-error {
+  color: var(--pg-yellow);
+  gap: 12px;
+}
+
+.scenario-recording-error div {
+  display: grid;
+  gap: 5px;
 }
 
 @media (max-width: 760px) {
@@ -2784,5 +2899,60 @@ select {
 
   .floor-panel:not(.is-agent-lab) {
     height: min(calc((100vw - (2 * var(--stage-pad))) * 2), 660px);
+  }
+}
+
+/* A URL-driven recording is a review document, not another workbench panel.
+ * Keep the live surfaces mounted offscreen so native capture remains exact,
+ * while the viewport contains only the progress/result presentation. */
+.playground-shell.is-scenario-review {
+  align-content: start;
+  display: block;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: clamp(12px, 2.4vw, 30px);
+}
+
+.playground-shell.is-scenario-review > .playground-header {
+  display: none;
+}
+
+.playground-shell.is-scenario-review > .playground-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 512px !important;
+  height: 1080px !important;
+  left: -10000px;
+  overflow: visible;
+  position: fixed;
+  top: 0;
+  width: 1920px;
+}
+
+.playground-shell.is-scenario-review > .capture-toast {
+  display: none;
+}
+
+.playground-shell.is-scenario-review > .scenario-recording-review {
+  margin: 0 auto;
+  max-width: 1320px;
+  min-height: calc(100dvh - clamp(24px, 4.8vw, 60px));
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .scenario-recording-review-header,
+  .scenario-recording-review-actions,
+  .scenario-recording-review-media figcaption {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .scenario-recording-review-actions a {
+    text-align: center;
+  }
+
+  .scenario-recording-review-media figcaption strong {
+    text-align: left;
   }
 }

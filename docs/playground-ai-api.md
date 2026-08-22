@@ -73,7 +73,9 @@ engine explicitly, and scrubs TV CSS animations to the matching timestamp. It
 returns a 1230x540 animated WebP plus a timestamped six-frame PNG contact sheet.
 For browser tools that cannot call page globals directly, launch the same flow
 with `?recordScenario=victory`; the standalone playground renders the generated
-clip, contact sheet, and download links beneath the workbench.
+clip, contact sheet, and download links in a dedicated responsive review page.
+The ordinary workbench remains mounted offscreen only because native player
+display capture requires its renderer; it never overlaps the visible review.
 
 ## Methods
 

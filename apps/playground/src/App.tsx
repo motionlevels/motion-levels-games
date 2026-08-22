@@ -172,6 +172,12 @@ export function App() {
     ),
     []
   );
+  const scenarioReviewId = useMemo(
+    () => typeof window === "undefined"
+      ? ""
+      : new URLSearchParams(window.location.search).get("recordScenario")?.trim() ?? "",
+    []
+  );
   const playerJourney = useMemo(() => readPlayerJourneyLaunch(playgroundGames), []);
   const [playerMenuPreviewUrl] = useState(() => localPlayerMenuUrl());
   const initialPrimaryScreen: PrimaryScreen = playerMenuPreviewUrl ? readPrimaryScreen() : "display";
@@ -232,6 +238,7 @@ export function App() {
   const [captureMessage, setCaptureMessage] = useState("");
   const [scenarioRecordingPreview, setScenarioRecordingPreview] = useState<PlaygroundScenarioRecording | null>(null);
   const [scenarioRecordingError, setScenarioRecordingError] = useState("");
+  const [scenarioRecordingActive, setScenarioRecordingActive] = useState(Boolean(scenarioReviewId));
   const [scenarioRecordingUrls, setScenarioRecordingUrls] = useState<{ clip: string; contactSheet: string } | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -1392,15 +1399,16 @@ export function App() {
   }, [captureScenarioRecordingFrame, preparePlaytestScenario, triggerPreparedScenario]);
 
   useEffect(() => {
-    const scenarioId = new URLSearchParams(window.location.search).get("recordScenario")?.trim();
-    if (!scenarioId || scenarioAutoRecordStartedRef.current) return;
+    if (!scenarioReviewId || scenarioAutoRecordStartedRef.current) return;
     scenarioAutoRecordStartedRef.current = true;
+    setScenarioRecordingActive(true);
+    setScenarioRecordingPreview(null);
     setScenarioRecordingError("");
-    void recordPlaytestScenario(scenarioId).then(
+    void recordPlaytestScenario(scenarioReviewId).then(
       (recording) => setScenarioRecordingPreview(recording),
       (error) => setScenarioRecordingError(error instanceof Error ? error.message : "Could not record scenario")
-    );
-  }, [recordPlaytestScenario]);
+    ).finally(() => setScenarioRecordingActive(false));
+  }, [recordPlaytestScenario, scenarioReviewId]);
 
   useEffect(() => {
     if (!scenarioRecordingPreview) return undefined;
@@ -1602,8 +1610,12 @@ export function App() {
   }, [fullscreenFallback]);
 
   const isFullscreenMode = fullscreen || fullscreenFallback;
+  const scenarioReviewMode = scenarioReviewId.length > 0;
+  const scenarioReviewLabel = selectedGame.playtestScenarios
+    ?.find((scenario) => scenario.id === scenarioReviewId)?.label ?? scenarioReviewId;
   const shellClassName = [
     "playground-shell",
+    scenarioReviewMode ? "is-scenario-review" : "",
     fullscreenFallback ? "is-fullscreen-fallback" : ""
   ].filter(Boolean).join(" ");
   const latestEvent = events[0];
@@ -2216,12 +2228,17 @@ export function App() {
           </div>
         </article>
       </section>
-      {scenarioRecordingPreview || scenarioRecordingError ? (
-        <section aria-label="Scenario recording review" className="scenario-recording-review">
+      {scenarioReviewMode ? (
+        <section
+          aria-busy={scenarioRecordingActive}
+          aria-label="Scenario recording review"
+          className="scenario-recording-review"
+        >
           <header className="scenario-recording-review-header">
             <div>
-              <span className="eyebrow">Scenario review</span>
-              <strong>{scenarioRecordingPreview?.label ?? "Recording failed"}</strong>
+              <span className="eyebrow">Deterministic scenario review</span>
+              <h1>{scenarioRecordingPreview?.label ?? scenarioReviewLabel}</h1>
+              <p>{selectedGame.manifest.label} · player display and physical floor</p>
             </div>
             {scenarioRecordingPreview ? (
               <div className="scenario-recording-review-actions">
@@ -2230,21 +2247,45 @@ export function App() {
               </div>
             ) : null}
           </header>
-          {scenarioRecordingError ? <p role="alert">{scenarioRecordingError}</p> : null}
+          {scenarioRecordingActive ? (
+            <div className="scenario-recording-loading" role="status">
+              <LoaderCircle aria-hidden="true" size={30} />
+              <strong>Rendering scenario…</strong>
+              <span>Capturing synchronized TV and floor frames</span>
+            </div>
+          ) : null}
+          {scenarioRecordingError ? (
+            <div className="scenario-recording-error" role="alert">
+              <TriangleAlert aria-hidden="true" size={24} />
+              <div><strong>Recording failed</strong><span>{scenarioRecordingError}</span></div>
+            </div>
+          ) : null}
           {scenarioRecordingPreview ? (
             <div className="scenario-recording-review-media">
-              <img
-                alt={`${scenarioRecordingPreview.gameId} ${scenarioRecordingPreview.id} review clip`}
-                data-scenario-recording-source={scenarioRecordingPreview.clip.dataUrl}
-                data-scenario-recording="clip"
-                src={scenarioRecordingUrls?.clip ?? scenarioRecordingPreview.clip.dataUrl}
-              />
-              <img
-                alt={`${scenarioRecordingPreview.gameId} ${scenarioRecordingPreview.id} keyframes`}
-                data-scenario-recording-source={scenarioRecordingPreview.contactSheet.dataUrl}
-                data-scenario-recording="contact-sheet"
-                src={scenarioRecordingUrls?.contactSheet ?? scenarioRecordingPreview.contactSheet.dataUrl}
-              />
+              <figure>
+                <figcaption>
+                  <span>Animated review</span>
+                  <strong>{scenarioRecordingPreview.clip.width}×{scenarioRecordingPreview.clip.height} · {scenarioRecordingPreview.frameCount} frames</strong>
+                </figcaption>
+                <img
+                  alt={`${scenarioRecordingPreview.gameId} ${scenarioRecordingPreview.id} review clip`}
+                  data-scenario-recording-source={scenarioRecordingPreview.clip.dataUrl}
+                  data-scenario-recording="clip"
+                  src={scenarioRecordingUrls?.clip ?? scenarioRecordingPreview.clip.dataUrl}
+                />
+              </figure>
+              <figure>
+                <figcaption>
+                  <span>Keyframes</span>
+                  <strong>Complete timeline · seed {scenarioRecordingPreview.seed}</strong>
+                </figcaption>
+                <img
+                  alt={`${scenarioRecordingPreview.gameId} ${scenarioRecordingPreview.id} keyframes`}
+                  data-scenario-recording-source={scenarioRecordingPreview.contactSheet.dataUrl}
+                  data-scenario-recording="contact-sheet"
+                  src={scenarioRecordingUrls?.contactSheet ?? scenarioRecordingPreview.contactSheet.dataUrl}
+                />
+              </figure>
             </div>
           ) : null}
         </section>

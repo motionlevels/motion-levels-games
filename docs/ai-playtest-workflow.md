@@ -82,8 +82,11 @@ The animated WebP combines the 16:9 player display and physical 16:32 floor at
 matching engine timestamps. Inspect the contact sheet as well as the moving
 clip so brief hierarchy, overflow, and transition defects are not missed.
 If browser automation exposes only read-only page evaluation, navigate to
-`?recordScenario=victory` instead; the result is rendered below the workbench
-with stable `data-scenario-recording="clip"` and `"contact-sheet"` selectors.
+`?recordScenario=victory` instead; the result uses stable
+`data-scenario-recording="clip"` and `"contact-sheet"` selectors.
+That URL uses a dedicated review layout: the workbench stays mounted offscreen
+for exact native capture while the visible page contains only recording
+progress, download actions, the animated clip, and the contained contact sheet.
 
 Prefer physical tile coordinates unless deliberately testing the rotated preview.
 Use `{ space: "preview" }` only when interacting with the visible board layout.
