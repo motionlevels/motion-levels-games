@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileAuthoredContent } from "../scripts/authored-content.ts";
-import { gamePackageRegistry } from "../packages/runtime/src/gameplayRegistry.ts";
+import { gamePackageRegistry } from "../packages/game-catalog/src/gameplayRegistry.ts";
 import { FLOOR_COLS, FLOOR_ROWS } from "@motion-levels-games/game-sdk";
 
 test("repository-authored catalogs compile deterministically and every level initializes offline", async () => {
@@ -12,6 +12,8 @@ test("repository-authored catalogs compile deterministically and every level ini
     second.map((game) => [game.gameDir, game.content.contentRevision])
   );
   assert.deepEqual(first.map((game) => game.gameDir), ["parkour", "temporada1-niveles"]);
+  assert.deepEqual(first[0]?.game.resultAnimationIds, first[1]?.game.resultAnimationIds);
+  assert.deepEqual(first[0]?.content.resultAnimations, first[1]?.content.resultAnimations);
 
   for (const compiled of first) {
     const module = gamePackageRegistry.get(compiled.game.engineGame);

@@ -13,15 +13,13 @@
     "packages/player-experience",
     "packages/published-level-runtime",
     "packages/replay-runtime",
+    "packages/runtime",
     "packages/session-history"
   ],
   "compositionRoots": [
-    "packages/runtime",
+    "packages/game-catalog",
     "apps",
     "scripts"
-  ],
-  "allowedConcreteGameConsumers": [
-    "packages/runtime"
   ],
   "forbiddenEngineRoots": [
     "game-engine",
@@ -29,8 +27,5 @@
     "packages/game-engine",
     "packages/core-engine",
     "apps/game-engine"
-  ],
-  "strictMode": {
-    "description": "Strict mode additionally fails while a package-layer exception remains. Remove packages/runtime after moving concrete registries into a composition package."
-  }
+  ]
 }

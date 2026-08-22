@@ -16,7 +16,7 @@ const base = {
   runId: "run-1",
   lifecycle: "running",
   allowedControls: [],
-  currentGame: "ping-pong",
+  currentGame: "ping-pong-v2",
   venueSessionId: "venue-1",
   sessionId: "engine-1",
   label: "Ping Pong",

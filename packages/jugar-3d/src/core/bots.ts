@@ -6,7 +6,7 @@ import type {
 import { setAvatarTarget, type Avatar } from "./avatar.ts";
 import { centroid, matchesColor, nearestTile, resolveReadyZones } from "./readyZones.ts";
 import { litTiles, sameTile, tileDistance } from "./tileMath.ts";
-import type { GameSession } from "./session.ts";
+import type { JugarPresentationSession } from "./session.ts";
 
 const THINK_INTERVAL_MILLIS = 380;
 const WANDER_INTERVAL_MILLIS = 1_400;
@@ -23,7 +23,7 @@ export class ReadyZoneDirector {
     this.lastThinkAt = Number.NEGATIVE_INFINITY;
   }
 
-  update(session: GameSession): void {
+  update(session: JugarPresentationSession): void {
     const now = session.clockMillis;
     if (now - this.lastThinkAt < THINK_INTERVAL_MILLIS) return;
     this.lastThinkAt = now;
@@ -89,7 +89,7 @@ export function createSeededFallbackController(
  * leaves one empty and the game correctly refuses to start, exactly as it does
  * in the venue.
  */
-function claimReadyZones(session: GameSession, bots: Avatar[]): void {
+function claimReadyZones(session: JugarPresentationSession, bots: Avatar[]): void {
   const zones = resolveReadyZones(session.instance, session.state.frame, session.state.snapshot);
   if (zones.length === 0) {
     return;

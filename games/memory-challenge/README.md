@@ -24,7 +24,7 @@ npm run typecheck --workspace @motion-levels-games/memory-challenge
 ```
 
 Keep `manifest.id` exactly equal to the directory name: `memory-challenge`.
-Register the finished package in `packages/runtime/src/gameplayRegistry.ts`; the
+Register the finished package in `packages/game-catalog/src/gameplayRegistry.ts`; the
 release validator requires every `games/*` package to appear in the
 production runtime, catalog, and player-display registry.
 Keep the player-presence gate and pre-start animation when replacing the

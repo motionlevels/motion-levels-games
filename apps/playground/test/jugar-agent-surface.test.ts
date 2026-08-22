@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("Agents 3D uses the shared Jugar Stage and one GameSession", async () => {
+test("Agents 3D uses the shared Jugar Stage and presentation adapter", async () => {
   const source = await readFile(new URL("../src/JugarAgentSurface.tsx", import.meta.url), "utf8");
   assert.match(source, /Stage,[\s\S]*?useGameSession/u);
   assert.match(source, /controllerSlots: "all"/u);

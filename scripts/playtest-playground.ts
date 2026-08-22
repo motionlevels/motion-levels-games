@@ -303,8 +303,8 @@ try {
 }
 
 async function playtestPingPong(page: Page) {
-  await page.locator(".control-game select").selectOption("ping-pong");
-  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "ping-pong");
+  await page.locator(".control-game select").selectOption("ping-pong-v2");
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().gameId === "ping-pong-v2");
 
   const floor = page.locator(".ml-floor-interactive");
   const topTile = floor.locator('[data-tile-x="7"][data-tile-y="3"]');
@@ -2266,10 +2266,10 @@ async function assertMomentaryFloorInput(page: Page): Promise<void> {
 }
 
 async function assertStablePhaseHeader(page: Page): Promise<void> {
-  await page.locator(".control-game select").selectOption("ping-pong");
+  await page.locator(".control-game select").selectOption("ping-pong-v2");
   await page.waitForFunction(() => {
     const state = (window as BrowserPlaygroundWindow).ml?.getState();
-    return state?.gameId === "ping-pong" && state.snapshot.phase === "waiting";
+    return state?.gameId === "ping-pong-v2" && state.snapshot.phase === "waiting";
   });
 
   const waiting = await playgroundHeaderLayout(page);

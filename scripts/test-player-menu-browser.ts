@@ -36,8 +36,8 @@ const scenarioFilter = String(process.env.MOTION_LEVELS_PLAYER_MENU_BROWSER_SCEN
 const baseURL = `http://127.0.0.1:${port}`;
 const generatedMediaRoot = String(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || "").trim();
 // A tiny CI-safe poster keeps the browser contract test independent from the
-// optional generated-media job. Release-bundle CI serves the real generated
-// files instead through MOTION_LEVELS_GAMES_MEDIA_DIR.
+// optional generated-media job. A caller can serve real generated files
+// explicitly through MOTION_LEVELS_GAMES_MEDIA_DIR.
 const fallbackWebP = Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEAAUAmJaQAA3AA/vuUAAA=", "base64");
 const screenshotPath = (name: string) => path.join(tmpdir(), name);
 const viteEntry = path.join(repoRoot, "node_modules/vite/bin/vite.js");
@@ -668,7 +668,7 @@ try {
         source_kind: "motion_levels_games",
         source_game_id: "arkanoid",
       }),
-      ...["duelo", "estela", "ping-pong", "ping-pong-v2", "whack-a-mole"].map((gameID, index) => mockCatalogEntry({
+      ...["duelo", "estela", "ping-pong-v2", "whack-a-mole"].map((gameID, index) => mockCatalogEntry({
         id: `disabled-versus-${index}`,
         engine_game: `motion-levels-games:${gameID}`,
         catalog_category: "versus",

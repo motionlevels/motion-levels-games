@@ -6,7 +6,7 @@ import {
   type JugarStageDiagnostics,
   type SessionTrajectoryFrame
 } from "@motion-levels-games/jugar-3d/react";
-import type { GameDifficulty, GameEngine, GameEngineState } from "@motion-levels-games/game-sdk";
+import type { GameDifficulty, GameEngineState } from "@motion-levels-games/game-sdk";
 import {
   REPLAY_SCHEMA_VERSION,
   ReplayPlayer,
@@ -36,7 +36,7 @@ type Props = Readonly<{
   gameOptions: Readonly<Record<string, unknown>>;
   hostPaused: boolean;
   onController(controller: JugarAgentSurfaceController | null): void;
-  onState(state: GameEngineState, engine: GameEngine): void;
+  onState(state: GameEngineState): void;
   onSeedChange(seed: number): void;
   onPlayerCountChange(playerCount: number): void;
 }>;
@@ -221,7 +221,7 @@ export function JugarAgentSurface({
   useEffect(() => {
     const publish = () => {
       updatePublicState();
-      onState(session.state, session.engine);
+      onState(session.state);
       refresh((value) => value + 1);
     };
     publish();
@@ -293,7 +293,7 @@ export function JugarAgentSurface({
     const animate = (now: number) => {
       const deltaTicks = previousAt === undefined
         ? 0
-        : (now - previousAt) / session.engine.frameMillis;
+        : (now - previousAt) / session.frameMillis;
       previousAt = now;
       const advanced = replayPlayerRef.current?.advance(deltaTicks) ?? [];
       const tick = advanced.at(-1)?.tick;
@@ -306,7 +306,7 @@ export function JugarAgentSurface({
     };
     frameHandle = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameHandle);
-  }, [hostPaused, replayMode, replayPaused, seekReplay, session.engine.frameMillis, setReplayPausedState]);
+  }, [hostPaused, replayMode, replayPaused, seekReplay, session.frameMillis, setReplayPausedState]);
 
   const setRunPaused = useCallback((paused: boolean) => {
     if (replayModeRef.current) {
@@ -647,7 +647,7 @@ function createRecorder(
     simulationVersion: "jugar-3d-fixed-step-1",
     brainVersions: game.createSessionController ? { product: "session-controller" } : {},
     seed: String(session.seed),
-    tickRate: session.engine.fps,
+    tickRate: session.fps,
     config: { difficulty, durationMillis, playerCount, profile }
   });
 }
@@ -699,7 +699,7 @@ function emptyReplay(
       simulationVersion: "jugar-3d-fixed-step-1",
       brainVersions: {},
       seed: String(session.seed),
-      tickRate: session.engine.fps
+      tickRate: session.fps
     },
     frames: [],
     snapshots: []

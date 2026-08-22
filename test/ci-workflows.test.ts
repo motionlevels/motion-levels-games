@@ -44,8 +44,12 @@ test("reusable checks make bundle assembly an explicit opt-in", () => {
   assert.match(checks, /BUILD_RELEASE_BUNDLE: \$\{\{ inputs\.build_release_bundle \}\}/u);
   assert.match(
     checks,
-    /if \[\[ "\$BUILD_RELEASE_BUNDLE" == "true" \]\]; then[\s\S]*?npm run generate:media[\s\S]*?npm run build:bundle[\s\S]*?npm run verify:bundle/u,
+    /if \[\[ "\$BUILD_RELEASE_BUNDLE" == "true" \]\]; then[\s\S]*?npm run build:bundle[\s\S]*?npm run verify:bundle/u,
   );
+  assert.match(checks, /git rev-parse HEAD:assets/u);
+  assert.match(checks, /repository: motionlevels\/motion-levels-assets/u);
+  assert.match(checks, /token: \$\{\{ secrets\.MOTION_LEVELS_ASSETS_TOKEN \}\}/u);
+  assert.doesNotMatch(checks, /npm run generate:media|MOTION_LEVELS_GAMES_MEDIA_DIR=dist\/media/u);
   assert.match(checks, /npm run playtest:browser/u);
   assert.match(checks, /npm run test:player-menu/u);
   assert.match(checks, /mcr\.microsoft\.com\/playwright:v1\.61\.1-noble/u);
@@ -71,6 +75,7 @@ test("manual release opts into the expensive bundle gate and reuses its exact ar
     /checks:[\s\S]*?uses: \.\/\.github\/workflows\/checks\.yml[\s\S]*?with:[\s\S]*?build_release_bundle: true/u,
   );
   assert.match(release, /actions\/download-artifact@v8/u);
+  assert.match(release, /MOTION_LEVELS_ASSETS_TOKEN: \$\{\{ secrets\.MOTION_LEVELS_ASSETS_TOKEN \}\}/u);
   assert.match(release, /name: motion-levels-games-\$\{\{ env\.SOURCE_REVISION \}\}/u);
   assert.match(release, /sha256sum --check "\$archive\.sha256"/u);
   assert.match(release, /overwrite_files: false/u);

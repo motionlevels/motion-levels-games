@@ -13,7 +13,7 @@ import {
 } from "@motion-levels-games/character-runtime";
 
 import { JUMP_MILLIS, avatarAnimationParameters, type Avatar } from "../core/avatar.ts";
-import type { GameSession } from "../core/session.ts";
+import type { JugarPresentationSession } from "../core/session.ts";
 import { TILE_SIZE, TILE_TOP_Y, tileToWorld } from "../core/tileMath.ts";
 
 /**
@@ -110,7 +110,7 @@ export function deterministicLocomotionPose(
  * game is being told about — and only ever lifts off the panel, never sinks.
  */
 export function useCharacterMotion(
-  session: GameSession,
+  session: JugarPresentationSession,
   avatar: Avatar,
   rootRef: RefObject<THREE.Group | null>,
   applyPose: (pose: CharacterPose) => void
@@ -156,7 +156,7 @@ export function useCharacterMotion(
     const parameters = avatarAnimationParameters(avatar, session.presentationMillis, result);
     const procedural = proceduralPose(
       parameters,
-      Math.round(session.presentationMillis / session.engine.frameMillis),
+      Math.round(session.presentationMillis / session.frameMillis),
       session.seed + avatar.id * 101
     );
 

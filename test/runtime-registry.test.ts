@@ -4,13 +4,13 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gameManifestLookupKeys, gameManifestSlug } from "../packages/game-sdk/src/index.ts";
-import { displayRegistry } from "../packages/runtime/src/displayRegistry.ts";
+import { displayRegistry } from "../packages/game-catalog/src/displayRegistry.ts";
 import {
-  buildGameplayRegistry,
   gameCatalog,
   gamePackageRegistry,
   gameplayRegistry
-} from "../packages/runtime/src/gameplayRegistry.ts";
+} from "../packages/game-catalog/src/gameplayRegistry.ts";
+import { buildGameplayRegistry } from "../packages/runtime/src/registry.ts";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const gameIds = (await Promise.all(
@@ -28,7 +28,7 @@ test("gameplay and browser display registries cover every playable game package"
   assert.deepEqual(
     [...gamePackageRegistry.keys()].sort(),
     gameIds,
-    "register every games/* package in packages/runtime/src/gameplayRegistry.ts before release"
+    "register every games/* package in packages/game-catalog/src/gameplayRegistry.ts before release"
   );
   assert.deepEqual(gameCatalog.map(gameManifestSlug).sort(), gameIds);
 

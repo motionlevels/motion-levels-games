@@ -7,7 +7,7 @@ const apiSource = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8"
 const audioSource = readFileSync(new URL("../src/audio.ts", import.meta.url), "utf8");
 const displaySource = readFileSync(new URL("../src/MotionLevelsGamesDisplay.tsx", import.meta.url), "utf8");
 const clientSource = readFileSync(new URL("../src/displayClient.ts", import.meta.url), "utf8");
-const runtimeSource = readFileSync(new URL("../../../packages/runtime/src/display.tsx", import.meta.url), "utf8");
+const runtimeSource = readFileSync(new URL("../../../packages/game-catalog/src/display.tsx", import.meta.url), "utf8");
 
 test("new games load their revision-matched display while legacy games retain the existing app", () => {
   assert.match(appSource, /liveStatus\.sourceKind === "motion_levels_games"/u);

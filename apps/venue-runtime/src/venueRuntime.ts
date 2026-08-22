@@ -20,11 +20,10 @@ import {
   type PlayerExperienceState
 } from "@motion-levels-games/player-experience";
 import {
-  GameSession,
   gameCatalog,
-  gameplayRegistry,
-  type GameSessionState
-} from "@motion-levels-games/runtime";
+  gameplayRegistry
+} from "@motion-levels-games/game-catalog";
+import { GameSession, type GameSessionState } from "@motion-levels-games/runtime";
 import {
   SESSION_HISTORY_SCHEMA,
   normalizeRecordingPolicy,
@@ -314,7 +313,7 @@ function menuPatchCanRebase(
 }
 
 export class VenueRuntime {
-  private readonly session = new GameSession();
+  private readonly session = new GameSession(gameplayRegistry);
   private readonly controller: ControllerClient;
   private readonly liveFloorPublisher: LiveFloorPublisher | null;
   private readonly localLiveFloorFps: number;

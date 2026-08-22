@@ -6,12 +6,13 @@ import {
   type GameConfig,
   type GameEngine,
   type GameEngineState,
+  type GameEngineOptions,
   type GameEvent,
   type GameInstance,
   type GameSnapshot,
   type NormalizedGameConfig
 } from "@motion-levels-games/game-sdk";
-import { gameplayRegistry } from "./gameplayRegistry.ts";
+import type { GameplayModule, GameplayRegistry } from "./registry.ts";
 
 export type GameSelection = GameConfig & {
   gameId: string;
@@ -27,6 +28,8 @@ export type GameSessionState = {
   snapshot: GameSnapshot;
   events: GameEvent[];
 };
+
+export type GameSessionOptions = Readonly<Pick<GameEngineOptions, "fps">>;
 
 export type AutomaticAttemptTransition = Readonly<{
   kind: "retry" | "level_advance";
@@ -55,20 +58,47 @@ export class GameSession {
   private paused = false;
   private held = new Set<string>();
 
+  constructor(
+    private readonly games: GameplayRegistry,
+    private readonly options: GameSessionOptions = {}
+  ) {}
+
   get active(): boolean {
     return this.engine !== null;
   }
 
+  /** Current deterministic engine state for presentation and replay adapters. */
+  engineState(): GameEngineState {
+    return this.requireEngine().state;
+  }
+
+  get instance(): GameInstance {
+    if (!this.game) throw new Error("game session has no active game");
+    return this.game;
+  }
+
+  get clockMillis(): number {
+    return this.requireEngine().clockMillis;
+  }
+
+  get fps(): number {
+    return this.requireEngine().fps;
+  }
+
+  get frameMillis(): number {
+    return this.requireEngine().frameMillis;
+  }
+
   select(selection: GameSelection): GameSessionState {
     const lookupKey = normalizeGameLookupKey(selection.gameId);
-    const module = gameplayRegistry.get(lookupKey);
+    const module = this.games.get(lookupKey);
     if (!module) throw new Error(`unknown game: ${lookupKey}`);
     if (!module.manifest.availability.production && selection.development !== true) {
       throw new Error(`game is not production eligible: ${lookupKey}`);
     }
     const config = normalizeGameConfig(selection, module.manifest);
     const game = module.createGame(config);
-    const engine = createSessionEngine(game, config.nowMillis);
+    const engine = createSessionEngine(game, config.nowMillis, this.options);
     this.engine = engine;
     this.game = game;
     this.gameId = module.manifest.id;
@@ -91,6 +121,13 @@ export class GameSession {
     const engine = this.requireEngine();
     if (this.paused) return this.toState(engine.refresh());
     return this.toState(engine.tickTo(finiteMillis(atMillis, engine.clockMillis)));
+  }
+
+  /** Explicit relative step used by deterministic development and replay hosts. */
+  step(deltaMillis = this.frameMillis): GameSessionState {
+    const engine = this.requireEngine();
+    const delta = Number.isFinite(deltaMillis) ? Math.max(0, deltaMillis) : engine.frameMillis;
+    return this.toState(engine.tickTo(engine.clockMillis + delta));
   }
 
   pause(atMillis?: number): GameSessionState {
@@ -138,14 +175,13 @@ export class GameSession {
 
   restart(nowMillis = 0): GameSessionState {
     if (!this.initialConfig) throw new Error("game session has no active game");
-    const module = gameplayRegistry.get(normalizeGameLookupKey(this.gameId));
-    if (!module) throw new Error(`unknown game: ${this.gameId}`);
+    const module = this.requireModule();
     if (!module.manifest.availability.production && !this.development) {
       throw new Error(`game is not production eligible: ${this.gameId}`);
     }
     const config = { ...this.initialConfig, nowMillis: finiteMillis(nowMillis, 0) };
     const game = module.createGame(config);
-    const engine = createSessionEngine(game, config.nowMillis);
+    const engine = createSessionEngine(game, config.nowMillis, this.options);
     this.engine = engine;
     this.game = game;
     this.paused = false;
@@ -195,6 +231,12 @@ export class GameSession {
     return this.engine;
   }
 
+  private requireModule(): GameplayModule {
+    const module = this.games.get(normalizeGameLookupKey(this.gameId));
+    if (!module) throw new Error(`unknown game: ${this.gameId}`);
+    return module;
+  }
+
   private toState(state: GameEngineState): GameSessionState {
     return {
       gameId: this.gameId,
@@ -215,9 +257,13 @@ function isAutomaticAttemptTransitionGame(game: GameInstance | null): game is Au
     && typeof candidate.setAutomaticAttemptTransitionsBlocked === "function";
 }
 
-function createSessionEngine(game: GameInstance, nowMillis: number): GameEngine {
+function createSessionEngine(
+  game: GameInstance,
+  nowMillis: number,
+  options: GameSessionOptions
+): GameEngine {
   const events = game.init(nowMillis);
-  return createGameEngine(game, { initialEvents: events, nowMillis });
+  return createGameEngine(game, { ...options, initialEvents: events, nowMillis });
 }
 
 function boundedInteger(value: unknown, min: number, max: number, label: string): number {

@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isStableGameId } from "../packages/game-sdk/src/index.ts";
-import { gamePackageRegistry } from "../packages/runtime/src/gameplayRegistry.ts";
+import { gamePackageRegistry } from "../packages/game-catalog/src/gameplayRegistry.ts";
 
 type ManifestModule = {
   manifest?: {

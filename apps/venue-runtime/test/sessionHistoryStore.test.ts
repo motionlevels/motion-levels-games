@@ -39,9 +39,9 @@ function addOpenRun(value: SessionHistoryVisit): void {
   value.selections.push({
     id: "selection-1",
     ordinal: 1,
-    gameId: "ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
-    manifestId: "ping-pong",
+    gameId: "ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
+    manifestId: "ping-pong-v2",
     label: "Ping pong",
     sourceKind: "motion_levels_games",
     sourceRevision: "1".repeat(40),
@@ -313,7 +313,7 @@ test("lifecycle replay crosses menu events and materializes the referenced selec
     selectionId: "selection-1",
     kind: "selection.started",
     occurredAtUnixMillis: 2_000,
-    payload: { gameId: "ping-pong" }
+    payload: { gameId: "ping-pong-v2" }
   }]);
   const recovered = new SessionHistoryStore(directory);
   assert.equal(recovered.getVisit(initial.id).activeSelectionId, "selection-1");

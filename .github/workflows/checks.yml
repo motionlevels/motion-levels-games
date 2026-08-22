@@ -4,10 +4,14 @@ on:
   workflow_call:
     inputs:
       build_release_bundle:
-        description: Generate media and assemble the immutable production bundle.
+        description: Assemble the immutable production bundle from pinned assets.
         required: false
         default: false
         type: boolean
+    secrets:
+      MOTION_LEVELS_ASSETS_TOKEN:
+        description: Read-only token for the private motion-levels-assets repository.
+        required: false
 
 permissions:
   contents: read
@@ -101,6 +105,24 @@ jobs:
         with:
           fetch-depth: 0
           path: source
+      - name: Resolve the pinned assets revision
+        id: pinned-assets
+        if: inputs.build_release_bundle
+        env:
+          ASSETS_TOKEN: ${{ secrets.MOTION_LEVELS_ASSETS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ASSETS_TOKEN"
+          echo "revision=$(git rev-parse HEAD:assets)" >> "$GITHUB_OUTPUT"
+      - name: Check out the pinned private assets repository
+        if: inputs.build_release_bundle
+        uses: actions/checkout@v7
+        with:
+          repository: motionlevels/motion-levels-assets
+          ref: ${{ steps.pinned-assets.outputs.revision }}
+          path: source/assets
+          token: ${{ secrets.MOTION_LEVELS_ASSETS_TOKEN }}
       - uses: actions/setup-node@v7
         with:
           node-version-file: source/.node-version
@@ -161,10 +183,6 @@ jobs:
             mcr.microsoft.com/playwright:v1.61.1-noble \
             bash -lc '
               set -euo pipefail
-              if [[ "$BUILD_RELEASE_BUNDLE" == "true" ]]; then
-                npm run generate:media
-                export MOTION_LEVELS_GAMES_MEDIA_DIR=dist/media
-              fi
               npm run test:player-menu
               npm run playtest:browser
               if [[ "$BUILD_RELEASE_BUNDLE" == "true" ]]; then

@@ -10,12 +10,12 @@ remains a useful engineering regression harness, but it is not the production
 ## Non-negotiable boundaries
 
 1. `GameInstance` owns rules, collisions, scoring, objectives and results.
-2. `@motion-levels-games/jugar-3d` owns the sole production 3D `GameSession`,
-   fixed-step clock, continuous avatars and canonical R3F Stage extracted from
-   the deployed platform `/jugar` implementation.
+2. `@motion-levels-games/runtime` owns the sole gameplay `GameSession`; Jugar's
+   `JugarPresentationSession` schedules fixed presentation steps, continuous
+   avatars and the canonical R3F Stage extracted from the deployed platform.
 3. A product controller consumes an observation supplied by that session and
    returns an action. It never creates, resets or advances a game engine.
-4. `GameSession` applies movement and translates avatar occupancy into the same
+4. `JugarPresentationSession` translates avatar occupancy into the same runtime-owned
    timestamped floor press/release input that a human produces.
 5. Replayable decisions use the game seed or stable derived streams. Ambient
    randomness and wall/rAF time do not enter authority.
@@ -31,7 +31,7 @@ game module
   ├─ PlayerDisplay                     │
   └─ createSessionController?          │
                                        v
-                           Jugar 3D GameSession (one engine, 50 Hz)
+                    JugarPresentationSession → runtime GameSession (one engine, 50 Hz)
                               │                 │
                  observation │                 │ state/frame/events
                               v                 v
@@ -53,7 +53,7 @@ game module
 - `packages/character-runtime` remains the framework-neutral character/rig and
   quality vocabulary for consumers that need it.
 - `packages/jugar-3d` owns extracted production React/R3F presentation and the
-  browser session that connects product controllers to real game authority.
+  browser presentation adapter that connects product controllers to runtime game authority.
 - `apps/playground` wraps that shared package with additive developer controls;
   it does not own another renderer, game engine or bot policy.
 
@@ -94,7 +94,7 @@ games.
 
 ## Replay and presentation
 
-`GameSession` advances only complete fixed ticks. rAF partitions do not change
+`JugarPresentationSession` requests only complete runtime ticks. rAF partitions do not change
 authority, pausing re-anchors the accumulator so resume cannot catch up wall
 time, and explicit developer steps work while paused.
 

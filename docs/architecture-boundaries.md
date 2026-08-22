@@ -29,16 +29,12 @@ Dependencies must never point upward. In particular:
 `architecture-boundaries.json` is deliberately explicit and is checked by
 `scripts/validate-architecture.ts`.
 
-## Current exception
+## Enforced composition boundary
 
-`packages/runtime` currently owns both:
-
-1. reusable `GameSession` behavior; and
-2. the concrete gameplay/display registries importing every `games/*` package.
-
-That makes `packages/runtime` a composition root despite living under `packages/`.
-It is listed in `allowedConcreteGameConsumers` so current CI can become strict
-without a flag day. No additional package can acquire the same coupling.
+`packages/runtime` owns reusable, registry-injected `GameSession` behavior and
+depends only on `game-sdk`. `packages/game-catalog` is the explicit product
+composition root: it imports concrete game packages and owns gameplay and
+browser-display registries. Applications inject that catalog into the runtime.
 
 Run:
 
@@ -46,69 +42,14 @@ Run:
 npm run validate:architecture
 ```
 
-to reject new violations, and:
+to reject new violations. Strict invocations use the same exception-free rules:
 
 ```sh
 npm run validate:architecture -- --strict
 ```
 
-to expose the remaining extraction blocker.
-
-## Recommended extraction
-
-### 1. Introduce a composition package
-
-Create `packages/game-catalog` or `apps/game-catalog` containing:
-
-- gameplay registry;
-- display registry;
-- catalog ordering and aliases;
-- generated concrete-game imports.
-
-It is a product composition package, not part of the engine.
-
-### 2. Inject resolution into `GameSession`
-
-Change reusable session construction from implicit global lookup:
-
-```ts
-new GameSession()
-```
-
-to an injected resolver:
-
-```ts
-new GameSession({ resolveGame })
-```
-
-or:
-
-```ts
-new GameSession(gameModule)
-```
-
-The venue and playground composition roots provide the catalog. Tests can pass
-a tiny fake module without loading every game.
-
-### 3. Move concrete dependencies
-
-Move every `@motion-levels-games/<game>` dependency and both registry files out
-of `packages/runtime`. Once no concrete dependency remains, remove
-`packages/runtime` from `allowedConcreteGameConsumers`.
-
-### 4. Consolidate timing authority
-
-`packages/game-sdk` owns the canonical deterministic engine. `packages/jugar-3d`
-currently has a larger session simulation with its own tick/clock lifecycle.
-Keep 3D presentation and avatar/controller orchestration in Jugar, but make its
-game timing, input, pause, restart, and snapshots delegate to the SDK engine.
-There should be one source of truth for game time and input ordering.
-
-### 5. Generate, do not hand-maintain, catalog imports
-
-A script should discover game package manifests and write deterministic registry
-modules. CI should run the generator in check mode and fail on a diff. This avoids
-three separate hand-maintained catalogs drifting apart.
+The registry parity contract verifies exact coverage of every playable
+`games/*` package and rejects identity collisions, so catalog drift fails CI.
 
 ## Preparing for a future games repository
 

@@ -1,81 +1,165 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fallbackContent as parkourContent, parkourGameId } from "@motion-levels-games/parkour";
-import { GameSession, gameCatalog } from "../src/index.ts";
+import {
+  FLOOR_COLS,
+  FLOOR_ROWS,
+  type Frame,
+  type GameConfig,
+  type GameEvent,
+  type GameInstance,
+  type GameManifest,
+  type GameSnapshot,
+  type PressEvent,
+  type TickEvent
+} from "@motion-levels-games/game-sdk";
+import { GameSession, buildGameplayRegistry, type GameplayModule } from "../src/index.ts";
 
-test("GameSession owns a TypeScript game directly", () => {
-  const session = new GameSession();
-  const initialized = session.select({ gameId: "ping-pong", playerCount: 0, difficulty: "medium", seed: 137 });
-  assert.equal(initialized.frame.width, 16);
-  assert.equal(initialized.frame.height, 32);
-  assert.equal(initialized.frame.cells.length, 512);
-  assert.equal(initialized.snapshot.currentGame, "ping-pong");
-  assert.equal(session.press(7, 3).snapshot.readyPlayers, 1);
+const productionModule = gameModule("test-game", true);
+const developmentModule = gameModule("development-game", false);
+const failingModule: GameplayModule = {
+  ...gameModule("failing-game", true),
+  createGame: () => { throw new Error("invalid authored content"); }
+};
+const registry = buildGameplayRegistry([productionModule, developmentModule, failingModule]);
+
+test("GameSession resolves an injected game without knowing the concrete catalog", () => {
+  const session = new GameSession(registry);
+  const initialized = session.select({ gameId: "OLD-TEST-GAME", playerCount: 1, seed: 137 });
+  assert.equal(initialized.frame.width, FLOOR_COLS);
+  assert.equal(initialized.frame.height, FLOOR_ROWS);
+  assert.equal(initialized.frame.cells.length, FLOOR_COLS * FLOOR_ROWS);
+  assert.equal(initialized.snapshot.currentGame, "test-game");
+  assert.equal(session.press(7, 3).snapshot.score, 1);
 });
 
-test("GameSession rejects development-only games in production", () => {
-  const session = new GameSession();
-  assert.throws(() => session.select({ gameId: "hello-world", playerCount: 1 }), /not production eligible/);
-  const ids = gameCatalog.filter((game) => game.availability.production).map((game) => game.id);
-  for (const id of ["arkanoid", "duelo", "ping-pong"]) assert.ok(ids.includes(id));
+test("GameSession rejects development-only games unless the host opts in", () => {
+  const session = new GameSession(registry);
+  assert.throws(() => session.select({ gameId: "development-game", playerCount: 1 }), /not production eligible/u);
+  assert.equal(
+    session.select({ gameId: "development-game", playerCount: 1, development: true }).gameId,
+    "development-game"
+  );
 });
 
-test("GameSession retains authored content on restart", () => {
-  const session = new GameSession();
-  const initial = session.select({
-    gameId: "PARKOUR",
-    playerCount: 1,
-    difficulty: "medium",
-    seed: 137,
-    content: parkourContent
-  });
-  assert.equal(initial.snapshot.currentGame, parkourGameId);
+test("GameSession restarts with the normalized initial configuration", () => {
+  const session = new GameSession(registry);
+  const initial = session.select({ gameId: "test-game", playerCount: 2, seed: 137 });
+  session.press(1, 1);
   const restarted = session.restart();
   assert.deepEqual(restarted.snapshot, initial.snapshot);
   assert.deepEqual(restarted.frame, initial.frame);
 });
 
-test("failed selections leave the current session and restart config intact", () => {
-  const session = new GameSession();
-  session.select({ gameId: "ping-pong", playerCount: 0, difficulty: "medium", seed: 137 });
-  assert.throws(() => session.select({
-    gameId: parkourGameId,
-    playerCount: 0,
-    content: { schema: "invalid" } as never
-  }), /Expected motion-levels-published-level-content-v1/);
-  assert.equal(session.state().snapshot.currentGame, "ping-pong");
-  assert.equal(session.restart().snapshot.currentGame, "ping-pong");
+test("failed selections leave the active session and restart configuration intact", () => {
+  const session = new GameSession(registry);
+  session.select({ gameId: "test-game", playerCount: 1, seed: 137 });
+  assert.throws(() => session.select({ gameId: "failing-game", playerCount: 1 }), /invalid authored content/u);
+  assert.equal(session.state().snapshot.currentGame, "test-game");
+  assert.equal(session.restart().snapshot.currentGame, "test-game");
 });
 
-test("GameSession holds a published attempt boundary and advances it on the frozen engine clock", () => {
-  const session = new GameSession();
-  session.select({
-    gameId: parkourGameId,
-    playerCount: 0,
-    difficulty: "medium",
-    seed: 137,
-    content: parkourContent
-  });
-  assert.equal(session.setAutomaticAttemptTransitionsBlocked(true), true);
-  const running = session.tick(4_000);
-  const lives = Number(running.snapshot.lives);
-  const lava = running.frame.cells.filter((cell) => {
-    const red = Number.parseInt(cell.color.slice(1, 3), 16);
-    const green = Number.parseInt(cell.color.slice(3, 5), 16);
-    const blue = Number.parseInt(cell.color.slice(5, 7), 16);
-    return red > green * 1.5 && red > blue * 1.5;
-  }).slice(0, lives);
-  assert.equal(lava.length, lives);
-  for (const cell of lava) session.press(cell.x, cell.y, 4_000);
-  assert.equal(session.state().snapshot.phase, "finished");
-
-  const held = session.tick(7_000);
-  assert.equal(held.snapshot.phase, "finished");
-  assert.equal(session.pendingAutomaticAttemptTransition()?.kind, "retry");
-  const advanced = session.advanceAutomaticAttemptTransition();
-  assert.equal(advanced.clockMillis, held.clockMillis);
-  assert.equal(advanced.snapshot.phase, "running");
-  assert.ok("attemptCreatedMillis" in advanced.snapshot);
-  assert.equal(advanced.snapshot.attemptCreatedMillis, held.clockMillis);
-  assert.equal(advanced.snapshot.lives, lives);
+test("pause blocks time and input while restart clears held input", () => {
+  const session = new GameSession(registry, { fps: 25 });
+  session.select({ gameId: "test-game", playerCount: 1 });
+  session.press(2, 2, 10);
+  const paused = session.pause(20);
+  assert.equal(paused.paused, true);
+  assert.equal(session.tick(2_000).clockMillis, 20);
+  assert.equal(session.press(3, 3, 2_000).snapshot.score, 1);
+  assert.equal(session.frameMillis, 40);
+  assert.equal(session.step().clockMillis, 60);
+  assert.equal(session.restart().snapshot.score, 0);
 });
+
+function gameModule(id: string, production: boolean): GameplayModule {
+  const manifest: GameManifest = {
+    id,
+    aliases: id === "test-game" ? ["old-test-game"] : [],
+    label: id,
+    availability: { development: true, production },
+    catalog: {
+      category: "arcade",
+      color: "#112233",
+      durationLabel: "1 min",
+      modeLabel: "Test",
+      audioLabel: "Test",
+      rules: []
+    },
+    players: { allowAny: true, min: 1, max: 4 },
+    start: { mode: "immediate" },
+    defaultDurationMillis: 60_000,
+    display: { entry: "./display.tsx" },
+    preview: {
+      seed: 137,
+      playerCount: 1,
+      actions: [],
+      captureStartMillis: 0,
+      frameCount: 1,
+      frameIntervalMillis: 20
+    }
+  };
+  return { manifest, createGame: (config) => new FakeGame(id, config) };
+}
+
+class FakeGame implements GameInstance {
+  private nowMillis = 0;
+  private score = 0;
+
+  constructor(private readonly id: string, private readonly config: GameConfig) {}
+
+  init(nowMillis: number): GameEvent[] {
+    this.nowMillis = nowMillis;
+    return [];
+  }
+
+  press(event: PressEvent): GameEvent[] {
+    this.nowMillis = event.atMillis;
+    this.score += 1;
+    return [];
+  }
+
+  release(event: PressEvent): GameEvent[] {
+    this.nowMillis = event.atMillis;
+    return [];
+  }
+
+  tick(event: TickEvent): GameEvent[] {
+    this.nowMillis = event.atMillis;
+    return [];
+  }
+
+  render(): Frame {
+    return {
+      width: FLOOR_COLS,
+      height: FLOOR_ROWS,
+      cells: Array.from({ length: FLOOR_COLS * FLOOR_ROWS }, (_, index) => ({
+        x: index % FLOOR_COLS,
+        y: Math.floor(index / FLOOR_COLS),
+        color: "#000000"
+      }))
+    };
+  }
+
+  snapshot(): GameSnapshot {
+    return {
+      currentGame: this.id,
+      label: this.id,
+      phase: "running",
+      playerCount: this.config.playerCount ?? 1,
+      players: [],
+      score: this.score,
+      lives: -1,
+      elapsedMillis: this.nowMillis,
+      remainingMillis: 60_000 - this.nowMillis,
+      activeTargets: 0,
+      success: false,
+      lastEventCue: "none",
+      lastEventMessage: ""
+    };
+  }
+
+  reset(): void {
+    this.nowMillis = 0;
+    this.score = 0;
+  }
+}

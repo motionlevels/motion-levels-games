@@ -2,12 +2,9 @@
   "schema": "motion-levels-authored-game-source-v1",
   "gameId": "c1daea4f-e586-4116-8cbe-871cde887a81",
   "engineGame": "parkour",
-  "difficulties": [
-    "easy",
-    "medium",
-    "hard"
-  ],
+  "difficulties": ["easy", "medium", "hard"],
   "defaultDifficulty": "medium",
   "defaultMode": "challenge",
-  "defaultLevelSlug": "level-1"
+  "defaultLevelSlug": "level-1",
+  "resultAnimationIds": ["d8db3406-f815-4a69-840d-1cea1a43facc", "f72daac4-27a5-4144-b143-a6a85a34c3ec"]
 }

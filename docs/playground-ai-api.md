@@ -132,7 +132,7 @@ type PlaygroundApi = {
 The `Floor / Agents 3D` switch is always present in the standard top bar.
 `Agents 3D` is enabled only when the selected game exports a product
 `createSessionController`; Duelo is the first supported game. The surface uses
-the shared `@motion-levels-games/jugar-3d` `GameSession` and `Stage` extracted
+the shared `@motion-levels-games/jugar-3d` `JugarPresentationSession` and `Stage` extracted
 from the deployed Jugar experience. It does not create a second game engine or
 a parallel raw Three.js renderer.
 
@@ -242,7 +242,7 @@ While recording, the surface retains every exact `SessionTrajectoryFrame` in
 memory. `step(n)` advances authority as `n` consecutive one-tick steps and
 records each result while React presents only the final one. Replay enter,
 seek, play, and single-step present those retained frames without regenerating
-AI. Replay exit restores the parked live `GameSession` exactly where it
+AI. Replay exit restores the parked live `JugarPresentationSession` exactly where it
 stopped. Character animation is sampled from the recorded presentation clock,
 so repeatedly seeking one tick does not accumulate rAF-dependent pose state.
 
@@ -357,7 +357,7 @@ The result also includes the canonical media `schema` and bundle-relative
 `media` references from `@motion-levels-games/game-sdk`.
 
 ```js
-const media = await ml.media("ping-pong");
+const media = await ml.media("ping-pong-v2");
 console.log(media.assets.thumbnail.dataUrl);
 console.log(media.assets.playerDisplay.dataUrl);
 ```
@@ -365,7 +365,7 @@ console.log(media.assets.playerDisplay.dataUrl);
 To render media for a specific configuration:
 
 ```js
-const media = await ml.media("ping-pong", {
+const media = await ml.media("ping-pong-v2", {
   difficulty: "hard",
   playerCount: 0,
   players: [{ name: "Chris" }, { name: "Jose" }],

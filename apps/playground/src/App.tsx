@@ -28,7 +28,6 @@ import {
 import { animationLibrary, animationMediaURL } from "@motion-levels-games/animation-runtime";
 import { FloorPreview, PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
 import {
-  createGameEngine,
   defaultGamePlayerCount,
   gameMediaAssetSpecs,
   gameMediaPreviewStillFrameIndex,
@@ -49,11 +48,11 @@ import {
   type GameConfigOptions,
   type GameConfigVar,
   type GameDifficulty,
-  type GameEngine,
   type GameEngineState,
   type GameEvent,
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
+import { GameSession, buildGameplayRegistry } from "@motion-levels-games/runtime";
 import {
   captureDisplayElement,
   capturePlaygroundSurfaces,
@@ -121,14 +120,19 @@ const difficultyLabels: Record<string, string> = {
   hard: "Hard",
   expert: "Expert"
 };
-function createStartedGame(
+const playgroundRegistry = buildGameplayRegistry(playgroundGames);
+
+function selectGameSession(
+  session: GameSession,
   gameModule: PlaygroundGame,
   seed: number,
   playerCount: number,
   difficulty: GameDifficulty,
   options: GameConfigOptions
 ) {
-  const game = gameModule.createGame({
+  return session.select({
+    gameId: gameModule.manifest.id,
+    development: true,
     seed,
     playerCount,
     durationMillis: gameModule.manifest.defaultDurationMillis,
@@ -136,9 +140,6 @@ function createStartedGame(
     options,
     nowMillis: 0
   });
-  const events = game.init(0);
-
-  return { game, events };
 }
 
 export function App() {
@@ -184,26 +185,24 @@ export function App() {
   const agentLabActive = !runtimeLive && surfaceMode === "agents" && selectedGame.createSessionController !== undefined;
   const started = useMemo(
     () => {
-      const startedGame = createStartedGame(
+      const session = new GameSession(playgroundRegistry, { fps: DEFAULT_ENGINE_FPS });
+      const state = selectGameSession(
+        session,
         initialGame,
         DEFAULT_GAME_SEED,
         playerJourney?.playerCount ?? defaultGamePlayerCount(initialGame.manifest),
         playerJourney?.difficulty ?? defaultDifficultyFor(initialGame),
         playerJourney?.options ?? defaultConfigOptionsFor(initialGame)
       );
-      const engine = createGameEngine(startedGame.game, {
-        fps: DEFAULT_ENGINE_FPS,
-        initialEvents: startedGame.events
-      });
-
-      return { ...startedGame, engine };
+      return { session, state };
     },
     [initialGame, playerJourney]
   );
-  const engineRef = useRef<GameEngine>(started.engine);
-  const [snapshot, setSnapshot] = useState<GameSnapshot>(started.engine.state.snapshot);
-  const [frame, setFrame] = useState<Frame>(started.engine.state.frame);
-  const [events, setEvents] = useState<GameEvent[]>(started.events);
+  const sessionRef = useRef<GameSession>(started.session);
+  const localClockMillisRef = useRef(started.state.clockMillis);
+  const [snapshot, setSnapshot] = useState<GameSnapshot>(started.state.snapshot);
+  const [frame, setFrame] = useState<Frame>(started.state.frame);
+  const [events, setEvents] = useState<GameEvent[]>(started.state.events);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
   const [captureMessage, setCaptureMessage] = useState("");
@@ -499,7 +498,8 @@ export function App() {
     };
   }, [acceptVenueDisplay, runtimeIntegrated]);
 
-  const syncEngineState = useCallback((state: GameEngineState) => {
+  const syncEngineState = useCallback((state: Pick<GameEngineState, "clockMillis" | "snapshot" | "frame" | "events">) => {
+    localClockMillisRef.current = state.clockMillis;
     snapshotRef.current = state.snapshot;
     frameRef.current = state.frame;
     setSnapshot(state.snapshot);
@@ -542,11 +542,11 @@ export function App() {
       return;
     }
 
-    let nextState: GameEngineState | undefined;
+    let nextState: Pick<GameEngineState, "clockMillis" | "snapshot" | "frame" | "events"> | undefined;
     const emittedEvents: GameEvent[] = [];
 
     for (const tile of activePlayerInputsRef.current.values()) {
-      nextState = engineRef.current.release(tile.x, tile.y);
+      nextState = sessionRef.current.release(tile.x, tile.y);
       emittedEvents.push(...nextState.events);
     }
     activePlayerInputsRef.current.clear();
@@ -673,24 +673,27 @@ export function App() {
       }
 
       const normalizedOptions = normalizeGameConfigOptions(nextOptions, nextGame.manifest);
-      const next = createStartedGame(nextGame, nextSeed, nextPlayerCount, nextDifficulty, normalizedOptions);
-      const nextEngine = createGameEngine(next.game, {
-        fps: DEFAULT_ENGINE_FPS,
-        initialEvents: next.events
-      });
-      const nextState = nextEngine.state;
-      engineRef.current = nextEngine;
+      const nextState = selectGameSession(
+        sessionRef.current,
+        nextGame,
+        nextSeed,
+        nextPlayerCount,
+        nextDifficulty,
+        normalizedOptions
+      );
+      if (pausedRef.current) sessionRef.current.pause(nextState.clockMillis);
       activePlayerInputsRef.current.clear();
       setInputResetSequence((current) => current + 1);
       eventAutoFollowRef.current = true;
       previousLatestEventRef.current = "";
       setEventAutoFollow(true);
-      eventsRef.current = next.events;
+      eventsRef.current = nextState.events;
+      localClockMillisRef.current = nextState.clockMillis;
       snapshotRef.current = nextState.snapshot;
       frameRef.current = nextState.frame;
       difficultyRef.current = nextDifficulty;
       gameOptionsRef.current = normalizedOptions;
-      setEvents(next.events);
+      setEvents(nextState.events);
       setSnapshot(nextState.snapshot);
       setFrame(nextState.frame);
       setDifficulty(nextDifficulty);
@@ -822,6 +825,14 @@ export function App() {
 
   useEffect(() => {
     if (paused || agentLabActive || runtimeLive) {
+      sessionRef.current.pause();
+    } else {
+      sessionRef.current.resume();
+    }
+  }, [agentLabActive, paused, runtimeLive]);
+
+  useEffect(() => {
+    if (paused || agentLabActive || runtimeLive) {
       return undefined;
     }
 
@@ -831,19 +842,19 @@ export function App() {
 
     const runFrame = (runtimeMillis: number) => {
       const elapsedMillis = Math.min(
-        engineRef.current.frameMillis * DEFAULT_ENGINE_MAX_CATCH_UP_STEPS,
+        sessionRef.current.frameMillis * DEFAULT_ENGINE_MAX_CATCH_UP_STEPS,
         Math.max(0, runtimeMillis - previousRuntimeMillis)
       );
       previousRuntimeMillis = runtimeMillis;
       accumulatedMillis += elapsedMillis;
 
       let steps = 0;
-      let nextState: GameEngineState | undefined;
+      let nextState: Pick<GameEngineState, "clockMillis" | "snapshot" | "frame" | "events"> | undefined;
       const emittedEvents: GameEvent[] = [];
-      const frameMillis = engineRef.current.frameMillis;
+      const frameMillis = sessionRef.current.frameMillis;
 
       while (accumulatedMillis >= frameMillis && steps < DEFAULT_ENGINE_MAX_CATCH_UP_STEPS) {
-        nextState = engineRef.current.step(frameMillis);
+        nextState = sessionRef.current.step(frameMillis);
         if (nextState.events.length > 0) {
           emittedEvents.push(...nextState.events);
         }
@@ -884,7 +895,7 @@ export function App() {
         void enqueueVenueFloorInput([{ ...tile, pressed: true }]).catch(() => {});
         return;
       }
-      syncEngineState(engineRef.current.press(tile.x, tile.y));
+      syncEngineState(sessionRef.current.press(tile.x, tile.y));
     },
     [enqueueVenueFloorInput, runtimeLive, syncEngineState]
   );
@@ -904,7 +915,7 @@ export function App() {
         void enqueueVenueFloorInput([{ ...tile, pressed: false }]).catch(() => {});
         return;
       }
-      syncEngineState(engineRef.current.release(tile.x, tile.y));
+      syncEngineState(sessionRef.current.release(tile.x, tile.y));
     },
     [enqueueVenueFloorInput, runtimeLive, syncEngineState]
   );
@@ -1066,7 +1077,7 @@ export function App() {
         return;
       }
       const stepMillis = Number.isFinite(millis) ? Math.max(0, millis) : DEFAULT_ENGINE_FRAME_MILLIS;
-      syncEngineState(engineRef.current.step(stepMillis));
+      syncEngineState(sessionRef.current.step(stepMillis));
     },
     [acceptVenueDisplay, runtimeLive, syncEngineState]
   );
@@ -1076,8 +1087,7 @@ export function App() {
     setAgentLabState(controller?.getState());
   }, []);
 
-  const handleAgentLabFrame = useCallback((nextState: GameEngineState, nextEngine: GameEngine) => {
-    engineRef.current = nextEngine;
+  const handleAgentLabFrame = useCallback((nextState: GameEngineState) => {
     syncEngineState(nextState);
     setAgentLabState(agentLabControllerRef.current?.getState());
   }, [syncEngineState]);
@@ -1142,9 +1152,9 @@ export function App() {
           frame: liveFrame,
           previewFrame: liveFrame,
           events: eventsRef.current,
-          clockMillis: liveDisplay?.elapsedMillis ?? engineRef.current.clockMillis,
-          fps: liveDisplay ? 50 : engineRef.current.fps,
-          frameMillis: liveDisplay ? DEFAULT_ENGINE_FRAME_MILLIS : engineRef.current.frameMillis,
+          clockMillis: liveDisplay?.elapsedMillis ?? localClockMillisRef.current,
+          fps: liveDisplay ? 50 : sessionRef.current.fps,
+          frameMillis: liveDisplay ? DEFAULT_ENGINE_FRAME_MILLIS : sessionRef.current.frameMillis,
           difficulty: difficultyRef.current,
           options: gameOptionsRef.current,
           playerCount: liveDisplay?.playerCount ?? playerCountRef.current,
@@ -1338,8 +1348,8 @@ export function App() {
     || (libraryTab !== "games" && visibleLibraryAnimations.length > 0);
   const effectivePresentationPaused = paused || (agentLabActive && (agentLabState?.paused ?? false));
   const displayedPhase = effectivePresentationPaused ? "paused" : displaySnapshot.phase;
-  const runtimeClockMillis = runtimeLive ? Math.max(0, displaySnapshot.elapsedMillis) : engineRef.current.clockMillis;
-  const frameMillis = runtimeLive ? DEFAULT_ENGINE_FRAME_MILLIS : engineRef.current.frameMillis;
+  const runtimeClockMillis = runtimeLive ? Math.max(0, displaySnapshot.elapsedMillis) : localClockMillisRef.current;
+  const frameMillis = runtimeLive ? DEFAULT_ENGINE_FRAME_MILLIS : sessionRef.current.frameMillis;
   const frameNumber = frameMillis > 0 ? Math.round(runtimeClockMillis / frameMillis) : 0;
   const debugStats: [string, ReactNode][] = [
     ["Game", displayGame.manifest.label],
@@ -1347,7 +1357,7 @@ export function App() {
     ["Surface", agentLabActive ? "Jugar 3D" : "Floor"],
     ["Phase", displaySnapshot.phase],
     ["Clock", formatElapsedClock(runtimeClockMillis)],
-    ["FPS", runtimeLive ? 50 : engineRef.current.fps],
+    ["FPS", runtimeLive ? 50 : sessionRef.current.fps],
     ["Seed", seed],
     ["Players", playerCount],
     ["Difficulty", difficulty],
@@ -1623,7 +1633,7 @@ export function App() {
                     <div className="debug-api-strip">
                       <code>window.ml</code>
                       <code>capture(["display", "boardPreview", "combined"])</code>
-                      <code>media("ping-pong")</code>
+                      <code>media("ping-pong-v2")</code>
                     </div>
 
                     <article className="debug-latest">
@@ -1873,7 +1883,7 @@ export function App() {
             clockMillis={runtimeClockMillis}
             eventStreamRef={eventStreamRef}
             events={events}
-            fps={runtimeLive ? 50 : engineRef.current.fps}
+            fps={runtimeLive ? 50 : sessionRef.current.fps}
             frameNumber={frameNumber}
             gameLabel={displayGame.manifest.label}
             onAutoFollowChange={setEventAutoFollowState}

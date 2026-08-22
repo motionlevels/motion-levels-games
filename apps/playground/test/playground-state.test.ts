@@ -16,8 +16,8 @@ test("selected game preference accepts only currently available games", () => {
 
   storeSelectedGameId("arkanoid", storage);
   assert.equal(values.get(selectedGameStorageKey), "arkanoid");
-  assert.equal(readStoredSelectedGameId(["ping-pong", "arkanoid"], storage), "arkanoid");
-  assert.equal(readStoredSelectedGameId(["ping-pong"], storage), undefined);
+  assert.equal(readStoredSelectedGameId(["ping-pong-v2", "arkanoid"], storage), "arkanoid");
+  assert.equal(readStoredSelectedGameId(["ping-pong-v2"], storage), undefined);
 });
 
 test("selected game preference tolerates unavailable browser storage", () => {
@@ -30,8 +30,8 @@ test("selected game preference tolerates unavailable browser storage", () => {
     }
   };
 
-  assert.equal(readStoredSelectedGameId(["ping-pong"], unavailableStorage), undefined);
-  assert.doesNotThrow(() => storeSelectedGameId("ping-pong", unavailableStorage));
+  assert.equal(readStoredSelectedGameId(["ping-pong-v2"], unavailableStorage), undefined);
+  assert.doesNotThrow(() => storeSelectedGameId("ping-pong-v2", unavailableStorage));
 });
 
 test("temporary pause locks preserve manual pause and compose safely", () => {

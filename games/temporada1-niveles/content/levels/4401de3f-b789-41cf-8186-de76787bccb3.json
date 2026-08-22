@@ -16,34 +16,10 @@
     "narration_auto": true,
     "difficulty_changes_layout": false,
     "difficulty_settings": {
-      "easy": {
-        "life": 1,
-        "frame_duration_ms": 25,
-        "gameplay_lives": 0,
-        "gameplay_time_limit_seconds": 0,
-        "speed_multiplier": 1
-      },
-      "medium": {
-        "life": 1,
-        "frame_duration_ms": 25,
-        "gameplay_lives": 0,
-        "gameplay_time_limit_seconds": 0,
-        "speed_multiplier": 1
-      },
-      "hard": {
-        "life": 1,
-        "frame_duration_ms": 25,
-        "gameplay_lives": 0,
-        "gameplay_time_limit_seconds": 0,
-        "speed_multiplier": 1
-      },
-      "expert": {
-        "life": 1,
-        "frame_duration_ms": 25,
-        "gameplay_lives": 0,
-        "gameplay_time_limit_seconds": 0,
-        "speed_multiplier": 1
-      }
+      "easy": { "life": 1, "frame_duration_ms": 25, "gameplay_lives": 0, "gameplay_time_limit_seconds": 0, "speed_multiplier": 1 },
+      "medium": { "life": 1, "frame_duration_ms": 25, "gameplay_lives": 0, "gameplay_time_limit_seconds": 0, "speed_multiplier": 1 },
+      "hard": { "life": 1, "frame_duration_ms": 25, "gameplay_lives": 0, "gameplay_time_limit_seconds": 0, "speed_multiplier": 1 },
+      "expert": { "life": 1, "frame_duration_ms": 25, "gameplay_lives": 0, "gameplay_time_limit_seconds": 0, "speed_multiplier": 1 }
     },
     "red_floor_animation": "none",
     "red_damage_grace_period": false,
@@ -56,12 +32,8 @@
     "catalog_featured": false
   },
   "result_animations": {
-    "victory_animations": [
-      "d8db3406-f815-4a69-840d-1cea1a43facc"
-    ],
-    "defeat_animations": [
-      "f72daac4-27a5-4144-b143-a6a85a34c3ec"
-    ]
+    "victory_animations": ["d8db3406-f815-4a69-840d-1cea1a43facc"],
+    "defeat_animations": ["f72daac4-27a5-4144-b143-a6a85a34c3ec"]
   },
   "music_ref": "Motion/canciones/Background07.mp3",
   "music_volume": 0.18,
@@ -76,251 +48,51 @@
     {
       "r": 90,
       "c": [
-        [
-          1,
-          3,
-          1,
-          "fWvbREvyCT"
-        ],
-        [
-          1,
-          4,
-          1,
-          "zPO2LUkYge"
-        ],
-        [
-          2,
-          3,
-          1,
-          "WnSKXarrZG"
-        ],
-        [
-          2,
-          4,
-          1,
-          "0cy9K3lcMx"
-        ],
-        [
-          13,
-          17,
-          1,
-          "2BXgAtGjnY"
-        ],
-        [
-          13,
-          18,
-          1,
-          "KGjUI2kuqS"
-        ],
-        [
-          14,
-          17,
-          1,
-          "mJsgBUY9c8"
-        ],
-        [
-          14,
-          18,
-          1,
-          "tboof9yhhv"
-        ],
-        [
-          3,
-          24,
-          1,
-          "oVrUUpwqlo"
-        ],
-        [
-          3,
-          25,
-          1,
-          "DM1MwRhRmA"
-        ],
-        [
-          4,
-          24,
-          1,
-          "26yfpWwbOO"
-        ],
-        [
-          4,
-          25,
-          1,
-          "DBngBgDZkT"
-        ],
-        [
-          3,
-          13,
-          2,
-          "H7J1hc8Xhn"
-        ],
-        [
-          3,
-          14,
-          2,
-          "BYpPN2990a"
-        ],
-        [
-          4,
-          13,
-          2,
-          "TVYDdqm2LA"
-        ],
-        [
-          4,
-          14,
-          2,
-          "8qjpTDG4CO"
-        ]
+        [1, 3, 1, "fWvbREvyCT"],
+        [1, 4, 1, "zPO2LUkYge"],
+        [2, 3, 1, "WnSKXarrZG"],
+        [2, 4, 1, "0cy9K3lcMx"],
+        [13, 17, 1, "2BXgAtGjnY"],
+        [13, 18, 1, "KGjUI2kuqS"],
+        [14, 17, 1, "mJsgBUY9c8"],
+        [14, 18, 1, "tboof9yhhv"],
+        [3, 24, 1, "oVrUUpwqlo"],
+        [3, 25, 1, "DM1MwRhRmA"],
+        [4, 24, 1, "26yfpWwbOO"],
+        [4, 25, 1, "DBngBgDZkT"],
+        [3, 13, 2, "H7J1hc8Xhn"],
+        [3, 14, 2, "BYpPN2990a"],
+        [4, 13, 2, "TVYDdqm2LA"],
+        [4, 14, 2, "8qjpTDG4CO"]
       ]
     },
     {
       "r": 90,
       "c": [
-        [
-          13,
-          7,
-          1,
-          "nXD0PJY4Df"
-        ],
-        [
-          13,
-          8,
-          1,
-          "edK0FdTVt7"
-        ],
-        [
-          14,
-          7,
-          1,
-          "fUDbJczT0w"
-        ],
-        [
-          14,
-          8,
-          1,
-          "tswU49LtnX"
-        ],
-        [
-          7,
-          30,
-          1,
-          "ig2sITd1uN"
-        ],
-        [
-          7,
-          31,
-          1,
-          "w2diaF8DNN"
-        ],
-        [
-          8,
-          30,
-          1,
-          "ZF6t7RFxmg"
-        ],
-        [
-          8,
-          31,
-          1,
-          "Jz1rfFdl8i"
-        ],
-        [
-          1,
-          6,
-          3,
-          "YDQmYn4mP9"
-        ],
-        [
-          1,
-          7,
-          3,
-          "39xXEK1cYP"
-        ],
-        [
-          2,
-          6,
-          3,
-          "AT0AMmFZ0g"
-        ],
-        [
-          2,
-          7,
-          3,
-          "kIyV7mEdWS"
-        ],
-        [
-          14,
-          30,
-          3,
-          "N7uArKpSmQ"
-        ],
-        [
-          14,
-          31,
-          3,
-          "2JggV75chK"
-        ],
-        [
-          15,
-          30,
-          3,
-          "c0S7q0ivW4"
-        ],
-        [
-          15,
-          31,
-          3,
-          "hSpRytoKDF"
-        ],
-        [
-          7,
-          0,
-          2,
-          "nYvuqDc2yv"
-        ],
-        [
-          7,
-          1,
-          2,
-          "Rlr4c1oYoy"
-        ],
-        [
-          8,
-          0,
-          2,
-          "bg9bDnuFfz"
-        ],
-        [
-          8,
-          1,
-          2,
-          "YjyRsDyLTO"
-        ],
-        [
-          1,
-          20,
-          2,
-          "s0IluunQn1"
-        ],
-        [
-          1,
-          21,
-          2,
-          "oT9LVsC1UU"
-        ],
-        [
-          2,
-          20,
-          2,
-          "WX1TkV9QB0"
-        ],
-        [
-          2,
-          21,
-          2,
-          "zb4ZJjqxH2"
-        ]
+        [13, 7, 1, "nXD0PJY4Df"],
+        [13, 8, 1, "edK0FdTVt7"],
+        [14, 7, 1, "fUDbJczT0w"],
+        [14, 8, 1, "tswU49LtnX"],
+        [7, 30, 1, "ig2sITd1uN"],
+        [7, 31, 1, "w2diaF8DNN"],
+        [8, 30, 1, "ZF6t7RFxmg"],
+        [8, 31, 1, "Jz1rfFdl8i"],
+        [1, 6, 3, "YDQmYn4mP9"],
+        [1, 7, 3, "39xXEK1cYP"],
+        [2, 6, 3, "AT0AMmFZ0g"],
+        [2, 7, 3, "kIyV7mEdWS"],
+        [14, 30, 3, "N7uArKpSmQ"],
+        [14, 31, 3, "2JggV75chK"],
+        [15, 30, 3, "c0S7q0ivW4"],
+        [15, 31, 3, "hSpRytoKDF"],
+        [7, 0, 2, "nYvuqDc2yv"],
+        [7, 1, 2, "Rlr4c1oYoy"],
+        [8, 0, 2, "bg9bDnuFfz"],
+        [8, 1, 2, "YjyRsDyLTO"],
+        [1, 20, 2, "s0IluunQn1"],
+        [1, 21, 2, "oT9LVsC1UU"],
+        [2, 20, 2, "WX1TkV9QB0"],
+        [2, 21, 2, "zb4ZJjqxH2"]
       ]
     },
     {
@@ -330,573 +102,113 @@
     {
       "r": 90,
       "c": [
-        [
-          14,
-          11,
-          1,
-          "2Jx4rIB0AY"
-        ],
-        [
-          14,
-          12,
-          1,
-          "EvErIVYe3x"
-        ],
-        [
-          15,
-          11,
-          1,
-          "TV9rzHYUud"
-        ],
-        [
-          15,
-          12,
-          1,
-          "mGnSqWYrun"
-        ],
-        [
-          1,
-          22,
-          1,
-          "N7wFNUWzLU"
-        ],
-        [
-          1,
-          23,
-          1,
-          "2W7arnRx7O"
-        ],
-        [
-          2,
-          22,
-          1,
-          "ck64WkiRcO"
-        ],
-        [
-          2,
-          23,
-          1,
-          "pT33pvPKGt"
-        ],
-        [
-          11,
-          28,
-          1,
-          "uogMix0zqt"
-        ],
-        [
-          11,
-          29,
-          1,
-          "Ctji6b40sx"
-        ],
-        [
-          12,
-          28,
-          1,
-          "Xfo5pjE3Re"
-        ],
-        [
-          12,
-          29,
-          1,
-          "5TylnN2MmU"
-        ],
-        [
-          4,
-          0,
-          1,
-          "ZJ8GrOdQcv"
-        ],
-        [
-          4,
-          1,
-          1,
-          "2TJvnvy5Mc"
-        ],
-        [
-          5,
-          0,
-          1,
-          "3XqIjfnrm7"
-        ],
-        [
-          5,
-          1,
-          1,
-          "rYDuYrbHnX"
-        ]
+        [14, 11, 1, "2Jx4rIB0AY"],
+        [14, 12, 1, "EvErIVYe3x"],
+        [15, 11, 1, "TV9rzHYUud"],
+        [15, 12, 1, "mGnSqWYrun"],
+        [1, 22, 1, "N7wFNUWzLU"],
+        [1, 23, 1, "2W7arnRx7O"],
+        [2, 22, 1, "ck64WkiRcO"],
+        [2, 23, 1, "pT33pvPKGt"],
+        [11, 28, 1, "uogMix0zqt"],
+        [11, 29, 1, "Ctji6b40sx"],
+        [12, 28, 1, "Xfo5pjE3Re"],
+        [12, 29, 1, "5TylnN2MmU"],
+        [4, 0, 1, "ZJ8GrOdQcv"],
+        [4, 1, 1, "2TJvnvy5Mc"],
+        [5, 0, 1, "3XqIjfnrm7"],
+        [5, 1, 1, "rYDuYrbHnX"]
       ]
     },
     {
       "r": 90,
       "c": [
-        [
-          1,
-          8,
-          3,
-          "eiUsw3mWvj"
-        ],
-        [
-          1,
-          9,
-          3,
-          "EEVJG8WzO4"
-        ],
-        [
-          2,
-          8,
-          3,
-          "offNmsGxhu"
-        ],
-        [
-          2,
-          9,
-          3,
-          "A6h8FE7wd4"
-        ],
-        [
-          11,
-          23,
-          3,
-          "2XfVL4E0RP"
-        ],
-        [
-          11,
-          24,
-          3,
-          "kIuumLlZ4o"
-        ],
-        [
-          12,
-          23,
-          3,
-          "XXqwVODddK"
-        ],
-        [
-          12,
-          24,
-          3,
-          "7D2FjUdsmx"
-        ],
-        [
-          3,
-          28,
-          3,
-          "ZEKQC2yw1A"
-        ],
-        [
-          3,
-          29,
-          3,
-          "LWgp3S2Dhe"
-        ],
-        [
-          4,
-          28,
-          3,
-          "T59bA8jLzY"
-        ],
-        [
-          4,
-          29,
-          3,
-          "l2FfYPLy8b"
-        ]
+        [1, 8, 3, "eiUsw3mWvj"],
+        [1, 9, 3, "EEVJG8WzO4"],
+        [2, 8, 3, "offNmsGxhu"],
+        [2, 9, 3, "A6h8FE7wd4"],
+        [11, 23, 3, "2XfVL4E0RP"],
+        [11, 24, 3, "kIuumLlZ4o"],
+        [12, 23, 3, "XXqwVODddK"],
+        [12, 24, 3, "7D2FjUdsmx"],
+        [3, 28, 3, "ZEKQC2yw1A"],
+        [3, 29, 3, "LWgp3S2Dhe"],
+        [4, 28, 3, "T59bA8jLzY"],
+        [4, 29, 3, "l2FfYPLy8b"]
       ]
     },
     {
       "r": 90,
       "c": [
-        [
-          11,
-          26,
-          2,
-          "kjKd8PFN8l"
-        ],
-        [
-          11,
-          27,
-          2,
-          "JCptokAQH2"
-        ],
-        [
-          12,
-          26,
-          2,
-          "rg5fLz1Xl9"
-        ],
-        [
-          12,
-          27,
-          2,
-          "88iFOAvu5r"
-        ],
-        [
-          7,
-          6,
-          2,
-          "nsND2hUMze"
-        ],
-        [
-          7,
-          7,
-          2,
-          "R9AW9NGh7i"
-        ],
-        [
-          8,
-          6,
-          2,
-          "grYOOLoj0t"
-        ],
-        [
-          8,
-          7,
-          2,
-          "jJu1QDCpm0"
-        ],
-        [
-          0,
-          28,
-          2,
-          "ItNkhPoPvq"
-        ],
-        [
-          0,
-          29,
-          2,
-          "DsSAc8J9lk"
-        ],
-        [
-          1,
-          28,
-          2,
-          "EBpACaVMe4"
-        ],
-        [
-          1,
-          29,
-          2,
-          "DdIbNX1wem"
-        ]
+        [11, 26, 2, "kjKd8PFN8l"],
+        [11, 27, 2, "JCptokAQH2"],
+        [12, 26, 2, "rg5fLz1Xl9"],
+        [12, 27, 2, "88iFOAvu5r"],
+        [7, 6, 2, "nsND2hUMze"],
+        [7, 7, 2, "R9AW9NGh7i"],
+        [8, 6, 2, "grYOOLoj0t"],
+        [8, 7, 2, "jJu1QDCpm0"],
+        [0, 28, 2, "ItNkhPoPvq"],
+        [0, 29, 2, "DsSAc8J9lk"],
+        [1, 28, 2, "EBpACaVMe4"],
+        [1, 29, 2, "DdIbNX1wem"]
       ]
     },
     {
       "r": 90,
       "c": [
-        [
-          7,
-          13,
-          3,
-          "tglY4JUQDl"
-        ],
-        [
-          7,
-          14,
-          3,
-          "2eFMRIA4nC"
-        ],
-        [
-          8,
-          13,
-          3,
-          "OddNnKTl3y"
-        ],
-        [
-          8,
-          14,
-          3,
-          "iruY06H9vT"
-        ],
-        [
-          14,
-          0,
-          3,
-          "TDmB0RzljZ"
-        ],
-        [
-          14,
-          1,
-          3,
-          "ogsawMJEHA"
-        ],
-        [
-          15,
-          0,
-          3,
-          "ceuezjTYVp"
-        ],
-        [
-          15,
-          1,
-          3,
-          "zrRCczUF5h"
-        ],
-        [
-          0,
-          0,
-          3,
-          "pivSM1dNNQ"
-        ],
-        [
-          0,
-          1,
-          3,
-          "smQtN3NROG"
-        ],
-        [
-          1,
-          0,
-          3,
-          "vIfPDXOu7Y"
-        ],
-        [
-          1,
-          1,
-          3,
-          "KLJoazLf1t"
-        ],
-        [
-          14,
-          30,
-          3,
-          "dXhkFrz4bv"
-        ],
-        [
-          14,
-          31,
-          3,
-          "IY2CayiHVZ"
-        ],
-        [
-          15,
-          30,
-          3,
-          "lAahIPyPHc"
-        ],
-        [
-          15,
-          31,
-          3,
-          "1g66P2i7rZ"
-        ],
-        [
-          0,
-          30,
-          3,
-          "nwUQPKdrHw"
-        ],
-        [
-          0,
-          31,
-          3,
-          "YA43Vlgvau"
-        ],
-        [
-          1,
-          30,
-          3,
-          "Du5IQZN9Qb"
-        ],
-        [
-          1,
-          31,
-          3,
-          "uTcvsf0X5j"
-        ],
-        [
-          13,
-          0,
-          2,
-          "RqJNkEruRE"
-        ],
-        [
-          13,
-          1,
-          2,
-          "GgReewhUIm"
-        ],
-        [
-          13,
-          2,
-          2,
-          "jySgxGh39w"
-        ],
-        [
-          14,
-          2,
-          2,
-          "b0D501UliR"
-        ],
-        [
-          15,
-          2,
-          2,
-          "WBtNhaymrl"
-        ],
-        [
-          2,
-          0,
-          2,
-          "q2aBcbftqJ"
-        ],
-        [
-          2,
-          1,
-          2,
-          "paXgoCAR0t"
-        ],
-        [
-          2,
-          2,
-          2,
-          "UArQoR7pKI"
-        ],
-        [
-          0,
-          2,
-          2,
-          "WFdsSs3Mb9"
-        ],
-        [
-          1,
-          2,
-          2,
-          "mtgcWMMxoZ"
-        ],
-        [
-          0,
-          29,
-          2,
-          "bYn6cHFVNj"
-        ],
-        [
-          1,
-          29,
-          2,
-          "XSjOcg3vWf"
-        ],
-        [
-          2,
-          29,
-          2,
-          "K9xElaiBTw"
-        ],
-        [
-          2,
-          30,
-          2,
-          "PJWyrUCf02"
-        ],
-        [
-          2,
-          31,
-          2,
-          "YaD7FISEyO"
-        ],
-        [
-          13,
-          29,
-          2,
-          "URmNl0YjLc"
-        ],
-        [
-          13,
-          30,
-          2,
-          "bWSPGiUwuP"
-        ],
-        [
-          13,
-          31,
-          2,
-          "gstzRe1QFq"
-        ],
-        [
-          14,
-          29,
-          2,
-          "4m4J822hkr"
-        ],
-        [
-          15,
-          29,
-          2,
-          "vbJ07oVBSd"
-        ],
-        [
-          6,
-          12,
-          2,
-          "HnmnaDKIZZ"
-        ],
-        [
-          6,
-          13,
-          2,
-          "XUmFcw2YgE"
-        ],
-        [
-          6,
-          14,
-          2,
-          "g41REicl6e"
-        ],
-        [
-          6,
-          15,
-          2,
-          "nx3VxokeBV"
-        ],
-        [
-          9,
-          12,
-          2,
-          "PcUH5gUrPU"
-        ],
-        [
-          9,
-          13,
-          2,
-          "CTXouPXvYL"
-        ],
-        [
-          9,
-          14,
-          2,
-          "4zBsDuY5GJ"
-        ],
-        [
-          9,
-          15,
-          2,
-          "Wt4kjnzKDO"
-        ],
-        [
-          7,
-          12,
-          2,
-          "9KQ3CjcxR3"
-        ],
-        [
-          8,
-          12,
-          2,
-          "gKTn61nAif"
-        ],
-        [
-          7,
-          15,
-          2,
-          "InQkhAbZet"
-        ],
-        [
-          8,
-          15,
-          2,
-          "NoG8KZjWYm"
-        ]
+        [7, 13, 3, "tglY4JUQDl"],
+        [7, 14, 3, "2eFMRIA4nC"],
+        [8, 13, 3, "OddNnKTl3y"],
+        [8, 14, 3, "iruY06H9vT"],
+        [14, 0, 3, "TDmB0RzljZ"],
+        [14, 1, 3, "ogsawMJEHA"],
+        [15, 0, 3, "ceuezjTYVp"],
+        [15, 1, 3, "zrRCczUF5h"],
+        [0, 0, 3, "pivSM1dNNQ"],
+        [0, 1, 3, "smQtN3NROG"],
+        [1, 0, 3, "vIfPDXOu7Y"],
+        [1, 1, 3, "KLJoazLf1t"],
+        [14, 30, 3, "dXhkFrz4bv"],
+        [14, 31, 3, "IY2CayiHVZ"],
+        [15, 30, 3, "lAahIPyPHc"],
+        [15, 31, 3, "1g66P2i7rZ"],
+        [0, 30, 3, "nwUQPKdrHw"],
+        [0, 31, 3, "YA43Vlgvau"],
+        [1, 30, 3, "Du5IQZN9Qb"],
+        [1, 31, 3, "uTcvsf0X5j"],
+        [13, 0, 2, "RqJNkEruRE"],
+        [13, 1, 2, "GgReewhUIm"],
+        [13, 2, 2, "jySgxGh39w"],
+        [14, 2, 2, "b0D501UliR"],
+        [15, 2, 2, "WBtNhaymrl"],
+        [2, 0, 2, "q2aBcbftqJ"],
+        [2, 1, 2, "paXgoCAR0t"],
+        [2, 2, 2, "UArQoR7pKI"],
+        [0, 2, 2, "WFdsSs3Mb9"],
+        [1, 2, 2, "mtgcWMMxoZ"],
+        [0, 29, 2, "bYn6cHFVNj"],
+        [1, 29, 2, "XSjOcg3vWf"],
+        [2, 29, 2, "K9xElaiBTw"],
+        [2, 30, 2, "PJWyrUCf02"],
+        [2, 31, 2, "YaD7FISEyO"],
+        [13, 29, 2, "URmNl0YjLc"],
+        [13, 30, 2, "bWSPGiUwuP"],
+        [13, 31, 2, "gstzRe1QFq"],
+        [14, 29, 2, "4m4J822hkr"],
+        [15, 29, 2, "vbJ07oVBSd"],
+        [6, 12, 2, "HnmnaDKIZZ"],
+        [6, 13, 2, "XUmFcw2YgE"],
+        [6, 14, 2, "g41REicl6e"],
+        [6, 15, 2, "nx3VxokeBV"],
+        [9, 12, 2, "PcUH5gUrPU"],
+        [9, 13, 2, "CTXouPXvYL"],
+        [9, 14, 2, "4zBsDuY5GJ"],
+        [9, 15, 2, "Wt4kjnzKDO"],
+        [7, 12, 2, "9KQ3CjcxR3"],
+        [8, 12, 2, "gKTn61nAif"],
+        [7, 15, 2, "InQkhAbZet"],
+        [8, 15, 2, "NoG8KZjWYm"]
       ]
     }
   ]

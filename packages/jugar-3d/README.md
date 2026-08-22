@@ -1,7 +1,8 @@
 # `@motion-levels-games/jugar-3d`
 
-The shared browser implementation of Motion Levels Jugar 3D. It owns one SDK
-`GameSession` and mounts the canonical React Three Fiber stage. Host apps inject
+The shared browser implementation of Motion Levels Jugar 3D. Its
+`JugarPresentationSession` delegates game lifecycle and input to the reusable
+runtime `GameSession` while mounting the canonical React Three Fiber stage. Host apps inject
 their literal game registry, analytics callbacks, and public model URL.
 
 The package never creates a raw `WebGLRenderer`, a second game engine, or a
@@ -41,7 +42,7 @@ the published level choices for the selected difficulty/mode, stores the
 immutable level UUID (never its renameable slug), and loads the versioned
 `GameContent` document alongside the selected game chunk. Loading failures are
 shown with retry/back controls and do not start analytics or silently substitute
-fixture content. Jugar passes the document into the same `GameSession` and SDK
+fixture content. Jugar passes the document into the same runtime `GameSession` and SDK
 engine used by the physical floor; it owns no level database or alternate rules.
 
 The platform implementation uses canonical game and level UUIDs, separate
@@ -66,7 +67,7 @@ own player counts, difficulty, authored-content behavior, runtime loading,
 session mechanics, analytics, progress, and replay identity.
 
 Jugar continues to own level/difficulty/player setup, authored-content loading,
-the character picker, loading/error screens, the single `GameSession`, and the
+the character picker, loading/error screens, the single `JugarPresentationSession`, and the
 exit transition back to the host catalog. Omitting `catalogRenderer` preserves
 the built-in card grid exactly.
 

@@ -4,18 +4,18 @@ import { useEffect, useMemo, useReducer } from "react";
 
 import { soundBank } from "../audio/sfx.ts";
 import type { RegisteredGame } from "../contracts.ts";
-import { GameSession, type SessionOptions } from "./session.ts";
+import { JugarPresentationSession, type SessionOptions } from "./session.ts";
 
 export type UseGameSessionOptions = Readonly<{
   /** Explicit diagnostic seam; avoids bundler-specific environment globals. */
   exposeOnWindow?: boolean;
 }>;
 
-const mountCounts = new WeakMap<GameSession, number>();
+const mountCounts = new WeakMap<JugarPresentationSession, number>();
 const SESSION_DISPOSE_GRACE_MILLIS = 100;
 
 /**
- * Owns a GameSession for the lifetime of a play screen. The session advances
+ * Owns a JugarPresentationSession for the lifetime of a play screen. The adapter advances
  * itself on requestAnimationFrame; React re-renders at the session's throttled
  * notify rate (~12 Hz), which keeps the TV display and HUD fresh without
  * re-rendering the 3D scene (the scene reads the session imperatively).
@@ -24,12 +24,12 @@ export function useGameSession(
   game: RegisteredGame,
   options: SessionOptions,
   hookOptions: UseGameSessionOptions = {}
-): GameSession {
+): JugarPresentationSession {
   const session = useMemo(() => {
     // A new session is intentional whenever the selection changes. Sounds are
     // wired here, in the session's creation scope, so the object is never
     // mutated after render hands it out.
-    const created = new GameSession(game, options);
+    const created = new JugarPresentationSession(game, options);
     created.sounds = {
       cue: (cue) => soundBank.cue(cue),
       step: () => soundBank.step(),

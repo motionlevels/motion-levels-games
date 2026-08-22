@@ -154,8 +154,8 @@ test("shutdown drains an ambiguous camera start through a physically confirmed s
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       commandId: "98989898-9898-4989-8989-989898989898",
-      game: "motion-levels-games:ping-pong",
-      engineGame: "motion-levels-games:ping-pong",
+      game: "motion-levels-games:ping-pong-v2",
+      engineGame: "motion-levels-games:ping-pong-v2",
       sourceKind: "motion_levels_games",
       sourceRevision: revision,
       venueSessionId,
@@ -229,8 +229,8 @@ test("direct select cannot hide a visit camera stop behind ungated gameplay", as
   const base = `http://127.0.0.1:${address.port}`;
   const selection = (commandId: string) => ({
     commandId,
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     venueSessionId: secondVenueSessionId,
@@ -290,8 +290,8 @@ test("canonical player state and idempotent commands share the venue API", async
 
   const body = {
     commandId: "11111111-1111-4111-8111-111111111111",
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     playerCount: 0,
@@ -432,8 +432,8 @@ test("recording gate controls require and route the current gate id", async (con
   })).status, 200);
   const selected = await post("/api/select", {
     commandId: "70000000-0000-4000-8000-000000000001",
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     playerCount: 0,
@@ -497,8 +497,8 @@ test("venue session lifecycle survives game exit and publishes remote close", as
 
   const selected = await post("/api/select", {
     commandId: "10000000-0000-4000-8000-000000000001",
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     venueSessionId,
@@ -569,8 +569,8 @@ test("history API lists visits, pages events, returns detail, and associates rec
   const gameBeforeInvalidSelect = runtime.status().currentGame;
   const overlongSelect = await post("/api/select", {
     commandId: "70000000-0000-4000-8000-000000000000",
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     venueSessionId: "x".repeat(256),
@@ -592,8 +592,8 @@ test("history API lists visits, pages events, returns detail, and associates rec
   })).status, 200);
   assert.equal((await post("/api/select", {
     commandId: "70000000-0000-4000-8000-000000000001",
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     gameLabel: "Ping pong",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
@@ -710,8 +710,8 @@ test("history API lists visits, pages events, returns detail, and associates rec
   assert.equal(runtime.status().currentGame, beforeConflict.currentGame);
   const selectEnded = await post("/api/select", {
     commandId: "70000000-0000-4000-8000-000000000099",
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     venueSessionId: visitId,
@@ -728,8 +728,8 @@ test("remote floor input is validated, idempotent, and recoverable through the v
   const revision = "1".repeat(40);
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   await runtime.select({
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     playerCount: 0,

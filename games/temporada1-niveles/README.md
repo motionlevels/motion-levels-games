@@ -10,6 +10,9 @@ catalog's authored animation timing, blue objectives, purple double-press
 objectives, red-tile damage, difficulty lives/speed/timers, audio references,
 result animation, level progression, and automatic retry behavior.
 
+Its result animations are referenced from the shared repository-level authored
+animation sources rather than copied into this game package.
+
 The host supplies the current editor revision through `GameConfig.content`.
 `fixtures-content.ts` is a small deterministic offline/playground fallback,
 not a frozen copy of the 24 production levels. The same engine and content run

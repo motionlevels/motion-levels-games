@@ -36,8 +36,8 @@ layers.
 
 - `packages/game-sdk`: framework-agnostic TypeScript game contract.
 - `packages/display-kit`: reusable React display primitives.
-- `packages/runtime`: direct `GameSession`, gameplay registry, and separate
-  browser display registry.
+- `packages/runtime`: reusable, registry-injected `GameSession` and no concrete games.
+- `packages/game-catalog`: explicit gameplay and browser-display composition.
 - `games/*`: independently tested game packages discovered through their
   manifests and index exports.
 - `apps/venue-runtime`: Node production host and controller protocol v2 client.
@@ -54,7 +54,7 @@ Production-playable editor-authored games are versioned here:
 ```text
 games/<engine-game>/content/game.json
 games/<engine-game>/content/levels/<stable-level-id>.json
-games/<engine-game>/content/result-animations/<stable-animation-id>.json
+content/result-animations/<stable-animation-id>.json
 ```
 
 Parkour currently has 15 real published variants under
@@ -62,12 +62,16 @@ Parkour currently has 15 real published variants under
 difficulty variants under
 [`games/temporada1-niveles/content/`](games/temporada1-niveles/content/).
 Each level is a focused JSON diff and retains its immutable identity; slugs
-and labels remain editable presentation fields.
+and labels remain editable presentation fields. Shared result animations live
+once at repository root and each `game.json` lists its `resultAnimationIds`.
+Media files such as previews, thumbnails, and audio remain in the assets
+repository; authored levels contain stable references only.
 
 Run the deterministic compiler and validation with:
 
 ```sh
 npm run content:build
+npm run content:format
 npm run content:validate
 ```
 
@@ -75,10 +79,18 @@ The compiler normalizes ordering, validates the versioned contract, frames,
 rules, references, objectives, and result animations, then writes the runtime
 artifact to `dist/authored-content/`. The release compiler copies those files
 into `content/` in the immutable bundle and records each `contentRevision` in
-`bundle.json`.
+`bundle.json`. `content:format` is an optional source formatter that keeps
+large cell tuples to one reviewable line.
 
-The platform editor is a draft tool. **Create content PR** exports the same
-contract, creates a `content/` branch, and opens one focused PR against
+`contentRevision`, `content.lock.json`, and `src/content.generated.ts` are
+compiler-owned outputs. The lock and TypeScript module are ignored by Git and
+are recreated by `npm ci` plus the root build, typecheck, test, and development
+commands. A content PR therefore contains authored JSON only; neither the
+platform nor a contributor calculates a revision or commits generated files.
+
+The platform editor is a draft tool. **Create content PR** exports `game.json`,
+the game's level files, and referenced shared result-animation sources. It
+creates a `content/` branch and opens one focused PR against
 `motion-levels-games:main`; it never overwrites production or pushes editor
 data directly to `main`. Configure the platform-side GitHub App/service token
 as `MOTION_LEVELS_GAMES_PUBLISH_TOKEN` (or

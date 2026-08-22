@@ -203,7 +203,7 @@ venue-owned.
 - The playground discovers games from `games/*/src/index.ts`; do not add
   manual game imports to `apps/playground/src/App.tsx`.
 - The in-process venue runtime uses the explicit gameplay registry at
-  `packages/runtime/src/gameplayRegistry.ts`; the browser renderer uses a
+  `packages/game-catalog/src/gameplayRegistry.ts`; the browser renderer uses a
   separate display registry so Node never pulls React into gameplay. Register
   every new game package in both registries;
   validation requires exact coverage of `games/*` so releases cannot silently

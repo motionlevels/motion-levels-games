@@ -1,10 +1,10 @@
 import type { ComponentType } from "react";
 
 import type { Avatar } from "../core/avatar.ts";
-import type { GameSession } from "../core/session.ts";
+import type { JugarPresentationSession } from "../core/session.ts";
 
 export type CharacterProps = {
-  session: GameSession;
+  session: JugarPresentationSession;
   avatar: Avatar;
   /** Host-resolved asset URL; omitted by procedural characters. */
   modelUrl?: string;

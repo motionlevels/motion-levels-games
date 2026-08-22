@@ -96,6 +96,12 @@ export function validateAuthoredGameSourceManifest(value: AuthoredGameSourceMani
   if (defaultMode !== "challenge" && defaultMode !== "free") throw new Error("defaultMode must be challenge or free");
   const defaultLevelSlug = normalizeLevelId(String(value.defaultLevelSlug ?? ""));
   if (!defaultLevelSlug) throw new Error("defaultLevelSlug is required");
+  const resultAnimationIds = [...new Set((value.resultAnimationIds ?? []).map((item) => (
+    String(item).trim().toLowerCase()
+  )).filter(Boolean))].sort();
+  for (const id of resultAnimationIds) {
+    if (!STABLE_ID_PATTERN.test(id)) throw new Error(`resultAnimationIds contains invalid stable id ${id}`);
+  }
   return Object.freeze({
     schema: AUTHORED_GAME_SOURCE_SCHEMA,
     gameId,
@@ -103,7 +109,8 @@ export function validateAuthoredGameSourceManifest(value: AuthoredGameSourceMani
     difficulties: Object.freeze(difficulties),
     defaultDifficulty,
     defaultMode,
-    defaultLevelSlug
+    defaultLevelSlug,
+    resultAnimationIds: Object.freeze(resultAnimationIds)
   });
 }
 
@@ -183,6 +190,7 @@ function validateAuthoredContent(
 }
 
 const SUPPORTED_DIFFICULTIES = new Set(["easy", "medium", "hard", "expert"]);
+const STABLE_ID_PATTERN = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const AUTHORED_AUDIO_REFERENCE_KEYS = [
   "music_ref",
   "narration_cue_ref",
