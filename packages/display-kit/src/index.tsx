@@ -11,6 +11,7 @@ export { LivesMeter } from "./lives-meter.tsx";
 export type { LivesMeterProps } from "./lives-meter.tsx";
 
 export type Tone = "amber" | "blue" | "cyan" | "green" | "magenta" | "pink" | "red" | "yellow" | "neutral";
+export type DisplayIconName = "clock" | "players" | "target" | "tiles";
 export type DisplayPlayer = Pick<GamePlayer, "label" | "score" | "color">;
 export type RoundSummary = {
   index: number;
@@ -196,6 +197,77 @@ export function MetricRow({
   );
 }
 
+export function IconStat({
+  icon,
+  label,
+  tone = "neutral",
+  value
+}: {
+  icon: DisplayIconName;
+  label: string;
+  tone?: Tone;
+  value: ReactNode;
+}) {
+  return (
+    <span
+      aria-label={`${label}: ${typeof value === "string" || typeof value === "number" ? value : ""}`.trim()}
+      className={`ml-icon-stat ml-icon-stat-${tone}`}
+      data-display-tone={tone}
+    >
+      <DisplayIcon name={icon} />
+      <strong>{value}</strong>
+    </span>
+  );
+}
+
+export function IconStatStrip({
+  children,
+  label = "Datos de la partida"
+}: {
+  children?: ReactNode;
+  label?: string;
+}) {
+  return <span aria-label={label} className="ml-icon-stat-strip">{children}</span>;
+}
+
+export function DisplayIcon({ name }: { name: DisplayIconName }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="ml-display-icon"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      {name === "clock" ? (
+        <>
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5v5l3.25 2" />
+        </>
+      ) : name === "target" ? (
+        <>
+          <circle cx="12" cy="12" r="8.5" />
+          <circle cx="12" cy="12" r="4.5" />
+          <circle cx="12" cy="12" r="1" />
+        </>
+      ) : name === "players" ? (
+        <>
+          <circle cx="9" cy="9" r="3" />
+          <circle cx="17" cy="10" r="2.25" />
+          <path d="M3.5 19c.7-3.1 2.6-4.7 5.5-4.7s4.8 1.6 5.5 4.7" />
+          <path d="M14 15.2c2.9-.8 5.2.5 6 3.3" />
+        </>
+      ) : (
+        <>
+          <rect x="3.5" y="3.5" width="7" height="7" rx="1" />
+          <rect x="13.5" y="3.5" width="7" height="7" rx="1" />
+          <rect x="3.5" y="13.5" width="7" height="7" rx="1" />
+          <rect x="13.5" y="13.5" width="7" height="7" rx="1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function VersusScoreboard({
   left,
   right,
@@ -357,6 +429,7 @@ export function DisplayStage({
   detail,
   emphasis = "default",
   eyebrow,
+  headingLayout = "stacked",
   label,
   title,
   tone = "neutral"
@@ -366,6 +439,7 @@ export function DisplayStage({
   detail?: ReactNode;
   emphasis?: "default" | "strong";
   eyebrow?: ReactNode;
+  headingLayout?: "inline" | "stacked";
   label?: string;
   title?: ReactNode;
   tone?: Tone;
@@ -376,7 +450,7 @@ export function DisplayStage({
   return (
     <section
       aria-label={resolvedLabel}
-      className={`ml-display-stage ml-display-stage-${tone}${emphasis === "strong" ? " is-strong" : ""} ${className}`.trim()}
+      className={`ml-display-stage ml-display-stage-${tone}${emphasis === "strong" ? " is-strong" : ""}${headingLayout === "inline" ? " is-heading-inline" : ""} ${className}`.trim()}
       data-display-containment="stage"
       data-display-tone={tone}
     >

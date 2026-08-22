@@ -5,8 +5,8 @@ import {
   DisplayStage,
   EventRail,
   GameDisplayShell,
-  MetricPanel,
-  MetricRow,
+  IconStat,
+  IconStatStrip,
   PlayerCard,
   PlayerRoster,
   ProgressMeter,
@@ -27,27 +27,43 @@ export function PlayerDisplay({
   const readyIndices = new Set(snapshot.readyPlayerIndices);
   const hero = heroContent(snapshot, countdown);
   const winner = snapshot.winnerIndex >= 0 ? snapshot.playerProgress[snapshot.winnerIndex] : undefined;
-  const heroMetrics = (
-    <MetricRow columns={3}>
-      <MetricPanel emphasis="strong" label="Tiempo" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
-      <MetricPanel emphasis="strong" label="Objetivo" tone="cyan" value={snapshot.matchTarget} />
-      <MetricPanel emphasis="strong" label="Jugadores" tone="magenta" value={snapshot.playerCount} />
-    </MetricRow>
+  const leader = snapshot.leaderIndex >= 0 ? snapshot.playerProgress[snapshot.leaderIndex] : undefined;
+  const summary = (
+    <IconStatStrip label="Datos del duelo">
+      <IconStat icon="clock" label="Tiempo" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
+      <IconStat icon="target" label="Objetivo" tone="cyan" value={snapshot.matchTarget} />
+      <IconStat icon="players" label="Jugadores" tone="magenta" value={snapshot.playerCount} />
+    </IconStatStrip>
   );
-  const event = snapshot.phase === "running" ? (
+  const event = snapshot.phase === "running" && snapshot.lastEventMessage ? (
     <EventRail
-      label="Último evento"
-      message={snapshot.lastEventMessage || "Listo"}
+      label="En directo"
+      message={snapshot.lastEventMessage}
       tone="neutral"
     />
   ) : undefined;
 
   return (
-    <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
+    <GameDisplayShell
+      accent={winner?.color ?? leader?.color}
+      title={snapshot.label}
+      phase={snapshot.phase}
+    >
       <DisplayStack
         bottom={event}
+        gap="compact"
         label="Progreso del duelo"
-        top={<DisplayStage emphasis="strong" eyebrow={hero.eyebrow} label={snapshot.phase === "starting" ? "Cuenta atrás para comenzar" : undefined} title={hero.title} tone="cyan">{heroMetrics}</DisplayStage>}
+        top={(
+          <DisplayStage
+            detail={summary}
+            emphasis="strong"
+            eyebrow={hero.eyebrow}
+            headingLayout="inline"
+            label={snapshot.phase === "starting" ? "Cuenta atrás para comenzar" : undefined}
+            title={hero.title}
+            tone="cyan"
+          />
+        )}
       >
         <PlayerRoster columns={columns} label="Progreso de jugadores" rows={Math.ceil(snapshot.playerCount / columns)}>
           {snapshot.playerProgress.map((player) => (
@@ -108,9 +124,11 @@ function DueloPlayerCard({
       footer={(
         <ProgressMeter
           ariaValueText={`${player.claimed} de ${player.target} baldosas pisadas`}
+          label="Pisadas"
           max={player.target}
           tone="cyan"
           value={player.claimed}
+          valueLabel={`${player.claimed}/${player.target}`}
         />
       )}
       player={{ color: player.color, label: player.label, score: player.remaining }}
@@ -123,7 +141,7 @@ function DueloPlayerCard({
 function heroContent(snapshot: DueloSnapshot, countdown: number) {
   if (snapshot.phase === "waiting") {
     return {
-      eyebrow: `Listos ${snapshot.readyPlayers}/${snapshot.requiredPlayers}`,
+      eyebrow: `${snapshot.readyPlayers}/${snapshot.requiredPlayers} colocados`,
       title: "Busca tu color"
     };
   }

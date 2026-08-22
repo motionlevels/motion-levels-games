@@ -364,6 +364,44 @@
   min-width: 0;
 }
 
+.ml-icon-stat-strip {
+  align-items: center;
+  display: inline-flex;
+  gap: 26px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.ml-icon-stat {
+  --ml-tone: var(--ml-text);
+  align-items: center;
+  color: var(--ml-tone);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ml-display-icon {
+  display: block;
+  flex: 0 0 auto;
+  height: 30px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 30px;
+}
+
+.ml-icon-stat > strong {
+  color: var(--ml-text);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
 .ml-metric-amber .ml-metric-value {
   color: var(--ml-amber);
 }
@@ -1017,6 +1055,21 @@
   min-width: 0;
 }
 
+.ml-display-stage.is-heading-inline .ml-display-stage-heading {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+}
+
+.ml-display-stage.is-heading-inline .ml-display-stage-heading > span {
+  background: color-mix(in srgb, var(--ml-tone) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ml-tone) 30%, transparent);
+  border-radius: 999px;
+  line-height: 1;
+  padding: 8px 13px 7px;
+}
+
 .ml-display-stage-heading > span,
 .ml-event-rail-copy > span {
   color: var(--ml-tone);
@@ -1526,7 +1579,7 @@
 }
 
 .ml-player-card.is-score-emphasis .ml-player-card-head > strong {
-  font-size: 36px;
+  font-size: 42px;
 }
 
 .ml-player-card.is-score-emphasis .ml-player-card-head > b {
@@ -1535,6 +1588,7 @@
 }
 
 .ml-player-card.is-score-emphasis .ml-player-card-score {
+  gap: 22px;
   justify-items: center;
   text-align: center;
 }
@@ -1545,10 +1599,10 @@
 }
 
 .ml-player-card.is-score-emphasis .ml-player-card-score > span {
-  color: rgba(245, 247, 251, 0.42);
-  font-size: 17px;
+  color: rgba(245, 247, 251, 0.56);
+  font-size: 24px;
   font-weight: 850;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
 }
 
@@ -1570,7 +1624,15 @@
 }
 
 .ml-player-roster[data-roster-rows="2"] .ml-player-card.is-score-emphasis .ml-player-card-head > strong {
-  font-size: 28px;
+  font-size: 32px;
+}
+
+.ml-player-roster[data-roster-rows="2"] .ml-player-card.is-score-emphasis .ml-player-card-score {
+  gap: 12px;
+}
+
+.ml-player-roster[data-roster-rows="2"] .ml-player-card.is-score-emphasis .ml-player-card-score > span {
+  font-size: 19px;
 }
 
 .ml-player-roster[data-roster-columns="4"][data-roster-rows="2"] .ml-player-card.is-score-emphasis .ml-player-card-score > strong {

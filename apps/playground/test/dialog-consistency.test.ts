@@ -240,8 +240,8 @@ test("the standard top bar owns surface selection at every layout", () => {
   );
   assert.match(
     styleSource,
-    /@media \(orientation: portrait\) and \(max-width: 1200px\)[\s\S]*?\.status-dock\s*\{[^}]*grid-column:\s*1 \/ -1;/,
-    "portrait diagnostics must span the workbench instead of overloading one narrow column"
+    /@media \(orientation: portrait\) and \(max-width: 1200px\)[\s\S]*?\.playground-shell\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden;[\s\S]*?\.display-panel\s*\{[^}]*align-self:\s*stretch;[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[\s\S]*?\.status-dock\s*\{[^}]*display:\s*grid;[^}]*grid-column:\s*auto;/,
+    "portrait diagnostics must stack directly below the display without colliding with the tall floor"
   );
   assert.match(
     styleSource,

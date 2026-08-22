@@ -12,6 +12,8 @@ import {
   FloorPreview,
   FramePreviewPanel,
   GameDisplayShell,
+  IconStat,
+  IconStatStrip,
   LivesMeter,
   MetricPanel,
   MetricRow,
@@ -63,6 +65,23 @@ test("MetricPanel renders label and value without app dependencies", () => {
   assert.match(html, /Score/);
   assert.match(html, /42/);
   assert.match(html, /ml-metric ml-metric-cyan is-strong/);
+});
+
+test("icon stats condense common TV metrics without hiding their meaning", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    IconStatStrip,
+    { label: "Datos del duelo" },
+    React.createElement(IconStat, { icon: "clock", label: "Tiempo", tone: "amber", value: "0:42" }),
+    React.createElement(IconStat, { icon: "target", label: "Objetivo", tone: "cyan", value: 153 }),
+    React.createElement(IconStat, { icon: "players", label: "Jugadores", tone: "magenta", value: 2 })
+  ));
+
+  assert.match(html, /aria-label="Datos del duelo"/);
+  assert.match(html, /aria-label="Tiempo: 0:42"/);
+  assert.match(html, /aria-label="Objetivo: 153"/);
+  assert.match(html, /aria-label="Jugadores: 2"/);
+  assert.equal((html.match(/class="ml-display-icon"/g) ?? []).length, 3);
+  assert.match(styleSource, /\.ml-icon-stat-strip\s*\{[^}]*display:\s*inline-flex;/s);
 });
 
 test("CountdownValue restarts one contained beat per normalized number", () => {
@@ -129,6 +148,7 @@ test("shared stage recipes expose explicit containment without constraining game
   const stage = React.createElement(DisplayStage, {
     detail: "Ronda 2",
     eyebrow: "Objetivo",
+    headingLayout: "inline",
     label: "Arena principal",
     title: "Protege el núcleo"
   }, React.createElement("div", null, "stage"));
@@ -147,6 +167,7 @@ test("shared stage recipes expose explicit containment without constraining game
   assert.match(stack, /ml-stage-with-sidebar is-sidebar-left/);
   assert.match(stack, /data-display-containment="stage-main"/);
   assert.match(stack, /aria-label="Arena principal"/);
+  assert.match(stack, /ml-display-stage ml-display-stage-neutral is-heading-inline/);
   assert.match(stack, /data-display-containment="stage-content"/);
   assert.match(stack, /role="status"/);
   assert.match(stack, /data-display-tone="green"/);
@@ -548,10 +569,10 @@ test("GameDisplayShell balances its brand and status rails inside a paint-contai
     "absolute game content must be scoped to the shell content region"
   );
   assert.match(styleSource, /\.ml-display-header::after\s*\{[^}]*height:\s*2px;/s);
-  assert.match(styleSource, /\.ml-display-header h1\s*\{[^}]*font-size:\s*84px;[^}]*overflow-wrap:\s*break-word;/s);
-  assert.match(styleSource, /\.ml-tv-brand-mark\s*\{[^}]*height:\s*72px;[^}]*width:\s*72px;/s);
-  assert.match(styleSource, /\.ml-tv-brand-name\s*\{[^}]*font-family:\s*ui-monospace,[^;]+monospace;[^}]*font-size-adjust:\s*none;[^}]*font-size:\s*28px;/s);
-  assert.match(styleSource, /\.ml-status-pill\s*\{[^}]*font-size:\s*28px;/s);
+  assert.match(styleSource, /\.ml-display-header h1\s*\{[^}]*font-size:\s*64px;[^}]*overflow-wrap:\s*break-word;/s);
+  assert.match(styleSource, /\.ml-tv-brand-mark\s*\{[^}]*height:\s*80px;[^}]*width:\s*80px;/s);
+  assert.match(styleSource, /\.ml-tv-brand-name\s*\{[^}]*font-family:\s*ui-monospace,[^;]+monospace;[^}]*font-size-adjust:\s*none;[^}]*font-size:\s*30px;/s);
+  assert.match(styleSource, /\.ml-status-pill\s*\{[^}]*font-size:\s*24px;/s);
   assert.match(styleSource, /\.ml-status-pill::before\s*\{[^}]*height:\s*14px;[^}]*width:\s*14px;/s);
   assert.match(styleSource, /\.ml-status-waiting::before\s*\{[^}]*animation:/s);
 });
