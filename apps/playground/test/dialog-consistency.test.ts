@@ -232,6 +232,19 @@ test("narrow playground headers use an explicit responsive grid", () => {
   );
 });
 
+test("wide integrated headers keep controls in one compact row", () => {
+  assert.match(
+    styleSource,
+    /@media \(min-width: 1201px\)[\s\S]*?\.playground-header:not\(:has\(\.control-group-primary\)\)\s*\{[^}]*grid-template-areas:\s*"title surface-actions controls";[^}]*grid-template-columns:\s*minmax\(150px, auto\) minmax\(0, 1fr\) auto;/,
+    "integrated mode must not inherit the unnecessarily tall two-row desktop header"
+  );
+  assert.match(
+    styleSource,
+    /\.playground-header:not\(:has\(\.control-group-primary\)\) \.surface-toolbar\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*justify-self:\s*center;/s,
+    "integrated surface controls must remain centered without wrapping"
+  );
+});
+
 test("the standard top bar owns surface selection at every layout", () => {
   assert.match(
     appSource,

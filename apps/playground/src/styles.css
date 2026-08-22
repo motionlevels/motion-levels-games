@@ -1461,6 +1461,29 @@ select {
   }
 }
 
+@media (min-width: 1201px) {
+  .playground-header:not(:has(.control-group-primary)) {
+    align-items: center;
+    gap: var(--pg-control-gap);
+    grid-template-areas: "title surface-actions controls";
+    grid-template-columns: minmax(150px, auto) minmax(0, 1fr) auto;
+    padding-block: 12px;
+  }
+
+  .playground-header:not(:has(.control-group-primary)) .playground-controls {
+    align-items: end;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    justify-self: end;
+  }
+
+  .playground-header:not(:has(.control-group-primary)) .surface-toolbar {
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-self: center;
+  }
+}
+
 @media (max-width: 760px) {
   .playground-header {
     gap: 9px var(--pg-control-gap);
