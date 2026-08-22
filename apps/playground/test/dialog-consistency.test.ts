@@ -148,8 +148,8 @@ test("every playground configuration change restarts the active game", () => {
 test("integrated player journey owns player-facing game selection", () => {
   assert.match(
     appSource,
-    /\{!playerMenuPreviewUrl \? \([\s\S]*?className="control-group control-group-primary"[\s\S]*?label="Game"[\s\S]*?label="Players"[\s\S]*?label="Difficulty"[\s\S]*?\) : null\}/,
-    "integrated mode must not duplicate the menu's game, roster, or difficulty selection"
+    /\{!venueModeActive \? \([\s\S]*?className="control-group control-group-primary"[\s\S]*?label="Game"[\s\S]*?label="Players"[\s\S]*?label="Difficulty"[\s\S]*?\) : null\}/,
+    "venue mode must not duplicate the menu's game, roster, or difficulty selection"
   );
 });
 

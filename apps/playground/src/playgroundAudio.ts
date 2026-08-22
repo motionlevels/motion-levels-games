@@ -62,16 +62,21 @@ export class PlaygroundAudioOutput {
     if (this.latest) this.sync(this.latest);
   }
 
-  dispose(): void {
+  suspend(): void {
     this.music?.pause();
+    for (const effect of this.activeEffects) effect.pause();
+    for (const narration of this.activeNarrations) narration.pause();
+    this.activeEffects.clear();
+    this.activeNarrations.clear();
+  }
+
+  dispose(): void {
+    this.suspend();
     for (const samples of this.effectPool.values()) {
       for (const sample of samples) sample.pause();
     }
-    for (const narration of this.activeNarrations) narration.pause();
     this.music = null;
     this.latest = null;
-    this.activeEffects.clear();
-    this.activeNarrations.clear();
     this.effectPool.clear();
   }
 

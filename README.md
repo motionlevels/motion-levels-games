@@ -22,12 +22,21 @@ npm run dev
 player menu, and a revision-matched mock controller run together. The runtime
 API remains available at `http://127.0.0.1:4102`. `npm run
 dev:venue:no-controller` is a compatibility alias for the same command, while
-`npm run dev:venue` connects to a real controller.
+`npm run dev:venue` connects to a real controller. The developer toolbar at
+that single browser origin switches explicitly between `Venue`, which is a
+façade over the canonical runtime, and `Sandbox`, which uses the isolated
+deterministic browser session. Display, menu, floor, and agent choices remain
+separate presentation controls rather than changing the state owner.
+Sandbox never sends controls, input, or audio to the canonical venue; returning
+to Venue resynchronizes its latest snapshot. This isolation also means a
+Sandbox or recording tab cannot interrupt another tab using Venue.
 
-Use `npm run dev:standalone` only for deterministic in-browser authoring and
-media generation. It deliberately omits the venue runtime and kiosk menu, so
-it cannot show venue connectivity failures or validate production lifecycle
-behavior. Use `--api-only` with the venue script when only the API is needed.
+Use Sandbox on `4104` for normal deterministic authoring, prepared scenarios,
+and media generation. A `?recordScenario=<id>` URL selects Sandbox
+automatically. Keep `npm run dev:standalone` for isolated automation or
+debugging when the venue process is deliberately absent; it omits the venue
+runtime and kiosk menu, so it cannot validate production lifecycle behavior.
+Use `--api-only` with the venue script when only the API is needed.
 `npm run test:dev:venue` starts the default environment and verifies the
 playground root, player-menu entry point, proxied health endpoint, and direct
 venue API before shutting it down. Its playground, API, and mock-controller

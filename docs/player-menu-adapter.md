@@ -102,13 +102,17 @@ to that runtime. `npm run dev:venue:no-controller` remains an alias for this
 default command.
 
 The menu launches with the normal `POST /api/select` command. The playground
-does not create a second live game engine in this mode: it renders
+does not create a second live game engine while Venue is selected: it renders
 `GET /api/display` and `/api/display/events`, sends controls through
 `POST /api/control`, and sends floor interaction through
 `POST /api/floor-input`. Switching to Menu acquires the same canonical pause
 state as the venue, and remounting the menu derives its active-game screen from
-the runtime snapshot.
+the runtime snapshot. The developer-only Sandbox selector isolates the browser
+engine and hides the venue menu surface. It never controls or sends input to the
+venue runtime; returning to Venue resynchronizes its latest live snapshot, so a
+Sandbox or recording tab cannot interrupt a Venue tab.
 
-`npm run dev:standalone` is the deterministic authoring/media path when no
-venue runtime is needed. It does not mount the embedded kiosk menu and must not
-be used to validate production lifecycle behavior.
+Use Sandbox at the same `4104` origin for normal deterministic authoring and
+media generation. `npm run dev:standalone` remains available when automation
+deliberately needs no venue runtime; it does not mount the embedded kiosk menu
+and must not be used to validate production lifecycle behavior.

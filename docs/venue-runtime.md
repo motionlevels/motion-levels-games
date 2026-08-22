@@ -175,7 +175,11 @@ For local integration, `npm run dev` runs the source runtime with audio enabled,
 together with the
 playground and revisioned mock controller at `http://127.0.0.1:4104/`. The
 venue API remains at `http://127.0.0.1:4102`; `--api-only` preserves the
-API-only mode. `npm run dev:venue` uses the real controller,
+API-only mode. The playground's Venue/Sandbox selector changes the workbench's
+state owner without adding another browser service: Venue uses this runtime,
+while Sandbox runs an isolated deterministic session locally without sending
+controls or input to the venue runtime.
+`npm run dev:venue` uses the real controller,
 `npm run dev:venue:no-controller` remains an alias for the default command,
 and `npm run test:dev:venue` exercises the whole environment without opening a
 browser manually. The script reads the

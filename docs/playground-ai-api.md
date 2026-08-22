@@ -1,9 +1,8 @@
 # Playground AI API
 
 The playground exposes a browser-only development API for local playtesting.
-Open the production-shaped venue environment with `npm run dev`, or the direct
-deterministic authoring environment with `npm run dev:standalone`, then use
-either global:
+Open the production-shaped environment with `npm run dev` and use the `Venue |
+Sandbox` selector at `http://127.0.0.1:4104/`, then use either global:
 
 ```js
 window.motionLevelsPlayground
@@ -13,14 +12,18 @@ window.ml
 The root `<html>` element gets `data-motion-levels-playground-api="ready"`
 when the API has been installed.
 
-The API is intentionally local tooling, not part of the game contract. In the
-standalone `npm run dev:standalone` authoring path, the playground runs games
-through the shared TypeScript SDK engine at a 50fps baseline. `ml.step()` with
-no argument advances exactly one engine frame. In the default integrated `npm
-run dev` path, the same API is a façade over the canonical VenueRuntime
+The API is intentionally local tooling, not part of the game contract. In
+Sandbox mode the playground runs games through the shared TypeScript SDK engine
+at a 50fps baseline. `ml.step()` with no argument advances exactly one engine
+frame. In Venue mode the same API is a façade over the canonical VenueRuntime
 display/control/floor endpoints; the runtime owns the live clock, snapshot,
 frame, pause state, and input handling, so `ml.step()` only refreshes the latest
-runtime display rather than simulating a second game.
+runtime display rather than simulating a second game. Switching modes releases
+held inputs, keeps venue and sandbox event streams separate, and resynchronizes
+the latest venue snapshot when returning. Sandbox never sends controls, floor
+input, or audio to Venue, so another Sandbox or recording tab cannot interrupt
+an active Venue tab. `npm run dev:standalone` remains an isolated automation
+path that exposes Sandbox only.
 
 ## Deterministic Playthrough
 
@@ -64,16 +67,17 @@ const review = await ml.scenario.record("victory");
 console.log(review.clip.dataUrl, review.contactSheet.dataUrl);
 ```
 
-Prepared scenarios are available only in the standalone playground because the
-integrated venue runtime remains the sole owner of its live game state.
+Prepared scenarios are available only in Sandbox mode because Venue mode keeps
+the integrated runtime as the sole owner of its live game state.
 Recording defaults belong to the game-owned scenario. Duelo records 400 ms of
 pre-roll and its complete five-second victory transition at 10 fps. The
 playground stops only its automatic clock while recording, advances the real
 engine explicitly, and scrubs TV CSS animations to the matching timestamp. It
 returns a 1230x540 animated WebP plus a timestamped six-frame PNG contact sheet.
 For browser tools that cannot call page globals directly, launch the same flow
-with `?recordScenario=victory`; the standalone playground renders the generated
-clip, contact sheet, and download links in a dedicated responsive review page.
+with `?recordScenario=victory`; the query selects Sandbox automatically and
+renders the generated clip, contact sheet, and download links in a dedicated
+responsive review page on the same `4104` origin.
 The ordinary workbench remains mounted offscreen only because native player
 display capture requires its renderer; it never overlaps the visible review.
 

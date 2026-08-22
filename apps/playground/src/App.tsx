@@ -9,6 +9,7 @@ import {
   Check,
   Copy,
   Dices,
+  FlaskConical,
   Gamepad2,
   LayoutGrid,
   LoaderCircle,
@@ -19,6 +20,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  RadioTower,
   Search,
   Settings2,
   Sparkles,
@@ -114,6 +116,11 @@ import {
 import { readStoredSelectedGameId, storeSelectedGameId } from "./playgroundPreferences.ts";
 import { readPlayerJourneyLaunch } from "./playerJourney.ts";
 import { localPlayerMenuUrl, readPrimaryScreen, type PrimaryScreen } from "./playerMenuEmbed.ts";
+import {
+  readPlaygroundRuntimeMode,
+  searchForPlaygroundRuntimeMode,
+  type PlaygroundRuntimeMode,
+} from "./runtimeMode.ts";
 import { formatElapsedClock } from "./timeFormat.ts";
 import {
   encodeScenarioRecording,
@@ -180,13 +187,21 @@ export function App() {
   );
   const playerJourney = useMemo(() => readPlayerJourneyLaunch(playgroundGames), []);
   const [playerMenuPreviewUrl] = useState(() => localPlayerMenuUrl());
-  const initialPrimaryScreen: PrimaryScreen = playerMenuPreviewUrl ? readPrimaryScreen() : "display";
+  const venueRuntimeAvailable = playerMenuPreviewUrl !== undefined;
+  const initialRuntimeMode = readPlaygroundRuntimeMode(
+    typeof window === "undefined" ? "" : window.location.search,
+    venueRuntimeAvailable,
+  );
+  const initialPrimaryScreen: PrimaryScreen = venueRuntimeAvailable && initialRuntimeMode === "venue"
+    ? readPrimaryScreen()
+    : "display";
   const initialGame = useMemo(() => {
     if (playerJourney) return findPlaygroundGame(playerJourney.gameId) ?? defaultGame;
     const storedGameId = readStoredSelectedGameId(playgroundGames.map((game) => game.manifest.id));
     return storedGameId ? findPlaygroundGame(storedGameId) ?? defaultGame : defaultGame;
   }, [playerJourney]);
   const [selectedGameId, setSelectedGameId] = useState(initialGame.manifest.id);
+  const [runtimeMode, setRuntimeMode] = useState<PlaygroundRuntimeMode>(initialRuntimeMode);
   const [primaryScreen, setPrimaryScreen] = useState<PrimaryScreen>(initialPrimaryScreen);
   const selectedGame = useMemo(
     () => findPlaygroundGame(selectedGameId) ?? defaultGame,
@@ -206,13 +221,14 @@ export function App() {
   );
   const [venueDisplay, setVenueDisplay] = useState<VenueRuntimeDisplay | null>(null);
   const audioOutput = useMemo(() => new PlaygroundAudioOutput(), []);
-  const runtimeIntegrated = playerMenuPreviewUrl !== undefined;
   const localPaused = isPlaygroundPaused(manuallyPaused, pauseLocks);
-  const paused = runtimeIntegrated
-    ? Boolean(venueDisplay?.paused || localPaused)
+  const venueModeActive = runtimeMode === "venue";
+  const venueRuntimeConnected = venueDisplay !== null;
+  const venueRuntimeActive = venueModeActive && venueRuntimeConnected;
+  const paused = venueModeActive
+    ? Boolean(!venueRuntimeConnected || venueDisplay?.paused || localPaused)
     : localPaused;
-  const runtimeLive = runtimeIntegrated && venueDisplay !== null;
-  const agentLabActive = !runtimeLive && surfaceMode === "agents" && selectedGame.createSessionController !== undefined;
+  const agentLabActive = !venueModeActive && surfaceMode === "agents" && selectedGame.createSessionController !== undefined;
   const started = useMemo(
     () => {
       const session = new GameSession(playgroundRegistry, { fps: DEFAULT_ENGINE_FPS });
@@ -271,7 +287,9 @@ export function App() {
   const snapshotRef = useRef(snapshot);
   const frameRef = useRef(frame);
   const eventsRef = useRef(events);
+  const venueEventsRef = useRef<GameEvent[]>([]);
   const venueDisplayRef = useRef<VenueRuntimeDisplay | null>(null);
+  const runtimeModeRef = useRef<PlaygroundRuntimeMode>(runtimeMode);
   const venueFloorClientIDRef = useRef<string | null>(null);
   const venueFloorSequenceRef = useRef(0);
   const venueFloorInputBufferRef = useRef<VenueRuntimeFloorInputBuffer | null>(null);
@@ -281,11 +299,11 @@ export function App() {
   const pendingScenarioActionsRef = useRef<readonly GamePlaytestAction[] | null>(null);
   const scenarioRecordingRef = useRef(false);
   const scenarioAutoRecordStartedRef = useRef(false);
-  const displayGame = runtimeLive
+  const displayGame = venueRuntimeActive
     ? findPlaygroundGame(venueDisplay?.gameSnapshot?.currentGame || venueDisplay?.currentGame || "") ?? selectedGame
     : selectedGame;
-  const displaySnapshot = runtimeLive && venueDisplay?.gameSnapshot ? venueDisplay.gameSnapshot : snapshot;
-  const displayFrame = runtimeLive && venueDisplay?.frame ? venueDisplay.frame : frame;
+  const displaySnapshot = venueRuntimeActive && venueDisplay?.gameSnapshot ? venueDisplay.gameSnapshot : snapshot;
+  const displayFrame = venueRuntimeActive && venueDisplay?.frame ? venueDisplay.frame : frame;
   const PlayerDisplay = displayGame.PlayerDisplay;
   const gameConfigVars = selectedGame.manifest.config?.vars ?? [];
   const difficultyChoices = gameDifficultyOptions(selectedGame.manifest);
@@ -295,8 +313,12 @@ export function App() {
   } as CSSProperties;
 
   useEffect(() => {
-    if (venueDisplay) audioOutput.sync(venueDisplay);
-  }, [audioOutput, venueDisplay]);
+    if (venueRuntimeActive && venueDisplay) {
+      audioOutput.sync(venueDisplay);
+    } else {
+      audioOutput.suspend();
+    }
+  }, [audioOutput, venueDisplay, venueRuntimeActive]);
 
   useEffect(() => {
     const unlock = () => audioOutput.unlock();
@@ -334,6 +356,10 @@ export function App() {
   }, [gameOptions]);
 
   useEffect(() => {
+    runtimeModeRef.current = runtimeMode;
+  }, [runtimeMode]);
+
+  useEffect(() => {
     manuallyPausedRef.current = manuallyPaused;
     pausedRef.current = isPlaygroundPaused(manuallyPaused, pauseLocksRef.current);
   }, [manuallyPaused]);
@@ -344,10 +370,12 @@ export function App() {
   }, [pauseLocks]);
 
   useEffect(() => {
-    if (venueDisplay) pausedRef.current = runtimeIntegrated
-      ? Boolean(venueDisplay.paused || isPlaygroundPaused(manuallyPausedRef.current, pauseLocksRef.current))
-      : venueDisplay.paused;
-  }, [manuallyPaused, pauseLocks, runtimeIntegrated, venueDisplay]);
+    if (venueRuntimeActive && venueDisplay) {
+      pausedRef.current = Boolean(
+        venueDisplay.paused || isPlaygroundPaused(manuallyPausedRef.current, pauseLocksRef.current),
+      );
+    }
+  }, [manuallyPaused, pauseLocks, venueDisplay, venueRuntimeActive]);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -440,23 +468,7 @@ export function App() {
     return () => document.removeEventListener("fullscreenchange", updateFullscreen);
   }, []);
 
-  const acceptVenueDisplay = useCallback((next: VenueRuntimeDisplay) => {
-    const current = venueDisplayRef.current;
-    if (current
-      && current.runId === next.runId
-      && next.revision < current.revision) {
-      return;
-    }
-    if (current && current.runId !== next.runId) {
-      // A restarted runtime has no knowledge of pause/input ownership from
-      // the previous process. Reacquire only what the current screen needs.
-      runtimePauseOwnersRef.current.clear();
-      venueFloorClientIDRef.current = null;
-      venueFloorSequenceRef.current = 0;
-    }
-
-    venueDisplayRef.current = next;
-    setVenueDisplay(next);
+  const applyVenueDisplayToWorkbench = useCallback((next: VenueRuntimeDisplay) => {
     if (next.gameSnapshot) {
       snapshotRef.current = next.gameSnapshot;
       setSnapshot(next.gameSnapshot);
@@ -483,6 +495,30 @@ export function App() {
       setDifficulty((currentDifficulty) => currentDifficulty === nextDifficulty ? currentDifficulty : nextDifficulty);
     }
 
+    const nextEvents = venueEventsRef.current;
+    eventsRef.current = nextEvents;
+    setEvents(nextEvents);
+  }, []);
+
+  const acceptVenueDisplay = useCallback((next: VenueRuntimeDisplay) => {
+    const current = venueDisplayRef.current;
+    if (current
+      && current.runId === next.runId
+      && next.revision < current.revision) {
+      return;
+    }
+    if (current && current.runId !== next.runId) {
+      // A restarted runtime has no knowledge of pause/input ownership from
+      // the previous process. Reacquire only what the current screen needs.
+      runtimePauseOwnersRef.current.clear();
+      venueFloorClientIDRef.current = null;
+      venueFloorSequenceRef.current = 0;
+      venueEventsRef.current = [];
+    }
+
+    venueDisplayRef.current = next;
+    setVenueDisplay(next);
+
     const runtimeEventKey = [
       next.runId,
       next.lastEventSequence ?? 0,
@@ -497,18 +533,18 @@ export function App() {
         cue: next.lastEventCue,
         message: next.lastEventMessage,
       };
-      const mergedEvents = [runtimeEvent, ...eventsRef.current.filter((event) => (
+      venueEventsRef.current = [runtimeEvent, ...venueEventsRef.current.filter((event) => (
         event.atMillis !== runtimeEvent.atMillis
         || event.cue !== runtimeEvent.cue
         || event.message !== runtimeEvent.message
       ))].slice(0, 50);
-      eventsRef.current = mergedEvents;
-      setEvents(mergedEvents);
     }
-  }, []);
+
+    if (runtimeModeRef.current === "venue") applyVenueDisplayToWorkbench(next);
+  }, [applyVenueDisplayToWorkbench]);
 
   useEffect(() => {
-    if (!runtimeIntegrated) return undefined;
+    if (!venueRuntimeAvailable) return undefined;
     let cancelled = false;
     let nextRefresh: number | undefined;
     let source: EventSource | null = null;
@@ -548,7 +584,7 @@ export function App() {
       source?.close();
       if (nextRefresh !== undefined) window.clearTimeout(nextRefresh);
     };
-  }, [acceptVenueDisplay, runtimeIntegrated]);
+  }, [acceptVenueDisplay, venueRuntimeAvailable]);
 
   const syncEngineState = useCallback((state: Pick<GameEngineState, "clockMillis" | "snapshot" | "frame" | "events">) => {
     localClockMillisRef.current = state.clockMillis;
@@ -589,7 +625,7 @@ export function App() {
   }, []);
 
   const releaseActivePlayerInputs = useCallback(() => {
-    if (runtimeLive) {
+    if (venueModeActive) {
       activePlayerInputsRef.current.clear();
       pendingScenarioActionsRef.current = null;
       setInputResetSequence((current) => current + 1);
@@ -609,7 +645,7 @@ export function App() {
     if (nextState) {
       syncEngineState({ ...nextState, events: emittedEvents });
     }
-  }, [enqueueVenueFloorInput, runtimeLive, syncEngineState]);
+  }, [enqueueVenueFloorInput, syncEngineState, venueModeActive]);
 
   const setManuallyPausedState = useCallback((nextPaused: boolean) => {
     const nextEffectivePaused = isPlaygroundPaused(nextPaused, pauseLocksRef.current);
@@ -620,7 +656,7 @@ export function App() {
     manuallyPausedRef.current = nextPaused;
     pausedRef.current = nextEffectivePaused;
     setManuallyPaused(nextPaused);
-    if (runtimeLive) {
+    if (venueRuntimeActive) {
       if (nextPaused) {
         runtimePauseOwnersRef.current.add("manual");
         void enqueueVenueControl("pause").catch(() => {});
@@ -629,7 +665,7 @@ export function App() {
         if (pauseLocksRef.current.size === 0) void enqueueVenueControl("resume").catch(() => {});
       }
     }
-  }, [enqueueVenueControl, releaseActivePlayerInputs, runtimeLive]);
+  }, [enqueueVenueControl, releaseActivePlayerInputs, venueRuntimeActive]);
 
   const setInteractionPauseState = useCallback((lockId: string, active: boolean) => {
     const wasPaused = pausedRef.current;
@@ -646,7 +682,7 @@ export function App() {
     pauseLocksRef.current = nextLocks;
     pausedRef.current = nextEffectivePaused;
     setPauseLocks(nextLocks);
-    if (runtimeLive) {
+    if (venueRuntimeActive) {
       if (active && !wasPaused) {
         runtimePauseOwnersRef.current.add(lockId);
         void enqueueVenueControl("pause").catch(() => {});
@@ -660,16 +696,16 @@ export function App() {
         }
       }
     }
-  }, [enqueueVenueControl, releaseActivePlayerInputs, runtimeLive]);
+  }, [enqueueVenueControl, releaseActivePlayerInputs, venueRuntimeActive]);
 
   const changePrimaryScreen = useCallback((nextScreen: PrimaryScreen) => {
-    if (nextScreen === "menu" && !playerMenuPreviewUrl) return;
+    if (nextScreen === "menu" && (!playerMenuPreviewUrl || runtimeModeRef.current !== "venue")) return;
     setInteractionPauseState("player-menu", nextScreen === "menu");
     setPrimaryScreen(nextScreen);
   }, [playerMenuPreviewUrl, setInteractionPauseState]);
 
   useEffect(() => {
-    if (!runtimeLive
+    if (!venueRuntimeActive
       || primaryScreen !== "menu"
       || venueDisplay?.lifecycle === "idle"
       || venueDisplay?.phase === "ambient"
@@ -677,7 +713,7 @@ export function App() {
       || runtimePauseOwnersRef.current.has("player-menu")) return;
     runtimePauseOwnersRef.current.add("player-menu");
     void enqueueVenueControl("pause").catch(() => {});
-  }, [enqueueVenueControl, primaryScreen, runtimeLive, venueDisplay?.lifecycle, venueDisplay?.paused, venueDisplay?.phase]);
+  }, [enqueueVenueControl, primaryScreen, venueDisplay?.lifecycle, venueDisplay?.paused, venueDisplay?.phase, venueRuntimeActive]);
 
   const setDebugOpenState = useCallback((open: boolean) => {
     setInteractionPauseState("debug-dialog", open);
@@ -712,6 +748,42 @@ export function App() {
 
   const previewFrameFor = useCallback((sourceFrame: Frame = frameRef.current): Frame => sourceFrame, []);
 
+  const resetSandboxSession = useCallback((
+    nextSeed = seedRef.current,
+    nextPlayerCount = playerCountRef.current,
+    nextGame = selectedGameRef.current,
+    nextDifficulty = difficultyRef.current,
+    nextOptions = gameOptionsRef.current,
+  ) => {
+    const normalizedOptions = normalizeGameConfigOptions(nextOptions, nextGame.manifest);
+    const nextState = selectGameSession(
+      sessionRef.current,
+      nextGame,
+      nextSeed,
+      nextPlayerCount,
+      nextDifficulty,
+      normalizedOptions,
+    );
+    if (pausedRef.current) sessionRef.current.pause(nextState.clockMillis);
+    activePlayerInputsRef.current.clear();
+    pendingScenarioActionsRef.current = null;
+    setInputResetSequence((current) => current + 1);
+    eventAutoFollowRef.current = true;
+    previousLatestEventRef.current = "";
+    setEventAutoFollow(true);
+    eventsRef.current = nextState.events;
+    localClockMillisRef.current = nextState.clockMillis;
+    snapshotRef.current = nextState.snapshot;
+    frameRef.current = nextState.frame;
+    difficultyRef.current = nextDifficulty;
+    gameOptionsRef.current = normalizedOptions;
+    setEvents(nextState.events);
+    setSnapshot(nextState.snapshot);
+    setFrame(nextState.frame);
+    setDifficulty(nextDifficulty);
+    setGameOptions(normalizedOptions);
+  }, []);
+
   const restart = useCallback(
     (
       nextSeed = seedRef.current,
@@ -720,43 +792,68 @@ export function App() {
       nextDifficulty = difficultyRef.current,
       nextOptions = gameOptionsRef.current
     ) => {
-      if (runtimeLive) {
+      if (venueModeActive) {
         releaseActivePlayerInputs();
         setInputResetSequence((current) => current + 1);
-        void enqueueVenueControl("restart").catch(() => {});
+        if (venueRuntimeConnected) void enqueueVenueControl("restart").catch(() => {});
         return;
       }
 
-      const normalizedOptions = normalizeGameConfigOptions(nextOptions, nextGame.manifest);
-      const nextState = selectGameSession(
-        sessionRef.current,
-        nextGame,
-        nextSeed,
-        nextPlayerCount,
-        nextDifficulty,
-        normalizedOptions
-      );
-      if (pausedRef.current) sessionRef.current.pause(nextState.clockMillis);
-      activePlayerInputsRef.current.clear();
-      pendingScenarioActionsRef.current = null;
-      setInputResetSequence((current) => current + 1);
-      eventAutoFollowRef.current = true;
-      previousLatestEventRef.current = "";
-      setEventAutoFollow(true);
-      eventsRef.current = nextState.events;
-      localClockMillisRef.current = nextState.clockMillis;
-      snapshotRef.current = nextState.snapshot;
-      frameRef.current = nextState.frame;
-      difficultyRef.current = nextDifficulty;
-      gameOptionsRef.current = normalizedOptions;
-      setEvents(nextState.events);
-      setSnapshot(nextState.snapshot);
-      setFrame(nextState.frame);
-      setDifficulty(nextDifficulty);
-      setGameOptions(normalizedOptions);
+      resetSandboxSession(nextSeed, nextPlayerCount, nextGame, nextDifficulty, nextOptions);
     },
-    [enqueueVenueControl, releaseActivePlayerInputs, runtimeLive]
+    [enqueueVenueControl, releaseActivePlayerInputs, resetSandboxSession, venueModeActive, venueRuntimeConnected]
   );
+
+  const changeRuntimeMode = useCallback((nextMode: PlaygroundRuntimeMode) => {
+    const previousMode = runtimeModeRef.current;
+    if (nextMode === previousMode || (nextMode === "venue" && !venueRuntimeAvailable)) return;
+
+    releaseActivePlayerInputs();
+    const nextSearch = searchForPlaygroundRuntimeMode(
+      window.location.search,
+      nextMode,
+      venueRuntimeAvailable,
+    );
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${nextSearch}${window.location.hash}`,
+    );
+    // Manual pause belongs to the mode in which it was requested. Venue keeps
+    // its canonical pause state, while a fresh Sandbox session starts usable.
+    manuallyPausedRef.current = false;
+    setManuallyPaused(false);
+
+    if (nextMode === "sandbox") {
+      runtimeModeRef.current = "sandbox";
+      setRuntimeMode("sandbox");
+
+      const nextLocks = updatePauseLocks(pauseLocksRef.current, "player-menu", false);
+      pauseLocksRef.current = nextLocks;
+      runtimePauseOwnersRef.current.delete("player-menu");
+      setPauseLocks(nextLocks);
+      setPrimaryScreen("display");
+      pausedRef.current = isPlaygroundPaused(false, nextLocks);
+      resetSandboxSession();
+      return;
+    }
+
+    runtimeModeRef.current = "venue";
+    setRuntimeMode("venue");
+    const currentVenue = venueDisplayRef.current;
+    if (currentVenue) applyVenueDisplayToWorkbench(currentVenue);
+    pausedRef.current = Boolean(
+      !currentVenue
+      || currentVenue.paused
+      || isPlaygroundPaused(false, pauseLocksRef.current),
+    );
+
+  }, [
+    applyVenueDisplayToWorkbench,
+    releaseActivePlayerInputs,
+    resetSandboxSession,
+    venueRuntimeAvailable,
+  ]);
 
   const changeSeed = useCallback((nextSeed: number) => {
     if (nextSeed === seedRef.current) {
@@ -819,7 +916,7 @@ export function App() {
       optionOverrides: GameConfigOptions = {},
       selection: { playerCount?: number; difficulty?: string } = {},
     ) => {
-      if (runtimeLive) return;
+      if (venueModeActive) return;
       const nextGame = findPlaygroundGame(gameId) ?? defaultGame;
       const nextSeed = DEFAULT_GAME_SEED;
       const playerChoices = gamePlayerCountOptions(nextGame.manifest);
@@ -848,7 +945,7 @@ export function App() {
       setGameOptions(nextOptions);
       restart(nextSeed, nextPlayerCount, nextGame, nextDifficulty, nextOptions);
     },
-    [restart, runtimeLive]
+    [restart, venueModeActive]
   );
 
   const selectAnimation = useCallback((animationId: string) => {
@@ -880,15 +977,15 @@ export function App() {
   }, [releaseActivePlayerInputs, restart]);
 
   useEffect(() => {
-    if (paused || agentLabActive || runtimeLive) {
+    if (paused || agentLabActive || venueModeActive) {
       sessionRef.current.pause();
     } else {
       sessionRef.current.resume();
     }
-  }, [agentLabActive, paused, runtimeLive]);
+  }, [agentLabActive, paused, venueModeActive]);
 
   useEffect(() => {
-    if (paused || agentLabActive || runtimeLive) {
+    if (paused || agentLabActive || venueModeActive) {
       return undefined;
     }
 
@@ -940,7 +1037,7 @@ export function App() {
 
     frameId = window.requestAnimationFrame(runFrame);
     return () => window.cancelAnimationFrame(frameId);
-  }, [agentLabActive, paused, runtimeLive, syncEngineState]);
+  }, [agentLabActive, paused, syncEngineState, venueModeActive]);
 
   const handleTilePress = useCallback(
     (x: number, y: number, space: PlaygroundPointSpace = "preview") => {
@@ -953,13 +1050,13 @@ export function App() {
 
       const tile = pointToPhysicalTile(x, y, space);
       activePlayerInputsRef.current.set(`${tile.x}:${tile.y}`, tile);
-      if (runtimeLive) {
+      if (venueModeActive) {
         void enqueueVenueFloorInput([{ ...tile, pressed: true }]).catch(() => {});
         return;
       }
       syncEngineState(sessionRef.current.press(tile.x, tile.y));
     },
-    [enqueueVenueFloorInput, runtimeLive, syncEngineState]
+    [enqueueVenueFloorInput, syncEngineState, venueModeActive]
   );
 
   const handleTileRelease = useCallback(
@@ -973,13 +1070,13 @@ export function App() {
 
       const tile = pointToPhysicalTile(x, y, space);
       activePlayerInputsRef.current.delete(`${tile.x}:${tile.y}`);
-      if (runtimeLive) {
+      if (venueModeActive) {
         void enqueueVenueFloorInput([{ ...tile, pressed: false }]).catch(() => {});
         return;
       }
       syncEngineState(sessionRef.current.release(tile.x, tile.y));
     },
-    [enqueueVenueFloorInput, runtimeLive, syncEngineState]
+    [enqueueVenueFloorInput, syncEngineState, venueModeActive]
   );
 
   const handleFloorInputActions = useCallback(
@@ -995,7 +1092,7 @@ export function App() {
         if (change.pressed) activePlayerInputsRef.current.set(key, change);
         else activePlayerInputsRef.current.delete(key);
       }
-      if (runtimeLive) {
+      if (venueModeActive) {
         void enqueueVenueFloorInput(changes).catch(() => {});
         return;
       }
@@ -1010,7 +1107,7 @@ export function App() {
       }
       if (nextState) syncEngineState({ ...nextState, events: emittedEvents });
     },
-    [enqueueVenueFloorInput, runtimeLive, syncEngineState]
+    [enqueueVenueFloorInput, syncEngineState, venueModeActive]
   );
 
   const captureSurfaces = useCallback(
@@ -1160,7 +1257,7 @@ export function App() {
 
   const stepGame = useCallback(
     (millis = DEFAULT_ENGINE_FRAME_MILLIS) => {
-      if (runtimeLive) {
+      if (venueModeActive) {
         void fetchVenueRuntimeDisplay().then(acceptVenueDisplay).catch(() => {});
         return;
       }
@@ -1172,7 +1269,7 @@ export function App() {
       const stepMillis = Number.isFinite(millis) ? Math.max(0, millis) : DEFAULT_ENGINE_FRAME_MILLIS;
       syncEngineState(sessionRef.current.step(stepMillis));
     },
-    [acceptVenueDisplay, runtimeLive, syncEngineState]
+    [acceptVenueDisplay, syncEngineState, venueModeActive]
   );
 
   const handleAgentLabController = useCallback((controller: JugarAgentSurfaceController | null) => {
@@ -1229,7 +1326,7 @@ export function App() {
   }, [changeSurfaceMode]);
 
   const readPlaygroundState = useCallback((): PlaygroundState => {
-    const liveDisplay = venueDisplayRef.current;
+    const liveDisplay = runtimeModeRef.current === "venue" ? venueDisplayRef.current : null;
     const liveSnapshot = liveDisplay?.gameSnapshot ?? snapshotRef.current;
     const liveFrame = liveDisplay?.frame ?? frameRef.current;
     return {
@@ -1254,8 +1351,8 @@ export function App() {
   }, []);
 
   const preparePlaytestScenario = useCallback((id: string): PlaygroundScenarioPreparation => {
-    if (venueDisplayRef.current) {
-      throw new Error("Playtest scenarios are available in the standalone playground only");
+    if (runtimeModeRef.current !== "sandbox") {
+      throw new Error("Switch to Sandbox before preparing a playtest scenario");
     }
     if (surfaceModeRef.current === "agents") {
       throw new Error("Switch to the floor surface before preparing a playtest scenario");
@@ -1637,16 +1734,17 @@ export function App() {
     || (libraryTab !== "games" && visibleLibraryAnimations.length > 0);
   const effectivePresentationPaused = paused || (agentLabActive && (agentLabState?.paused ?? false));
   const displayedPhase = effectivePresentationPaused ? "paused" : displaySnapshot.phase;
-  const runtimeClockMillis = runtimeLive ? Math.max(0, displaySnapshot.elapsedMillis) : localClockMillisRef.current;
-  const frameMillis = runtimeLive ? DEFAULT_ENGINE_FRAME_MILLIS : sessionRef.current.frameMillis;
+  const runtimeClockMillis = venueRuntimeActive ? Math.max(0, displaySnapshot.elapsedMillis) : localClockMillisRef.current;
+  const frameMillis = venueRuntimeActive ? DEFAULT_ENGINE_FRAME_MILLIS : sessionRef.current.frameMillis;
   const frameNumber = frameMillis > 0 ? Math.round(runtimeClockMillis / frameMillis) : 0;
   const debugStats: [string, ReactNode][] = [
     ["Game", displayGame.manifest.label],
+    ["Runtime", runtimeMode === "venue" ? "Venue" : "Sandbox"],
     ["Screen", primaryScreen === "menu" ? "Player menu" : "Player display"],
     ["Surface", agentLabActive ? "Jugar 3D" : "Floor"],
     ["Phase", displaySnapshot.phase],
     ["Clock", formatElapsedClock(runtimeClockMillis)],
-    ["FPS", runtimeLive ? 50 : sessionRef.current.fps],
+    ["FPS", venueRuntimeActive ? 50 : sessionRef.current.fps],
     ["Seed", seed],
     ["Players", playerCount],
     ["Difficulty", difficulty],
@@ -1702,7 +1800,7 @@ export function App() {
                   <span>Menu</span>
                 </button>
               ) : null}
-              {!playerMenuPreviewUrl ? (
+              {!venueModeActive ? (
                 <div className="control-group control-group-primary">
                   <PlaygroundSelect
                     className="control-field control-game"
@@ -1816,12 +1914,12 @@ export function App() {
                   <Dices size={16} aria-hidden="true" />
                 </button>
                 <button
-                  aria-label={pauseLocks.size > 0 ? "Paused while controls are open" : manuallyPaused ? "Resume" : "Pause"}
-                  aria-pressed={manuallyPaused}
+                  aria-label={pauseLocks.size > 0 ? "Paused while controls are open" : paused ? "Resume" : "Pause"}
+                  aria-pressed={paused}
                   className="icon-button"
                   disabled={pauseLocks.size > 0}
-                  onClick={() => setManuallyPausedState(!manuallyPausedRef.current)}
-                  title={pauseLocks.size > 0 ? "Paused while controls are open" : manuallyPaused ? "Resume" : "Pause"}
+                  onClick={() => setManuallyPausedState(!pausedRef.current)}
+                  title={pauseLocks.size > 0 ? "Paused while controls are open" : paused ? "Resume" : "Pause"}
                   type="button"
                 >
                   {paused ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
@@ -1830,12 +1928,12 @@ export function App() {
                   aria-label={venueDisplay?.audioMuted ? "Unmute audio" : "Mute audio"}
                   aria-pressed={venueDisplay?.audioMuted ?? true}
                   className="icon-button"
-                  disabled={!runtimeLive || !venueDisplay?.audioEnabled}
+                  disabled={!venueRuntimeActive || !venueDisplay?.audioEnabled}
                   onClick={() => {
                     audioOutput.unlock();
                     void enqueueVenueControl("toggle_mute").catch(() => {});
                   }}
-                  title={!runtimeLive || !venueDisplay?.audioEnabled
+                  title={!venueRuntimeActive || !venueDisplay?.audioEnabled
                     ? "Audio is unavailable"
                     : venueDisplay.audioMuted ? "Unmute audio" : "Mute audio"}
                   type="button"
@@ -1856,7 +1954,31 @@ export function App() {
             </div>
 
             <div className="surface-toolbar" role="group" aria-label="Surface, debug, and capture actions">
-              {playerMenuPreviewUrl ? (
+              {venueRuntimeAvailable ? (
+                <nav
+                  aria-label="Runtime mode"
+                  className="surface-mode-toggle runtime-mode-toggle"
+                  data-runtime-mode={runtimeMode}
+                >
+                  <button
+                    aria-pressed={runtimeMode === "venue"}
+                    onClick={() => changeRuntimeMode("venue")}
+                    title={venueRuntimeConnected ? "Use the canonical venue runtime" : "Wait for the venue runtime connection"}
+                    type="button"
+                  >
+                    <RadioTower size={14} aria-hidden="true" /> <span>Venue</span>
+                  </button>
+                  <button
+                    aria-pressed={runtimeMode === "sandbox"}
+                    onClick={() => changeRuntimeMode("sandbox")}
+                    title="Use the isolated deterministic browser engine"
+                    type="button"
+                  >
+                    <FlaskConical size={14} aria-hidden="true" /> <span>Sandbox</span>
+                  </button>
+                </nav>
+              ) : null}
+              {playerMenuPreviewUrl && venueModeActive ? (
                 <nav className="surface-mode-toggle primary-screen-toggle" aria-label="Primary screen">
                   <button
                     aria-pressed={primaryScreen === "display"}
@@ -2178,7 +2300,7 @@ export function App() {
               </PlayerDisplayRuntimeProvider>
             </div>
             {playerMenuPreviewUrl ? (
-              <PlayerMenuPreview active={primaryScreen === "menu"} src={playerMenuPreviewUrl} />
+              <PlayerMenuPreview active={venueModeActive && primaryScreen === "menu"} src={playerMenuPreviewUrl} />
             ) : null}
           </div>
 
@@ -2188,7 +2310,7 @@ export function App() {
             clockMillis={runtimeClockMillis}
             eventStreamRef={eventStreamRef}
             events={events}
-            fps={runtimeLive ? 50 : sessionRef.current.fps}
+            fps={venueRuntimeActive ? 50 : sessionRef.current.fps}
             frameNumber={frameNumber}
             gameLabel={displayGame.manifest.label}
             onAutoFollowChange={setEventAutoFollowState}

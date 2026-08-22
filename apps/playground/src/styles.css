@@ -1484,6 +1484,21 @@ select {
   }
 }
 
+@media (orientation: landscape) and (min-width: 1201px) and (max-width: 1550px) {
+  .playground-header:has(.runtime-mode-toggle):not(:has(.control-group-primary)) {
+    align-items: center;
+    grid-template-areas:
+      "title controls"
+      "surface-actions surface-actions";
+    grid-template-columns: auto minmax(0, 1fr);
+    padding-block: 9px;
+  }
+
+  .playground-header:has(.runtime-mode-toggle):not(:has(.control-group-primary)) .surface-toolbar {
+    justify-self: center;
+  }
+}
+
 @media (max-width: 760px) {
   .playground-header {
     gap: 9px var(--pg-control-gap);
@@ -1546,6 +1561,16 @@ select {
     flex-wrap: nowrap;
     grid-area: surface-actions;
     justify-self: end;
+  }
+
+  .runtime-mode-toggle button {
+    min-width: 31px;
+    padding-inline: 0;
+    width: 31px;
+  }
+
+  .runtime-mode-toggle button span {
+    display: none;
   }
 }
 
@@ -2332,6 +2357,14 @@ select {
   margin-right: var(--pg-control-gap);
 }
 
+.runtime-mode-toggle {
+  margin-right: var(--pg-control-gap);
+}
+
+.runtime-mode-toggle button {
+  min-width: 84px;
+}
+
 .surface-mode-toggle button {
   align-items: center;
   display: inline-flex;
@@ -2360,6 +2393,32 @@ select {
   color: #ffffff;
   position: relative;
   z-index: 1;
+}
+
+.runtime-mode-toggle[data-runtime-mode="venue"] button[aria-pressed="true"] {
+  background: rgba(116, 229, 141, 0.12);
+  border-color: rgba(116, 229, 141, 0.68);
+  box-shadow:
+    0 0 0 1px rgba(116, 229, 141, 0.08),
+    0 0 18px rgba(116, 229, 141, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.runtime-mode-toggle[data-runtime-mode="sandbox"] button[aria-pressed="true"] {
+  background: rgba(255, 212, 95, 0.12);
+  border-color: rgba(255, 212, 95, 0.68);
+  box-shadow:
+    0 0 0 1px rgba(255, 212, 95, 0.08),
+    0 0 18px rgba(255, 212, 95, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.runtime-mode-toggle[data-runtime-mode="venue"] button[aria-pressed="true"] svg {
+  color: var(--pg-green);
+}
+
+.runtime-mode-toggle[data-runtime-mode="sandbox"] button[aria-pressed="true"] svg {
+  color: var(--pg-yellow);
 }
 
 .surface-mode-toggle button:disabled {

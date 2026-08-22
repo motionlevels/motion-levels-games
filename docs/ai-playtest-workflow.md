@@ -25,14 +25,17 @@ npm run create:game -- <game-id> "Display Name"
    should appear in the selector automatically while Vite is running.
 3. Inspect the target game under `games/<game-id>/`, especially `README.md`, `game.ts`,
    `display.tsx`, `manifest.ts`, fixtures, and tests.
-4. Start the deterministic playground for frame-stepped game authoring:
+4. Start the complete local development environment:
 
 ```sh
-npm run dev:standalone
+npm run dev
 ```
 
-   Use the default `npm run dev` for venue-matched manual and end-to-end
-   playtesting through the real TypeScript venue runtime and mock controller.
+   Open `http://127.0.0.1:4104/` and select Sandbox for deterministic,
+   frame-stepped authoring. Select Venue for venue-matched manual and
+   end-to-end playtesting through the real TypeScript runtime and mock
+   controller. Use `npm run dev:standalone` only when isolated automation must
+   run without the venue services.
 
 5. Open the Vite URL and wait for:
 
@@ -84,7 +87,8 @@ clip so brief hierarchy, overflow, and transition defects are not missed.
 If browser automation exposes only read-only page evaluation, navigate to
 `?recordScenario=victory` instead; the result uses stable
 `data-scenario-recording="clip"` and `"contact-sheet"` selectors.
-That URL uses a dedicated review layout: the workbench stays mounted offscreen
+That URL automatically selects the isolated Sandbox runtime and uses a
+dedicated review layout: the workbench stays mounted offscreen
 for exact native capture while the visible page contains only recording
 progress, download actions, the animated clip, and the contained contact sheet.
 

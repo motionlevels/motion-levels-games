@@ -133,6 +133,34 @@ test("runtime refreshes do not replay music that is already running", async () =
   output.dispose();
 });
 
+test("sandbox mode suspends venue audio and can resume the cached mix", async () => {
+  const samples: FakeAudio[] = [];
+  const output = new PlaygroundAudioOutput(() => {
+    const sample = new FakeAudio();
+    samples.push(sample);
+    return sample as unknown as HTMLAudioElement;
+  });
+  const state = {
+    ...audioState(1),
+    music: "audio/duelo/music/playing-loop.mp3",
+  };
+
+  output.sync(state);
+  output.unlock();
+  await Promise.resolve();
+  const music = samples[0]!;
+  assert.equal(music.playCount, 1);
+
+  output.suspend();
+  assert.equal(music.pauseCount, 1);
+
+  output.sync(state);
+  await Promise.resolve();
+  assert.equal(samples.length, 1, "resuming must reuse the existing music element");
+  assert.equal(music.playCount, 2);
+  output.dispose();
+});
+
 test("a runtime stop signal cancels the active narration without muting music", async () => {
   const samples: FakeAudio[] = [];
   const output = new PlaygroundAudioOutput(() => {

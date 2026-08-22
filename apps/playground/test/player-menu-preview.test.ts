@@ -87,7 +87,7 @@ test("screen query restores the selected playground preview", () => {
 });
 
 test("the menu iframe stays mounted while the primary screen changes", () => {
-  assert.match(appSource, /<PlayerMenuPreview active=\{primaryScreen === "menu"\} src=\{playerMenuPreviewUrl\} \/>/u);
+  assert.match(appSource, /<PlayerMenuPreview active=\{venueModeActive && primaryScreen === "menu"\} src=\{playerMenuPreviewUrl\} \/>/u);
   assert.match(previewSource, /data-active=\{active\}/u);
   assert.match(styleSource, /\.player-menu-preview-native\.is-background\s*\{[\s\S]*?visibility:\s*hidden;/u);
 });
