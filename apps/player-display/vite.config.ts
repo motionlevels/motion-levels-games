@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { execSync } from "node:child_process";
 import { resolveGamesBuildIdentity } from "../../scripts/build-version.ts";
+import { motionLevelsAudioAssets } from "../../scripts/vite-audio-assets.ts";
 
 const displayBuildRevision = process.env.MOTION_LEVELS_BUILD_REVISION || gitValue("git rev-parse HEAD");
 const displayBuildDate = process.env.MOTION_LEVELS_BUILD_DATE || gitValue("git show -s --format=%cI HEAD") || "dev";
@@ -25,6 +26,7 @@ export default defineConfig({
     MOTION_LEVELS_PLAYER_DISPLAY_REVISION: JSON.stringify(displayBuildRevision),
   },
   plugins: [
+    motionLevelsAudioAssets(),
     react(),
     {
       name: "motion-levels-player-display-build-manifest",

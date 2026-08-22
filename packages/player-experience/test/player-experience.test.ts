@@ -98,6 +98,10 @@ describe("canonical player experience", () => {
     assert.equal(playerExperienceView({ ...base, phase: "ambient" }).screen, "browse");
     assert.equal(playerExperienceView({ ...base, phase: "ambient" }).lifecycle, "running");
     assert.deepEqual(controlsForState(base), ["pause", "restart", "exit", "narration", "mute", "toggle_mute"]);
+    assert.deepEqual(
+      controlsForState({ ...base, narrationRemainingMillis: 1_500 }),
+      ["pause", "restart", "exit", "narration", "stop_narration", "mute", "toggle_mute"],
+    );
     assert.deepEqual(controlsForState({ ...base, lifecycle: "paused" }), ["resume", "restart", "exit", "narration", "mute", "toggle_mute"]);
     const recordingGate = {
       id: "gate-1",

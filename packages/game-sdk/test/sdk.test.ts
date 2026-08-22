@@ -16,6 +16,7 @@ import {
   formatClock,
   frameCell,
   gameEvent,
+  gameAudioForEvent,
   gameDifficultyOptions,
   gameMediaAssetSpecs,
   gameMediaFileNames,
@@ -24,6 +25,7 @@ import {
   gameMediaURL,
   gameManifestLookupKeys,
   gameManifestSlug,
+  gameMusicForPhase,
   gamePlayerCountOptions,
   inFloorBounds,
   isStableGameId,
@@ -591,6 +593,36 @@ test("gameEvent removes terminal periods from event messages", () => {
     message: "Ready",
     atMillis: 120
   });
+});
+
+test("game audio composition selects phase music and deterministic event variants", () => {
+  const audio = {
+    music: {
+      waiting: { ref: "audio/test/waiting.mp3", volume: 0.2 },
+      running: { ref: "audio/test/running.mp3", volume: 0.3 }
+    },
+    effects: {
+      hit: [
+        { ref: "audio/test/hit.mp3", volume: 0.5, playbackRate: 0.98 },
+        { ref: "audio/test/hit.mp3", volume: 0.5, playbackRate: 1.02 }
+      ],
+      win: [{ ref: "audio/test/win.mp3", volume: 0.8 }]
+    },
+    narration: {
+      victoryByPlayerIndex: [
+        { ref: "audio/test/player-1.mp3", volume: 0.9 },
+        { ref: "audio/test/player-2.mp3", volume: 0.9 }
+      ]
+    }
+  } as const;
+
+  assert.equal(gameMusicForPhase(audio, "waiting")?.ref, "audio/test/waiting.mp3");
+  assert.equal(gameMusicForPhase(audio, "starting")?.ref, "audio/test/waiting.mp3");
+  assert.equal(gameMusicForPhase(audio, "finished")?.ref, "audio/test/running.mp3");
+  assert.equal(gameAudioForEvent(audio, "hit", 1).effect?.playbackRate, 0.98);
+  assert.equal(gameAudioForEvent(audio, "hit", 2).effect?.playbackRate, 1.02);
+  assert.equal(gameAudioForEvent(audio, "hit", 3).effect?.playbackRate, 0.98);
+  assert.equal(gameAudioForEvent(audio, "win", 4, { winnerIndex: 1 }).narration?.ref, "audio/test/player-2.mp3");
 });
 
 test("game engine uses 50fps fixed step defaults", () => {

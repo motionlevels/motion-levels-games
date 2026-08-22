@@ -17,6 +17,7 @@ export type PlayerExperienceControl =
   | "restart"
   | "exit"
   | "narration"
+  | "stop_narration"
   | "mute"
   | "unmute"
   | "toggle_mute"
@@ -164,6 +165,18 @@ export type PlayerExperienceState = {
   livesStart?: number;
   music: string;
   musicVolume: number;
+  /** Revision-owned one-shot selected for the latest game event. */
+  sound?: string;
+  soundVolume?: number;
+  soundPlaybackRate?: number;
+  /** Revision-owned spoken line; sequence changes whenever it should replay. */
+  narration?: string;
+  narrationVolume?: number;
+  narrationSequence?: number;
+  narrationDurationMillis?: number;
+  narrationRemainingMillis?: number;
+  /** Changes whenever every renderer should stop its current spoken line. */
+  narrationStopSequence?: number;
   audioEnabled: boolean;
   audioMuted: boolean;
   audioOutputState?: PlayerExperienceAudioOutputState;
@@ -225,7 +238,7 @@ export function lifecycleFromRuntime(
 }
 
 export function controlsForState(
-  input: Pick<PlayerExperienceState, "audioEnabled" | "audioMuted" | "lifecycle" | "recordingGate">
+  input: Pick<PlayerExperienceState, "audioEnabled" | "audioMuted" | "lifecycle" | "narrationRemainingMillis" | "recordingGate">
 ): PlayerExperienceControl[] {
   if (input.recordingGate?.state === "arming") return [];
   if (input.recordingGate?.state === "timed_out") {
@@ -236,6 +249,7 @@ export function controlsForState(
     ? ["resume", "restart", "exit"]
     : ["pause", "restart", "exit"];
   controls.push("narration");
+  if (Number(input.narrationRemainingMillis) > 0) controls.push("stop_narration");
   if (input.audioEnabled) controls.push(input.audioMuted ? "unmute" : "mute", "toggle_mute");
   return controls;
 }

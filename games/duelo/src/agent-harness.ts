@@ -467,7 +467,7 @@ export class DueloAgentHarness {
       agent.nextMoveAtMillis += this.#movementStepMillis();
 
       if (targetAtDestination !== undefined
-        && pressState.events.some((event) => event.cue === "coin" || event.cue === "win")) {
+        && pressState.events.some((event) => event.cue === "tile-claim" || event.cue === "win")) {
         if (targetAtDestination.owner !== agent.playerIndex) agent.rivalTargetsClaimed += 1;
       }
       if (agent.path.length === 0) {

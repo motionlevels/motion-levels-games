@@ -3620,6 +3620,8 @@ function MenuApp() {
         }
       } else if (action === "narration") {
         setMessage("Narración");
+      } else if (action === "stop_narration") {
+        setMessage("Narración detenida");
       } else if (action === "toggle_mute" || action === "mute" || action === "unmute") {
         setMessage(nextStatus.audioMuted ? "Audio silenciado" : "Audio activo");
       } else {
@@ -3850,6 +3852,7 @@ function MenuApp() {
           onRestart={() => setPendingGameControl("restart")}
           narrationSupported={supportsNarration(launchedGame)}
           onNarration={() => sendGameControl("narration")}
+          onStopNarration={() => sendGameControl("stop_narration")}
           exitLabel={launchedLevelActive && launchedLevelMode === "free" ? "Terminar nivel" : "Salir del juego"}
           onExit={() => setPendingGameControl("exit")}
           onRecordingGateAction={(action, gateId) => void sendGameControl(action, gateId)}
@@ -5404,6 +5407,7 @@ function GameControlScreen({
   onRestart,
   narrationSupported,
   onNarration,
+  onStopNarration,
   exitLabel,
   onExit,
   onRecordingGateAction,
@@ -5442,11 +5446,14 @@ function GameControlScreen({
   onRestart: () => void;
   narrationSupported: boolean;
   onNarration: () => void;
+  onStopNarration: () => void;
   exitLabel: string;
   onExit: () => void;
   onRecordingGateAction: (action: RecordingGateAction, gateId: string) => void;
 }) {
   const paused = Boolean(status?.paused);
+  const narrationActive = Number(status?.narrationRemainingMillis ?? 0) > 0
+    && status?.allowedControls.includes("stop_narration");
   const recordingGate = status?.recordingGate;
   const recordingGateProjection = recordingGateMenuProjection(recordingGate, status?.allowedControls);
   const pendingRecordingGateAction = pendingControlAction && isRecordingGateAction(pendingControlAction)
@@ -5514,6 +5521,25 @@ function GameControlScreen({
           onAction={onRecordingGateAction}
         />
       ) : null}
+      {narrationActive ? (
+        <div className="narration-playing-toast" role="status" aria-live="polite">
+          <span className="narration-playing-icon" aria-hidden="true"><VolumeIcon /></span>
+          <span className="narration-playing-copy">
+            <small>Narración</small>
+            <strong>Reproduciendo</strong>
+          </span>
+          <button
+            type="button"
+            onClick={onStopNarration}
+            disabled={busy}
+            aria-busy={pendingControlAction === "stop_narration" || undefined}
+            aria-label="Detener narración"
+          >
+            {pendingControlAction === "stop_narration" ? <span className="launch-spinner" aria-hidden="true" /> : <CloseIcon />}
+            <span>Detener</span>
+          </button>
+        </div>
+      ) : null}
       <div className="game-control-main" inert={recordingGateProjection?.blocking || undefined}>
         <div className="game-control-preview">
           <LiveFloorView orientation={hasLevels ? "portrait" : "landscape"} />
@@ -5538,7 +5564,10 @@ function GameControlScreen({
             </div>
           ) : paused ? (
             <div className="countdown-overlay paused" aria-live="polite">
-              <span>Pausa</span>
+              <div className="pause-card">
+                <span>Partida en pausa</span>
+                <strong>Pausa</strong>
+              </div>
             </div>
           ) : null}
         </div>
@@ -5547,7 +5576,7 @@ function GameControlScreen({
           <div className="game-control-heading">
             <span className="micro">{ambient ? "Ambiente activo" : hasLevels ? (levelModeFree ? "Modo libre" : "Reto en curso") : "Juego activo"}</span>
             <h2>{game.label}</h2>
-            <p>{phaseLabel}</p>
+            <p className="game-control-phase"><span aria-hidden="true" />{phaseLabel}</p>
           </div>
           {!ambient ? (
             <div className="active-game-stats" aria-label="Estado de partida">
@@ -5622,13 +5651,16 @@ function GameControlScreen({
               </button>
             </div>
           ) : null}
-          {!ambient ? <div className="control-roster" data-count={Math.min(players.length, 8)}>
-            {players.slice(0, 8).map((player) => (
-              <span key={player.id} className="player-pill ph-mask" style={{ "--pc": player.color, "--pc-ink": playerColorInk(player.color) } as CSSProperties}>
-                <span />
-                <span>{playerLabel(allPlayers, player)}</span>
-              </span>
-            ))}
+          {!ambient ? <div className="control-roster-section">
+            <span className="micro">Jugadores</span>
+            <div className="control-roster" data-count={Math.min(players.length, 8)}>
+              {players.slice(0, 8).map((player) => (
+                <span key={player.id} className="player-pill ph-mask" style={{ "--pc": player.color, "--pc-ink": playerColorInk(player.color) } as CSSProperties}>
+                  <span />
+                  <span>{playerLabel(allPlayers, player)}</span>
+                </span>
+              ))}
+            </div>
           </div> : null}
           {error ? <div className="message error" role="alert">{error}</div> : null}
         </div>
@@ -5653,7 +5685,7 @@ function GameControlScreen({
       </div>
 
       <div className="game-control-actions" inert={recordingGateProjection?.blocking || undefined}>
-        <button className="btn control-action" type="button" onClick={onPauseToggle} disabled={busy} aria-busy={pendingControlAction === "pause" || pendingControlAction === "resume" || undefined}>
+        <button className={`btn control-action pause-action ${paused ? "primary" : ""}`} type="button" onClick={onPauseToggle} disabled={busy} aria-busy={pendingControlAction === "pause" || pendingControlAction === "resume" || undefined}>
           {pendingControlAction === "pause" || pendingControlAction === "resume" ? <span className="launch-spinner" aria-hidden="true" /> : paused ? <PlayIcon /> : <PauseIcon />}
           {pendingControlAction === "pause" || pendingControlAction === "resume" ? "Aplicando" : paused ? "Reanudar" : "Pausar"}
         </button>
@@ -5665,7 +5697,7 @@ function GameControlScreen({
           <button
             className="btn control-action narration-toggle"
             type="button"
-            disabled={busy}
+            disabled={busy || narrationActive}
             aria-busy={pendingControlAction === "narration" || undefined}
             onClick={onNarration}
           >

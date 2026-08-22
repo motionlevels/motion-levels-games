@@ -97,8 +97,8 @@ export function PlaygroundStatusDock({
                 <time dateTime={`PT${Math.max(0, event.atMillis) / 1000}S`}>
                   {formatElapsedClock(event.atMillis)}
                 </time>
-                <strong>{event.cue}</strong>
-                <span>{event.message}</span>
+                <strong className="status-event-cue">{event.cue}</strong>
+                <span className="status-event-message">{event.message}</span>
               </li>
             ))
           ) : (

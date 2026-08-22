@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type PluginOption, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolveGamesBuildIdentity } from "../../scripts/build-version.ts";
+import { motionLevelsAudioAssets } from "../../scripts/vite-audio-assets.ts";
 
 const playgroundRoot = path.dirname(fileURLToPath(import.meta.url));
 const gamesRoot = path.resolve(playgroundRoot, "../../games");
@@ -37,7 +38,7 @@ export default defineConfig({
     __MOTION_LEVELS_GAMES_BUILD_VERSION__: JSON.stringify(buildVersion),
     MOTION_LEVELS_GAMES_SOURCE_REVISION: JSON.stringify(gamesSourceRevision),
   },
-  plugins: [motionLevelsGamesWatcher(), generatedMedia(), characterModels(), webpEncoderWasm(), react()],
+  plugins: [motionLevelsGamesWatcher(), generatedMedia(), characterModels(), motionLevelsAudioAssets(), webpEncoderWasm(), react()],
   server: {
     proxy: {
       "/api": {

@@ -127,6 +127,8 @@ describe("runtime screen flow", () => {
     assert.match(source, /\{categorySelectionValid \? \(/);
     assert.match(source, /title=\{pendingGameControl === "restart" \? "¿Reiniciar partida\?"/);
     assert.match(source, /onNarration=\{\(\) => sendGameControl\("narration"\)\}/);
+    assert.match(source, /onStopNarration=\{\(\) => sendGameControl\("stop_narration"\)\}/);
+    assert.match(source, /className="narration-playing-toast"/);
   });
 
   it("keeps modal and mirror recovery semantics robust", () => {

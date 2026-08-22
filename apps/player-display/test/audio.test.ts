@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { audioEventKey, cueVoices, loadAudioTestSample } from "../src/audio.ts";
+import { audioEventKey, cueVoices, gameAudioURL, loadAudioTestSample } from "../src/audio.ts";
 
 const nativeFetch = globalThis.fetch;
 
@@ -38,6 +38,14 @@ describe("cueVoices", () => {
     assert.equal(cueVoices("win").length, 4);
     assert.ok(cueVoices("fail")[0]!.frequency > cueVoices("fail").at(-1)!.frequency);
     assert.notDeepEqual(cueVoices("hit"), cueVoices("damage"));
+  });
+});
+
+describe("gameAudioURL", () => {
+  it("keeps revision-owned audio inside the display asset root", () => {
+    assert.equal(gameAudioURL("audio/duelo/music/waiting-loop.mp3").href, "http://127.0.0.1/display/audio/duelo/music/waiting-loop.mp3");
+    assert.throws(() => gameAudioURL("../private.mp3"), /invalid/u);
+    assert.throws(() => gameAudioURL("https://example.com/music.mp3"), /invalid/u);
   });
 });
 
@@ -156,10 +164,60 @@ describe("VenueAudioOutput", () => {
       (error: unknown) => error instanceof DOMException && error.name === "AbortError",
     );
   });
+
+  it("drops dense effects once the bounded Web Audio voice budget is full", async () => {
+    const fake = fakeAudioContext("running");
+    const sample = { duration: 0.68 } as AudioBuffer;
+    let now = 0;
+    globalThis.fetch = (async () => new Response(new Uint8Array([1, 2, 3]))) as typeof fetch;
+    fake.decodeBuffer = sample;
+    const { VenueAudioOutput } = await import("../src/audio.ts");
+    const output = new VenueAudioOutput(
+      () => {},
+      () => fake.context,
+      async () => sample,
+      () => now,
+    );
+    output.configure(true, false);
+
+    for (let effect = 0; effect < 9; effect += 1) {
+      now += 60;
+      output.playEffect("audio/duelo/sfx/tile-claim.mp3", 0.55, 1, "tile-claim");
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    assert.equal(fake.sources.length, 6, "dense effects must be dropped instead of creating an audio backlog");
+    fake.sources[0]!.onended?.call(fake.sources[0]!, new Event("ended"));
+    now += 60;
+    output.playEffect("audio/duelo/sfx/tile-claim.mp3", 0.55, 1, "tile-claim");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fake.sources.length, 7, "the next effect may play as soon as a voice is free");
+    await output.dispose();
+  });
+
+  it("stops an active narration immediately", async () => {
+    const fake = fakeAudioContext("running");
+    fake.decodeBuffer = { duration: 18.715 } as AudioBuffer;
+    globalThis.fetch = (async () => new Response(new Uint8Array([1, 2, 3]))) as typeof fetch;
+    const { VenueAudioOutput } = await import("../src/audio.ts");
+    const output = new VenueAudioOutput(() => {}, () => fake.context);
+    output.configure(true, false);
+
+    output.playNarration("audio/duelo/narration/intro.mp3", 0.9);
+    await new Promise((resolve) => setImmediate(resolve));
+    const source = fake.sources[0];
+    assert.ok(source?.started);
+
+    output.cancelNarration();
+
+    assert.equal(source.stopped, true);
+    await output.dispose();
+  });
 });
 
 function fakeAudioContext(initialState: AudioContextState): {
   context: AudioContext;
+  decodeBuffer?: AudioBuffer;
   resolveResume: () => void;
   sources: Array<AudioBufferSourceNode & { started: boolean; stopped: boolean }>;
 } {
@@ -177,6 +235,12 @@ function fakeAudioContext(initialState: AudioContextState): {
     gain: { setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {} },
   } as unknown as GainNode;
   const sources: Array<AudioBufferSourceNode & { started: boolean; stopped: boolean }> = [];
+  const result: {
+    context: AudioContext;
+    decodeBuffer?: AudioBuffer;
+    resolveResume: () => void;
+    sources: Array<AudioBufferSourceNode & { started: boolean; stopped: boolean }>;
+  } = { context: undefined as unknown as AudioContext, resolveResume, sources };
   const context = {
     currentTime: 0,
     destination: {},
@@ -186,6 +250,7 @@ function fakeAudioContext(initialState: AudioContextState): {
     createBufferSource: () => {
       const source = {
         buffer: null,
+        playbackRate: { setValueAtTime() {} },
         started: false,
         stopped: false,
         onended: null,
@@ -198,8 +263,10 @@ function fakeAudioContext(initialState: AudioContextState): {
       return source;
     },
     createOscillator: () => ({}) as OscillatorNode,
+    decodeAudioData: async () => result.decodeBuffer ?? ({ duration: 0.1 } as AudioBuffer),
     resume: () => resume,
     close: async () => { state = "closed"; },
   } as unknown as AudioContext;
-  return { context, resolveResume, sources };
+  result.context = context;
+  return result;
 }

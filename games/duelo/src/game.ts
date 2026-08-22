@@ -437,7 +437,7 @@ class DueloGame implements DueloGameInstance {
       this.phase = "starting";
       this.countdownStartedAtMillis = nowMillis;
       this.motionEventId += 1;
-      return [gameEvent("start", "Todos en posición", nowMillis)];
+      return [gameEvent("ready", "Todos en posición", nowMillis)];
     }
     if (transition === "players-left") {
       this.transitionReadyZonesFromStarting(nowMillis);
@@ -477,7 +477,7 @@ class DueloGame implements DueloGameInstance {
       this.winnerIndex = owner;
       return gameEvent("win", `${label} gana el duelo`, nowMillis);
     }
-    return gameEvent("coin", `${label}: ${remaining} ${remaining === 1 ? "restante" : "restantes"}`, nowMillis);
+    return gameEvent("tile-claim", `${label}: ${remaining} ${remaining === 1 ? "restante" : "restantes"}`, nowMillis);
   }
 
   private recordEvents(events: GameEvent[]): GameEvent[] {

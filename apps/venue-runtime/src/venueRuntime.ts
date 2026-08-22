@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import {
   FLOOR_COLS,
   FLOOR_ROWS,
+  gameAudioForEvent,
+  gameMusicForPhase,
   type Frame,
   type GameContent,
   type GameContentSelection,
@@ -234,6 +236,7 @@ type SelectionMetadata = {
   challengeElapsedMillis: number;
   challengeAttemptCount: number;
   contentRevision: string;
+  narrationEnabled: boolean;
 };
 
 type RecordingGateKind = "initial" | "restart" | "automatic";
@@ -374,6 +377,12 @@ export class VenueRuntime {
   private audioMuted: boolean;
   private capturedEvents: GameEvent[] | null = null;
   private lastEventSequence = 0;
+  private narrationRef = "";
+  private narrationVolume = 0;
+  private narrationSequence = 0;
+  private narrationDurationMillis = 0;
+  private narrationEndsAt = 0;
+  private narrationStopSequence = 0;
   private lastEventUnixNanos = 0;
   private lastEventCue = "";
   private lastEventMessage = "";
@@ -620,7 +629,8 @@ export class VenueRuntime {
       venueSessionId: requestedVenueSessionId || this.venueSessionId,
       challengeElapsedMillis: nonNegative(request.challengeElapsedMillis),
       challengeAttemptCount: nonNegativeInteger(request.challengeAttemptCount),
-      contentRevision: cleanText(authoredSnapshot?.contentRevision, 64)
+      contentRevision: cleanText(authoredSnapshot?.contentRevision, 64),
+      narrationEnabled: request.narrationEnabled === true
     };
     const recordingBlocked = this.runRecordingGateRequired();
     this.session.setAutomaticAttemptTransitionsBlocked(recordingBlocked);
@@ -630,6 +640,7 @@ export class VenueRuntime {
     this.gameSessionId = randomUUID();
     this.selectionHistoryId = randomUUID();
     this.captureLatestEvent();
+    if (this.selection.narrationEnabled) this.armIntroNarration();
     if (requestedVenueSessionId) {
       this.history?.startVisit({
         id: requestedVenueSessionId,
@@ -675,7 +686,7 @@ export class VenueRuntime {
   }
 
   control(
-    actionValue: "mute" | "unmute" | "toggle_mute" | "exit" | "pause" | "resume" | "restart" | "narration"
+    actionValue: "mute" | "unmute" | "toggle_mute" | "exit" | "pause" | "resume" | "restart" | "narration" | "stop_narration"
   ): VenueRuntimeStatus;
   control(actionValue: unknown, recordingGateIdValue?: unknown): VenueRuntimeStatus | Promise<VenueRuntimeStatus>;
   control(actionValue: unknown, recordingGateIdValue?: unknown): VenueRuntimeStatus | Promise<VenueRuntimeStatus> {
@@ -704,7 +715,7 @@ export class VenueRuntime {
       return this.status();
     }
     if (!this.selection) throw new RequestValidationError("no active game");
-    if (action !== "pause" && action !== "resume" && action !== "restart" && action !== "narration") {
+    if (action !== "pause" && action !== "resume" && action !== "restart" && action !== "narration" && action !== "stop_narration") {
       throw new RequestValidationError(`unknown control action: ${action}`);
     }
     this.cancelRunningOutputTest("Prueba cancelada por otro control");
@@ -735,10 +746,13 @@ export class VenueRuntime {
         { recordingBlocked }
       ) ?? null;
       this.startRunReplay(this.historyState(this.state));
+      if (this.selection.narrationEnabled) this.armIntroNarration();
       if (recordingBlocked) this.beginRecordingGate("restart", recordingStart, now);
       else this.applyHeldPressure(0);
     } else if (action === "narration") {
-      // Narration remains a separate media concern; cue audio is owned by the TV display.
+      this.armIntroNarration();
+    } else if (action === "stop_narration") {
+      this.stopNarration();
     }
     this.publishDisplay();
     return this.status();
@@ -883,6 +897,15 @@ export class VenueRuntime {
         lives: -1,
         music: "",
         musicVolume: 0,
+        sound: "",
+        soundVolume: 0,
+        soundPlaybackRate: 1,
+        narration: "",
+        narrationVolume: 0,
+        narrationSequence: 0,
+        narrationDurationMillis: 0,
+        narrationRemainingMillis: 0,
+        narrationStopSequence: this.narrationStopSequence,
         audioEnabled: this.audioEnabled,
         audioMuted: this.audioMuted,
         audioOutputState: this.audioOutputState(),
@@ -923,6 +946,17 @@ export class VenueRuntime {
     const lastEvent = this.state.events.at(-1);
     const publicRecordingGate = this.recordingGate?.publicState;
     const recordingBlocked = publicRecordingGate?.state === "arming" || publicRecordingGate?.state === "timed_out";
+    const music = gameMusicForPhase(this.selection.manifest.audio, snapshot.phase);
+    const eventAudio = recordingBlocked ? {} : gameAudioForEvent(
+      this.selection.manifest.audio,
+      this.lastEventCue || lastEvent?.cue || snapshot.lastEventCue,
+      this.lastEventSequence,
+      snapshot as unknown as Readonly<Record<string, unknown>>,
+    );
+    const narrationRemainingMillis = recordingBlocked
+      ? 0
+      : Math.max(0, Math.ceil(this.narrationEndsAt - performance.now()));
+    const narrationActive = narrationRemainingMillis > 0;
     const status: PlayerExperienceState = {
       contractVersion: playerExperienceContractVersion,
       revision: this.stateRevision,
@@ -948,8 +982,17 @@ export class VenueRuntime {
       score: snapshot.score,
       lives: snapshot.lives,
       livesStart: snapshot.maxLives,
-      music: "",
-      musicVolume: 0,
+      music: music?.ref ?? "",
+      musicVolume: music?.volume ?? 0,
+      sound: eventAudio.effect?.ref ?? "",
+      soundVolume: eventAudio.effect?.volume ?? 0,
+      soundPlaybackRate: eventAudio.effect?.playbackRate ?? 1,
+      narration: narrationActive ? this.narrationRef : "",
+      narrationVolume: narrationActive ? this.narrationVolume : 0,
+      narrationSequence: recordingBlocked ? 0 : this.narrationSequence,
+      narrationDurationMillis: recordingBlocked ? 0 : this.narrationDurationMillis,
+      narrationRemainingMillis,
+      narrationStopSequence: this.narrationStopSequence,
       audioEnabled: this.audioEnabled,
       audioMuted: this.audioMuted,
       audioOutputState: this.audioOutputState(),
@@ -2039,6 +2082,36 @@ export class VenueRuntime {
     this.lastEventUnixNanos = Date.now() * 1_000_000;
     this.lastEventCue = event.cue;
     this.lastEventMessage = event.message;
+    const eventAudio = gameAudioForEvent(
+      this.selection.manifest.audio,
+      event.cue,
+      this.lastEventSequence,
+      this.state.snapshot as unknown as Readonly<Record<string, unknown>>,
+    );
+    if (eventAudio.narration) {
+      this.armNarration(eventAudio.narration.ref, eventAudio.narration.volume, eventAudio.narration.durationMillis);
+    }
+  }
+
+  private armIntroNarration(): void {
+    const intro = this.selection?.manifest.audio?.narration?.intro;
+    if (intro) this.armNarration(intro.ref, intro.volume, intro.durationMillis);
+  }
+
+  private armNarration(ref: string, volume: number, durationMillis?: number): void {
+    this.narrationRef = ref;
+    this.narrationVolume = volume;
+    this.narrationDurationMillis = Math.max(1_000, Math.round(durationMillis || 30_000));
+    this.narrationEndsAt = performance.now() + this.narrationDurationMillis;
+    this.narrationSequence = this.narrationSequence >= Number.MAX_SAFE_INTEGER ? 1 : this.narrationSequence + 1;
+  }
+
+  private stopNarration(): void {
+    this.narrationRef = "";
+    this.narrationVolume = 0;
+    this.narrationDurationMillis = 0;
+    this.narrationEndsAt = 0;
+    this.narrationStopSequence = this.narrationStopSequence >= Number.MAX_SAFE_INTEGER ? 1 : this.narrationStopSequence + 1;
   }
 
   private activateScreensaver(options: Record<string, unknown> = { mode: "rotation" }): void {
@@ -2063,6 +2136,12 @@ export class VenueRuntime {
     this.selectionHistoryId = "";
     this.capturedEvents = this.state.events;
     this.lastEventSequence = 0;
+    this.narrationRef = "";
+    this.narrationVolume = 0;
+    this.narrationSequence = 0;
+    this.narrationDurationMillis = 0;
+    this.narrationEndsAt = 0;
+    this.narrationStopSequence = 0;
     this.lastEventUnixNanos = 0;
     this.lastEventCue = "";
     this.lastEventMessage = "";

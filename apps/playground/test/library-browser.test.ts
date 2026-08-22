@@ -25,3 +25,9 @@ test("library is searchable, filterable, responsive, and pauses the runtime", ()
   assert.match(styleSource, /\.library-browser\s*\{/);
   assert.match(styleSource, /@media \(max-width: 720px\)[\s\S]*?\.library-browser\s*\{/);
 });
+
+test("development audio control shares the venue runtime mute state", () => {
+  assert.match(appSource, /enqueueVenueControl\("toggle_mute"\)/);
+  assert.match(appSource, /aria-pressed=\{venueDisplay\?\.audioMuted \?\? true\}/);
+  assert.match(appSource, /venueDisplay\?\.audioMuted \? <VolumeX/);
+});

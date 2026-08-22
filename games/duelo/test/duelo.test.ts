@@ -42,6 +42,13 @@ test("manifest exposes production Duelo with strict 2–8 player support", () =>
   assert.equal(manifest.start.releaseGraceMillis, 2_000);
 });
 
+test("tile claims reuse one recognizable sample with subtle pitch variation", () => {
+  const claims = manifest.audio?.effects?.["tile-claim"] ?? [];
+  assert.equal(claims.length, 4);
+  assert.deepEqual([...new Set(claims.map((clip) => clip.ref))], ["audio/duelo/sfx/tile-claim.mp3"]);
+  assert.deepEqual(claims.map((clip) => clip.playbackRate), [0.97, 0.99, 1.01, 1.03]);
+});
+
 test("every supported player count has distinct in-bounds readiness zones", () => {
   for (let playerCount = 2; playerCount <= 8; playerCount += 1) {
     const zones = dueloReadyZones(playerCount);

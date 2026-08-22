@@ -14,7 +14,49 @@ export type VenueRuntimeFloorChange = Readonly<{
   pressed: boolean;
 }>;
 
-export type VenueRuntimeControl = "pause" | "resume" | "restart" | "exit";
+export type VenueRuntimeControl = "pause" | "resume" | "restart" | "exit" | "toggle_mute";
+
+export type VenueRuntimeFloorBatch = Readonly<{
+  changes: readonly VenueRuntimeFloorChange[];
+  releaseAll: boolean;
+}>;
+
+const maximumFloorChangesPerRequest = 16 * 32;
+
+/**
+ * Keeps floor input latency bounded to one in-flight request. Pointer updates
+ * arriving behind it are retained in order and sent together, never as an
+ * arbitrarily long request queue.
+ */
+export class VenueRuntimeFloorInputBuffer {
+  private pendingChanges: VenueRuntimeFloorChange[] = [];
+  private pendingReleaseAll = false;
+  private drainPromise: Promise<void> | null = null;
+
+  constructor(private readonly send: (batch: VenueRuntimeFloorBatch) => Promise<void>) {}
+
+  enqueue(changes: readonly VenueRuntimeFloorChange[] = [], releaseAll = false): Promise<void> {
+    if (releaseAll) {
+      this.pendingChanges = [];
+      this.pendingReleaseAll = true;
+    }
+    this.pendingChanges.push(...changes);
+    this.drainPromise ??= this.drain().finally(() => {
+      this.drainPromise = null;
+      if (this.pendingReleaseAll || this.pendingChanges.length > 0) void this.enqueue().catch(() => {});
+    });
+    return this.drainPromise;
+  }
+
+  private async drain(): Promise<void> {
+    while (this.pendingReleaseAll || this.pendingChanges.length > 0) {
+      const releaseAll = this.pendingReleaseAll;
+      this.pendingReleaseAll = false;
+      const changes = this.pendingChanges.splice(0, maximumFloorChangesPerRequest);
+      await this.send({ changes, releaseAll });
+    }
+  }
+}
 
 const requestTimeoutMillis = 3_000;
 
@@ -39,18 +81,30 @@ export async function sendVenueRuntimeFloorInput(input: {
   clientSequence: number;
   changes?: readonly VenueRuntimeFloorChange[];
   releaseAll?: boolean;
-}): Promise<PlayerExperienceState> {
-  return requestJSON<PlayerExperienceState>("/api/floor-input", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      commandId: newPlayerExperienceCommandId(globalThis.crypto),
-      clientId: input.clientId,
-      clientSequence: input.clientSequence,
-      changes: input.changes ?? [],
-      ...(input.releaseAll ? { releaseAll: true } : {}),
-    }),
-  });
+}): Promise<void> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), requestTimeoutMillis);
+  try {
+    const response = await fetch(runtimeURL("/api/floor-input"), {
+      cache: "no-store",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        commandId: newPlayerExperienceCommandId(globalThis.crypto),
+        clientId: input.clientId,
+        clientSequence: input.clientSequence,
+        changes: input.changes ?? [],
+        ...(input.releaseAll ? { releaseAll: true } : {}),
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`venue runtime returned HTTP ${response.status}: ${await response.text()}`);
+    // The display SSE already carries the authoritative state. Drain the
+    // redundant status body without parsing it or holding up the next batch.
+    void response.arrayBuffer().catch(() => {});
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
 }
 
 async function requestJSON<T>(path: string, init: RequestInit = {}): Promise<T> {

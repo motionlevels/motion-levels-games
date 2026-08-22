@@ -25,6 +25,8 @@ export const dueloConfigVars = {
   }
 } satisfies Record<string, GameConfigVar>;
 
+const victoryNarrationDurationsMillis = [2_601, 3_019, 2_601, 2_972, 2_926, 3_111, 2_740, 3_158] as const;
+
 export const manifest: GameManifest = {
   id: "duelo",
   label: "Duelo",
@@ -40,6 +42,32 @@ export const manifest: GameManifest = {
       "Cada jugador ocupa la zona de inicio de su color",
       "Pisa todas las baldosas de tu color antes que los demás"
     ]
+  },
+  audio: {
+    music: {
+      waiting: { ref: "audio/duelo/music/waiting-loop.mp3", volume: 0.2 },
+      starting: { ref: "audio/duelo/music/waiting-loop.mp3", volume: 0.22 },
+      running: { ref: "audio/duelo/music/playing-loop.mp3", volume: 0.24 },
+      finished: { ref: "audio/duelo/music/playing-loop.mp3", volume: 0.16 }
+    },
+    effects: {
+      start: [{ ref: "audio/duelo/sfx/start.mp3", volume: 0.68 }],
+      "tile-claim": [
+        { ref: "audio/duelo/sfx/tile-claim.mp3", volume: 0.55, playbackRate: 0.97 },
+        { ref: "audio/duelo/sfx/tile-claim.mp3", volume: 0.55, playbackRate: 0.99 },
+        { ref: "audio/duelo/sfx/tile-claim.mp3", volume: 0.55, playbackRate: 1.01 },
+        { ref: "audio/duelo/sfx/tile-claim.mp3", volume: 0.55, playbackRate: 1.03 }
+      ],
+      win: [{ ref: "audio/duelo/sfx/victory.mp3", volume: 0.72 }]
+    },
+    narration: {
+      intro: { ref: "audio/duelo/narration/intro.mp3", volume: 0.9, durationMillis: 18_715 },
+      victoryByPlayerIndex: Array.from({ length: 8 }, (_, index) => ({
+        ref: `audio/duelo/narration/victory-player-${index + 1}.mp3`,
+        volume: 0.92,
+        durationMillis: victoryNarrationDurationsMillis[index]
+      }))
+    }
   },
   players: {
     allowAny: false,

@@ -27,6 +27,7 @@ export type FloorPreviewProps = {
   inputMode?: FloorInputMode;
   interactive?: boolean;
   rotationDegrees?: FloorRotationDegrees;
+  onInputActions?: (actions: readonly FloorInputAction[]) => void;
   onTilePress?: (x: number, y: number) => void;
   onTileRelease?: (x: number, y: number) => void;
 };
@@ -73,6 +74,7 @@ export function FloorPreview({
   interactive = false,
   inputResetKey,
   inputMode = "latched",
+  onInputActions,
   onTilePress,
   onTileRelease,
   rotationDegrees,
@@ -121,15 +123,19 @@ export function FloorPreview({
       return;
     }
 
-    for (const action of actions) {
-      if (action.pressed) {
-        onTilePress?.(action.x, action.y);
-      } else {
-        onTileRelease?.(action.x, action.y);
+    if (onInputActions) {
+      onInputActions(actions);
+    } else {
+      for (const action of actions) {
+        if (action.pressed) {
+          onTilePress?.(action.x, action.y);
+        } else {
+          onTileRelease?.(action.x, action.y);
+        }
       }
     }
     setOccupiedTileKeys(new Set(inputPainterRef.current.keys()));
-  }, [onTilePress, onTileRelease]);
+  }, [onInputActions, onTilePress, onTileRelease]);
   const beginInputGesture = useCallback((tile: FloorInputTile | null) => {
     if (!tile || Number.isNaN(tile.x) || Number.isNaN(tile.y)) {
       return;

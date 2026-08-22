@@ -207,6 +207,8 @@ export type GameManifest = {
     audioLabel: string;
     rules: readonly string[];
   };
+  /** Revision-owned audio composition. The runtime selects clips; renderers only play them. */
+  audio?: GameManifestAudio;
   players: {
     allowAny: boolean;
     min: number;
@@ -221,6 +223,56 @@ export type GameManifest = {
   preview: GamePreviewScenario;
   tags?: string[];
 };
+
+export type GameAudioClip = Readonly<{
+  ref: string;
+  volume: number;
+  /** Authored playback duration used by hosts to expose narration progress and cancellation UI. */
+  durationMillis?: number;
+  /** Optional subtle pitch/speed variation for one-shot effects. */
+  playbackRate?: number;
+}>;
+
+export type GameManifestAudio = Readonly<{
+  music: Readonly<Partial<Record<"waiting" | "starting" | "running" | "finished", GameAudioClip>>>;
+  effects?: Readonly<Record<string, readonly GameAudioClip[]>>;
+  narration?: Readonly<{
+    intro?: GameAudioClip;
+    victoryByPlayerIndex?: readonly GameAudioClip[];
+  }>;
+}>;
+
+export type GameAudioEventSelection = Readonly<{
+  effect?: GameAudioClip;
+  narration?: GameAudioClip;
+}>;
+
+export function gameMusicForPhase(audio: GameManifestAudio | undefined, rawPhase: unknown): GameAudioClip | undefined {
+  const phase = String(rawPhase ?? "").trim().toLowerCase();
+  if (!audio) return undefined;
+  if (phase === "waiting") return audio.music.waiting;
+  if (phase === "starting") return audio.music.starting ?? audio.music.waiting;
+  if (phase === "finished") return audio.music.finished ?? audio.music.running;
+  return audio.music.running;
+}
+
+export function gameAudioForEvent(
+  audio: GameManifestAudio | undefined,
+  rawCue: unknown,
+  eventSequence: number,
+  snapshot?: Readonly<Record<string, unknown>>,
+): GameAudioEventSelection {
+  if (!audio) return {};
+  const cue = String(rawCue ?? "").trim();
+  const variants = audio.effects?.[cue] ?? [];
+  const normalizedSequence = Number.isSafeInteger(eventSequence) && eventSequence > 0 ? eventSequence : 1;
+  const effect = variants.length > 0 ? variants[(normalizedSequence - 1) % variants.length] : undefined;
+  const winnerIndex = Number(snapshot?.winnerIndex);
+  const narration = cue === "win" && Number.isSafeInteger(winnerIndex) && winnerIndex >= 0
+    ? audio.narration?.victoryByPlayerIndex?.[winnerIndex]
+    : undefined;
+  return { ...(effect ? { effect } : {}), ...(narration ? { narration } : {}) };
+}
 
 export function gameManifestSlug(manifest: GameManifest): string {
   const slug = String(manifest.slug ?? "").trim();

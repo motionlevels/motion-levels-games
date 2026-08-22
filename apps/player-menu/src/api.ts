@@ -208,6 +208,7 @@ export type ControlGameAction =
   | "restart"
   | "exit"
   | "narration"
+  | "stop_narration"
   | "mute"
   | "unmute"
   | "toggle_mute"

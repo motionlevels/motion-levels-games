@@ -22,7 +22,7 @@
     "allowedControls": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["pause", "resume", "restart", "exit", "narration", "mute", "unmute", "toggle_mute", "recording_retry", "recording_continue_without", "recording_cancel"] }
+      "items": { "enum": ["pause", "resume", "restart", "exit", "narration", "stop_narration", "mute", "unmute", "toggle_mute", "recording_retry", "recording_continue_without", "recording_cancel"] }
     },
     "currentGame": { "type": "string", "minLength": 1 },
     "venueSessionId": { "type": "string" },
@@ -37,6 +37,15 @@
     "lives": { "type": "integer" },
     "music": { "type": "string" },
     "musicVolume": { "type": "number" },
+    "sound": { "type": "string" },
+    "soundVolume": { "type": "number", "minimum": 0, "maximum": 1 },
+    "soundPlaybackRate": { "type": "number", "minimum": 0.75, "maximum": 1.25 },
+    "narration": { "type": "string" },
+    "narrationVolume": { "type": "number", "minimum": 0, "maximum": 1 },
+    "narrationSequence": { "type": "integer", "minimum": 0 },
+    "narrationDurationMillis": { "type": "integer", "minimum": 0 },
+    "narrationRemainingMillis": { "type": "integer", "minimum": 0 },
+    "narrationStopSequence": { "type": "integer", "minimum": 0 },
     "audioEnabled": { "type": "boolean" },
     "audioMuted": { "type": "boolean" },
     "audioOutputState": { "enum": ["disabled", "checking", "ready", "suspended", "failed"] },

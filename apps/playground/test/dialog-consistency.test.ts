@@ -117,6 +117,16 @@ test("effective pause blocks every player input path", () => {
   );
   assert.match(
     appSource,
+    /onInputActions=\{\(actions\) => handleFloorInputActions\(actions, "preview"\)\}/,
+    "each pointer transition must send its release and press as one ordered floor-input batch"
+  );
+  assert.doesNotMatch(
+    appSource,
+    /venueFloorCommandTailRef/,
+    "floor input must not accumulate one network request per pointer transition"
+  );
+  assert.match(
+    appSource,
     /if \(!pausedRef\.current && nextEffectivePaused\) \{\s*releaseActivePlayerInputs\(\);\s*\}/,
     "entering pause must release inputs that were already held"
   );
@@ -304,6 +314,16 @@ test("event stream remains scrollable without disturbing the dock layout", () =>
     styleSource,
     /\.status-event-history\s*\{[^}]*margin:\s*8px 0 0;[^}]*padding:\s*0;/s,
     "event rows and the auto-follow button must share the same right edge"
+  );
+  assert.match(
+    styleSource,
+    /\.status-event-history li\s*\{[^}]*grid-template-columns:\s*max-content max-content minmax\(0, 1fr\);/s,
+    "timestamps and event cues must remain fully visible while the message uses the remaining width"
+  );
+  assert.match(
+    styleSource,
+    /\.status-event-cue\s*\{[^}]*white-space:\s*nowrap;/s,
+    "canonical event cue names must not be truncated"
   );
 });
 

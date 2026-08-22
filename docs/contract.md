@@ -120,8 +120,17 @@ Every manifest also owns three pieces of production-facing metadata:
 - `availability.development` and `availability.production` decide whether a
   game may enter the development or production bundle catalog.
 - `catalog` contains intrinsic category, color, duration/mode/audio labels, and
-  rules. Platform-owned visibility, featured state, ordering, narration, and
-  usage statistics are deliberately not part of the game manifest.
+  rules. Platform-owned visibility, featured state, ordering, marketing copy,
+  and usage statistics are deliberately not part of the game manifest.
+- `audio` composes revision-owned music, effects, and spoken gameplay cues from
+  paths below `assets/audio/`. It maps music to game phases and effects to
+  stable event cues; narration may provide an introduction and player-indexed
+  victory lines. The host selects deterministic effect variations from the
+  event sequence, including an optional bounded playback rate for subtle pitch
+  variation from one canonical sample, while the display owns playback and
+  music ducking. Narration clips also publish their authored duration so the
+  shared menu can show a non-blocking playback notice and cancel the spoken
+  line without muting music or effects.
 - `preview` is a deterministic seed, configuration, input timeline, and capture
   window used to generate the catalog thumbnail, animation, and player-display
   capture. CI never substitutes a generic preview script.
@@ -149,6 +158,11 @@ keep their legacy id until they receive an explicit identity migration.
 
 The game logic should be deterministic. Use `createSeededRng(seed)` from the SDK
 for randomness so tests, fixtures, and local playback can be reproduced.
+
+Generated audio is reproducible rather than opaque: its source recipe records
+provider, model, prompts or transcript, voice, settings, and playback gain;
+the generated manifest records duration and SHA-256 for every shipped file.
+Credentials are environment inputs and never belong in either file.
 
 ## Shared Effects And Animation
 

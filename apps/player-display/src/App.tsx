@@ -62,6 +62,12 @@ const emptyStatus: DisplayStatus = {
   success: false,
   music: "",
   musicVolume: 0,
+  sound: "",
+  soundVolume: 0,
+  soundPlaybackRate: 1,
+  narration: "",
+  narrationVolume: 0,
+  narrationSequence: 0,
   lastPressureUnix: 0,
   catalog: [],
   lastEventUnixNanos: 0,
@@ -94,6 +100,8 @@ export default function App() {
   const feedTransport = useRef<"eventsource" | "poll" | "none">("none");
   const lastAudioEventKey = useRef("");
   const audioEventBaselineReady = useRef(false);
+  const lastNarrationKey = useRef("");
+  const lastNarrationStopSequence = useRef<number | null>(null);
   const lastAudioTestID = useRef("");
   const audioTestBaselineReady = useRef(false);
   const audioTestRuntimeRunID = useRef("");
@@ -269,6 +277,10 @@ export default function App() {
   }, [audioOutput, liveStatus.audioEnabled, liveStatus.audioMuted]);
 
   useEffect(() => {
+    audioOutput.setMusic(liveStatus.music, liveStatus.musicVolume);
+  }, [audioOutput, liveStatus.audioEnabled, liveStatus.music, liveStatus.musicVolume]);
+
+  useEffect(() => {
     if (audioOutputState !== "suspended" || !liveStatus.audioEnabled) return;
     const retry = window.setTimeout(() => {
       audioOutput.configure(liveStatus.audioEnabled, liveStatus.audioMuted);
@@ -293,8 +305,34 @@ export default function App() {
     }
     if (!eventKey || eventKey === lastAudioEventKey.current) return;
     lastAudioEventKey.current = eventKey;
-    audioOutput.playCue(liveStatus.lastEventCue);
-  }, [audioOutput, demoStatus, liveStatus.lastEventCue, liveStatus.lastEventMessage, liveStatus.lastEventSequence, liveStatus.lastEventUnixNanos, liveStatus.revision, liveStatus.runId, liveStatus.sessionId]);
+    audioOutput.playEffect(
+      liveStatus.sound ?? "",
+      liveStatus.soundVolume ?? 0,
+      liveStatus.soundPlaybackRate ?? 1,
+      liveStatus.lastEventCue,
+    );
+  }, [audioOutput, demoStatus, liveStatus.lastEventCue, liveStatus.lastEventMessage, liveStatus.lastEventSequence, liveStatus.lastEventUnixNanos, liveStatus.revision, liveStatus.runId, liveStatus.sessionId, liveStatus.sound, liveStatus.soundPlaybackRate, liveStatus.soundVolume]);
+
+  useEffect(() => {
+    const sequence = Number(liveStatus.narrationSequence ?? 0);
+    const reference = liveStatus.narration ?? "";
+    if (!reference || sequence <= 0) return;
+    const key = `${liveStatus.runId}:${liveStatus.sessionId}:${sequence}:${reference}`;
+    if (key === lastNarrationKey.current) return;
+    lastNarrationKey.current = key;
+    audioOutput.playNarration(reference, liveStatus.narrationVolume ?? 1);
+  }, [audioOutput, liveStatus.narration, liveStatus.narrationSequence, liveStatus.narrationVolume, liveStatus.runId, liveStatus.sessionId]);
+
+  useEffect(() => {
+    const sequence = Number(liveStatus.narrationStopSequence ?? 0);
+    if (lastNarrationStopSequence.current === null) {
+      lastNarrationStopSequence.current = sequence;
+      return;
+    }
+    if (sequence === lastNarrationStopSequence.current) return;
+    lastNarrationStopSequence.current = sequence;
+    audioOutput.cancelNarration();
+  }, [audioOutput, liveStatus.narrationStopSequence]);
 
   useEffect(() => {
     if (!liveStatus.runId) return;

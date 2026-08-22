@@ -43,9 +43,13 @@ range. The cloud live-floor publisher remains independent and defaults to 5
 fps. Both live-floor paths retain only the latest pending frame under
 backpressure.
 Audio capability is enabled explicitly with `MOTION_LEVELS_AUDIO_ENABLED=1`.
-The runtime owns the canonical mute state and stable cue sequence; the physical
-player display owns Web Audio playback and reports `ready`, `suspended`, or
-`failed` through the existing display-client heartbeat. This keeps HDMI/ALSA
+The runtime owns the canonical mute state and resolves phase music, deterministic
+effect variations, and narration from the selected game's manifest. The
+physical player display owns Web Audio playback, crossfades phase music, ducks
+it during narration, and reports `ready`, `suspended`, or `failed` through the
+existing display-client heartbeat. The player-menu mute action and the
+playground's development mute button both send the same runtime
+`toggle_mute` control, so neither surface can drift. This keeps HDMI/ALSA
 selection in the venue layer while letting the menu distinguish configured
 audio from an actually running TV output.
 
@@ -167,7 +171,8 @@ and the engine gate default to eight seconds and can be tuned with
 `MOTION_LEVELS_CAMERA_RECORDER_START_CONFIRM_TIMEOUT` and
 `MOTION_LEVELS_RUN_RECORDING_START_TIMEOUT`, respectively.
 
-For local integration, `npm run dev` runs the source runtime together with the
+For local integration, `npm run dev` runs the source runtime with audio enabled,
+together with the
 playground and revisioned mock controller at `http://127.0.0.1:4104/`. The
 venue API remains at `http://127.0.0.1:4102`; `--api-only` preserves the
 API-only mode. `npm run dev:venue` uses the real controller,

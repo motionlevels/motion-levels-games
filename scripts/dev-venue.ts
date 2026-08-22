@@ -32,6 +32,9 @@ if (!process.env.MOTION_LEVELS_SESSION_HISTORY_DIR?.trim()) {
   process.env.MOTION_LEVELS_SESSION_HISTORY_DIR = `${process.cwd()}/.runtime/session-history`;
 }
 
+// Local game authoring must exercise the same canonical mute/music path as a venue.
+process.env.MOTION_LEVELS_AUDIO_ENABLED ??= "true";
+
 await import("../apps/venue-runtime/src/main.ts");
 
 if (apiOnly) {

@@ -5,7 +5,7 @@ import { usePlayerDisplayRuntime } from "./player-display-runtime.tsx";
 
 export { FloorPreview, FramePreviewPanel, floorTileAfterKeyboardNavigation } from "./floor-preview.tsx";
 export type { FloorPreviewCell, FloorPreviewFrame, FloorPreviewProps } from "./floor-preview.tsx";
-export type { FloorInputMode } from "./floor-input-painter.ts";
+export type { FloorInputAction, FloorInputMode } from "./floor-input-painter.ts";
 export { PlayerDisplayRuntimeProvider, usePlayerDisplayRuntime } from "./player-display-runtime.tsx";
 export { LivesMeter } from "./lives-meter.tsx";
 export type { LivesMeterProps } from "./lives-meter.tsx";

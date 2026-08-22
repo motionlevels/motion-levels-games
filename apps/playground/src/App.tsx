@@ -23,10 +23,16 @@ import {
   Settings2,
   Sparkles,
   TriangleAlert,
+  Volume2,
+  VolumeX,
   X
 } from "lucide-react";
 import { animationLibrary, animationMediaURL } from "@motion-levels-games/animation-runtime";
-import { FloorPreview, PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
+import {
+  FloorPreview,
+  PlayerDisplayRuntimeProvider,
+  type FloorInputAction,
+} from "@motion-levels-games/display-kit";
 import {
   defaultGamePlayerCount,
   gameMediaAssetSpecs,
@@ -88,6 +94,7 @@ import {
 } from "./mediaAssets.ts";
 import { playgroundMediaOptionsFor } from "./mediaOptions.ts";
 import { PhaseIndicator } from "./PhaseIndicator.tsx";
+import { PlaygroundAudioOutput } from "./playgroundAudio.ts";
 import { PlayerMenuPreview } from "./PlayerMenuPreview.tsx";
 import { PlaygroundStatusDock, type ActiveRunSetting } from "./PlaygroundStatusDock.tsx";
 import { PlaygroundSelect } from "./PlaygroundSelect.tsx";
@@ -120,6 +127,7 @@ import {
   controlVenueRuntime,
   fetchVenueRuntimeDisplay,
   sendVenueRuntimeFloorInput,
+  VenueRuntimeFloorInputBuffer,
   venueRuntimeDisplayEventSource,
   type VenueRuntimeControl,
   type VenueRuntimeDisplay,
@@ -191,6 +199,7 @@ export function App() {
     () => new Set(initialPrimaryScreen === "menu" ? ["player-menu"] : [])
   );
   const [venueDisplay, setVenueDisplay] = useState<VenueRuntimeDisplay | null>(null);
+  const audioOutput = useMemo(() => new PlaygroundAudioOutput(), []);
   const runtimeIntegrated = playerMenuPreviewUrl !== undefined;
   const localPaused = isPlaygroundPaused(manuallyPaused, pauseLocks);
   const paused = runtimeIntegrated
@@ -258,7 +267,7 @@ export function App() {
   const venueDisplayRef = useRef<VenueRuntimeDisplay | null>(null);
   const venueFloorClientIDRef = useRef<string | null>(null);
   const venueFloorSequenceRef = useRef(0);
-  const venueFloorCommandTailRef = useRef<Promise<void>>(Promise.resolve());
+  const venueFloorInputBufferRef = useRef<VenueRuntimeFloorInputBuffer | null>(null);
   const runtimePauseOwnersRef = useRef(new Set<string>());
   const runtimeControlTailRef = useRef<Promise<void>>(Promise.resolve());
   const lastVenueEventKeyRef = useRef("");
@@ -277,6 +286,21 @@ export function App() {
   const workbenchStyle = {
     "--display-preview-scale": displayPreviewScale
   } as CSSProperties;
+
+  useEffect(() => {
+    if (venueDisplay) audioOutput.sync(venueDisplay);
+  }, [audioOutput, venueDisplay]);
+
+  useEffect(() => {
+    const unlock = () => audioOutput.unlock();
+    window.addEventListener("pointerdown", unlock, { capture: true });
+    window.addEventListener("keydown", unlock, { capture: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock, { capture: true });
+      window.removeEventListener("keydown", unlock, { capture: true });
+      audioOutput.dispose();
+    };
+  }, [audioOutput]);
 
   useEffect(() => {
     selectedGameRef.current = selectedGame;
@@ -545,14 +569,16 @@ export function App() {
   }, [acceptVenueDisplay]);
 
   const enqueueVenueFloorInput = useCallback((changes: readonly VenueRuntimeFloorChange[] = [], releaseAll = false) => {
-    venueFloorClientIDRef.current ??= crypto.randomUUID();
-    const clientId = venueFloorClientIDRef.current;
-    const clientSequence = ++venueFloorSequenceRef.current;
-    const command = venueFloorCommandTailRef.current.then(async () => {
-      await sendVenueRuntimeFloorInput({ clientId, clientSequence, changes, releaseAll });
+    venueFloorInputBufferRef.current ??= new VenueRuntimeFloorInputBuffer(async (batch) => {
+      venueFloorClientIDRef.current ??= crypto.randomUUID();
+      await sendVenueRuntimeFloorInput({
+        clientId: venueFloorClientIDRef.current,
+        clientSequence: ++venueFloorSequenceRef.current,
+        changes: batch.changes,
+        releaseAll: batch.releaseAll,
+      });
     });
-    venueFloorCommandTailRef.current = command.then(() => undefined, () => undefined);
-    return command;
+    return venueFloorInputBufferRef.current.enqueue(changes, releaseAll);
   }, []);
 
   const releaseActivePlayerInputs = useCallback(() => {
@@ -945,6 +971,37 @@ export function App() {
         return;
       }
       syncEngineState(sessionRef.current.release(tile.x, tile.y));
+    },
+    [enqueueVenueFloorInput, runtimeLive, syncEngineState]
+  );
+
+  const handleFloorInputActions = useCallback(
+    (actions: readonly FloorInputAction[], space: PlaygroundPointSpace = "preview") => {
+      if (pausedRef.current || surfaceModeRef.current === "agents" || actions.length === 0) return;
+
+      const changes = actions.map((action) => ({
+        ...pointToPhysicalTile(action.x, action.y, space),
+        pressed: action.pressed,
+      }));
+      for (const change of changes) {
+        const key = `${change.x}:${change.y}`;
+        if (change.pressed) activePlayerInputsRef.current.set(key, change);
+        else activePlayerInputsRef.current.delete(key);
+      }
+      if (runtimeLive) {
+        void enqueueVenueFloorInput(changes).catch(() => {});
+        return;
+      }
+
+      let nextState: Pick<GameEngineState, "clockMillis" | "snapshot" | "frame" | "events"> | undefined;
+      const emittedEvents: GameEvent[] = [];
+      for (const change of changes) {
+        nextState = change.pressed
+          ? sessionRef.current.press(change.x, change.y)
+          : sessionRef.current.release(change.x, change.y);
+        emittedEvents.push(...nextState.events);
+      }
+      if (nextState) syncEngineState({ ...nextState, events: emittedEvents });
     },
     [enqueueVenueFloorInput, runtimeLive, syncEngineState]
   );
@@ -1758,6 +1815,22 @@ export function App() {
                   {paused ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
                 </button>
                 <button
+                  aria-label={venueDisplay?.audioMuted ? "Unmute audio" : "Mute audio"}
+                  aria-pressed={venueDisplay?.audioMuted ?? true}
+                  className="icon-button"
+                  disabled={!runtimeLive || !venueDisplay?.audioEnabled}
+                  onClick={() => {
+                    audioOutput.unlock();
+                    void enqueueVenueControl("toggle_mute").catch(() => {});
+                  }}
+                  title={!runtimeLive || !venueDisplay?.audioEnabled
+                    ? "Audio is unavailable"
+                    : venueDisplay.audioMuted ? "Unmute audio" : "Mute audio"}
+                  type="button"
+                >
+                  {venueDisplay?.audioMuted ? <VolumeX size={16} aria-hidden="true" /> : <Volume2 size={16} aria-hidden="true" />}
+                </button>
+                <button
                   aria-label={isFullscreenMode ? "Exit fullscreen" : "Fullscreen"}
                   aria-pressed={isFullscreenMode}
                   className="icon-button fullscreen-button"
@@ -2137,8 +2210,7 @@ export function App() {
                 interactive={!paused}
                 inputMode="momentary"
                 inputResetKey={inputResetSequence}
-                onTilePress={(x, y) => handleTilePress(x, y, "preview")}
-                onTileRelease={(x, y) => handleTileRelease(x, y, "preview")}
+                onInputActions={(actions) => handleFloorInputActions(actions, "preview")}
               />
             )}
           </div>

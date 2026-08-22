@@ -116,6 +116,45 @@ test("configured TV audio is controllable while idle and reports display output 
   assert.equal(runtime.health().audioOutputState, "ready");
 });
 
+test("Duelo publishes phase music and replayable Spanish narration from its manifest", async () => {
+  const runtime = new VenueRuntime({
+    sourceRevision: revision,
+    controllerAddress: "127.0.0.1:4201",
+    audioEnabled: true,
+  });
+  const selected = await runtime.select({
+    game: "motion-levels-games:duelo",
+    engineGame: "motion-levels-games:duelo",
+    sourceKind: "motion_levels_games",
+    sourceRevision: revision,
+    playerCount: 2,
+    difficulty: "medium",
+    narrationEnabled: true,
+    players: [
+      { index: 0, label: "Rojo", color: { r: 255, g: 48, b: 72 } },
+      { index: 1, label: "Turquesa", color: { r: 36, g: 217, b: 255 } }
+    ]
+  });
+
+  assert.equal(selected.music, "audio/duelo/music/waiting-loop.mp3");
+  assert.equal(selected.musicVolume, 0.2);
+  assert.equal(selected.narration, "audio/duelo/narration/intro.mp3");
+  assert.equal(selected.narrationSequence, 1);
+  assert.equal(selected.narrationDurationMillis, 18_715);
+  assert.ok((selected.narrationRemainingMillis ?? 0) > 18_000);
+  assert.ok(selected.allowedControls.includes("stop_narration"));
+  const stopped = runtime.control("stop_narration");
+  assert.equal(stopped.narration, "");
+  assert.equal(stopped.narrationRemainingMillis, 0);
+  assert.equal(stopped.narrationStopSequence, 1);
+  assert.equal(stopped.allowedControls.includes("stop_narration"), false);
+  const replayed = runtime.control("narration");
+  assert.equal(replayed.narrationSequence, 2);
+  assert.ok(replayed.allowedControls.includes("stop_narration"));
+  assert.equal(runtime.control("toggle_mute").audioMuted, true);
+  await runtime.stop();
+});
+
 test("audio output test starts pending on a healthy display and accepts only its matching lifecycle", () => {
   const runtime = new VenueRuntime({
     sourceRevision: revision,
