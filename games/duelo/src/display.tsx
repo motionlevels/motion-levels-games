@@ -1,7 +1,17 @@
 /** @jsxRuntime automatic */
-import type { CSSProperties } from "react";
-import { GameDisplayShell } from "@motion-levels-games/display-kit";
-import { formatClock, type Frame, type HexColor } from "@motion-levels-games/game-sdk";
+import {
+  DisplayStack,
+  DisplayStage,
+  EventRail,
+  GameDisplayShell,
+  MetricPanel,
+  MetricRow,
+  PlayerCard,
+  PlayerRoster,
+  ProgressMeter,
+  ResultOverlay
+} from "@motion-levels-games/display-kit";
+import { formatClock, type Frame } from "@motion-levels-games/game-sdk";
 import type { DueloPlayerProgress, DueloSnapshot } from "./game.ts";
 
 export function PlayerDisplay({
@@ -15,37 +25,31 @@ export function PlayerDisplay({
   const restartCountdown = Math.max(1, Math.ceil(snapshot.remainingMillis / 1_000));
   const readyIndices = new Set(snapshot.readyPlayerIndices);
   const hero = heroContent(snapshot, countdown, restartCountdown);
-  const rootStyle = {
-    "--duelo-grid-columns": columns,
-    "--duelo-player-count": snapshot.playerCount,
-    "--duelo-winner": snapshot.winnerIndex >= 0
-      ? snapshot.playerProgress[snapshot.winnerIndex]?.color ?? "#ffffff"
-      : "#ffffff",
-    "--duelo-winner-rgb": snapshot.winnerIndex >= 0
-      ? hexToRgb(snapshot.playerProgress[snapshot.winnerIndex]?.color ?? "#ffffff")
-      : "255, 255, 255"
-  } as CSSProperties;
+  const winner = snapshot.winnerIndex >= 0 ? snapshot.playerProgress[snapshot.winnerIndex] : undefined;
+  const heroMetrics = (
+    <MetricRow columns={3}>
+      <MetricPanel label="Tiempo" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
+      <MetricPanel label="Restantes" tone="cyan" value={snapshot.remainingTargets} />
+      <MetricPanel label="Densidad" tone="magenta" value={`${snapshot.fillPercent}%`} />
+    </MetricRow>
+  );
+  const event = (
+    <EventRail
+      detail={snapshot.phase === "finished" ? `Nueva partida en ${restartCountdown}` : `${snapshot.claimedTargets}/${snapshot.totalTargets} reclamadas`}
+      label={snapshot.phase === "waiting" ? "Preparación" : snapshot.phase === "finished" ? "Resultado" : "Último evento"}
+      message={snapshot.lastEventMessage || "Listo"}
+      tone={snapshot.phase === "finished" ? "green" : "cyan"}
+    />
+  );
 
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
-      <div
-        className={`duelo-display is-phase-${snapshot.phase} is-player-count-${snapshot.playerCount}`}
-        style={rootStyle}
+      <DisplayStack
+        bottom={event}
+        label="Progreso del duelo"
+        top={<DisplayStage detail={hero.caption} eyebrow={hero.eyebrow} title={hero.title} tone="cyan">{heroMetrics}</DisplayStage>}
       >
-        <section className="duelo-hero" aria-label={hero.title}>
-          <div className="duelo-hero-copy">
-            <span>{hero.eyebrow}</span>
-            <strong>{hero.title}</strong>
-            <b>{hero.caption}</b>
-          </div>
-          <div className="duelo-hero-metrics">
-            <DueloMetric label="Tiempo" value={formatClock(snapshot.elapsedMillis)} />
-            <DueloMetric label="Restantes" value={snapshot.remainingTargets} />
-            <DueloMetric label="Densidad" value={`${snapshot.fillPercent}%`} />
-          </div>
-        </section>
-
-        <section className="duelo-player-grid" aria-label="Progreso de jugadores">
+        <PlayerRoster columns={columns} label="Progreso de jugadores">
           {snapshot.playerProgress.map((player) => (
             <DueloPlayerCard
               key={player.index}
@@ -57,14 +61,16 @@ export function PlayerDisplay({
               winner={snapshot.winnerIndex === player.index}
             />
           ))}
-        </section>
-
-        <footer className="duelo-event-rail">
-          <span>{snapshot.phase === "waiting" ? "Preparación" : snapshot.phase === "finished" ? "Resultado" : "Último evento"}</span>
-          <strong key={snapshot.motionEventId}>{snapshot.lastEventMessage || "Listo"}</strong>
-          <b>{snapshot.phase === "finished" ? `Nueva partida en ${restartCountdown}` : `${snapshot.claimedTargets}/${snapshot.totalTargets} reclamadas`}</b>
-        </footer>
-      </div>
+        </PlayerRoster>
+        <ResultOverlay
+          message={winner ? `${winner.claimed}/${winner.target} baldosas reclamadas` : undefined}
+          title={`¡Gana ${snapshot.winnerLabel}!`}
+          tone="green"
+          visible={snapshot.phase === "finished"}
+        >
+          <span>Nueva partida en {restartCountdown}</span>
+        </ResultOverlay>
+      </DisplayStack>
     </GameDisplayShell>
   );
 }
@@ -93,49 +99,25 @@ function DueloPlayerCard({
         : leader
           ? "Líder"
           : "En carrera";
-  const style = {
-    "--duelo-player": player.color,
-    "--duelo-player-rgb": hexToRgb(player.color),
-    "--duelo-progress": player.progress
-  } as CSSProperties;
-  const nameClass = player.label.length > 28 ? " is-extra-long" : player.label.length > 18 ? " is-long" : "";
-
   return (
-    <article
-      className={[
-        "duelo-player-card",
-        ready ? "is-ready" : "",
-        leader ? "is-leader" : "",
-        recent ? "is-recent" : "",
-        winner ? "is-winner" : ""
-      ].filter(Boolean).join(" ")}
-      style={style}
-    >
-      <header>
-        <i aria-hidden="true" />
-        <span className={`duelo-player-name${nameClass}`}>{player.label}</span>
-        <b>{status}</b>
-      </header>
-      <div className="duelo-player-score">
-        <strong>{player.remaining}</strong>
-        <span>baldosas restantes</span>
-        {recent ? <em key={`${player.index}-${player.claimed}`}>+1</em> : null}
-      </div>
-      <div className="duelo-player-track" aria-hidden="true"><i /></div>
-      <footer>
-        <span>Reclamadas</span>
-        <strong>{player.claimed}/{player.target}</strong>
-      </footer>
-    </article>
-  );
-}
-
-function DueloMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <article className="duelo-hero-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </article>
+    <PlayerCard
+      badge={status}
+      className={recent ? "is-recent" : ""}
+      featured={winner || leader || ready}
+      footer={(
+        <ProgressMeter
+          ariaValueText={`${player.claimed} de ${player.target} baldosas reclamadas`}
+          label="Reclamadas"
+          max={player.target}
+          tone="cyan"
+          value={player.claimed}
+          valueLabel={`${player.claimed}/${player.target}`}
+        />
+      )}
+      player={{ color: player.color, label: player.label, score: player.remaining }}
+      scoreUnit="baldosas restantes"
+      status={recent ? "baldosas restantes · +1" : "baldosas restantes"}
+    />
   );
 }
 
@@ -166,11 +148,4 @@ function heroContent(snapshot: DueloSnapshot, countdown: number, restartCountdow
     title: "Reclama tu color",
     caption: "Pisa todas tus baldosas antes que los demás"
   };
-}
-
-function hexToRgb(color: HexColor): string {
-  if (!/^#[0-9a-f]{6}$/i.test(color)) return "255, 255, 255";
-  return [1, 3, 5]
-    .map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16))
-    .join(", ");
 }

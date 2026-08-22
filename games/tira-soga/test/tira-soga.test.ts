@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -246,7 +247,7 @@ test("fixtures and player display cover every phase and both celebrations", () =
   assert.match(finishedHtml, /¡Gana Rojo!/);
   assert.match(finishedHtml, /Resultado final 3 – 2/);
   assert.match(finishedHtml, /is-game-win/);
-  assert.match(finishedHtml, /prefers-reduced-motion: reduce/);
+  assert.match(readFileSync(new URL("../src/display.css", import.meta.url), "utf8"), /prefers-reduced-motion: reduce/);
   assert.match(finishedHtml, /R5/);
 });
 

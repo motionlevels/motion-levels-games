@@ -323,11 +323,16 @@ test("fixtures and display render score state", () => {
   assert.match(html, /1\/9/);
   assert.match(html, /En juego/);
   assert.match(html, /Punto en curso/);
-  assert.match(html, /ping-pong-rally-lane/);
+  assert.match(html, /ml-trajectory-lane/);
   assert.match(html, /Trayectoria de la pelota/);
-  assert.match(html, /ping-pong-ball-trail/);
+  assert.equal((html.match(/data-lane-trail-position=/g) ?? []).length, 3);
+  assert.match(html, /data-lane-position-x="0\.6774193548387096"/);
+  assert.match(html, /data-lane-position-y="0\.7333333333333333"/);
+  assert.match(html, /data-lane-impact-x="0\.9354838709677419"/);
+  assert.match(html, /data-lane-impact-y="0\.6666666666666666"/);
+  assert.match(html, /data-lane-pace="0\.1935"/);
   assert.match(html, /3 golpes/);
-  assert.match(html, /--ping-pong-rally-pace:0.1935/);
+  assert.match(html, /data-lane-direction="right"/);
   assert.doesNotMatch(html, /Listos/);
   assert.doesNotMatch(html, /2\/2/);
 
@@ -338,8 +343,8 @@ test("fixtures and display render score state", () => {
     })
   );
   assert.match(blueWinnerHtml, /ml-metric-blue[^>]*>[\s\S]*?Último/);
-  assert.match(blueWinnerHtml, /is-winner-blue/);
-  assert.match(blueWinnerHtml, /Victoria Azul/);
+  assert.match(blueWinnerHtml, /ml-result-overlay-blue/);
+  assert.match(blueWinnerHtml, /¡Gana Azul!/);
 
   const redWinnerHtml = renderToStaticMarkup(
     React.createElement(PlayerDisplay, {

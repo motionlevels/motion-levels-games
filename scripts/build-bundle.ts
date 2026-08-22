@@ -56,16 +56,6 @@ if (process.env.MOTION_LEVELS_GAMES_MEDIA_DIR) {
   }
 }
 const mediaRoot = resolvedMediaRoot;
-const displayCSSSource = await readFile(path.join(repoRoot, "packages/display-kit/src/styles.css"), "utf8");
-const displayLogo = await readFile(path.join(repoRoot, "packages/display-kit/src/assets/motion-levels-icon.png"));
-const displayLogoReference = 'url("./assets/motion-levels-icon.png")';
-if (!displayCSSSource.includes(displayLogoReference)) {
-  throw new Error("player display CSS is missing the Motion Levels logo reference");
-}
-const displayCSS = displayCSSSource.replace(
-  displayLogoReference,
-  `url("data:image/png;base64,${displayLogo.toString("base64")}")`
-);
 const playerExperienceSchema = await readFile(path.join(repoRoot, "packages/player-experience/schema/player-experience-state.schema.json"), "utf8");
 const sessionHistorySchema = await readFile(path.join(repoRoot, "packages/session-history/schema/session-history-v1.schema.json"), "utf8");
 const authoredGames = await compileAuthoredContent({ root: repoRoot });
@@ -131,7 +121,7 @@ await build({
   sourcemap: false,
   legalComments: "none"
 });
-await build({
+const displayBuildOptions = {
   entryPoints: [path.join(repoRoot, "packages/runtime/src/display.tsx")],
   outfile: path.join(outputRoot, "display/display.js"),
   bundle: true,
@@ -140,12 +130,25 @@ await build({
   target: "es2022",
   define: {
     MOTION_LEVELS_GAMES_REVISION: JSON.stringify(sourceRevision),
-    MOTION_LEVELS_GAMES_DISPLAY_CSS: JSON.stringify(displayCSS)
+    MOTION_LEVELS_GAMES_DISPLAY_CSS: JSON.stringify("")
   },
+  loader: { ".png": "dataurl" },
   minify: true,
   sourcemap: false,
   legalComments: "none"
+} satisfies Parameters<typeof build>[0];
+const provisionalDisplayBuild = await build({ ...displayBuildOptions, write: false });
+const provisionalDisplayStyles = provisionalDisplayBuild.outputFiles?.find((file) => file.path.endsWith(".css"));
+if (!provisionalDisplayStyles) throw new Error("player display build did not emit its stylesheet");
+const embeddedDisplayStyles = Buffer.from(provisionalDisplayStyles.contents).toString("utf8");
+await build({
+  ...displayBuildOptions,
+  define: {
+    MOTION_LEVELS_GAMES_REVISION: JSON.stringify(sourceRevision),
+    MOTION_LEVELS_GAMES_DISPLAY_CSS: JSON.stringify(embeddedDisplayStyles)
+  }
 });
+await stat(path.join(outputRoot, "display/display.css"));
 
 const mediaSources = new Map<string, string>();
 async function registerMedia(reference: string): Promise<void> {
@@ -219,6 +222,7 @@ const manifest = {
   },
   playerDisplay: {
     entry: "display/display.js",
+    styleEntry: "display/display.css",
     shellEntry: "display/index.html",
     buildManifest: "display/build.json",
     games: catalog.filter((game) => game.availability.production).map((game) => game.id)

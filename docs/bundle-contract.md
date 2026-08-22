@@ -29,8 +29,9 @@ The required production entries are:
   controllerProtocolVersion: 2, games: [...] }`;
 - `playerMenu: { entry: "menu/index.html", buildManifest: "menu/build.json",
   adapterProtocolVersion: 2 }`;
-- `playerDisplay: { entry: "display/display.js", shellEntry:
-  "display/index.html", buildManifest: "display/build.json", games: [...] }`;
+- `playerDisplay: { entry: "display/display.js", styleEntry:
+  "display/display.css", shellEntry: "display/index.html", buildManifest:
+  "display/build.json", games: [...] }`;
 - `playground: { entry: "playground/index.html", basePath: "/games/play/" }`.
 
 - `catalog.json`: all game manifests plus deterministic media references;
@@ -44,7 +45,12 @@ The required production entries are:
   `playerDisplay.shellEntry` and `playerDisplay.buildManifest`; `build.json`
   also mirrors the bundle's `buildVersion` and `releaseTag`;
 - `display/display.js`: the revision-matched browser player-display registry,
-  declared as `playerDisplay.entry` and loaded by the shell;
+  declared as `playerDisplay.entry` and loaded by the shell. During the
+  contract-v2 migration it also carries a generated copy of the compiled CSS
+  so older shells that only load this entry remain styled;
+- `display/display.css`: the revision-matched shared and game-owned player-display
+  styles, declared as `playerDisplay.styleEntry` and loaded atomically with the
+  renderer by the shell;
 - `menu/`: the revision-matched static player menu, including its production
   entry point and human-readable `build.json`; both the manifest and compiled
   JavaScript declare the bundle's full `sourceRevision`, while `build.json`
@@ -60,9 +66,17 @@ The required production entries are:
 
 The player-display shell, renderer, menu, and venue runtime are built from this
 repository and shipped in one release. The shell reports its compiled revision,
-replaces renderer-owned CSS during a hot swap, and reloads once when a newer
-runtime revision is ready and gameplay is not active. Venue consumers package
-and serve these files but do not keep fallback source builds.
+loads revision-matched renderer CSS and JavaScript as one guarded transaction,
+and replaces the active stylesheet only after the candidate renderer is ready.
+It prefers `display.css`; if that asset is absent in a historical contract-v2
+bundle, it accepts the renderer's matching legacy embedded style. A monotonic
+load generation prevents superseded revisions from activating stale CSS or
+replacing the accepted runtime. The generated CSS copy in `display.js` is a
+contract-v2 compatibility bridge, not a second authored stylesheet: shared and
+game-owned CSS remain source-owned by display-kit and each game respectively.
+The shell reloads once when a newer runtime revision is ready and gameplay is
+not active. Venue consumers package and serve these files but do not keep
+fallback source builds.
 
 `packages/game-sdk/src/media.ts` owns the media dimensions, filename suffixes,
 bundle-relative references, and URL resolution for both games and native

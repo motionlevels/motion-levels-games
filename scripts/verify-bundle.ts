@@ -33,7 +33,7 @@ const manifest = JSON.parse(await readFile(path.join(root, "bundle.json"), "utf8
   playerMenu?: { entry?: string; buildManifest?: string; adapterProtocolVersion?: number };
   playerExperience?: { contractVersion?: number; schema?: string };
   sessionHistory?: { contractVersion?: number; schemaId?: string; schema?: string };
-  playerDisplay?: { entry?: string; shellEntry?: string; buildManifest?: string; games?: string[] };
+  playerDisplay?: { entry?: string; styleEntry?: string; shellEntry?: string; buildManifest?: string; games?: string[] };
   playground?: { entry?: string; basePath?: string };
   catalog?: string;
   animations?: string;
@@ -55,6 +55,7 @@ assert.equal(manifest.venueRuntime?.apiProtocolVersion, 1);
 assert.equal(manifest.venueRuntime?.controllerProtocolVersion, 2);
 assert.ok((manifest.venueRuntime?.games?.length ?? 0) > 0);
 assert.equal(manifest.playerDisplay?.entry, "display/display.js");
+assert.equal(manifest.playerDisplay?.styleEntry, "display/display.css");
 assert.equal(manifest.playerDisplay?.shellEntry, "display/index.html");
 assert.equal(manifest.playerDisplay?.buildManifest, "display/build.json");
 assert.deepEqual(manifest.playerDisplay?.games, manifest.venueRuntime?.games);
@@ -84,6 +85,7 @@ assert.equal("runtime" in manifest, false);
 const files = await bundleFiles(root);
 assert.ok(files.some((file) => file.path === manifest.venueRuntime?.entry), "venue runtime entry is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.entry), "player display entry is missing from bundle files");
+assert.ok(files.some((file) => file.path === manifest.playerDisplay?.styleEntry), "player display stylesheet is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.shellEntry), "player display shell is missing from bundle files");
 assert.ok(files.some((file) => file.path === manifest.playerDisplay?.buildManifest), "player display build manifest is missing from bundle files");
 const audioTestSamplePath = "display/audio/probando.wav";
@@ -193,15 +195,43 @@ for (const [label, entry] of [
   const compiled = await readFile(path.join(root, entry));
   assert.ok(compiled.includes(Buffer.from(manifest.sourceRevision!)), `${label} does not contain its source revision`);
 }
+const compiledPlayerDisplayStyles = await readFile(path.join(root, manifest.playerDisplay!.styleEntry!));
 const compiledPlayerDisplay = await readFile(path.join(root, manifest.playerDisplay!.entry!));
 assert.ok(
-  compiledPlayerDisplay.includes(Buffer.from("data:image/png;base64,")),
-  "player display does not embed the Motion Levels logo"
+  compiledPlayerDisplayStyles.includes(Buffer.from("data:image/png;base64,")),
+  "player display stylesheet does not embed the Motion Levels logo"
 );
 assert.ok(
-  !compiledPlayerDisplay.includes(Buffer.from("./assets/motion-levels-icon.png")),
-  "player display contains an unresolved Motion Levels logo reference"
+  !compiledPlayerDisplayStyles.includes(Buffer.from("./assets/motion-levels-icon.png")),
+  "player display stylesheet contains an unresolved Motion Levels logo reference"
 );
+assert.ok(
+  compiledPlayerDisplay.includes(Buffer.from("motion-levels-games-display-styles")),
+  "player display JavaScript is missing the legacy embedded-style bridge"
+);
+assert.ok(
+  compiledPlayerDisplay.includes(Buffer.from("data:image/png;base64,")),
+  "player display JavaScript does not embed compatibility styles and their logo"
+);
+for (const selector of [
+  ".animation-display",
+  ".equilibrio-display",
+  ".estela-display",
+  ".guardianes-display",
+  ".pulso-display",
+  ".suelo-seguro-display",
+  ".tetris-display",
+  ".tira-soga-display"
+]) {
+  assert.ok(
+    compiledPlayerDisplayStyles.includes(Buffer.from(selector)),
+    `player display stylesheet is missing game-owned styles for ${selector}`
+  );
+  assert.ok(
+    compiledPlayerDisplay.includes(Buffer.from(selector)),
+    `player display JavaScript compatibility styles are missing ${selector}`
+  );
+}
 
 type MediaAssetMetadata = {
   file?: string;

@@ -1,0 +1,110 @@
+.tetris-display .tetris-pieces {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+  min-width: 0;
+}
+
+.tetris-display .tetris-piece-card {
+  --tetris-piece: #36d9ff;
+  align-content: start;
+  background: rgba(5, 11, 20, 0.92);
+  border: 1px solid color-mix(in srgb, var(--tetris-piece) 60%, transparent);
+  border-radius: var(--ml-radius-md);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.tetris-display .tetris-piece-card > span {
+  color: var(--ml-muted);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  overflow-wrap: break-word;
+  text-transform: uppercase;
+}
+
+.tetris-display .tetris-piece-card > div {
+  align-self: center;
+  display: grid;
+  grid-auto-columns: clamp(22px, 1.6vw, 30px);
+  grid-auto-rows: clamp(22px, 1.6vw, 30px);
+  justify-content: center;
+  min-height: 112px;
+}
+
+.tetris-display .tetris-piece-card i {
+  background: var(--tetris-piece);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--tetris-piece) 55%, transparent);
+}
+
+.tetris-display .tetris-piece-card strong {
+  color: var(--tetris-piece);
+  font-size: 30px;
+  overflow-wrap: break-word;
+  text-align: center;
+}
+
+.tetris-display .tetris-controls {
+  align-content: center;
+  background: rgba(8, 16, 28, 0.94);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  border-radius: var(--ml-radius-md);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px 18px;
+  text-align: center;
+}
+
+.tetris-display .tetris-controls span {
+  color: var(--ml-amber);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tetris-display .tetris-controls strong {
+  color: var(--ml-text);
+  font-size: 18px;
+  overflow-wrap: break-word;
+}
+
+.tetris-display .tetris-controls b {
+  color: var(--ml-muted);
+  font-size: 14px;
+  overflow-wrap: break-word;
+}
+
+.tetris-display .tetris-floor {
+  border: 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.tetris-display .tetris-floor-placeholder {
+  align-items: center;
+  color: var(--ml-muted);
+  display: flex;
+  font-size: 22px;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 0;
+  padding: 24px;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tetris-display *,
+  .tetris-display *::before,
+  .tetris-display *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

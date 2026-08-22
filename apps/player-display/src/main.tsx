@@ -5,6 +5,10 @@ import App from "./App";
 import { VenueFloorRotationProvider } from "./venueFloorRotation";
 import "./styles.css";
 
+if (import.meta.env.DEV) {
+  (globalThis as typeof globalThis & { mlDisplayDevelopment?: boolean }).mlDisplayDevelopment = true;
+}
+
 const kioskDesignWidth = 1920;
 const kioskDesignHeight = 1080;
 const kioskBuildVersion = (

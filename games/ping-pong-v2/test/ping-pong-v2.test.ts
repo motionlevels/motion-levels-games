@@ -57,4 +57,9 @@ test("fixtures and Spanish player display render", () => {
   assert.match(html, /Ping Pong v2/);
   assert.match(html, /Objetivo/);
   assert.match(html, /Peloteo/);
+  assert.match(html, /data-lane-position-x="0\.6774193548387096"/);
+  assert.match(html, /data-lane-position-y="0\.7333333333333333"/);
+  assert.match(html, /data-lane-impact-x="0\.9354838709677419"/);
+  assert.match(html, /data-lane-impact-y="0\.6666666666666666"/);
+  assert.match(html, /data-lane-pace="0\.1935"/);
 });

@@ -34,7 +34,12 @@ test("production bundle declares the complete player display shell and renderer"
   const source = await readFile(path.join(repoRoot, "scripts/build-bundle.ts"), "utf8");
   assert.match(source, /apps\/player-display\/dist/u);
   assert.match(source, /entry: "display\/display\.js"/u);
+  assert.match(source, /styleEntry: "display\/display\.css"/u);
   assert.match(source, /shellEntry: "display\/index\.html"/u);
+  assert.match(source, /loader: \{ "\.png": "dataurl" \}/u);
+  assert.match(source, /const provisionalDisplayBuild = await build\(\{ \.\.\.displayBuildOptions, write: false \}\)/u);
+  assert.match(source, /const embeddedDisplayStyles = Buffer\.from\(provisionalDisplayStyles\.contents\)\.toString\("utf8"\)/u);
+  assert.match(source, /MOTION_LEVELS_GAMES_DISPLAY_CSS: JSON\.stringify\(embeddedDisplayStyles\)/u);
 });
 
 test("offline menu catalog carries the exact bundled games revision", async () => {

@@ -12,6 +12,7 @@ import { claimPlayerDisplayReload, playerDisplayReloadURL, revisionConvergenceDe
 import { colorCSS, colorRGB, difficultyLabelES, formatClock, gameTitleES, levelLabelES, phaseLabel, playerLabelES } from "./utils";
 import { MotionLevelsGamesDisplay } from "./MotionLevelsGamesDisplay";
 import { RecordingGateDisplay } from "./RecordingGateOverlay";
+import { GamesRendererFallback } from "./GamesRendererFallback";
 
 // If no stream event arrives, keep the display fresh with a 250ms fallback
 // poll. Some kiosk/browser combinations can silently lose EventSource delivery;
@@ -403,7 +404,7 @@ export default function App() {
     display = (
       <MotionLevelsGamesDisplay
         status={liveStatus}
-        fallback={<ArcadeDisplay status={liveStatus} connected={liveConnected} error={liveError} />}
+        fallback={<GamesRendererFallback status={liveStatus} connected={liveConnected} error={liveError} />}
         onStateChange={setGamesRenderState}
       />
     );

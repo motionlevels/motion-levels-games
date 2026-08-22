@@ -79,7 +79,10 @@ venue-owned.
   `lives: -1`; never repurpose `lives` for score, rounds, or progress.
 - Test and visually inspect the lives display at full, partially depleted, and
   zero lives. Every state must preserve the same number of heart slots and fit
-  its container without clipping or wrapping.
+  its container without clipping. Dense meters may use a deterministic row
+  layout chosen from `maxLives`; they must never rely on accidental flex/grid
+  wrapping, change their row count as lives are lost, or hide overflow as a
+  substitute for fitting the slots.
 
 ## Game Start Lifecycle
 
@@ -235,6 +238,14 @@ venue-owned.
   canonical `LivesMeter`; games must not recreate shared player-display UI.
   Reusable TV motion belongs with the primitive and shared CSS in display-kit,
   while game-only display animation stays namespaced to that game.
+- Shared display-kit CSS uses only the `ml-` namespace and must not contain a
+  game slug. Game-only display styles live beside that game's `display.tsx` in
+  `display.css`; never embed a stylesheet string or a `<style>` element in a
+  game component. The revision-matched display bundle collects both layers.
+- Compose standard TV structure from display-kit recipes and primitives before
+  adding markup. A game may implement a custom stage visualization when the
+  visual itself communicates game state, but headers, metric cards, rosters,
+  event rails, progress, readiness, lives, and result overlays remain shared.
 - Each game owns its `manifest.ts`, `game.ts`, `display.tsx`, and `fixtures.ts`.
 - Every `games/<slug>` package must include a `README.md`. New products use an
   immutable UUID/hash in `manifest.id`, declare the current renameable

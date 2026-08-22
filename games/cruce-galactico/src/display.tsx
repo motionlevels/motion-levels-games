@@ -5,7 +5,8 @@ import {
   LivesMeter,
   MetricPanel,
   MetricRow,
-  PlayerReadyOverlay
+  PlayerReadyOverlay,
+  ResultOverlay
 } from "@motion-levels-games/display-kit";
 import { formatClock, type Frame } from "@motion-levels-games/game-sdk";
 import type { GalacticCrossingSnapshot } from "./game.ts";
@@ -16,7 +17,7 @@ export function PlayerDisplay({ snapshot, frame }: { snapshot: GalacticCrossingS
     : snapshot.lastEventMessage || "Avanza hacia el control verde";
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
-      <div className={`ml-solo-display cruce-galactico-display${snapshot.celebrating ? " is-celebrating" : ""}`}>
+      <div className="ml-solo-display">
         <PlayerReadyOverlay snapshot={snapshot} />
         <div className="ml-solo-summary">
           <MetricRow columns={3} className="ml-solo-number-row">
@@ -27,6 +28,13 @@ export function PlayerDisplay({ snapshot, frame }: { snapshot: GalacticCrossingS
           <MetricPanel className="ml-solo-message" label="Misión" tone={snapshot.success ? "green" : snapshot.lives === 0 ? "red" : "blue"} value={message} />
         </div>
         {frame ? <FramePreviewPanel className="ml-solo-floor" frame={frame} label="Corredores en el suelo" /> : null}
+        <ResultOverlay
+          eyebrow={snapshot.success ? "Misión cumplida" : "Fin de la misión"}
+          message={snapshot.success ? "El portal está abierto" : snapshot.lastEventMessage}
+          title={snapshot.success ? "¡Portal alcanzado!" : "Misión terminada"}
+          tone={snapshot.success ? "green" : "red"}
+          visible={snapshot.phase === "finished" || snapshot.celebrating}
+        />
       </div>
     </GameDisplayShell>
   );

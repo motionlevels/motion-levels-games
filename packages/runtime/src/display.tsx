@@ -1,6 +1,7 @@
 import { createRoot, type Root } from "react-dom/client";
 import { Component, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 import { PlayerDisplayRuntimeProvider } from "@motion-levels-games/display-kit";
+import "@motion-levels-games/display-kit/styles.css";
 import type { FloorRotationDegrees, Frame, GameSnapshot } from "@motion-levels-games/game-sdk";
 import { displayRegistry } from "./displayRegistry.ts";
 import { reportDisplayError } from "./displayError.ts";
@@ -55,29 +56,44 @@ function unmount(element: Element): void {
   mounted.delete(element);
 }
 
-let style = document.getElementById("motion-levels-games-display-styles") as HTMLStyleElement | null;
-if (!style) {
-  style = document.createElement("style");
-  style.id = "motion-levels-games-display-styles";
-  document.head.append(style);
-}
-style.textContent = MOTION_LEVELS_GAMES_DISPLAY_CSS;
-style.dataset.revision = MOTION_LEVELS_GAMES_REVISION;
+const legacyStylesID = "motion-levels-games-display-styles";
 
-window.MotionLevelsGamesDisplay = {
+function installLegacyStyles(): void {
+  const existing = document.getElementById(legacyStylesID);
+  let style: HTMLStyleElement;
+  if (existing instanceof HTMLStyleElement) {
+    style = existing;
+  } else {
+    existing?.remove();
+    style = document.createElement("style");
+    style.id = legacyStylesID;
+    document.head.append(style);
+  }
+  style.textContent = MOTION_LEVELS_GAMES_DISPLAY_CSS;
+  style.dataset.revision = MOTION_LEVELS_GAMES_REVISION;
+}
+
+installLegacyStyles();
+
+const displayRuntime = {
   revision: MOTION_LEVELS_GAMES_REVISION,
   mount: render,
   update: render,
   unmount
 };
 
+window.MotionLevelsGamesDisplays ??= {};
+window.MotionLevelsGamesDisplays[MOTION_LEVELS_GAMES_REVISION] = displayRuntime;
+window.MotionLevelsGamesDisplay = displayRuntime;
+
 declare global {
   interface Window {
-    MotionLevelsGamesDisplay: {
+    MotionLevelsGamesDisplay?: {
       revision: string;
       mount(element: Element, input: DisplayInput): void;
       update(element: Element, input: DisplayInput): void;
       unmount(element: Element): void;
     };
+    MotionLevelsGamesDisplays?: Record<string, NonNullable<Window["MotionLevelsGamesDisplay"]>>;
   }
 }

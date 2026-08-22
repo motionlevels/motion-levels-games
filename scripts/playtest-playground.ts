@@ -7,6 +7,8 @@ import {
   JUGAR_3D_VISUAL_THRESHOLDS,
   evaluateVisualRegression
 } from "./lib/visual-regression.ts";
+import { assertPlayerDisplayGeometry } from "./lib/player-display-geometry.ts";
+import { assertPlayerDisplayLoaderCompatibility } from "./lib/player-display-loader-browser.ts";
 
 type BrowserPlaygroundCapture = {
   dataUrl: string;
@@ -234,6 +236,7 @@ try {
   await waitForServer(baseURL);
   const browser = await chromium.launch({ headless: true });
   try {
+    await assertPlayerDisplayLoaderCompatibility(browser);
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     page.on("pageerror", (error) => process.stderr.write(`[browser page error] ${error.stack ?? error.message}\n`));
     page.on("console", (message) => {
@@ -243,8 +246,11 @@ try {
     await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
     await assertMomentaryFloorInput(page);
     await assertStablePhaseHeader(page);
+    if (!focusedGame) await assertCompactLivesDisplay(page);
 
-    if (focusedGame === "memory-challenge") {
+    if (focusedGame === "ping-pong") {
+      console.log(JSON.stringify({ pingPong: await playtestPingPong(page) }, null, 2));
+    } else if (focusedGame === "memory-challenge") {
       console.log(JSON.stringify({ memoryChallenge: await playtestMemoryChallenge(page) }, null, 2));
     } else if (focusedGame === "cruce-galactico") {
       console.log(JSON.stringify({ cruceGalactico: await playtestCruceGalactico(page) }, null, 2));
@@ -273,6 +279,16 @@ try {
       console.log(JSON.stringify({ whackAMole: await playtestWhackAMole(page) }, null, 2));
     } else if (focusedGame === "tetris") {
       console.log(JSON.stringify({ tetris: await playtestTetris(page) }, null, 2));
+    } else if (focusedGame === "memoria-v2") {
+      console.log(JSON.stringify({ memoriaV2: await playtestMemoriaV2(page) }, null, 2));
+    } else if (focusedGame === "patrones") {
+      console.log(JSON.stringify({ patrones: await playtestPatrones(page) }, null, 2));
+    } else if (focusedGame === "saltos") {
+      console.log(JSON.stringify({ saltos: await playtestSaltos(page) }, null, 2));
+    } else if (focusedGame === "lava") {
+      console.log(JSON.stringify({ lava: await playtestLava(page) }, null, 2));
+    } else if (focusedGame === "ping-pong-v2") {
+      console.log(JSON.stringify({ pingPongV2: await playtestPingPongV2(page) }, null, 2));
     } else if (focusedGame) {
       throw new Error(`Unsupported focused browser playtest: ${focusedGame}`);
     } else {
@@ -415,11 +431,6 @@ async function playtestCruceGalactico(page: Page) {
   assert.equal(won.snapshot.success, true);
   assert.equal(won.snapshot.checkpoint, 4);
   await page.waitForTimeout(500);
-  await page.evaluate(async () => {
-    const api = (window as BrowserPlaygroundWindow).ml;
-    if (!api) throw new Error("window.ml is not ready");
-    await api.capture(["display", "boardPhysical"]);
-  });
   await captureNativeDisplay(page, "cruce-galactico-finished-win");
   return {
     captures: ["waiting", "starting", "running", "damaged", "finished-loss", "finished-win"],
@@ -2032,7 +2043,7 @@ async function playtestMemoriaV2(page: Page) {
   let finalState: BrowserPlaygroundState | undefined;
   let capturedRoundWin = false;
   for (let attempt = 0; attempt < 60 && !finalState; attempt += 1) {
-    const result: { captures?: Record<string, BrowserPlaygroundCapture>; state: BrowserPlaygroundState } = await page.evaluate(async (captureRoundWin) => {
+    const result: { shouldCapture: boolean; state: BrowserPlaygroundState } = await page.evaluate((captureRoundWin) => {
       const api = (window as BrowserPlaygroundWindow).ml;
       if (!api) throw new Error("window.ml is not ready");
       let state = api.getState();
@@ -2054,23 +2065,22 @@ async function playtestMemoriaV2(page: Page) {
       }
       state = api.getState();
       const shouldCapture = state.snapshot.phase === "finished" || (captureRoundWin && state.snapshot.memoryStage === "round-win");
-      if (shouldCapture) api.resume();
-      const captures = shouldCapture ? await api.capture(["display", "boardPhysical"]) : undefined;
-      if (shouldCapture) api.pause();
       return {
-        captures,
+        shouldCapture,
         state
       };
     }, !capturedRoundWin);
     if (!capturedRoundWin && result.state.snapshot.memoryStage === "round-win") {
       capturedRoundWin = true;
-      if (result.captures) await saveBrowserCaptures(result.captures, "memoria-v2-round-win");
+      assert.equal(result.shouldCapture, true);
+      await capturePausedNativeDisplay(page, "memoria-v2-round-win");
     }
     if (result.state.snapshot.phase === "finished") {
       finalState = result.state;
       assert.equal(finalState.snapshot.phase, "finished", JSON.stringify(finalState.snapshot));
       assert.equal(finalState.snapshot.success, true);
-      if (result.captures) await saveBrowserCaptures(result.captures, "memoria-v2-finished-win");
+      assert.equal(result.shouldCapture, true);
+      await capturePausedNativeDisplay(page, "memoria-v2-finished-win");
     }
   }
   if (!finalState) throw new Error("Memoria v2 did not complete within the browser playtest guard");
@@ -2362,7 +2372,8 @@ async function pressFloorZones(page: Page, zones: Array<[number, number]>, delay
   }, zones);
 }
 
-async function captureNativeDisplay(page: Page, name: string): Promise<void> {
+async function captureNativeDisplay(page: Page, name: string, geometryValidated = false): Promise<void> {
+  if (!geometryValidated) await assertPlayerDisplayGeometry(page, name);
   const captures = await page.evaluate(async () => {
     const api = (window as BrowserPlaygroundWindow).ml;
     if (!api) throw new Error("window.ml is not ready");
@@ -2387,6 +2398,62 @@ async function captureNativeDisplay(page: Page, name: string): Promise<void> {
     animations: "disabled",
     path: path.join(captureDirectory, `${name}-preview.png`)
   });
+}
+
+async function capturePausedNativeDisplay(page: Page, name: string): Promise<void> {
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.resume());
+  try {
+    await captureNativeDisplay(page, name);
+  } finally {
+    await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.pause());
+  }
+}
+
+async function assertCompactLivesDisplay(page: Page): Promise<void> {
+  await page.locator(".control-game select").selectOption("hello-world");
+  await page.waitForFunction(() => {
+    const api = (window as BrowserPlaygroundWindow).ml;
+    return api?.getState().gameId === "hello-world" && document.querySelector("[data-lives-meter]");
+  });
+  await page.evaluate(() => (window as BrowserPlaygroundWindow).ml?.pause());
+  await page.waitForFunction(() => (window as BrowserPlaygroundWindow).ml?.getState().paused === true);
+  await page.evaluate(() => {
+    const meter = document.querySelector<HTMLElement>("[data-lives-meter]");
+    if (!meter) throw new Error("Hello World must render the shared lives meter");
+    meter.className = "ml-lives-meter is-compact";
+    meter.dataset.lifeColumns = "1";
+    meter.dataset.lifeMode = "compact";
+    meter.dataset.lifeRemaining = "128";
+    meter.dataset.lifeRows = "1";
+    meter.dataset.lifeTotal = "128";
+    meter.setAttribute("aria-label", "128 de 128 vidas restantes");
+    meter.style.setProperty("--ml-life-columns", "1");
+    meter.style.setProperty("--ml-life-rows", "1");
+
+    const summary = document.createElement("span");
+    summary.className = "ml-lives-summary";
+    summary.dataset.lifeSummary = "true";
+    const heart = document.createElement("span");
+    heart.className = "ml-lives-summary-heart";
+    heart.setAttribute("aria-hidden", "true");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("class", "ml-life-heart-svg");
+    svg.setAttribute("viewBox", "0 0 32 30");
+    const pathElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathElement.setAttribute("d", "M16 28.2 3.8 16.7C-2 11.1.7 1.8 8.6 1.8c3.3 0 5.8 1.8 7.4 4.2 1.6-2.4 4.1-4.2 7.4-4.2 7.9 0 10.6 9.3 4.8 14.9L16 28.2Z");
+    svg.append(pathElement);
+    heart.append(svg);
+    const count = document.createElement("strong");
+    count.textContent = "× 128";
+    const total = document.createElement("span");
+    total.textContent = "de 128";
+    summary.append(heart, count, total);
+    meter.replaceChildren(summary);
+  });
+  await captureNativeDisplay(page, "lives-compact-128");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.documentElement.dataset.motionLevelsPlaygroundApi === "ready");
 }
 
 async function prepareNativeJugarCapture(page: Page): Promise<void> {
@@ -2564,6 +2631,7 @@ async function verifyJugarVisualBaseline(
 }
 
 async function captureStableNativeDisplay(page: Page, name: string): Promise<void> {
+  await assertPlayerDisplayGeometry(page, name);
   if (captureDirectory) {
     const nativeDisplay = page.locator(".display-preview-native");
     const previousStyle = await nativeDisplay.getAttribute("style");
@@ -2591,12 +2659,7 @@ async function captureStableNativeDisplay(page: Page, name: string): Promise<voi
       }, previousStyle);
     }
   }
-  await page.evaluate(async () => {
-    const api = (window as BrowserPlaygroundWindow).ml;
-    if (!api) throw new Error("window.ml is not ready");
-    await api.capture(["display", "boardPhysical"]);
-  });
-  await captureNativeDisplay(page, name);
+  await captureNativeDisplay(page, name, true);
 }
 
 async function saveBrowserCaptures(captures: Record<string, BrowserPlaygroundCapture>, name: string): Promise<void> {

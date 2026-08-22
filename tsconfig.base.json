@@ -19,5 +19,8 @@
     "types": [
       "node"
     ]
-  }
+  },
+  "files": [
+    "types/css.d.ts"
+  ]
 }

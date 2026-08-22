@@ -5,6 +5,12 @@ import "./styles.css";
 import { App } from "./App.tsx";
 import { installFavicon } from "./favicon.ts";
 
+import.meta.glob("../../../games/*/src/display.css", { eager: true });
+
+if (import.meta.env.DEV) {
+  (globalThis as typeof globalThis & { mlDisplayDevelopment?: boolean }).mlDisplayDevelopment = true;
+}
+
 installFavicon();
 
 const rootElement = document.getElementById("root")!;

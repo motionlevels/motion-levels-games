@@ -5,29 +5,41 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-games/game-sdk";
 import {
+  DisplayStack,
+  DisplayStage,
+  EventRail,
   FloorPreview,
   FramePreviewPanel,
   GameDisplayShell,
   LivesMeter,
   MetricPanel,
   MetricRow,
+  PlayerCard,
   PlayerDisplayRuntimeProvider,
   PlayerReadyOverlay,
+  PlayerRoster,
   PlayerScorePanel,
+  ProgressMeter,
+  ResultOverlay,
   RoundStrip,
+  StageWithSidebar,
+  TrajectoryLane,
   VersusScoreboard,
   floorTileAfterKeyboardNavigation
 } from "../src/index.tsx";
+import { normalizeLivesForDisplay } from "../src/lives-meter.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-const componentSource = readFileSync(new URL("../src/index.tsx", import.meta.url), "utf8");
+const livesComponentSource = readFileSync(new URL("../src/lives-meter.tsx", import.meta.url), "utf8");
 
-test("Ping Pong motion is namespaced and honors reduced motion", () => {
-  assert.match(styleSource, /\.ping-pong-rally-lane/);
-  assert.match(styleSource, /\.ping-pong-ball-trail/);
-  assert.match(styleSource, /@keyframes pingPongScorePop/);
+test("Trajectory motion is namespaced and honors reduced motion", () => {
+  assert.match(styleSource, /\.ml-trajectory-lane/);
+  assert.match(styleSource, /\.ml-trajectory-trail-point/);
+  assert.match(styleSource, /@keyframes ml-trajectory-impact/);
   assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(styleSource, /\.ping-pong-display \*/);
+  assert.match(styleSource, /\.ml-trajectory-marker/);
+  assert.match(styleSource, /\.ml-trajectory-lane\.is-moving-left \.ml-trajectory-marker-core/);
+  assert.match(styleSource, /\.ml-trajectory-lane\.is-moving-right \.ml-trajectory-marker-core/);
 });
 
 test("paused display shells freeze presentation keyframes", () => {
@@ -38,8 +50,8 @@ test("paused display shells freeze presentation keyframes", () => {
   );
 });
 
-test("Ping Pong start countdown fits the center scoreboard card", () => {
-  assert.match(styleSource, /\.ping-pong-display\.is-phase-starting \.ml-versus-center strong \{[\s\S]*font-size: clamp\(68px, 4\.4vw, 86px\);[\s\S]*white-space: nowrap;/u);
+test("Versus center values fit the scoreboard card", () => {
+  assert.match(styleSource, /\.ml-versus-center strong \{[\s\S]*font-size: clamp\(68px, 4\.4vw, 86px\);[\s\S]*white-space: nowrap;/u);
 });
 
 test("MetricPanel renders label and value without app dependencies", () => {
@@ -90,63 +102,202 @@ test("layout primitives expose their semantic labels and column contract", () =>
   assert.match(row, /--ml-metric-columns:4/);
   assert.match(preview, /ml-frame-preview-panel arena/);
   assert.match(preview, /Juego en el suelo/);
+  assert.match(preview, /data-display-containment="frame-preview"/);
+  assert.match(preview, /data-display-containment="floor-preview"/);
   assert.equal((preview.match(/data-tile-x=/g) ?? []).length, 512);
 });
 
-test("LivesMeter renders red remaining hearts and gray lost hearts", () => {
+test("shared stage recipes expose explicit containment without constraining game content", () => {
+  const stage = React.createElement(DisplayStage, {
+    detail: "Ronda 2",
+    eyebrow: "Objetivo",
+    label: "Arena principal",
+    title: "Protege el núcleo"
+  }, React.createElement("div", null, "stage"));
+  const sidebar = React.createElement(StageWithSidebar, {
+    side: "left",
+    sidebar: React.createElement("div", null, "metrics"),
+    stage
+  });
+  const stack = renderToStaticMarkup(React.createElement(DisplayStack, {
+    bottom: React.createElement(EventRail, { message: "Mantén la posición", tone: "green" }),
+    top: React.createElement("div", null, "hero")
+  }, sidebar));
+
+  assert.match(stack, /data-display-containment="display-stack"/);
+  assert.match(stack, /--ml-display-stack-rows:auto minmax\(0, 1fr\) auto/);
+  assert.match(stack, /ml-stage-with-sidebar is-sidebar-left/);
+  assert.match(stack, /data-display-containment="stage-main"/);
+  assert.match(stack, /aria-label="Arena principal"/);
+  assert.match(stack, /data-display-containment="stage-content"/);
+  assert.match(stack, /role="status"/);
+  assert.match(stack, /data-display-tone="green"/);
+});
+
+test("feedback, progress, and roster primitives normalize values and retain semantics", () => {
+  const player = { color: "#36d9ff" as const, label: "Equipo Norte", score: 12 };
+  const roster = React.createElement(PlayerRoster, { columns: 99 }, React.createElement(PlayerCard, {
+    featured: true,
+    player,
+    rank: 1,
+    status: "Líder",
+    target: 10
+  }));
+  const progress = React.createElement(ProgressMeter, {
+    label: "Progreso",
+    max: 0,
+    value: 42,
+    valueLabel: "42 puntos"
+  });
+  const nonPointCard = React.createElement(PlayerCard, {
+    player,
+    scoreUnit: "rondas ganadas",
+    target: 15
+  });
+  const html = renderToStaticMarkup(React.createElement(
+    "div",
+    null,
+    roster,
+    progress,
+    nonPointCard,
+    React.createElement(ResultOverlay, {
+      message: "Gran partida",
+      title: "Victoria",
+      tone: "green"
+    })
+  ));
+
+  assert.match(html, /data-roster-columns="8"/);
+  assert.match(html, /aria-label="Equipo Norte: 12 puntos"/);
+  assert.match(html, /aria-label="Equipo Norte: 12 rondas ganadas"/);
+  assert.match(html, /aria-valuetext="12 de 15 rondas ganadas"/);
+  assert.match(html, /data-player-featured="true"/);
+  assert.match(html, /aria-valuenow="1"/);
+  assert.match(html, /aria-valuemax="1"/);
+  assert.match(html, /data-display-contained-by="content"/);
+  assert.match(html, /data-display-containment="result-overlay"/);
+  assert.match(html, /aria-live="assertive"/);
+  assert.match(styleSource, /\.ml-player-card\.is-muted\s*\{[^}]*filter:\s*saturate\(0\.54\) brightness\(0\.72\);[^}]*opacity:\s*0\.58;/s);
+  assert.match(styleSource, /\.ml-player-card\.is-recent\s*\{[^}]*animation:\s*ml-player-card-recent 720ms/s);
+  assert.equal(renderToStaticMarkup(React.createElement(ResultOverlay, {
+    title: "Oculto",
+    visible: false
+  })), "");
+});
+
+test("TrajectoryLane clamps normalized 2D geometry and bounds decorative history", () => {
+  const html = renderToStaticMarkup(React.createElement(TrajectoryLane, {
+    caption: "Trayectoria actual",
+    direction: "right",
+    impact: { position: { x: 0.9, y: -0.4 }, side: "right" },
+    left: { color: "#ff364a", label: "Rojo", value: 2 },
+    pace: 0.75,
+    position: { x: 1.7, y: -0.3 },
+    right: { color: "#2f73ff", label: "Azul", value: 4 },
+    trail: Array.from({ length: 20 }, (_, index) => ({
+      x: (index - 2) / 10,
+      y: (18 - index) / 10
+    }))
+  }));
+
+  assert.match(html, /data-display-containment="trajectory-lane"/);
+  assert.match(html, /data-display-containment="trajectory-track"/);
+  assert.doesNotMatch(html, /data-display-overflow="allow"/);
+  assert.match(html, /data-lane-position="1,0"/);
+  assert.match(html, /data-lane-position-x="1"/);
+  assert.match(html, /data-lane-position-y="0"/);
+  assert.match(html, /--ml-lane-position-x:100%/);
+  assert.match(html, /--ml-lane-position-y:0%/);
+  assert.match(html, /--ml-lane-transition-duration:105ms/);
+  assert.match(html, /data-lane-impact="right"/);
+  assert.match(html, /data-lane-impact-x="0\.9"/);
+  assert.match(html, /data-lane-impact-y="0"/);
+  assert.equal((html.match(/data-lane-trail-position=/g) ?? []).length, 12);
+  assert.equal((html.match(/data-display-item="trajectory-trail"/g) ?? []).length, 12);
+  assert.match(styleSource, /\.ml-trajectory-track\s*\{[^}]*overflow:\s*hidden;[^}]*position:\s*relative;/s);
+  assert.match(styleSource, /left:\s*clamp\([\s\S]*?var\(--ml-lane-position-x, 50%\)[\s\S]*?calc\(100% - var\(--ml-lane-marker-size\) \/ 2\)/s);
+  assert.match(styleSource, /top:\s*clamp\([\s\S]*?var\(--ml-lane-position-y, 50%\)[\s\S]*?calc\(100% - var\(--ml-lane-marker-size\) \/ 2\)/s);
+});
+
+test("LivesMeter renders stable inline SVG slots for remaining and lost hearts", () => {
   const html = renderToStaticMarkup(React.createElement(LivesMeter, { lives: 2, maxLives: 3 }));
 
   assert.match(html, /aria-label="2 de 3 vidas restantes"/);
+  assert.match(html, /data-lives-meter="true"/);
   assert.equal((html.match(/data-life-state="remaining"/g) ?? []).length, 2);
   assert.equal((html.match(/data-life-state="lost"/g) ?? []).length, 1);
-  assert.equal((html.match(/♥/g) ?? []).length, 3, "lost lives must remain filled heart shapes");
+  assert.equal((html.match(/class="ml-life-heart-svg"/g) ?? []).length, 3);
+  assert.equal((html.match(/data-life-slot=/g) ?? []).length, 3);
+  assert.equal((html.match(/data-display-scale-envelope="1\.25"/g) ?? []).length, 3);
+  assert.doesNotMatch(html, /♥/, "heart geometry must not depend on a platform font glyph");
   assert.match(styleSource, /\.ml-life-heart\.is-remaining\s*\{[^}]*color:\s*#ff2036;/s);
   assert.match(styleSource, /\.ml-life-heart\.is-lost\s*\{[^}]*color:\s*#566171;/s);
+  assert.match(styleSource, /\.ml-life-heart-svg\s*\{[^}]*fill:\s*currentColor;/s);
 });
 
-test("LivesMeter wraps excess hearts and keeps each cell inside its metric", () => {
+test("LivesMeter uses a deterministic two-axis grid with animation-safe slots", () => {
   const html = renderToStaticMarkup(React.createElement(LivesMeter, { lives: 12, maxLives: 12 }));
 
   assert.equal((html.match(/data-life-state="remaining"/g) ?? []).length, 12);
-  assert.match(styleSource, /\.ml-lives-meter\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-auto-flow:\s*row;[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*var\(--ml-life-size\)\),\s*1fr\)\);[\s\S]*overflow:\s*hidden;[\s\S]*container-type:\s*inline-size;/s);
-  assert.match(styleSource, /\.ml-life-heart\s*\{[\s\S]*font-size:\s*var\(--ml-life-size\);[\s\S]*max-width:\s*100%;/s);
+  assert.match(html, /data-life-columns="6"/);
+  assert.match(html, /data-life-rows="2"/);
+  assert.match(styleSource, /\.ml-lives-meter\s*\{[\s\S]*container-type:\s*size;[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(var\(--ml-life-columns, 1\), minmax\(0, 1fr\)\);[\s\S]*grid-template-rows:\s*repeat\(var\(--ml-life-rows, 1\), minmax\(0, 1fr\)\);[\s\S]*overflow:\s*clip;/s);
+  assert.match(styleSource, /\.ml-life-heart\s*\{[\s\S]*contain:\s*size layout paint;[\s\S]*container-type:\s*size;[\s\S]*overflow:\s*clip;/s);
+  assert.match(styleSource, /\.ml-life-heart-visual\s*\{[\s\S]*height:\s*min\(76cqh, 76cqw, var\(--ml-life-size\)\);[\s\S]*width:\s*min\(76cqh, 76cqw, var\(--ml-life-size\)\);/s);
 });
 
 test("LivesMeter owns calm idle and life-change motion", () => {
-  assert.match(componentSource, /const previousLivesRef = useRef\(remainingLives\)/);
-  assert.match(componentSource, /lifeChange\.to > lifeChange\.from[\s\S]*?"is-regained"[\s\S]*?"is-losing"/);
-  assert.match(componentSource, /data-life-change=\{changeClass \|\| undefined\}/);
-  assert.match(styleSource, /\.ml-life-heart-glyph\s*\{[^}]*animation:\s*ml-heart-pulse 3\.4s/s);
-  assert.match(styleSource, /\.ml-life-heart\.is-losing\s*\{[^}]*animation:\s*ml-life-lost 900ms/s);
-  assert.match(styleSource, /\.ml-life-heart\.is-regained\s*\{[^}]*animation:\s*ml-life-regained 1s/s);
+  assert.match(livesComponentSource, /const previousLivesRef = useRef\(remainingLives\)/);
+  assert.match(livesComponentSource, /lifeChange\.to > lifeChange\.from[\s\S]*?"is-regained"[\s\S]*?"is-losing"/);
+  assert.match(livesComponentSource, /data-life-change=\{changeClass \|\| undefined\}/);
+  assert.match(styleSource, /\.ml-life-heart-visual\s*\{[^}]*animation:\s*ml-heart-pulse 3\.4s/s);
+  assert.match(styleSource, /\.ml-life-heart-visual\.is-losing\s*\{[^}]*animation:\s*ml-life-lost 900ms/s);
+  assert.match(styleSource, /\.ml-life-heart-visual\.is-regained\s*\{[^}]*animation:\s*ml-life-regained 1s/s);
   assert.match(styleSource, /@keyframes ml-heart-pulse/);
   assert.match(styleSource, /@keyframes ml-life-lost/);
   assert.match(styleSource, /@keyframes ml-life-regained/);
   assert.match(
     styleSource,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.ml-life-heart,[\s\S]*?\.ml-life-heart-glyph\s*\{\s*animation:\s*none;/,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.ml-life-heart-visual\s*\{\s*animation:\s*none;/,
     "heart motion must honor reduced-motion preferences"
   );
 });
 
-test("Hola Mundo result motion is distinct and honors reduced motion", () => {
-  assert.match(styleSource, /\.hello-world-display\.is-result-win \.ml-solo-message\s*\{[^}]*helloWorldWinGlow/s);
-  assert.match(styleSource, /\.hello-world-display\.is-result-lose \.ml-solo-message\s*\{[^}]*helloWorldLosePulse/s);
-  assert.match(styleSource, /@keyframes helloWorldResultEnter/);
+test("LivesMeter normalizes invalid snapshots and caps visual DOM growth", () => {
+  const invalid = normalizeLivesForDisplay(Number.NaN, -4);
+  const overLimit = normalizeLivesForDisplay(37, 100);
+  const html = renderToStaticMarkup(React.createElement(LivesMeter, { lives: 37, maxLives: 100 }));
+
+  assert.equal(invalid.totalLives, 0);
+  assert.equal(invalid.remainingLives, 0);
+  assert.ok(invalid.diagnostics.length >= 2);
+  assert.equal(overLimit.compact, true);
+  assert.equal(overLimit.renderedSlots, 0);
+  assert.match(html, /data-life-mode="compact"/);
+  assert.match(html, /data-life-summary="true"/);
+  assert.match(html, /× 37/);
+  assert.match(html, /de 100/);
+  assert.doesNotMatch(html, /data-life-slot=/);
+  assert.equal((html.match(/class="ml-life-heart-svg"/g) ?? []).length, 1);
+});
+
+test("shared result motion is contained and honors reduced motion", () => {
+  assert.match(styleSource, /\.ml-result-overlay-card\s*\{[^}]*animation:\s*ml-result-overlay-enter/s);
+  assert.match(styleSource, /@keyframes ml-result-overlay-enter/);
   assert.match(
     styleSource,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.hello-world-display\.is-result-win[\s\S]*?animation:\s*none;/
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.ml-result-overlay-card[\s\S]*?animation:\s*none;/
   );
 });
 
 test("primary solo metrics use distance-readable typography", () => {
   assert.match(
     styleSource,
-    /\.ml-solo-number-row \.ml-metric-value\s*\{[^}]*font-size:\s*clamp\(136px, 8\.2vw, 164px\);/s
+    /\.ml-solo-number-row \.ml-metric-value\s*\{[^}]*font-size:\s*clamp\(104px, 28cqw, 150px\);/s
   );
   assert.match(
     styleSource,
-    /\.ml-solo-number-row \.ml-lives-meter\s*\{[^}]*--ml-life-size:\s*clamp\(64px, 13cqw, 136px\);/s
+    /\.ml-solo-number-row \.ml-lives-meter\s*\{[^}]*--ml-life-size:\s*clamp\(64px, 7vw, 124px\);/s
   );
 });
 
@@ -257,6 +408,7 @@ test("FloorPreview sideways rotation swaps the visual board dimensions", () => {
     styleSource,
     /\.ml-frame-preview-panel \.ml-floor-preview:is\(\[data-floor-rotation="90"\], \[data-floor-rotation="270"\]\)\s*\{[^}]*height:\s*auto;[^}]*width:\s*360px;/s
   );
+  assert.match(styleSource, /\.ml-floor-preview\s*\{[^}]*box-sizing:\s*border-box;/s);
 });
 
 test("FloorPreview keeps pointer hover separate from persistent focus", () => {
@@ -285,6 +437,8 @@ test("GameDisplayShell renders title and phase", () => {
 
   assert.match(html, /Hello World/);
   assert.match(html, /running/);
+  assert.match(html, /data-display-root="true"/);
+  assert.match(html, /data-display-containment="content"/);
 });
 
 test("GameDisplayShell replaces the live TV status while the runner is paused", () => {
@@ -339,21 +493,23 @@ test("PlayerReadyOverlay renders shared waiting and countdown states in Spanish"
   );
 });
 
-test("GameDisplayShell balances its brand and status rails", () => {
-  assert.match(styleSource, /--ml-header-side-width:\s*360px;/);
+test("GameDisplayShell balances its brand and status rails inside a paint-contained root", () => {
+  assert.match(styleSource, /--ml-header-side-width:\s*clamp\(260px, 18vw, 330px\);/);
   assert.match(
     styleSource,
     /\.ml-display-header\s*\{[^}]*grid-template-columns:\s*var\(--ml-header-side-width\) minmax\(0, 1fr\) var\(--ml-header-side-width\);/s
   );
   assert.match(
     styleSource,
-    /\.ml-tv-brand,\s*\.ml-status-pill\s*\{[^}]*min-height:\s*76px;[^}]*width:\s*100%;/s
+    /\.ml-tv-brand,\s*\.ml-status-pill\s*\{[^}]*min-height:\s*68px;[^}]*width:\s*100%;/s
   );
   assert.match(
     styleSource,
-    /\.ml-status-pill\s*\{[^}]*clip-path:\s*polygon\(4% 0, 100% 0, 100% 100%, 4% 100%, 0 50%\);/s,
-    "the status rail must mirror the brand rail toward the title"
+    /\.ml-display-content\s*\{[^}]*contain:\s*layout paint;[^}]*overflow:\s*hidden;[^}]*position:\s*relative;/s,
+    "absolute game content must be scoped to the shell content region"
   );
+  assert.match(styleSource, /\.ml-tv-title\s*\{[^}]*border-radius:\s*var\(--ml-radius-md\);/s);
+  assert.match(styleSource, /\.ml-status-pill\s*\{[^}]*border-radius:\s*var\(--ml-radius-md\);/s);
 });
 
 test("RoundStrip can render a full match path with pending rounds", () => {

@@ -241,6 +241,139 @@
   position: absolute;
 }
 
+.games-renderer-fallback {
+  --fallback-accent: #36d9ff;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(54, 217, 255, 0.12), transparent 34%),
+    radial-gradient(circle at 80% 78%, rgba(47, 115, 255, 0.14), transparent 36%),
+    linear-gradient(145deg, #03060c, #08101c 52%, #03060c);
+  color: #f7f9fc;
+  display: grid;
+  gap: 34px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  overflow: hidden;
+  padding: 42px 54px 50px;
+  width: 100%;
+}
+
+.games-renderer-fallback__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.games-renderer-fallback__brand,
+.games-renderer-fallback__connection {
+  align-items: center;
+  display: inline-flex;
+  font-size: 24px;
+  font-weight: 900;
+  gap: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.games-renderer-fallback__brand > i {
+  background: url("/motion-levels-icon.png?v=20260713") center / contain no-repeat;
+  filter: drop-shadow(0 0 20px rgba(54, 217, 255, 0.36));
+  height: 68px;
+  width: 68px;
+}
+
+.games-renderer-fallback__connection {
+  color: #ffcf5a;
+}
+
+.games-renderer-fallback__connection > i {
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 18px currentColor;
+  height: 12px;
+  width: 12px;
+}
+
+.games-renderer-fallback__connection.is-connected {
+  color: #7ee787;
+}
+
+.games-renderer-fallback__main {
+  align-content: center;
+  display: grid;
+  justify-items: center;
+  min-height: 0;
+  min-width: 0;
+  text-align: center;
+}
+
+.games-renderer-fallback__main > span {
+  color: var(--fallback-accent);
+  font-size: 27px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.games-renderer-fallback__main h1 {
+  font-size: clamp(112px, 9vw, 176px);
+  font-weight: 950;
+  letter-spacing: -0.055em;
+  line-height: 0.9;
+  margin: 32px 0 28px;
+  max-width: 1520px;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.games-renderer-fallback__main p {
+  color: #b7c4d6;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.22;
+  margin: 0;
+  max-width: 1120px;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.games-renderer-fallback__metrics {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 0.65fr));
+  min-width: 0;
+}
+
+.games-renderer-fallback__metrics article {
+  align-content: center;
+  background: rgba(9, 17, 29, 0.88);
+  border: 1px solid rgba(133, 162, 195, 0.26);
+  border-radius: 18px;
+  display: grid;
+  gap: 12px;
+  min-height: 150px;
+  min-width: 0;
+  padding: 24px 30px;
+}
+
+.games-renderer-fallback__metrics span {
+  color: #91a1b7;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.games-renderer-fallback__metrics strong {
+  color: #ffffff;
+  font-size: clamp(38px, 3.4vw, 66px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  line-height: 0.95;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
 html,
 body,
 #root {

@@ -57,7 +57,10 @@ export function FramePreviewPanel({
   className?: string;
 }) {
   return (
-    <section className={`ml-frame-preview-panel ${className}`.trim()}>
+    <section
+      className={`ml-frame-preview-panel ${className}`.trim()}
+      data-display-containment="frame-preview"
+    >
       <span>{label}</span>
       <FloorPreview ariaLabel={label} frame={frame} />
     </section>
@@ -287,6 +290,7 @@ export function FloorPreview({
       aria-colcount={displaySize.width}
       aria-label={ariaLabel}
       aria-rowcount={displaySize.height}
+      data-display-containment="floor-preview"
       data-floor-rotation={floorRotation}
     >
       {frame.cells.map((cell) => {

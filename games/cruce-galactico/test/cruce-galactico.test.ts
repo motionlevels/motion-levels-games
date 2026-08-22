@@ -124,7 +124,8 @@ test("fixtures and Spanish display cover the main metric states", () => {
   assert.doesNotMatch(html, /Score|Lives|Time/);
 
   const finishedHtml = renderToStaticMarkup(React.createElement(PlayerDisplay, { snapshot: finishedSnapshot, frame: finishedFrame }));
-  assert.match(finishedHtml, /is-celebrating/);
+  assert.match(finishedHtml, /data-display-containment="result-overlay"/);
+  assert.match(finishedHtml, /ml-result-overlay-green/);
   assert.match(finishedHtml, /¡Portal alcanzado!/);
 });
 

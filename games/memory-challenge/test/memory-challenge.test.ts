@@ -84,5 +84,7 @@ test("fixtures and Spanish display cover recall, failure, and victory", () => {
   const html = renderToStaticMarkup(React.createElement(PlayerDisplay, { snapshot: finishedSnapshot }));
   assert.match(html, /Reto de memoria/);
   assert.match(html, /Camino completado/);
+  assert.match(html, /aria-label="[^"]+: [0-9]+ baldosas"/);
+  assert.match(html, /aria-valuetext="[0-9]+ de [0-9]+ baldosas"/);
   assert.doesNotMatch(html, /\.\.\./);
 });

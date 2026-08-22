@@ -101,7 +101,17 @@ test("fixtures and Spanish multiplayer display cover running and both wins", () 
   assert.match(runningHtml, /Jugador 1/);
   assert.doesNotMatch(runningHtml, /Player 1/);
   assert.match(runningHtml, /Longitud de estela/);
+  assert.match(runningHtml, /ml-display-stack/);
+  assert.match(runningHtml, /ml-display-stage/);
+  assert.match(runningHtml, /ml-metric-row/);
+  assert.match(runningHtml, /ml-player-roster/);
+  assert.match(runningHtml, /ml-player-card/);
+  assert.match(runningHtml, /aria-label="[^"]+: [0-9]+ rondas ganadas"/);
+  assert.match(runningHtml, /ml-progress-meter/);
+  assert.match(runningHtml, /ml-event-rail/);
+  assert.doesNotMatch(runningHtml, /duelo-/);
   assert.match(roundHtml, /La siguiente ronda empieza en breve/);
+  assert.match(roundHtml, /ml-result-overlay/);
   assert.match(finishedHtml, /rondas ganadas/);
   assert.doesNotMatch(finishedHtml, /Score|Round winner|Game winner/);
 });

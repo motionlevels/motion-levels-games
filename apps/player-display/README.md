@@ -23,8 +23,12 @@ Open:
 http://127.0.0.1:4104
 ```
 
-The default HUD is the arcade player display. The previous display remains
-available for recovery or comparison:
+Revision-matched games render their own display from the bundled game registry.
+While that renderer is loading, the shell shows a deliberately generic recovery
+surface rather than maintaining a second game-specific implementation.
+
+The legacy arcade HUD remains available for non-registry sources, while the
+previous display can still be opened for recovery or comparison:
 
 ```txt
 http://127.0.0.1:4104/?hud=classic

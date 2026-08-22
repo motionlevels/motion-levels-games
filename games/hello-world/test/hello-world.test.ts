@@ -182,10 +182,10 @@ test("fixtures and player display cover readiness, lives, and both results", () 
   assert.equal((runningHtml.match(/data-life-state="remaining"/g) ?? []).length, 3);
   assert.equal((damagedHtml.match(/data-life-state="remaining"/g) ?? []).length, 2);
   assert.equal((damagedHtml.match(/data-life-state="lost"/g) ?? []).length, 1);
-  assert.match(winningHtml, /is-result-win/);
+  assert.match(winningHtml, /ml-result-overlay-green/);
   assert.match(winningHtml, /¡Ganaste!/);
   assert.match(winningHtml, /Reinicio en 4/);
-  assert.match(losingHtml, /is-result-lose/);
+  assert.match(losingHtml, /ml-result-overlay-red/);
   assert.match(losingHtml, /Sin vidas/);
   assert.equal((losingHtml.match(/data-life-state="lost"/g) ?? []).length, 3);
   assert.doesNotMatch(runningHtml, /Score|Lives|Message/);

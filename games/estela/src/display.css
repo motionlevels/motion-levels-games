@@ -1,0 +1,66 @@
+.estela-display .estela-player-card.is-eliminated {
+  filter: grayscale(.78);
+  opacity: .48;
+}
+
+.estela-display .estela-player-card.is-round-winner,
+.estela-display .estela-player-card.is-game-winner {
+  animation: estelaWinnerCard .7s ease-in-out infinite alternate;
+}
+
+.estela-display .estela-card-footer {
+  display: grid;
+  gap: 10px;
+}
+
+.estela-display .estela-round-progress {
+  --ml-tone: var(--ml-player);
+}
+
+.estela-display .estela-trail-stat {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.estela-display .estela-trail-stat strong {
+  color: var(--ml-player);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.estela-display .estela-result.is-round-win {
+  animation: estelaRoundWin .58s ease-in-out infinite alternate;
+}
+
+.estela-display .estela-result.is-game-win {
+  animation: estelaGameWin .9s linear infinite;
+  background: linear-gradient(100deg,rgba(3,6,14,.94),rgba(216,92,255,.28),rgba(38,217,255,.28),rgba(3,6,14,.94));
+  background-size: 220% 100%;
+}
+
+@keyframes estelaWinnerCard {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.3); }
+}
+
+@keyframes estelaRoundWin {
+  from { box-shadow: inset 0 0 40px rgba(54,217,255,.14); }
+  to { box-shadow: inset 0 0 110px rgba(216,92,255,.42); }
+}
+
+@keyframes estelaGameWin {
+  from { background-position: 0 0; }
+  to { background-position: 100% 0; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .estela-display *,
+  .estela-display *::before,
+  .estela-display *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

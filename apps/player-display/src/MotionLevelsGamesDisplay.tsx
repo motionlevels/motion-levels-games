@@ -22,6 +22,7 @@ type GamesDisplayInput = {
 declare global {
   interface Window {
     MotionLevelsGamesDisplay?: GamesDisplayRuntime;
+    MotionLevelsGamesDisplays?: Record<string, GamesDisplayRuntime>;
   }
 }
 
@@ -34,6 +35,7 @@ type MotionLevelsGamesDisplayProps = {
 export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: MotionLevelsGamesDisplayProps) {
   const floorRotationDegrees = useVenueFloorRotation();
   const hostRef = useRef<HTMLDivElement>(null);
+  const runtimeRef = useRef<GamesDisplayRuntime | null>(null);
   const [renderState, setRenderState] = useState<GamesDisplayRenderState>(() => renderLoadingState(status.sourceRevision || ""));
   const revision = status.sourceRevision || "";
   const gameId = gameID(status);
@@ -70,6 +72,7 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
       onError: (reason) => {
         if (cancelled) return;
         safelyUnmount(mountedRuntime, host);
+        if (runtimeRef.current === mountedRuntime) runtimeRef.current = null;
         mountedRuntime = null;
         publish({
           status: "error",
@@ -95,12 +98,15 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
           .then((runtime) => {
             if (cancelled) return;
             mountedRuntime = runtime;
+            runtimeRef.current = runtime;
             runtime.mount(host, runtimeInput());
             if (mountedRuntime !== runtime) return;
             publish({ status: "ready", expectedRevision: revision, loadedRevision: runtime.revision, attempt, error: "" });
           })
           .catch((reason) => {
             if (cancelled) return;
+            safelyUnmount(mountedRuntime, host);
+            if (runtimeRef.current === mountedRuntime) runtimeRef.current = null;
             mountedRuntime = null;
             connect(attempt + 1, displayErrorMessage(reason));
           });
@@ -112,12 +118,13 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
       cancelled = true;
       if (retryHandle !== null) window.clearTimeout(retryHandle);
       safelyUnmount(mountedRuntime, host);
+      if (runtimeRef.current === mountedRuntime) runtimeRef.current = null;
     };
   }, [gameId, hasSnapshot, revision, onStateChange]);
 
   useEffect(() => {
     const host = hostRef.current;
-    const runtime = window.MotionLevelsGamesDisplay;
+    const runtime = runtimeRef.current;
     if (!host || renderState.status !== "ready" || runtime?.revision !== revision || !status.gameSnapshot) return;
     try {
       runtime.update(host, {
@@ -128,6 +135,7 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
         floorRotationDegrees,
         onError: (reason) => {
           safelyUnmount(runtime, host);
+          if (runtimeRef.current === runtime) runtimeRef.current = null;
           const next = {
             status: "error",
             expectedRevision: revision,
@@ -141,6 +149,7 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
       });
     } catch (reason) {
       safelyUnmount(runtime, host);
+      if (runtimeRef.current === runtime) runtimeRef.current = null;
       const next = {
         status: "error",
         expectedRevision: revision,
@@ -179,38 +188,225 @@ function gameID(status: DisplayStatus) {
     : String(status.gameSnapshot?.currentGame || status.currentGame);
 }
 
-let pendingRuntime: { revision: string; promise: Promise<GamesDisplayRuntime>; script: HTMLScriptElement } | null = null;
+const gamesDisplayLegacyStylesID = "motion-levels-games-display-styles";
+const gamesDisplayExternalStylesID = "motion-levels-games-display-stylesheet";
+
+let runtimeLoadGeneration = 0;
+let acceptedRuntime: GamesDisplayRuntime | null = null;
+let acceptedStylesheet: HTMLStyleElement | HTMLLinkElement | null = null;
+let acceptedLegacyStyleText: string | null = null;
+
+let pendingRuntime: {
+  generation: number;
+  revision: string;
+  promise: Promise<GamesDisplayRuntime>;
+  script: HTMLScriptElement;
+  stylesheet: HTMLLinkElement;
+  cancel(reason: Error): void;
+} | null = null;
 
 function loadRuntime(revision: string): Promise<GamesDisplayRuntime> {
-  const existing = window.MotionLevelsGamesDisplay;
-  if (existing?.revision === revision) return Promise.resolve(existing);
+  const existing = runtimeForRevision(revision);
+  const activeStylesheet = activeStylesheetForRevision(revision);
+  if (existing && activeStylesheet) {
+    acceptedRuntime = existing;
+    rememberAcceptedStylesheet(activeStylesheet);
+    window.MotionLevelsGamesDisplay = existing;
+    return Promise.resolve(existing);
+  }
   if (pendingRuntime?.revision === revision) return pendingRuntime.promise;
-  pendingRuntime?.script.remove();
+  pendingRuntime?.cancel(new Error("La carga anterior de la pantalla fue reemplazada"));
+
+  const generation = ++runtimeLoadGeneration;
+  const previousStylesheet = currentAcceptedStylesheet();
+  if (isLegacyStyle(previousStylesheet)) {
+    rememberAcceptedStylesheet(previousStylesheet);
+    previousStylesheet.removeAttribute("id");
+  }
+
+  const displayAssetURL = `${gamesAssetBaseURL()}/${encodeURIComponent(revision)}/display`;
+  const legacyStyle = document.createElement("style");
+  legacyStyle.id = gamesDisplayLegacyStylesID;
+  legacyStyle.media = "not all";
+  legacyStyle.dataset.motionLevelsGamesPendingRevision = revision;
+  const stylesheet = document.createElement("link");
+  stylesheet.rel = "stylesheet";
+  stylesheet.media = "not all";
+  stylesheet.href = `${displayAssetURL}/display.css`;
+  stylesheet.dataset.motionLevelsGamesRevision = revision;
   const script = document.createElement("script");
-  const promise = new Promise<GamesDisplayRuntime>((resolve, reject) => {
-    script.src = `${gamesAssetBaseURL()}/${encodeURIComponent(revision)}/display/display.js`;
-    script.async = true;
-    script.dataset.motionLevelsGamesRevision = revision;
+  script.src = `${displayAssetURL}/display.js`;
+  script.async = true;
+  script.dataset.motionLevelsGamesRevision = revision;
+  let rejectStylesheet: (reason: Error) => void = () => undefined;
+  const stylesheetReady = new Promise<void>((resolve, reject) => {
+    rejectStylesheet = reject;
+    stylesheet.onload = () => {
+      if (!isCurrentRuntimeLoad(generation)) {
+        stylesheet.remove();
+        discardStaleRuntimeRevision(revision);
+        reject(new Error("La carga de estilos fue reemplazada"));
+        return;
+      }
+      resolve();
+    };
+    stylesheet.onerror = () => {
+      if (!isCurrentRuntimeLoad(generation)) {
+        stylesheet.remove();
+        discardStaleRuntimeRevision(revision);
+        reject(new Error("La carga de estilos fue reemplazada"));
+        return;
+      }
+      reject(new Error("No se pudieron cargar los estilos de la pantalla del juego"));
+    };
+  });
+  let rejectRuntime: (reason: Error) => void = () => undefined;
+  const runtimeReady = new Promise<GamesDisplayRuntime>((resolve, reject) => {
+    rejectRuntime = reject;
     script.onload = () => {
-      const runtime = window.MotionLevelsGamesDisplay;
-      if (runtime?.revision !== revision) {
+      if (!isCurrentRuntimeLoad(generation)) {
+        script.remove();
+        discardStaleRuntimeRevision(revision);
+        reject(new Error("La carga de la pantalla fue reemplazada"));
+        return;
+      }
+      const runtime = runtimeForRevision(revision);
+      if (!runtime) {
         reject(new Error("La revisión de la pantalla no coincide con el juego"));
         return;
       }
       resolve(runtime);
     };
-    script.onerror = () => reject(new Error("No se pudo cargar la pantalla del juego"));
-    document.head.append(script);
+    script.onerror = () => {
+      if (!isCurrentRuntimeLoad(generation)) {
+        script.remove();
+        discardStaleRuntimeRevision(revision);
+        reject(new Error("La carga de la pantalla fue reemplazada"));
+        return;
+      }
+      reject(new Error("No se pudo cargar la pantalla del juego"));
+    };
   });
-  pendingRuntime = { revision, promise, script };
-  const clearPending = () => {
-    if (pendingRuntime?.promise === promise) pendingRuntime = null;
-  };
-  void promise.then(clearPending, () => {
+  let rejectCancellation: (reason: Error) => void = () => undefined;
+  const cancellation = new Promise<never>((_resolve, reject) => {
+    rejectCancellation = reject;
+  });
+  const transaction = Promise.allSettled([stylesheetReady, runtimeReady]).then(([stylesheetResult, runtimeResult]) => {
+    if (!isCurrentRuntimeLoad(generation)) throw new Error("La carga de la pantalla fue reemplazada");
+    if (runtimeResult.status === "rejected") throw runtimeResult.reason;
+
+    if (stylesheetResult.status === "fulfilled") {
+      stylesheet.media = "all";
+      legacyStyle.remove();
+      if (previousStylesheet !== stylesheet) previousStylesheet?.remove();
+      stylesheet.id = gamesDisplayExternalStylesID;
+      rememberAcceptedStylesheet(stylesheet);
+    } else if (legacyStyle.dataset.revision === revision && legacyStyle.textContent?.trim()) {
+      stylesheet.remove();
+      legacyStyle.media = "all";
+      if (previousStylesheet !== legacyStyle) previousStylesheet?.remove();
+      rememberAcceptedStylesheet(legacyStyle);
+    } else {
+      throw stylesheetResult.reason;
+    }
+
+    acceptedRuntime = runtimeResult.value;
+    window.MotionLevelsGamesDisplay = runtimeResult.value;
     script.remove();
-    clearPending();
+    return runtimeResult.value;
+  });
+  const promise = Promise.race([transaction, cancellation]);
+  let cleanedUp = false;
+  const cleanupFailedLoad = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    script.remove();
+    stylesheet.remove();
+    legacyStyle.remove();
+    if (isLegacyStyle(previousStylesheet) && previousStylesheet.isConnected) {
+      previousStylesheet.id = gamesDisplayLegacyStylesID;
+    }
+    restoreAcceptedRuntime(revision);
+  };
+  const cancel = (reason: Error) => {
+    rejectStylesheet(reason);
+    rejectRuntime(reason);
+    rejectCancellation(reason);
+    cleanupFailedLoad();
+  };
+  pendingRuntime = { generation, revision, promise, script, stylesheet, cancel };
+  document.head.append(legacyStyle, stylesheet, script);
+  void promise.then(() => {
+    if (pendingRuntime?.generation === generation) pendingRuntime = null;
+  }, () => {
+    cleanupFailedLoad();
+    if (pendingRuntime?.generation === generation) pendingRuntime = null;
   });
   return promise;
+}
+
+function runtimeForRevision(revision: string): GamesDisplayRuntime | null {
+  return window.MotionLevelsGamesDisplays?.[revision]
+    ?? (window.MotionLevelsGamesDisplay?.revision === revision ? window.MotionLevelsGamesDisplay : null);
+}
+
+function activeStylesheetForRevision(revision: string): HTMLStyleElement | HTMLLinkElement | null {
+  const external = document.getElementById(gamesDisplayExternalStylesID);
+  if (external instanceof HTMLLinkElement && external.dataset.motionLevelsGamesRevision === revision) return external;
+  const legacy = document.getElementById(gamesDisplayLegacyStylesID);
+  if (legacy instanceof HTMLStyleElement && legacy.dataset.revision === revision && legacy.media !== "not all") return legacy;
+  return null;
+}
+
+function currentAcceptedStylesheet(): HTMLStyleElement | HTMLLinkElement | null {
+  if (acceptedStylesheet?.isConnected) return acceptedStylesheet;
+  const external = document.getElementById(gamesDisplayExternalStylesID);
+  if (external instanceof HTMLLinkElement) return external;
+  const legacy = document.getElementById(gamesDisplayLegacyStylesID);
+  return legacy instanceof HTMLStyleElement && legacy.media !== "not all" ? legacy : null;
+}
+
+function isLegacyStyle(element: Element | null): element is HTMLStyleElement {
+  return element instanceof HTMLStyleElement;
+}
+
+function rememberAcceptedStylesheet(stylesheet: HTMLStyleElement | HTMLLinkElement): void {
+  acceptedStylesheet = stylesheet;
+  acceptedLegacyStyleText = stylesheet instanceof HTMLStyleElement ? stylesheet.textContent ?? "" : null;
+}
+
+function isCurrentRuntimeLoad(generation: number): boolean {
+  return pendingRuntime?.generation === generation;
+}
+
+function restoreAcceptedRuntime(rejectedRevision: string): void {
+  if (window.MotionLevelsGamesDisplay?.revision !== rejectedRevision) return;
+  if (acceptedRuntime) {
+    window.MotionLevelsGamesDisplay = acceptedRuntime;
+  } else {
+    delete window.MotionLevelsGamesDisplay;
+  }
+}
+
+function discardStaleRuntimeRevision(revision: string): void {
+  if (pendingRuntime?.revision === revision) return;
+  restoreAcceptedRuntime(revision);
+  if (acceptedRuntime?.revision === revision) return;
+  const legacyStyle = document.getElementById(gamesDisplayLegacyStylesID);
+  if (
+    acceptedStylesheet instanceof HTMLStyleElement
+    && acceptedRuntime
+    && acceptedLegacyStyleText !== null
+  ) {
+    if (legacyStyle && legacyStyle !== acceptedStylesheet) legacyStyle.remove();
+    if (!acceptedStylesheet.isConnected) document.head.append(acceptedStylesheet);
+    acceptedStylesheet.id = gamesDisplayLegacyStylesID;
+    acceptedStylesheet.media = "all";
+    acceptedStylesheet.textContent = acceptedLegacyStyleText;
+    acceptedStylesheet.dataset.revision = acceptedRuntime.revision;
+  } else if (legacyStyle instanceof HTMLStyleElement && legacyStyle.dataset.revision === revision) {
+    legacyStyle.remove();
+  }
 }
 
 function gamesAssetBaseURL() {

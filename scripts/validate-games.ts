@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isStableGameId } from "../packages/game-sdk/src/index.ts";
 import { gamePackageRegistry } from "../packages/runtime/src/gameplayRegistry.ts";
+import { livesSnapshotContractProblems } from "./lib/lives-snapshot-contract.ts";
 
 type ManifestModule = {
   manifest?: {
@@ -274,6 +275,8 @@ for (const gameId of gameDirs) {
     problems.push(`${gameId}: could not import src/manifest.ts (${errorMessage(error)})`);
   }
 
+  await validateFixtureSnapshotLives(gameId, gameRoot, problems);
+
   try {
     const readme = await readFile(path.join(gameRoot, "README.md"), "utf8");
     if (!readme.includes(gameId)) {
@@ -318,6 +321,38 @@ async function validateGameImports(gameId: string, gameRoot: string, problemList
   } catch (error) {
     problemList.push(`${gameId}: failed to scan src imports (${errorMessage(error)})`);
   }
+}
+
+async function validateFixtureSnapshotLives(
+  gameId: string,
+  gameRoot: string,
+  problemList: string[]
+): Promise<void> {
+  try {
+    const fixtures = await import(pathToFileURL(path.join(gameRoot, "src/fixtures.ts")).href) as Record<string, unknown>;
+    const snapshotExports = Object.entries(fixtures).filter(([exportName]) => exportName.endsWith("Snapshot"));
+    if (snapshotExports.length === 0) {
+      problemList.push(`${gameId}: src/fixtures.ts must export at least one named *Snapshot fixture`);
+      return;
+    }
+
+    for (const [exportName, value] of snapshotExports) {
+      if (!isSnapshotLives(value)) {
+        problemList.push(`${gameId}: fixture ${exportName} must expose a numeric lives field`);
+        continue;
+      }
+      problemList.push(...livesSnapshotContractProblems(value, `${gameId}: fixture ${exportName}`));
+    }
+  } catch (error) {
+    problemList.push(`${gameId}: could not import src/fixtures.ts (${errorMessage(error)})`);
+  }
+}
+
+function isSnapshotLives(value: unknown): value is { lives: number; maxLives?: number } {
+  return Boolean(value)
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && typeof (value as { lives?: unknown }).lives === "number";
 }
 
 if (problems.length > 0) {

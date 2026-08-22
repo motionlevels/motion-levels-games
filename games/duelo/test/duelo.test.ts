@@ -209,19 +209,20 @@ test("fixtures cover every phase and displays keep long names without ellipses",
     const html = renderDisplay(snapshot);
     assert.match(html, /Duelo/);
     assert.match(html, /baldosas restantes/);
+    assert.match(html, /aria-label="[^"]+: [0-9]+ baldosas restantes"/);
     assert.doesNotMatch(html, /…|\.\.\./);
   }
   assert.match(renderDisplay(crowdedRunningSnapshot), /Alejandra del Equipo Relámpago/);
   assert.match(renderDisplay(finishedSnapshot), /Nueva partida en/);
 });
 
-test("Duelo display motion is namespaced and honors reduced motion", () => {
-  const css = readFileSync(new URL("../../../packages/display-kit/src/styles.css", import.meta.url), "utf8");
-  assert.match(css, /\.duelo-player-grid/);
-  assert.match(css, /\.duelo-display\.is-phase-finished/);
-  assert.match(css, /@keyframes dueloWinnerCard/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.duelo-display \*/);
-  assert.doesNotMatch(css, /\.duelo-[^{]+\{[^}]*text-overflow:\s*ellipsis/);
+test("Duelo display composes the shared display system", () => {
+  const source = readFileSync(new URL("../src/display.tsx", import.meta.url), "utf8");
+  assert.match(source, /DisplayStack/);
+  assert.match(source, /PlayerRoster/);
+  assert.match(source, /ProgressMeter/);
+  assert.match(source, /ResultOverlay/);
+  assert.doesNotMatch(source, /duelo-display|duelo-player/);
 });
 
 function occupyReadyZones(game: DueloGameInstance, atMillis: number): void {
