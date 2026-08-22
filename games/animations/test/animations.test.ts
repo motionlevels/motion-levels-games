@@ -88,7 +88,7 @@ test("the default rotation stays lit and leaves apagado as an explicit choice", 
   assert.ok(game.render().cells.some((cell) => cell.color !== "#000000"));
 });
 
-test("player display shows Motion Levels, the 16x32 floor, and a contextual countdown", () => {
+test("player display shows the ambient identity and contextual playback without duplicating the floor", () => {
   const game = createGame({
     options: { animation: "aurora", mode: "rotation", speed: 1, rotationSeconds: 20 },
     content: {
@@ -109,14 +109,16 @@ test("player display shows Motion Levels, the 16x32 floor, and a contextual coun
   assert.match(html, /ml-tv-brand-mark/);
   assert.match(html, />Motion</);
   assert.match(html, />Levels</);
-  assert.match(html, /Suelo 16 × 32/);
-  assert.match(html, /ml-floor-preview/);
-  assert.match(html, /aria-colcount="16"/);
-  assert.match(html, /aria-rowcount="32"/);
-  assert.equal(html.match(/class="ml-floor-tile/g)?.length, 512);
-  assert.match(html, /Cambio en/);
+  assert.doesNotMatch(html, /Suelo 16 × 32/);
+  assert.doesNotMatch(html, /ml-floor-preview/);
+  assert.match(html, /animation-lightfield/);
+  assert.match(html, /Paleta activa/);
+  assert.match(html, /Siguiente cambio/);
   assert.match(html, />0:04</);
   assert.match(html, /Siguiente animación/);
+  assert.match(html, /Secuencia activa/);
+  assert.match(html, />1 \/ 2</);
+  assert.match(html, />2<\/strong><span>Animaciones/);
   assert.doesNotMatch(html, />01</);
 });
 

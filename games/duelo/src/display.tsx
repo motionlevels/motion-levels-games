@@ -25,32 +25,31 @@ export function PlayerDisplay({
   const countdown = Math.max(1, Math.ceil(snapshot.countdownMillis / 1_000));
   const restartCountdown = Math.max(1, Math.ceil(snapshot.remainingMillis / 1_000));
   const readyIndices = new Set(snapshot.readyPlayerIndices);
-  const hero = heroContent(snapshot, countdown, restartCountdown);
+  const hero = heroContent(snapshot, countdown);
   const winner = snapshot.winnerIndex >= 0 ? snapshot.playerProgress[snapshot.winnerIndex] : undefined;
   const heroMetrics = (
     <MetricRow columns={3}>
-      <MetricPanel label="Tiempo" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
-      <MetricPanel label="Objetivo" tone="cyan" value={snapshot.matchTarget} />
-      <MetricPanel label="Jugadores" tone="magenta" value={snapshot.playerCount} />
+      <MetricPanel emphasis="strong" label="Tiempo" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
+      <MetricPanel emphasis="strong" label="Objetivo" tone="cyan" value={snapshot.matchTarget} />
+      <MetricPanel emphasis="strong" label="Jugadores" tone="magenta" value={snapshot.playerCount} />
     </MetricRow>
   );
-  const event = (
+  const event = snapshot.phase === "running" ? (
     <EventRail
-      detail={snapshot.phase === "finished" ? `Nueva partida en ${restartCountdown}` : `${snapshot.claimedTargets}/${snapshot.totalTargets} reclamadas`}
-      label={snapshot.phase === "waiting" ? "Preparación" : snapshot.phase === "finished" ? "Resultado" : "Último evento"}
+      label="Último evento"
       message={snapshot.lastEventMessage || "Listo"}
-      tone={snapshot.phase === "finished" ? "green" : "cyan"}
+      tone="neutral"
     />
-  );
+  ) : undefined;
 
   return (
     <GameDisplayShell title={snapshot.label} phase={snapshot.phase}>
       <DisplayStack
         bottom={event}
         label="Progreso del duelo"
-        top={<DisplayStage detail={hero.caption} eyebrow={hero.eyebrow} label={snapshot.phase === "starting" ? "Cuenta atrás para comenzar" : undefined} title={hero.title} tone="cyan">{heroMetrics}</DisplayStage>}
+        top={<DisplayStage emphasis="strong" eyebrow={hero.eyebrow} label={snapshot.phase === "starting" ? "Cuenta atrás para comenzar" : undefined} title={hero.title} tone="cyan">{heroMetrics}</DisplayStage>}
       >
-        <PlayerRoster columns={columns} label="Progreso de jugadores">
+        <PlayerRoster columns={columns} label="Progreso de jugadores" rows={Math.ceil(snapshot.playerCount / columns)}>
           {snapshot.playerProgress.map((player) => (
             <DueloPlayerCard
               key={player.index}
@@ -66,7 +65,7 @@ export function PlayerDisplay({
         <ResultOverlay
           accent={winner?.color}
           eyebrow="Victoria"
-          message={winner ? `${winner.claimed}/${winner.target} baldosas reclamadas` : undefined}
+          message={winner ? `${winner.claimed}/${winner.target} baldosas pisadas` : undefined}
           title={snapshot.winnerLabel}
           variant="victory"
           visible={snapshot.phase === "finished"}
@@ -94,61 +93,54 @@ function DueloPlayerCard({
   winner: boolean;
 }) {
   const status = phase === "waiting"
-    ? ready ? "Listo" : "Entra en tu zona"
-    : phase === "starting"
-      ? "Preparado"
-      : winner
-        ? "Ganador"
-        : leader
-          ? "Líder"
-          : "En carrera";
+    ? ready ? "Listo" : undefined
+    : winner
+      ? "Ganador"
+      : leader
+        ? "Líder"
+        : undefined;
   return (
     <PlayerCard
       badge={status}
       className={recent ? "is-recent" : ""}
+      emphasis="score"
       featured={winner || leader || ready}
       footer={(
         <ProgressMeter
-          ariaValueText={`${player.claimed} de ${player.target} baldosas reclamadas`}
-          label="Reclamadas"
+          ariaValueText={`${player.claimed} de ${player.target} baldosas pisadas`}
           max={player.target}
           tone="cyan"
           value={player.claimed}
-          valueLabel={`${player.claimed}/${player.target}`}
         />
       )}
       player={{ color: player.color, label: player.label, score: player.remaining }}
-      scoreUnit="baldosas restantes"
-      status={recent ? "baldosas restantes · +1" : "baldosas restantes"}
+      scoreUnit={player.remaining === 1 ? "baldosa restante" : "baldosas restantes"}
+      status={player.remaining === 1 ? "Restante" : "Restantes"}
     />
   );
 }
 
-function heroContent(snapshot: DueloSnapshot, countdown: number, restartCountdown: number) {
+function heroContent(snapshot: DueloSnapshot, countdown: number) {
   if (snapshot.phase === "waiting") {
     return {
       eyebrow: `Listos ${snapshot.readyPlayers}/${snapshot.requiredPlayers}`,
-      title: "Busca tu color",
-      caption: "Cada jugador entra y permanece en su zona iluminada"
+      title: "Busca tu color"
     };
   }
   if (snapshot.phase === "starting") {
     return {
       eyebrow: "Todos listos",
-      title: <CountdownValue label="Comienza en" value={countdown} />,
-      caption: "El duelo está a punto de empezar"
+      title: <CountdownValue label="Comienza en" value={countdown} />
     };
   }
   if (snapshot.phase === "finished") {
     return {
       eyebrow: "Victoria",
-      title: `¡Gana ${snapshot.winnerLabel}!`,
-      caption: `Nueva partida en ${restartCountdown}`
+      title: `¡Gana ${snapshot.winnerLabel}!`
     };
   }
   return {
     eyebrow: snapshot.leaderIndex >= 0 ? `Lidera ${snapshot.leaderLabel}` : "Empate",
-    title: "Reclama tu color",
-    caption: "Pisa todas tus baldosas antes que los demás"
+    title: "Pisa tu color"
   };
 }

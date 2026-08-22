@@ -88,7 +88,6 @@ export function GameDisplayShell({
           </span>
         </div>
         <div className="ml-tv-title">
-          <span className="ml-display-label">Juego</span>
           <h1>{title}</h1>
         </div>
         <span className={`ml-status-pill ml-status-${displayedPhase}`}>{phaseLabel(displayedPhase)}</span>
@@ -152,11 +151,13 @@ export function CountdownValue({
 }
 
 export function MetricPanel({
+  emphasis = "default",
   label,
   value,
   tone = "cyan",
   className = ""
 }: {
+  emphasis?: "default" | "strong";
   label: string;
   value: ReactNode;
   tone?: Tone;
@@ -164,7 +165,7 @@ export function MetricPanel({
 }) {
   return (
     <article
-      className={`ml-metric ml-metric-${tone} ${className}`.trim()}
+      className={`ml-metric ml-metric-${tone}${emphasis === "strong" ? " is-strong" : ""} ${className}`.trim()}
       data-display-containment="metric"
     >
       <span className="ml-metric-label">{label}</span>
@@ -354,6 +355,7 @@ export function DisplayStage({
   children,
   className = "",
   detail,
+  emphasis = "default",
   eyebrow,
   label,
   title,
@@ -362,6 +364,7 @@ export function DisplayStage({
   children?: ReactNode;
   className?: string;
   detail?: ReactNode;
+  emphasis?: "default" | "strong";
   eyebrow?: ReactNode;
   label?: string;
   title?: ReactNode;
@@ -373,7 +376,7 @@ export function DisplayStage({
   return (
     <section
       aria-label={resolvedLabel}
-      className={`ml-display-stage ml-display-stage-${tone} ${className}`.trim()}
+      className={`ml-display-stage ml-display-stage-${tone}${emphasis === "strong" ? " is-strong" : ""} ${className}`.trim()}
       data-display-containment="stage"
       data-display-tone={tone}
     >
@@ -604,14 +607,19 @@ export function PlayerRoster({
   children,
   className = "",
   columns = 4,
-  label = "Jugadores"
+  label = "Jugadores",
+  rows
 }: {
   children?: ReactNode;
   className?: string;
   columns?: number;
   label?: string;
+  rows?: number;
 }) {
   const normalizedColumns = Math.min(8, Math.max(1, Math.trunc(Number.isFinite(columns) ? columns : 1)));
+  const normalizedRows = rows === undefined
+    ? undefined
+    : Math.min(8, Math.max(1, Math.trunc(Number.isFinite(rows) ? rows : 1)));
 
   return (
     <section
@@ -619,7 +627,11 @@ export function PlayerRoster({
       className={`ml-player-roster ${className}`.trim()}
       data-display-containment="player-roster"
       data-roster-columns={normalizedColumns}
-      style={{ "--ml-roster-columns": normalizedColumns } as CSSProperties}
+      data-roster-rows={normalizedRows}
+      style={{
+        "--ml-roster-columns": normalizedColumns,
+        "--ml-roster-rows": normalizedRows
+      } as CSSProperties}
     >
       {children}
     </section>
@@ -630,6 +642,7 @@ export function PlayerCard({
   ariaLabel,
   badge,
   className = "",
+  emphasis = "default",
   featured = false,
   footer,
   player,
@@ -641,6 +654,7 @@ export function PlayerCard({
   ariaLabel?: string;
   badge?: ReactNode;
   className?: string;
+  emphasis?: "default" | "score";
   featured?: boolean;
   footer?: ReactNode;
   player: DisplayPlayer;
@@ -661,7 +675,7 @@ export function PlayerCard({
   return (
     <article
       aria-label={ariaLabel ?? `${player.label}: ${player.score} ${resolvedScoreUnit}`}
-      className={`ml-player-card${featured ? " is-featured" : ""} ${labelClass} ${className}`.trim()}
+      className={`ml-player-card${featured ? " is-featured" : ""}${emphasis === "score" ? " is-score-emphasis" : ""} ${labelClass} ${className}`.trim()}
       data-display-containment="player-card"
       data-player-featured={featured || undefined}
       style={{

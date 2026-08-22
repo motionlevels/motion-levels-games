@@ -32,6 +32,8 @@ import { normalizeLivesForDisplay } from "../src/lives-meter.tsx";
 
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const livesComponentSource = readFileSync(new URL("../src/lives-meter.tsx", import.meta.url), "utf8");
+const oxaniumLatin = readFileSync(new URL("../src/assets/fonts/oxanium-latin.woff2", import.meta.url));
+const oxaniumLatinExtended = readFileSync(new URL("../src/assets/fonts/oxanium-latin-ext.woff2", import.meta.url));
 
 test("Trajectory motion is namespaced and honors reduced motion", () => {
   assert.match(styleSource, /\.ml-trajectory-lane/);
@@ -56,10 +58,11 @@ test("Versus center values fit the scoreboard card", () => {
 });
 
 test("MetricPanel renders label and value without app dependencies", () => {
-  const html = renderToStaticMarkup(React.createElement(MetricPanel, { label: "Score", value: 42 }));
+  const html = renderToStaticMarkup(React.createElement(MetricPanel, { emphasis: "strong", label: "Score", value: 42 }));
 
   assert.match(html, /Score/);
   assert.match(html, /42/);
+  assert.match(html, /ml-metric ml-metric-cyan is-strong/);
 });
 
 test("CountdownValue restarts one contained beat per normalized number", () => {
@@ -151,7 +154,8 @@ test("shared stage recipes expose explicit containment without constraining game
 
 test("feedback, progress, and roster primitives normalize values and retain semantics", () => {
   const player = { color: "#36d9ff" as const, label: "Equipo Norte", score: 12 };
-  const roster = React.createElement(PlayerRoster, { columns: 99 }, React.createElement(PlayerCard, {
+  const roster = React.createElement(PlayerRoster, { columns: 99, rows: 1 }, React.createElement(PlayerCard, {
+    emphasis: "score",
     featured: true,
     player,
     rank: 1,
@@ -189,6 +193,8 @@ test("feedback, progress, and roster primitives normalize values and retain sema
   ));
 
   assert.match(html, /data-roster-columns="8"/);
+  assert.match(html, /data-roster-rows="1"/);
+  assert.match(html, /ml-player-card is-featured is-score-emphasis/);
   assert.match(html, /aria-label="Equipo Norte: 12 puntos"/);
   assert.match(html, /aria-label="Equipo Norte: 12 rondas ganadas"/);
   assert.match(html, /aria-valuetext="12 de 15 rondas ganadas"/);
@@ -203,6 +209,8 @@ test("feedback, progress, and roster primitives normalize values and retain sema
   assert.match(html, /--ml-tone:#ff3048/);
   assert.match(styleSource, /\.ml-player-card\.is-muted\s*\{[^}]*filter:\s*saturate\(0\.54\) brightness\(0\.72\);[^}]*opacity:\s*0\.58;/s);
   assert.match(styleSource, /\.ml-player-card\.is-recent\s*\{[^}]*animation:\s*ml-player-card-recent 720ms/s);
+  assert.match(styleSource, /\.ml-metric\.is-strong \.ml-metric-value\s*\{[^}]*font-size:\s*100px/s);
+  assert.match(styleSource, /\[data-roster-rows="1"\].*\.ml-player-card\.is-score-emphasis.*font-size:\s*220px/s);
   assert.equal(renderToStaticMarkup(React.createElement(ResultOverlay, {
     title: "Oculto",
     visible: false
@@ -464,6 +472,7 @@ test("GameDisplayShell renders title and phase", () => {
   assert.match(html, /running/);
   assert.match(html, /data-display-root="true"/);
   assert.match(html, /data-display-containment="content"/);
+  assert.doesNotMatch(html, />Juego</);
 });
 
 test("GameDisplayShell replaces the live TV status while the runner is paused", () => {
@@ -519,22 +528,32 @@ test("PlayerReadyOverlay renders shared waiting and countdown states in Spanish"
 });
 
 test("GameDisplayShell balances its brand and status rails inside a paint-contained root", () => {
-  assert.match(styleSource, /--ml-header-side-width:\s*clamp\(260px, 18vw, 330px\);/);
+  assert.match(styleSource, /--ml-header-height:\s*112px;/);
+  assert.match(styleSource, /--ml-header-side-width:\s*320px;/);
+  assert.match(styleSource, /@font-face\s*\{[^}]*font-family:\s*"Oxanium";[^}]*font-weight:\s*200 800;[^}]*oxanium-latin(?:-ext)?\.woff2/s);
+  assert.ok(oxaniumLatin.byteLength > 0);
+  assert.ok(oxaniumLatinExtended.byteLength > 0);
+  assert.match(styleSource, /\.ml-display-shell\s*\{[^}]*font-family:\s*"Oxanium",[^;]+sans-serif;[^}]*font-size-adjust:\s*0\.667;/s);
   assert.match(
     styleSource,
     /\.ml-display-header\s*\{[^}]*grid-template-columns:\s*var\(--ml-header-side-width\) minmax\(0, 1fr\) var\(--ml-header-side-width\);/s
   );
   assert.match(
     styleSource,
-    /\.ml-tv-brand,\s*\.ml-status-pill\s*\{[^}]*min-height:\s*68px;[^}]*width:\s*100%;/s
+    /\.ml-tv-brand,\s*\.ml-tv-title,\s*\.ml-status-pill\s*\{[^}]*height:\s*var\(--ml-header-height\);[^}]*min-height:\s*var\(--ml-header-height\);[^}]*width:\s*100%;/s
   );
   assert.match(
     styleSource,
     /\.ml-display-content\s*\{[^}]*contain:\s*layout paint;[^}]*overflow:\s*hidden;[^}]*position:\s*relative;/s,
     "absolute game content must be scoped to the shell content region"
   );
-  assert.match(styleSource, /\.ml-tv-title\s*\{[^}]*border-radius:\s*var\(--ml-radius-md\);/s);
-  assert.match(styleSource, /\.ml-status-pill\s*\{[^}]*border-radius:\s*var\(--ml-radius-md\);/s);
+  assert.match(styleSource, /\.ml-display-header::after\s*\{[^}]*height:\s*2px;/s);
+  assert.match(styleSource, /\.ml-display-header h1\s*\{[^}]*font-size:\s*84px;[^}]*overflow-wrap:\s*break-word;/s);
+  assert.match(styleSource, /\.ml-tv-brand-mark\s*\{[^}]*height:\s*72px;[^}]*width:\s*72px;/s);
+  assert.match(styleSource, /\.ml-tv-brand-name\s*\{[^}]*font-family:\s*ui-monospace,[^;]+monospace;[^}]*font-size-adjust:\s*none;[^}]*font-size:\s*28px;/s);
+  assert.match(styleSource, /\.ml-status-pill\s*\{[^}]*font-size:\s*28px;/s);
+  assert.match(styleSource, /\.ml-status-pill::before\s*\{[^}]*height:\s*14px;[^}]*width:\s*14px;/s);
+  assert.match(styleSource, /\.ml-status-waiting::before\s*\{[^}]*animation:/s);
 });
 
 test("RoundStrip can render a full match path with pending rounds", () => {

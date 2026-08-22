@@ -519,13 +519,21 @@ test("fixtures cover every phase and displays keep long names without ellipses",
   for (const snapshot of [waitingSnapshot, startingSnapshot, runningSnapshot, crowdedRunningSnapshot, finishedSnapshot]) {
     const html = renderDisplay(snapshot);
     assert.match(html, /Duelo/);
-    assert.match(html, /baldosas restantes/);
+    assert.match(html, /Restantes/);
     assert.match(html, /aria-label="[^"]+: [0-9]+ baldosas restantes"/);
     assert.doesNotMatch(html, /…|\.\.\./);
   }
   assert.match(renderDisplay(crowdedRunningSnapshot), /Alejandra del Equipo Relámpago/);
   assert.match(renderDisplay(crowdedRunningSnapshot), /Objetivo/);
   assert.match(renderDisplay(crowdedRunningSnapshot), /Jugadores/);
+  const singularRemainingHtml = renderDisplay({
+    ...runningSnapshot,
+    playerProgress: runningSnapshot.playerProgress.map((player, index) => index === 0
+      ? { ...player, remaining: 1 }
+      : player)
+  });
+  assert.match(singularRemainingHtml, /aria-label="[^"]+: 1 baldosa restante"/);
+  assert.match(singularRemainingHtml, />Restante</);
   assert.match(renderDisplay(startingSnapshot), /data-countdown-value="2"/);
   assert.match(renderDisplay(finishedSnapshot), /Nueva partida en/);
   assert.match(renderDisplay(finishedSnapshot), /data-result-variant="victory"/);
@@ -539,6 +547,8 @@ test("Duelo display composes the shared display system", () => {
   assert.match(source, /PlayerRoster/);
   assert.match(source, /ProgressMeter/);
   assert.match(source, /ResultOverlay/);
+  assert.match(source, /emphasis="score"/);
+  assert.match(source, /emphasis="strong"/);
   assert.doesNotMatch(source, /duelo-display|duelo-player/);
 });
 
