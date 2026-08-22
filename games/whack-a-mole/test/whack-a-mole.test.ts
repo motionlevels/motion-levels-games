@@ -191,11 +191,35 @@ test("time selects a winner, locks scoring, and resets after celebration", () =>
   game.tick({ atMillis: 6_300 });
   assert.equal(game.snapshot().phase, "finished");
   assert.equal(game.snapshot().winnerIndex, 1);
+  assert.equal(game.snapshot().lastGameResult?.winnerIndex, 1);
   const score = game.snapshot().score;
+  const completedProgress = game.snapshot().playerProgress;
   game.press({ x: 0, y: 0, pressed: true, atMillis: 6_400 });
   assert.equal(game.snapshot().score, score);
   game.tick({ atMillis: 10_400 });
-  assert.equal(game.snapshot().phase, "waiting");
+  const reset = game.snapshot();
+  assert.equal(reset.phase, "waiting");
+  assert.equal(reset.score, 0);
+  assert.deepEqual(reset.playerProgress.map((player) => player.score), [0, 0]);
+  assert.deepEqual(reset.lastGameResult?.playerProgress, completedProgress);
+  assert.equal(reset.lastGameResult?.winnerLabel, "Jugador 2");
+});
+
+test("victory grows as a winner-color cascade of two-by-two mole blocks", () => {
+  const game = start(2, 3_000);
+  const target = game.snapshot().targets[0]!;
+  game.press({ x: target.x, y: target.y, pressed: true, atMillis: 3_300 });
+  game.tick({ atMillis: 6_300 });
+
+  game.tick({ atMillis: 6_720 });
+  const early = litCells(game.render());
+  game.tick({ atMillis: 7_700 });
+  const late = litCells(game.render());
+
+  assert.ok(early.length > 0);
+  assert.ok(late.length > early.length);
+  assert.ok(late.every((cell) => cell.x % 3 !== 0 && cell.y % 3 !== 2));
+  assert.ok(late.length < 16 * 32 / 2);
 });
 
 test("fixtures and Spanish display cover active play and winner", () => {
@@ -204,6 +228,19 @@ test("fixtures and Spanish display cover active play and winner", () => {
   const html = renderToStaticMarkup(React.createElement(PlayerDisplay, { snapshot: finishedSnapshot }));
   assert.match(html, /Atrapa al topo/);
   assert.match(html, /topos atrapados/);
+});
+
+test("waiting display keeps the completed scoreboard visible as the last game", () => {
+  const game = start(2, 3_000);
+  const target = game.snapshot().targets[1]!;
+  game.press({ x: target.x, y: target.y, pressed: true, atMillis: 3_300 });
+  game.tick({ atMillis: 6_300 });
+  game.tick({ atMillis: 10_400 });
+
+  const html = renderToStaticMarkup(React.createElement(PlayerDisplay, { snapshot: game.snapshot() }));
+  assert.match(html, /Última partida/);
+  assert.match(html, /Ganó Jugador 2 con/);
+  assert.match(html, /topo atrapado/);
 });
 
 test("prepared recordings reach countdown, hit, expiration, and victory through real engine input", () => {
@@ -240,6 +277,10 @@ function zoneColors(frame: Frame, zone: PlayerReadyZone): string[] {
 function colorEnergy(color: string): number {
   const value = color.replace("#", "");
   return [0, 2, 4].reduce((sum, offset) => sum + Number.parseInt(value.slice(offset, offset + 2), 16), 0);
+}
+
+function litCells(frame: Frame): Frame["cells"] {
+  return frame.cells.filter((cell) => cell.color !== "#03060b");
 }
 
 function outsideReadyZoneColors(frame: Frame, zones: PlayerReadyZone[]): string[] {

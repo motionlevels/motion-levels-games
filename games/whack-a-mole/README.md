@@ -22,8 +22,10 @@ platforms retain their color at lower intensity with a quicker pulse. The
 three-second start follows Duelo's confirmation, spatial reveal, synchronized
 platform beats, and launch-flash cadence while previewing the first real targets. During play,
 targets use an appearance, steady, urgency, and colored-hit sequence rather
-than fading out of view. Victory reveals the winner color through seeded
-appearing tiles before settling into a restrained pulse and sparkle.
+than fading out of view. Victory turns the game's own 2x2 targets into a dense
+center-out cascade, then keeps them popping in bright winner-color waves. The
+completed score remains on the TV as the last-game result while the next group
+gets ready.
 
 Ordinary movement over an empty tile is silent and does not create a miss
 event. Only an expired target emits `target-expired`; a successful target emits

@@ -7,6 +7,7 @@ export {
   moleVictoryAnimation,
   moleWaitingIdleAnimation,
   readyZonesForPlayers,
+  type MoleGameResult,
   type MolePlayerProgress,
   type MoleTarget,
   type WhackAMoleGameInstance,

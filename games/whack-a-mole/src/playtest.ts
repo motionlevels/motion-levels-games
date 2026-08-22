@@ -74,7 +74,7 @@ const expiredScenario: GamePlaytestScenario = {
 const victoryScenario: GamePlaytestScenario = {
   id: "victory",
   label: "One tick before victory",
-  recording: { durationMillis: finishMillis, frameIntervalMillis: 100, leadInMillis: 350 },
+  recording: { durationMillis: finishMillis + 800, frameIntervalMillis: 100, leadInMillis: 350 },
   prepare(driver) {
     const game = startMatch(driver);
     const target = game.snapshot().targets[0];

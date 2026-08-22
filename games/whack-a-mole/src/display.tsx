@@ -18,9 +18,12 @@ import type { MolePlayerProgress, WhackAMoleSnapshot } from "./game.ts";
 export function PlayerDisplay({ snapshot }: { snapshot: WhackAMoleSnapshot; frame?: Frame }) {
   const columns = snapshot.playerCount <= 4 ? 2 : snapshot.playerCount <= 6 ? 3 : 4;
   const rows = Math.ceil(snapshot.playerCount / columns);
-  const leaderIndex = uniqueLeaderIndex(snapshot.playerProgress);
-  const winner = snapshot.winnerIndex >= 0 ? snapshot.playerProgress[snapshot.winnerIndex] : undefined;
-  const leader = leaderIndex >= 0 ? snapshot.playerProgress[leaderIndex] : undefined;
+  const historicalResult = snapshot.phase === "waiting" ? snapshot.lastGameResult : undefined;
+  const visibleProgress = historicalResult?.playerProgress ?? snapshot.playerProgress;
+  const visibleWinnerIndex = historicalResult?.winnerIndex ?? snapshot.winnerIndex;
+  const leaderIndex = uniqueLeaderIndex(visibleProgress);
+  const winner = visibleWinnerIndex >= 0 ? visibleProgress[visibleWinnerIndex] : undefined;
+  const leader = leaderIndex >= 0 ? visibleProgress[leaderIndex] : undefined;
   const readyIndices = new Set(
     snapshot.phase === "waiting" || snapshot.phase === "starting" ? snapshot.readyPlayerIndices : []
   );
@@ -37,6 +40,19 @@ export function PlayerDisplay({ snapshot }: { snapshot: WhackAMoleSnapshot; fram
   );
   const eventVisible = snapshot.phase === "running"
     && (snapshot.lastEventCue === "mole-hit" || snapshot.lastEventCue === "target-expired");
+  const bottomRail = historicalResult ? (
+    <EventRail
+      label="Última partida"
+      message={`Ganó ${historicalResult.winnerLabel} con ${winner?.score ?? 0} puntos`}
+      tone="cyan"
+    />
+  ) : eventVisible ? (
+    <EventRail
+      label="En directo"
+      message={<span key={snapshot.motionEventId}>{snapshot.lastEventMessage}</span>}
+      tone={snapshot.lastEventCue === "mole-hit" ? "cyan" : "neutral"}
+    />
+  ) : undefined;
 
   return (
     <GameDisplayShell
@@ -45,13 +61,7 @@ export function PlayerDisplay({ snapshot }: { snapshot: WhackAMoleSnapshot; fram
       title={snapshot.label}
     >
       <DisplayStack
-        bottom={eventVisible ? (
-          <EventRail
-            label="En directo"
-            message={<span key={snapshot.motionEventId}>{snapshot.lastEventMessage}</span>}
-            tone={snapshot.lastEventCue === "mole-hit" ? "cyan" : "neutral"}
-          />
-        ) : undefined}
+        bottom={bottomRail}
         gap="compact"
         label="Marcador de Atrapa al topo"
         top={(
@@ -66,7 +76,7 @@ export function PlayerDisplay({ snapshot }: { snapshot: WhackAMoleSnapshot; fram
         )}
       >
         <PlayerRoster columns={columns} label="Puntuación de jugadores" rows={rows}>
-          {snapshot.playerProgress.map((player) => (
+          {visibleProgress.map((player) => (
             <MolePlayerCard
               key={player.index}
               leader={leaderIndex === player.index}
@@ -74,7 +84,7 @@ export function PlayerDisplay({ snapshot }: { snapshot: WhackAMoleSnapshot; fram
               player={player}
               ready={readyIndices.has(player.index)}
               recent={snapshot.recentHitPlayerIndex === player.index}
-              winner={snapshot.winnerIndex === player.index}
+              winner={snapshot.phase === "finished" && snapshot.winnerIndex === player.index}
             />
           ))}
         </PlayerRoster>

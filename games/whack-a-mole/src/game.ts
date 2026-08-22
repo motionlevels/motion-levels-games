@@ -8,8 +8,6 @@ import {
 import {
   paintProgressiveTileReveal,
   paintSparseBlockPulses,
-  paintSparseTilePulses,
-  paintStaggeredTileReveal,
   sampleBeatPulse,
   sampleSmoothPulse
 } from "@motion-levels-games/game-sdk/effects";
@@ -55,18 +53,19 @@ export const moleStartingAnimation = {
 } as const;
 
 export const moleVictoryAnimation = {
-  impactMillis: 240,
-  revealMillis: 1_300,
-  revealFadeSpan: 0.09,
-  revealBaseIntensity: 60,
+  blockGap: 1,
+  blockSize: 2,
+  impactMillis: 280,
+  revealMillis: 1_520,
+  revealFadeSpan: 0.2,
+  revealBaseIntensity: 62,
   revealVariationIntensity: 18,
-  pulseMinIntensity: 48,
-  pulseMaxIntensity: 62,
-  pulsePeriodMillis: 1_500,
-  sparkleCycleMillis: 950,
-  sparkleDensity: 0.22,
-  sparkleMillis: 620,
-  sparkleIntensity: 100
+  pulseMinIntensity: 54,
+  pulseMaxIntensity: 82,
+  pulsePeriodMillis: 920,
+  popAttackMillis: 70,
+  popReleaseMillis: 210,
+  popWhiteMix: 48
 } as const;
 
 export type MoleTarget = { playerIndex: number; x: number; y: number; bornMillis: number; deadlineMillis: number };
@@ -79,6 +78,11 @@ export type MolePlayerProgress = {
   lastPoints: number;
   lastHitAtMillis: number;
 };
+export type MoleGameResult = {
+  playerProgress: MolePlayerProgress[];
+  winnerIndex: number;
+  winnerLabel: string;
+};
 export type WhackAMoleSnapshot = GameSnapshot & {
   phase: "waiting" | "starting" | "running" | "finished";
   difficulty: NormalizedGameConfig["difficulty"];
@@ -89,6 +93,7 @@ export type WhackAMoleSnapshot = GameSnapshot & {
   winnerLabel: string;
   motionEventId: number;
   recentHitPlayerIndex: number;
+  lastGameResult?: MoleGameResult;
 };
 export type WhackAMoleGameInstance = Omit<GameInstance, "snapshot"> & {
   snapshot(): WhackAMoleSnapshot;
@@ -114,6 +119,7 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
   private startedAtMillis = 0;
   private finishAtMillis = 0;
   private winnerIndex = -1;
+  private lastGameResult?: MoleGameResult;
   private motionEventId = 0;
   private lastEvent: GameEvent = gameEvent("none", "Listo", 0);
 
@@ -210,7 +216,12 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
       winnerIndex: this.winnerIndex,
       winnerLabel: this.players[this.winnerIndex]?.label ?? "",
       motionEventId: this.motionEventId,
-      recentHitPlayerIndex: this.recentHitPlayerIndex()
+      recentHitPlayerIndex: this.recentHitPlayerIndex(),
+      lastGameResult: this.lastGameResult ? {
+        playerProgress: this.lastGameResult.playerProgress.map((player) => ({ ...player })),
+        winnerIndex: this.lastGameResult.winnerIndex,
+        winnerLabel: this.lastGameResult.winnerLabel
+      } : undefined
     };
   }
 
@@ -314,7 +325,22 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
   }
 
   private targetInterval(): number { const progress = clamp(this.elapsedMillis() / this.config.durationMillis, 0, 1); const base = baseLifeMillis - 1_000; const drop = baseLifeMillis - minLifeMillis; const difficulty = this.config.difficulty === "easy" ? 1.18 : 1; return (base - progress * drop) * difficulty; }
-  private finish(atMillis: number): GameEvent[] { this.phase = "finished"; this.finishAtMillis = atMillis; this.targets = []; this.winnerIndex = this.players.reduce((best, player, index) => player.score > (this.players[best]?.score ?? -1) ? index : best, 0); this.motionEventId += 1; return this.record([gameEvent("win", `¡Gana ${this.players[this.winnerIndex]?.label}!`, atMillis)]); }
+  private finish(atMillis: number): GameEvent[] {
+    this.phase = "finished";
+    this.finishAtMillis = atMillis;
+    this.targets = [];
+    this.winnerIndex = this.players.reduce(
+      (best, player, index) => player.score > (this.players[best]?.score ?? -1) ? index : best,
+      0
+    );
+    this.lastGameResult = {
+      playerProgress: this.players.map((player) => ({ ...player })),
+      winnerIndex: this.winnerIndex,
+      winnerLabel: this.players[this.winnerIndex]?.label ?? ""
+    };
+    this.motionEventId += 1;
+    return this.record([gameEvent("win", `¡Gana ${this.players[this.winnerIndex]?.label}!`, atMillis)]);
+  }
   private elapsedMillis(): number { return this.phase === "waiting" || this.phase === "starting" ? 0 : Math.max(0, this.nowMillis - this.startedAtMillis); }
   private remainingMillis(): number { return Math.max(0, this.config.durationMillis - this.elapsedMillis()); }
   private record(events: GameEvent[]): GameEvent[] { const latest = events.at(-1); if (latest) this.lastEvent = latest; return events; }
@@ -459,7 +485,7 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
     const winnerColor = this.players[this.winnerIndex]?.color ?? "#36d9ff";
     const elapsed = Math.max(0, this.nowMillis - this.finishAtMillis);
     if (elapsed < moleVictoryAnimation.impactMillis) {
-      fillFrameRect(frame, 7, 15, 2, 2, mixWithWhite(winnerColor, 72));
+      this.drawVictoryImpact(frame, elapsed, winnerColor);
       return;
     }
     const revealProgress = clamp(
@@ -468,33 +494,90 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
       1
     );
     const seed = (this.config.seed ^ victorySeedSalt ^ (this.winnerIndex + 1) * 1_009) >>> 0;
-    paintStaggeredTileReveal(frame, {
-      color: ({ intensity, variant }) => scaleHex(
-        winnerColor,
-        Math.max(0.08, (moleVictoryAnimation.revealBaseIntensity
-          + variant * moleVictoryAnimation.revealVariationIntensity) * intensity / 100)
-      ),
-      fadeSpan: moleVictoryAnimation.revealFadeSpan,
-      progress: revealProgress,
-      seed
+    const celebrationMillis = Math.max(
+      0,
+      elapsed - moleVictoryAnimation.impactMillis - moleVictoryAnimation.revealMillis
+    );
+    this.victoryBlocks().forEach((block, index) => {
+      const variant = seededVariant(seed, index);
+      const localProgress = clamp(
+        (revealProgress - block.threshold * (1 - moleVictoryAnimation.revealFadeSpan))
+          / moleVictoryAnimation.revealFadeSpan,
+        0,
+        1
+      );
+      if (localProgress <= 0) return;
+      const easedReveal = localProgress * localProgress * (3 - 2 * localProgress);
+      const waveIntensity = sampleSmoothPulse({
+        atMillis: celebrationMillis,
+        minValue: moleVictoryAnimation.pulseMinIntensity,
+        maxValue: moleVictoryAnimation.pulseMaxIntensity,
+        periodMillis: moleVictoryAnimation.pulsePeriodMillis,
+        phaseOffsetMillis: block.threshold * moleVictoryAnimation.pulsePeriodMillis
+      });
+      const pop = revealProgress < 1 ? 0 : sampleBeatPulse({
+        atMillis: celebrationMillis,
+        attackMillis: moleVictoryAnimation.popAttackMillis,
+        periodMillis: moleVictoryAnimation.pulsePeriodMillis * 2,
+        phaseOffsetMillis: variant * moleVictoryAnimation.pulsePeriodMillis * 2,
+        releaseMillis: moleVictoryAnimation.popReleaseMillis
+      });
+      const revealIntensity = moleVictoryAnimation.revealBaseIntensity
+        + variant * moleVictoryAnimation.revealVariationIntensity;
+      const intensity = revealProgress < 1 ? revealIntensity * easedReveal : waveIntensity + pop * 18;
+      const whiteMix = revealProgress < 1
+        ? (1 - easedReveal) * 68
+        : pop * moleVictoryAnimation.popWhiteMix;
+      fillFrameRect(
+        frame,
+        block.x,
+        block.y,
+        moleVictoryAnimation.blockSize,
+        moleVictoryAnimation.blockSize,
+        scaleHex(mixWithWhite(winnerColor, whiteMix), intensity / 100)
+      );
     });
-    if (revealProgress < 1) return;
-    const celebrationMillis = elapsed - moleVictoryAnimation.impactMillis - moleVictoryAnimation.revealMillis;
-    const pulseIntensity = sampleSmoothPulse({
-      atMillis: celebrationMillis,
-      minValue: moleVictoryAnimation.pulseMinIntensity,
-      maxValue: moleVictoryAnimation.pulseMaxIntensity,
-      periodMillis: moleVictoryAnimation.pulsePeriodMillis
+  }
+
+  private drawVictoryImpact(frame: Frame, elapsed: number, winnerColor: HexColor): void {
+    const anchors = [[7, 15], [4, 15], [10, 15], [7, 12], [7, 18]] as const;
+    const visible = Math.min(anchors.length, Math.floor(elapsed / 52) + 1);
+    const pulse = sampleBeatPulse({
+      atMillis: elapsed,
+      attackMillis: 50,
+      periodMillis: moleVictoryAnimation.impactMillis,
+      releaseMillis: moleVictoryAnimation.impactMillis - 50
     });
-    fillFrameRect(frame, 0, 0, FLOOR_COLS, FLOOR_ROWS, scaleHex(winnerColor, pulseIntensity / 100));
-    paintSparseTilePulses(frame, {
-      atMillis: celebrationMillis,
-      color: ({ intensity }) => mixWithWhite(winnerColor, intensity * moleVictoryAnimation.sparkleIntensity),
-      cycleMillis: moleVictoryAnimation.sparkleCycleMillis,
-      density: moleVictoryAnimation.sparkleDensity,
-      pulseMillis: moleVictoryAnimation.sparkleMillis,
-      seed
-    });
+    for (const [x, y] of anchors.slice(0, visible)) {
+      fillFrameRect(
+        frame,
+        x,
+        y,
+        moleVictoryAnimation.blockSize,
+        moleVictoryAnimation.blockSize,
+        mixWithWhite(winnerColor, 52 + pulse * 38)
+      );
+    }
+  }
+
+  private victoryBlocks(): Array<{ x: number; y: number; threshold: number }> {
+    const stride = moleVictoryAnimation.blockSize + moleVictoryAnimation.blockGap;
+    const blocks: Array<{ x: number; y: number; threshold: number }> = [];
+    const centerX = (FLOOR_COLS - 1) / 2;
+    const centerY = (FLOOR_ROWS - 1) / 2;
+    const maxDistance = Math.hypot(centerX - 1, centerY);
+    for (let y = 0; y <= FLOOR_ROWS - moleVictoryAnimation.blockSize; y += stride) {
+      for (let x = 1; x <= FLOOR_COLS - moleVictoryAnimation.blockSize; x += stride) {
+        const blockCenterX = x + (moleVictoryAnimation.blockSize - 1) / 2;
+        const blockCenterY = y + (moleVictoryAnimation.blockSize - 1) / 2;
+        blocks.push({
+          x,
+          y,
+          threshold: Math.hypot(blockCenterX - centerX, blockCenterY - centerY) / maxDistance
+        });
+      }
+    }
+    return blocks;
   }
 }
 
@@ -505,6 +588,13 @@ export function readyZonesForPlayers(count: number): PlayerReadyZone[] {
 
 function containsTarget(target: Pick<MoleTarget, "x" | "y">, x: number, y: number): boolean { return x >= target.x && x < target.x + targetSize && y >= target.y && y < target.y + targetSize; }
 function targetScore(target: MoleTarget, nowMillis: number): number { const total = Math.max(1, target.deadlineMillis - target.bornMillis); return 4 + Math.ceil(clamp((target.deadlineMillis - nowMillis) / total, 0, 1) * 8); }
+function seededVariant(seed: number, index: number): number {
+  let value = (seed ^ Math.imul(index + 1, 0x9e37_79b1)) >>> 0;
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x7feb_352d) >>> 0;
+  value ^= value >>> 15;
+  return value / 0xffff_ffff;
+}
 function scaleHex(color: HexColor, factor: number): HexColor { const value = color.replace("#", ""); const parts = [0,2,4].map((offset) => Math.round(Number.parseInt(value.slice(offset, offset + 2), 16) * factor).toString(16).padStart(2, "0")); return `#${parts.join("")}`; }
 function mixWithWhite(color: HexColor, whitePercent: number): HexColor {
   const value = color.replace("#", "");
