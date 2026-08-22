@@ -230,6 +230,39 @@ export function IconStatStrip({
   return <span aria-label={label} className="ml-icon-stat-strip">{children}</span>;
 }
 
+export function DifficultyStars({
+  label,
+  level,
+  max = 3
+}: {
+  label: string;
+  level: number;
+  max?: number;
+}) {
+  const normalizedMax = Math.min(5, Math.max(1, Math.trunc(Number.isFinite(max) ? max : 3)));
+  const normalizedLevel = Math.min(normalizedMax, Math.max(0, Math.trunc(Number.isFinite(level) ? level : 0)));
+
+  return (
+    <span
+      aria-label={`Dificultad: ${label}`}
+      className="ml-difficulty-stars"
+      data-difficulty-level={normalizedLevel}
+      data-display-tone="amber"
+    >
+      {Array.from({ length: normalizedMax }, (_, index) => (
+        <svg
+          aria-hidden="true"
+          className={index < normalizedLevel ? "is-active" : ""}
+          key={index}
+          viewBox="0 0 24 24"
+        >
+          <path d="m12 2.9 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 17.09l-5.56 2.93 1.06-6.2L3 9.43l6.22-.9L12 2.9Z" />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
 export function DisplayIcon({ name }: { name: DisplayIconName }) {
   return (
     <svg
@@ -439,7 +472,7 @@ export function DisplayStage({
   detail?: ReactNode;
   emphasis?: "default" | "strong";
   eyebrow?: ReactNode;
-  headingLayout?: "inline" | "stacked";
+  headingLayout?: "inline" | "stacked" | "status-right";
   label?: string;
   title?: ReactNode;
   tone?: Tone;
@@ -450,7 +483,7 @@ export function DisplayStage({
   return (
     <section
       aria-label={resolvedLabel}
-      className={`ml-display-stage ml-display-stage-${tone}${emphasis === "strong" ? " is-strong" : ""}${headingLayout === "inline" ? " is-heading-inline" : ""} ${className}`.trim()}
+      className={`ml-display-stage ml-display-stage-${tone}${emphasis === "strong" ? " is-strong" : ""}${headingLayout === "inline" ? " is-heading-inline" : headingLayout === "status-right" ? " is-heading-status-right" : ""} ${className}`.trim()}
       data-display-containment="stage"
       data-display-tone={tone}
     >
@@ -719,9 +752,11 @@ export function PlayerCard({
   emphasis = "default",
   featured = false,
   footer,
+  headingAlign = "start",
   player,
   rank,
   scoreUnit = "puntos",
+  state = "default",
   status,
   target
 }: {
@@ -731,9 +766,11 @@ export function PlayerCard({
   emphasis?: "default" | "score";
   featured?: boolean;
   footer?: ReactNode;
+  headingAlign?: "center" | "start";
   player: DisplayPlayer;
   rank?: number;
   scoreUnit?: string;
+  state?: "default" | "ready";
   status?: ReactNode;
   target?: number;
 }) {
@@ -749,9 +786,10 @@ export function PlayerCard({
   return (
     <article
       aria-label={ariaLabel ?? `${player.label}: ${player.score} ${resolvedScoreUnit}`}
-      className={`ml-player-card${featured ? " is-featured" : ""}${emphasis === "score" ? " is-score-emphasis" : ""} ${labelClass} ${className}`.trim()}
+      className={`ml-player-card${featured ? " is-featured" : ""}${emphasis === "score" ? " is-score-emphasis" : ""}${headingAlign === "center" ? " is-heading-centered" : ""}${state === "ready" ? " is-ready" : ""} ${labelClass} ${className}`.trim()}
       data-display-containment="player-card"
       data-player-featured={featured || undefined}
+      data-player-state={state}
       style={{
         "--ml-player": player.color,
         "--ml-player-rgb": hexToRgb(player.color)

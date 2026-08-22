@@ -1,6 +1,6 @@
 /** @jsxRuntime automatic */
 import {
-  CountdownValue,
+  DifficultyStars,
   DisplayStack,
   DisplayStage,
   EventRail,
@@ -8,6 +8,7 @@ import {
   IconStat,
   IconStatStrip,
   PlayerCard,
+  PlayerReadyOverlay,
   PlayerRoster,
   ProgressMeter,
   ResultOverlay
@@ -22,17 +23,20 @@ export function PlayerDisplay({
   frame?: Frame;
 }) {
   const columns = snapshot.playerCount <= 4 ? 2 : snapshot.playerCount <= 6 ? 3 : 4;
-  const countdown = Math.max(1, Math.ceil(snapshot.countdownMillis / 1_000));
   const restartCountdown = Math.max(1, Math.ceil(snapshot.remainingMillis / 1_000));
   const readyIndices = new Set(snapshot.readyPlayerIndices);
-  const hero = heroContent(snapshot, countdown);
+  const hero = heroContent(snapshot);
   const winner = snapshot.winnerIndex >= 0 ? snapshot.playerProgress[snapshot.winnerIndex] : undefined;
   const leader = snapshot.leaderIndex >= 0 ? snapshot.playerProgress[snapshot.leaderIndex] : undefined;
+  const difficulty = snapshot.difficulty === "hard"
+    ? { label: "Difícil", level: 3 }
+    : { label: "Media", level: 2 };
   const summary = (
     <IconStatStrip label="Datos del duelo">
       <IconStat icon="clock" label="Tiempo" tone="amber" value={formatClock(snapshot.elapsedMillis)} />
       <IconStat icon="target" label="Objetivo" tone="cyan" value={snapshot.matchTarget} />
       <IconStat icon="players" label="Jugadores" tone="magenta" value={snapshot.playerCount} />
+      <DifficultyStars label={difficulty.label} level={difficulty.level} />
     </IconStatStrip>
   );
   const event = snapshot.phase === "running" && snapshot.lastEventMessage ? (
@@ -58,7 +62,7 @@ export function PlayerDisplay({
             detail={summary}
             emphasis="strong"
             eyebrow={hero.eyebrow}
-            headingLayout="inline"
+            headingLayout="status-right"
             label={snapshot.phase === "starting" ? "Cuenta atrás para comenzar" : undefined}
             title={hero.title}
             tone="cyan"
@@ -88,6 +92,7 @@ export function PlayerDisplay({
         >
           <span>Nueva partida en {restartCountdown}</span>
         </ResultOverlay>
+        {snapshot.phase === "starting" ? <PlayerReadyOverlay snapshot={snapshot} /> : null}
       </DisplayStack>
     </GameDisplayShell>
   );
@@ -109,7 +114,7 @@ function DueloPlayerCard({
   winner: boolean;
 }) {
   const status = phase === "waiting"
-    ? ready ? "Listo" : undefined
+    ? ready ? "✓ Listo" : undefined
     : winner
       ? "Ganador"
       : leader
@@ -131,24 +136,20 @@ function DueloPlayerCard({
           valueLabel={`${player.claimed}/${player.target}`}
         />
       )}
+      headingAlign="center"
       player={{ color: player.color, label: player.label, score: player.remaining }}
       scoreUnit={player.remaining === 1 ? "baldosa restante" : "baldosas restantes"}
+      state={ready ? "ready" : "default"}
       status={player.remaining === 1 ? "Restante" : "Restantes"}
     />
   );
 }
 
-function heroContent(snapshot: DueloSnapshot, countdown: number) {
-  if (snapshot.phase === "waiting") {
+function heroContent(snapshot: DueloSnapshot) {
+  if (snapshot.phase === "waiting" || snapshot.phase === "starting") {
     return {
       eyebrow: `${snapshot.readyPlayers}/${snapshot.requiredPlayers} colocados`,
       title: "Busca tu color"
-    };
-  }
-  if (snapshot.phase === "starting") {
-    return {
-      eyebrow: "Todos listos",
-      title: <CountdownValue label="Comienza en" value={countdown} />
     };
   }
   if (snapshot.phase === "finished") {

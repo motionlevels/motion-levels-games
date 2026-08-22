@@ -3,7 +3,7 @@ import type { GameConfigVar, GameManifest } from "@motion-levels-games/game-sdk"
 export const dueloConfigVars = {
   baseFillPercent: {
     key: "base_fill_percent",
-    label: "Base floor coverage (%)",
+    label: "Floor coverage (%)",
     playerFacing: false,
     description: "The percentage of floor tiles assigned as targets on Medium difficulty.",
     type: "int",

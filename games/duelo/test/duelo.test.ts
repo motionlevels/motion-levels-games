@@ -526,6 +526,18 @@ test("fixtures cover every phase and displays keep long names without ellipses",
   assert.match(renderDisplay(crowdedRunningSnapshot), /Alejandra del Equipo Relámpago/);
   assert.match(renderDisplay(crowdedRunningSnapshot), /Objetivo/);
   assert.match(renderDisplay(crowdedRunningSnapshot), /Jugadores/);
+  assert.match(renderDisplay(waitingSnapshot), /aria-label="Dificultad: Media"/);
+  assert.match(renderDisplay(startingSnapshot), /aria-label="Dificultad: Difícil"/);
+  assert.match(renderDisplay(waitingSnapshot), /is-heading-status-right/);
+  assert.match(renderDisplay(waitingSnapshot), /is-heading-centered/);
+  assert.doesNotMatch(renderDisplay(waitingSnapshot), /data-player-state="ready"/);
+  const readyWaitingHtml = renderDisplay({
+    ...waitingSnapshot,
+    readyPlayerIndices: [0],
+    readyPlayers: 1
+  });
+  assert.match(readyWaitingHtml, /data-player-state="ready"/);
+  assert.match(readyWaitingHtml, /✓ Listo/);
   const singularRemainingHtml = renderDisplay({
     ...runningSnapshot,
     playerProgress: runningSnapshot.playerProgress.map((player, index) => index === 0
@@ -534,7 +546,10 @@ test("fixtures cover every phase and displays keep long names without ellipses",
   });
   assert.match(singularRemainingHtml, /aria-label="[^"]+: 1 baldosa restante"/);
   assert.match(singularRemainingHtml, />Restante</);
-  assert.match(renderDisplay(startingSnapshot), /data-countdown-value="2"/);
+  assert.match(renderDisplay(startingSnapshot), /ml-player-ready-overlay is-starting/);
+  assert.match(renderDisplay(startingSnapshot), /<strong>2<\/strong>/);
+  assert.match(renderDisplay(startingSnapshot), /<h2>Busca tu color<\/h2>/);
+  assert.match(renderDisplay(startingSnapshot), /2\/2 colocados/);
   assert.match(renderDisplay(finishedSnapshot), /Nueva partida en/);
   assert.match(renderDisplay(finishedSnapshot), /data-result-variant="victory"/);
   assert.match(renderDisplay(finishedSnapshot), /style="--ml-tone:#24d9ff"/);
@@ -543,7 +558,7 @@ test("fixtures cover every phase and displays keep long names without ellipses",
 test("Duelo display composes the shared display system", () => {
   const source = readFileSync(new URL("../src/display.tsx", import.meta.url), "utf8");
   assert.match(source, /DisplayStack/);
-  assert.match(source, /CountdownValue/);
+  assert.match(source, /PlayerReadyOverlay/);
   assert.match(source, /PlayerRoster/);
   assert.match(source, /ProgressMeter/);
   assert.match(source, /ResultOverlay/);

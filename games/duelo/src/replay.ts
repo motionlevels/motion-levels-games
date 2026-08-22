@@ -34,7 +34,7 @@ import {
 import { createGame } from "./game.ts";
 
 export const DUELO_REPLAY_GAME_VERSION = "0.1.0";
-export const DUELO_REPLAY_SIMULATION_VERSION = "duelo-replay-1";
+export const DUELO_REPLAY_SIMULATION_VERSION = "duelo-replay-2";
 export const DEFAULT_DUELO_REPLAY_SNAPSHOT_INTERVAL_TICKS = 100;
 
 export type DueloReplayRecordOptions = DueloAgentHarnessOptions & Readonly<{

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createFrame, setFrameCell, type GameSnapshot } from "@motion-levels-games/game-sdk";
 import {
   CountdownValue,
+  DifficultyStars,
   DisplayStack,
   DisplayStage,
   EventRail,
@@ -73,14 +74,18 @@ test("icon stats condense common TV metrics without hiding their meaning", () =>
     { label: "Datos del duelo" },
     React.createElement(IconStat, { icon: "clock", label: "Tiempo", tone: "amber", value: "0:42" }),
     React.createElement(IconStat, { icon: "target", label: "Objetivo", tone: "cyan", value: 153 }),
-    React.createElement(IconStat, { icon: "players", label: "Jugadores", tone: "magenta", value: 2 })
+    React.createElement(IconStat, { icon: "players", label: "Jugadores", tone: "magenta", value: 2 }),
+    React.createElement(DifficultyStars, { label: "Media", level: 2 })
   ));
 
   assert.match(html, /aria-label="Datos del duelo"/);
   assert.match(html, /aria-label="Tiempo: 0:42"/);
   assert.match(html, /aria-label="Objetivo: 153"/);
   assert.match(html, /aria-label="Jugadores: 2"/);
+  assert.match(html, /aria-label="Dificultad: Media"/);
+  assert.match(html, /data-difficulty-level="2"/);
   assert.equal((html.match(/class="ml-display-icon"/g) ?? []).length, 3);
+  assert.equal((html.match(/<svg/g) ?? []).length, 6);
   assert.match(styleSource, /\.ml-icon-stat-strip\s*\{[^}]*display:\s*inline-flex;/s);
 });
 
@@ -171,6 +176,14 @@ test("shared stage recipes expose explicit containment without constraining game
   assert.match(stack, /data-display-containment="stage-content"/);
   assert.match(stack, /role="status"/);
   assert.match(stack, /data-display-tone="green"/);
+
+  const statusRight = renderToStaticMarkup(React.createElement(DisplayStage, {
+    detail: "Datos",
+    eyebrow: "0/2 colocados",
+    headingLayout: "status-right",
+    title: "Busca tu color"
+  }));
+  assert.match(statusRight, /is-heading-status-right/);
 });
 
 test("feedback, progress, and roster primitives normalize values and retain semantics", () => {
@@ -178,8 +191,10 @@ test("feedback, progress, and roster primitives normalize values and retain sema
   const roster = React.createElement(PlayerRoster, { columns: 99, rows: 1 }, React.createElement(PlayerCard, {
     emphasis: "score",
     featured: true,
+    headingAlign: "center",
     player,
     rank: 1,
+    state: "ready",
     status: "Líder",
     target: 10
   }));
@@ -215,7 +230,8 @@ test("feedback, progress, and roster primitives normalize values and retain sema
 
   assert.match(html, /data-roster-columns="8"/);
   assert.match(html, /data-roster-rows="1"/);
-  assert.match(html, /ml-player-card is-featured is-score-emphasis/);
+  assert.match(html, /ml-player-card is-featured is-score-emphasis is-heading-centered is-ready/);
+  assert.match(html, /data-player-state="ready"/);
   assert.match(html, /aria-label="Equipo Norte: 12 puntos"/);
   assert.match(html, /aria-label="Equipo Norte: 12 rondas ganadas"/);
   assert.match(html, /aria-valuetext="12 de 15 rondas ganadas"/);
@@ -230,8 +246,13 @@ test("feedback, progress, and roster primitives normalize values and retain sema
   assert.match(html, /--ml-tone:#ff3048/);
   assert.match(styleSource, /\.ml-player-card\.is-muted\s*\{[^}]*filter:\s*saturate\(0\.54\) brightness\(0\.72\);[^}]*opacity:\s*0\.58;/s);
   assert.match(styleSource, /\.ml-player-card\.is-recent\s*\{[^}]*animation:\s*ml-player-card-recent 720ms/s);
+  assert.match(styleSource, /\.ml-player-card\.is-ready\s*\{[^}]*animation:\s*ml-player-card-ready 1\.35s/s);
+  assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.ml-player-card\.is-ready/s);
   assert.match(styleSource, /\.ml-metric\.is-strong \.ml-metric-value\s*\{[^}]*font-size:\s*100px/s);
   assert.match(styleSource, /\[data-roster-rows="1"\].*\.ml-player-card\.is-score-emphasis.*font-size:\s*220px/s);
+  assert.match(styleSource, /\.ml-player-card\.is-heading-centered \.ml-player-card-head\s*\{[^}]*grid-template-columns:/s);
+  assert.match(styleSource, /\[data-roster-rows="2"\].*\.ml-player-card\.is-heading-centered.*grid-template-columns:/s);
+  assert.match(styleSource, /\[data-roster-columns="4"\].*\.is-heading-centered\.is-label-extra-long.*grid-template-columns:/s);
   assert.equal(renderToStaticMarkup(React.createElement(ResultOverlay, {
     title: "Oculto",
     visible: false

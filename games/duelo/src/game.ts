@@ -136,6 +136,7 @@ export type DueloSnapshot = GameSnapshot & {
   phase: DueloPhase;
   claimedTargets: number;
   countdownMillis: number;
+  difficulty: NormalizedGameConfig["difficulty"];
   fillPercent: number;
   leaderIndex: number;
   leaderLabel: string;
@@ -332,6 +333,7 @@ class DueloGame implements DueloGameInstance {
       lastEventCue: this.lastEvent.cue,
       lastEventMessage: this.lastEvent.message,
       countdownMillis: this.phase === "starting" ? readyState.countdownMillis : 0,
+      difficulty: this.config.difficulty,
       readyPlayers: readyState.readyPlayers,
       requiredPlayers: readyState.requiredPlayers,
       matchTarget: Math.max(0, ...this.targets),
