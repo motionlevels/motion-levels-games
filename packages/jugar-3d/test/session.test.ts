@@ -27,12 +27,12 @@ import type {
   SessionControllerFactory,
   SessionControllerObservation
 } from "../src/contracts.ts";
-import { GameSession, type SessionTrajectoryFrame } from "../src/core/session.ts";
+import { JugarPresentationSession, type SessionTrajectoryFrame } from "../src/core/session.ts";
 
 test("identical seeds produce identical authority under different rAF partitions", () => {
   const game = fakeRegistration();
-  const first = new GameSession(game, { playerCount: 3, seed: 137 });
-  const second = new GameSession(game, { playerCount: 3, seed: 137 });
+  const first = new JugarPresentationSession(game, { playerCount: 3, seed: 137 });
+  const second = new JugarPresentationSession(game, { playerCount: 3, seed: 137 });
 
   drive(first, [0, ...range(20, 2_000, 20)]);
   drive(second, [0, ...range(100, 2_000, 100)]);
@@ -46,7 +46,7 @@ test("identical seeds produce identical authority under different rAF partitions
 });
 
 test("pause and resume never catch up elapsed wall time", () => {
-  const session = new GameSession(fakeRegistration(), { playerCount: 2, seed: 8 });
+  const session = new JugarPresentationSession(fakeRegistration(), { playerCount: 2, seed: 8 });
   session.advanceTo(0);
   session.advanceTo(20);
   assert.equal(session.tick, 1);
@@ -64,7 +64,7 @@ test("pause and resume never catch up elapsed wall time", () => {
 });
 
 test("explicit stepping advances exact ticks while paused", () => {
-  const session = new GameSession(fakeRegistration(), { playerCount: 2, seed: 21 });
+  const session = new JugarPresentationSession(fakeRegistration(), { playerCount: 2, seed: 21 });
   session.setPaused(true);
   const state = session.stepTicks(3);
   assert.equal(session.tick, 3);
@@ -87,7 +87,7 @@ test("restart replaces controllers and dispose is idempotent", () => {
       }
     };
   };
-  const session = new GameSession(fakeRegistration(createSessionController), {
+  const session = new JugarPresentationSession(fakeRegistration(createSessionController), {
     controllerSlots: "all",
     playerCount: 2,
     seed: 55
@@ -107,8 +107,8 @@ test("restart replaces controllers and dispose is idempotent", () => {
 });
 
 test("unsupported games route deterministic seeded compatibility behavior through controllers", () => {
-  const first = new GameSession(fakeRegistration(), { playerCount: 2, seed: 901 });
-  const second = new GameSession(fakeRegistration(), { playerCount: 2, seed: 901 });
+  const first = new JugarPresentationSession(fakeRegistration(), { playerCount: 2, seed: 901 });
+  const second = new JugarPresentationSession(fakeRegistration(), { playerCount: 2, seed: 901 });
   first.stepTicks(80);
   second.stepTicks(80);
   assert.deepEqual(avatarAuthority(first), avatarAuthority(second));
@@ -127,7 +127,7 @@ test("controller moves are applied through the session's single engine", () => {
     }
   });
   const registration = fakeRegistration(createSessionController);
-  const session = new GameSession(registration, {
+  const session = new JugarPresentationSession(registration, {
     controllerSlots: "all",
     playerCount: 1,
     seed: 44
@@ -137,7 +137,7 @@ test("controller moves are applied through the session's single engine", () => {
 
   assert.equal(observedGame, session.instance);
   assert.ok(instance.presses.some(({ x, y }) => x === 7 && y === 25));
-  assert.equal(session.engine.state.snapshot.score, instance.presses.length);
+  assert.equal(session.state.snapshot.score, instance.presses.length);
   session.dispose();
 });
 
@@ -163,7 +163,7 @@ test("controller waypoints are followed in order through authoritative presses",
       };
     }
   });
-  const session = new GameSession(fakeRegistration(createSessionController), {
+  const session = new JugarPresentationSession(fakeRegistration(createSessionController), {
     controllerSlots: "all",
     playerCount: 1,
     seed: 12
@@ -183,7 +183,7 @@ test("repeated controller jumps cannot suppress authoritative landing contact", 
     id,
     step: () => ({ action: { kind: "jump" } })
   });
-  const session = new GameSession(fakeRegistration(createSessionController), {
+  const session = new JugarPresentationSession(fakeRegistration(createSessionController), {
     controllerSlots: "all",
     playerCount: 1,
     seed: 13
@@ -223,7 +223,7 @@ test("planned controller jumps cross hazards once and land on their safe target"
       };
     }
   });
-  const session = new GameSession(fakeRegistration(createSessionController), {
+  const session = new JugarPresentationSession(fakeRegistration(createSessionController), {
     controllerSlots: "all",
     playerCount: 1,
     seed: 17
@@ -253,7 +253,7 @@ test("intermediate controller waypoints preserve configured travel speed", () =>
       };
     }
   });
-  const session = new GameSession(fakeRegistration(createSessionController), {
+  const session = new JugarPresentationSession(fakeRegistration(createSessionController), {
     controllerSlots: "all",
     playerCount: 1,
     seed: 19
@@ -277,33 +277,33 @@ test("intermediate controller waypoints preserve configured travel speed", () =>
 });
 
 test("exact trajectory seek leaves live authority untouched and restores it on exit", () => {
-  const session = new GameSession(fakeRegistration(), { playerCount: 2, seed: 77 });
+  const session = new JugarPresentationSession(fakeRegistration(), { playerCount: 2, seed: 77 });
   const frames: SessionTrajectoryFrame[] = [session.captureTrajectoryFrame()];
   const unsubscribe = session.subscribeTrajectory((frame) => frames.push(frame));
   session.stepTicks(8);
-  const liveClock = session.engine.clockMillis;
-  const liveAvatars = avatarAuthority(session);
+  const liveClock = session.authorityClockMillis;
   const seekFrame = frames[3];
   assert.ok(seekFrame);
 
   session.setPaused(true);
+  const parkedAvatars = avatarAuthority(session);
   session.presentTrajectoryFrame(seekFrame);
   assert.equal(session.isPresentingTrajectory, true);
   assert.equal(session.state.clockMillis, seekFrame.atMillis);
   assert.equal(session.captureTrajectoryFrame().checksum, seekFrame.checksum);
-  assert.equal(session.engine.clockMillis, liveClock);
+  assert.equal(session.authorityClockMillis, liveClock);
   assert.throws(() => session.stepTicks(), /Exit trajectory playback/u);
 
   session.exitTrajectoryPlayback();
   assert.equal(session.isPresentingTrajectory, false);
   assert.equal(session.state.clockMillis, liveClock);
-  assert.deepEqual(avatarAuthority(session), liveAvatars);
+  assert.deepEqual(avatarAuthority(session), parkedAvatars);
   unsubscribe();
   session.dispose();
 });
 
 test("trajectory playback exposes its recorded clock to character animation", () => {
-  const session = new GameSession(fakeRegistration(), { playerCount: 1, seed: 81 });
+  const session = new JugarPresentationSession(fakeRegistration(), { playerCount: 1, seed: 81 });
   session.jump();
   const jumping = session.captureTrajectoryFrame();
   session.stepTicks(30);
@@ -447,7 +447,7 @@ const fakeManifest: GameManifest = {
   }
 };
 
-function drive(session: GameSession, timestamps: readonly number[]): void {
+function drive(session: JugarPresentationSession, timestamps: readonly number[]): void {
   for (const timestamp of timestamps) session.advanceTo(timestamp);
 }
 
@@ -457,7 +457,7 @@ function range(start: number, end: number, increment: number): number[] {
   return values;
 }
 
-function avatarAuthority(session: GameSession) {
+function avatarAuthority(session: JugarPresentationSession) {
   return session.avatars.map((avatar) => ({
     id: avatar.id,
     playerIndex: avatar.playerIndex,
@@ -481,7 +481,7 @@ function runDueloProductSession(playerCount: number) {
     PlayerDisplay: DueloPlayerDisplay as RegisteredGame["PlayerDisplay"],
     createSessionController: createDueloSessionController
   };
-  const session = new GameSession(registration, {
+  const session = new JugarPresentationSession(registration, {
     controllerProfile: "mixed",
     controllerSlots: "all",
     playerCount,

@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readPlayerJourneyLaunch } from "../src/playerJourney.ts";
 import type { PlaygroundGame } from "../src/gameRegistry.ts";
-import { manifest } from "../../../games/ping-pong/src/manifest.ts";
+import { manifest } from "../../../games/ping-pong-v2/src/manifest.ts";
 
 const playgroundGames = [{ manifest }] as unknown as readonly PlaygroundGame[];
 
 test("player journey selects and normalizes kiosk launch settings", () => {
-  const game = playgroundGames.find((candidate) => candidate.manifest.id === "ping-pong");
+  const game = playgroundGames.find((candidate) => candidate.manifest.id === "ping-pong-v2");
   assert.ok(game);
   const launch = readPlayerJourneyLaunch(
     playgroundGames,
-    "?journey=1&game=ping-pong&players=2&difficulty=hard&options=%7B%7D",
+    "?journey=1&game=ping-pong-v2&players=2&difficulty=hard&options=%7B%7D",
   );
-  assert.equal(launch?.gameId, "ping-pong");
+  assert.equal(launch?.gameId, "ping-pong-v2");
   assert.equal(launch?.playerCount, 2);
   assert.equal(launch?.difficulty, "hard");
 });
@@ -27,12 +27,12 @@ test("player journey accepts only same-origin menu return URLs", () => {
   const sameOriginReturn = "https://platform.motionlevels.obis.dev/games/play?screen=menu";
   const accepted = readPlayerJourneyLaunch(
     playgroundGames,
-    `?journey=1&game=ping-pong&return=${encodeURIComponent(sameOriginReturn)}`,
+    `?journey=1&game=ping-pong-v2&return=${encodeURIComponent(sameOriginReturn)}`,
     platformLocation,
   );
   const rejected = readPlayerJourneyLaunch(
     playgroundGames,
-    `?journey=1&game=ping-pong&return=${encodeURIComponent("https://example.com/games/play?screen=menu")}`,
+    `?journey=1&game=ping-pong-v2&return=${encodeURIComponent("https://example.com/games/play?screen=menu")}`,
     platformLocation,
   );
 

@@ -6,3 +6,5 @@ coverage/
 *.tsbuildinfo
 .vite/
 .idea/
+games/*/content/content.lock.json
+games/*/src/content.generated.ts

@@ -18,7 +18,7 @@ import {
 } from "../packages/game-sdk/src/index.ts";
 import { controllerProtocolVersion } from "../apps/venue-runtime/src/controllerProtocol.ts";
 import { venueApiProtocolVersion } from "../apps/venue-runtime/src/apiProtocol.ts";
-import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
+import { gameCatalog } from "../packages/game-catalog/src/gameplayRegistry.ts";
 import {
   SESSION_HISTORY_CONTRACT_VERSION,
   SESSION_HISTORY_SCHEMA
@@ -37,25 +37,14 @@ const sourceBuildDate = execFileSync("git", ["show", "-s", "--format=%cI", sourc
   encoding: "utf8"
 }).trim();
 const outputRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_BUNDLE_DIR || path.join(repoRoot, "dist/bundle"));
-const defaultDistMedia = path.join(repoRoot, "dist/media");
-const defaultSubmoduleMedia = path.join(repoRoot, "assets/media");
-let resolvedMediaRoot = defaultDistMedia;
-if (process.env.MOTION_LEVELS_GAMES_MEDIA_DIR) {
-  resolvedMediaRoot = path.resolve(process.env.MOTION_LEVELS_GAMES_MEDIA_DIR);
-} else {
-  try {
-    const s = await stat(defaultDistMedia);
-    if (!s.isDirectory()) throw new Error();
-  } catch {
-    try {
-      const s = await stat(defaultSubmoduleMedia);
-      if (s.isDirectory()) resolvedMediaRoot = defaultSubmoduleMedia;
-    } catch {
-      // fallback to default dist/media
-    }
-  }
-}
-const mediaRoot = resolvedMediaRoot;
+// Release bundles consume the revision-pinned assets repository. Generated
+// media is a development artifact and is used only when a caller opts in with
+// an explicit override.
+const mediaRoot = path.resolve(
+  process.env.MOTION_LEVELS_GAMES_MEDIA_DIR || path.join(repoRoot, "assets/media")
+);
+const mediaRootStat = await stat(mediaRoot);
+if (!mediaRootStat.isDirectory()) throw new Error(`media root is not a directory: ${mediaRoot}`);
 const playerExperienceSchema = await readFile(path.join(repoRoot, "packages/player-experience/schema/player-experience-state.schema.json"), "utf8");
 const sessionHistorySchema = await readFile(path.join(repoRoot, "packages/session-history/schema/session-history-v1.schema.json"), "utf8");
 const authoredGames = await compileAuthoredContent({ root: repoRoot });
@@ -122,7 +111,7 @@ await build({
   legalComments: "none"
 });
 const displayBuildOptions = {
-  entryPoints: [path.join(repoRoot, "packages/runtime/src/display.tsx")],
+  entryPoints: [path.join(repoRoot, "packages/game-catalog/src/display.tsx")],
   outfile: path.join(outputRoot, "display/display.js"),
   bundle: true,
   format: "iife",
@@ -159,8 +148,8 @@ async function registerMedia(reference: string): Promise<void> {
     mediaSources.set(reference, direct);
     return;
   } catch {
-    // The checked-in assets submodule keeps game media under media/games while
-    // generated-media artifacts use the flatter media/<game> layout. Both
+    // The pinned assets submodule keeps game media under media/games while an
+    // explicit generated-media override uses the flatter media/<game> layout. Both
     // resolve to the canonical bundle reference below.
   }
   const submoduleGameMedia = path.join(mediaRoot, "games", relative);

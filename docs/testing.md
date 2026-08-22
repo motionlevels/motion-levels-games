@@ -98,9 +98,9 @@ workflow runs five independent jobs:
 2. the full test set;
 3. repository contracts and thresholded coverage;
 4. the production build and deterministic engine playtests;
-5. the real-browser playground interaction playtest, generated media, and
-   verified release bundle inside the Playwright runtime image pinned to the
-   repository's Playwright version.
+5. the real-browser playground interaction playtest and verified release bundle,
+   assembled from the pinned assets submodule inside the Playwright runtime
+   image pinned to the repository's Playwright version.
 
 Every host job reads the same exact Node 24 version from `.node-version`. The
 pinned Playwright 1.61 image also uses Node 24, so browser verification stays on
@@ -118,6 +118,9 @@ runner's exact uid/gid, so it cannot leave root-owned repository files behind;
 it needs neither recursive ownership repair nor interactive `sudo`.
 
 Heterogeneous self-hosted workers therefore cannot silently supply different
-Chromium system libraries. Browser-backed release media and the resulting
-bundle are created in that same pinned runtime; the separate host job remains a
-fast, browser-independent production-build and engine gate.
+Chromium system libraries. The release bundle consumes the exact pinned assets
+revision in that same runtime; the separate host job remains a fast,
+browser-independent production-build and engine gate.
+Because the assets repository is private, release CI receives a read-only
+`MOTION_LEVELS_ASSETS_TOKEN`, resolves the assets gitlink from the games commit,
+and checks out that exact SHA rather than reading the assets repository's head.

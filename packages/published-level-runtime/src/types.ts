@@ -201,11 +201,13 @@ export type AuthoredGameSourceManifest = Readonly<{
   defaultDifficulty: string;
   defaultMode: PublishedLevelMode;
   defaultLevelSlug: string;
+  resultAnimationIds: readonly string[];
 }>;
 
 export type AuthoredGameRepositoryExport = Readonly<{
   schema: typeof AUTHORED_GAME_EXPORT_SCHEMA;
-  contentRevision: string;
+  /** Review/import identity for authored source JSON; not a runtime revision. */
+  sourceFingerprint: string;
   game: AuthoredGameSourceManifest;
   levels: readonly unknown[];
   resultAnimations: readonly unknown[];

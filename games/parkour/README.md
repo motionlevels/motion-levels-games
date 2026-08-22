@@ -8,7 +8,8 @@ Parkour is a thin product over
 `@motion-levels-games/published-level-runtime`. It keeps the classic
 selection-time three-second platform load, animated lava, per-tile damage,
 difficulty lives/speed, connected blue-platform capture, green platform
-transitions, audio references, and platform-authored result animations.
+transitions, audio references, and shared repository-authored result
+animations.
 
 The host supplies the current editor revision through `GameConfig.content`.
 `fixtures-content.ts` is a small deterministic offline/playground fallback,

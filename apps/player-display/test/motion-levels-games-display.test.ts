@@ -7,7 +7,7 @@ const apiSource = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8"
 const audioSource = readFileSync(new URL("../src/audio.ts", import.meta.url), "utf8");
 const displaySource = readFileSync(new URL("../src/MotionLevelsGamesDisplay.tsx", import.meta.url), "utf8");
 const clientSource = readFileSync(new URL("../src/displayClient.ts", import.meta.url), "utf8");
-const runtimeSource = readFileSync(new URL("../../../packages/runtime/src/display.tsx", import.meta.url), "utf8");
+const runtimeSource = readFileSync(new URL("../../../packages/game-catalog/src/display.tsx", import.meta.url), "utf8");
 const bundleSource = readFileSync(new URL("../../../scripts/build-bundle.ts", import.meta.url), "utf8");
 
 test("new games load their revision-matched display while legacy games retain the existing app", () => {
@@ -81,4 +81,10 @@ test("the renderer keeps an embedded CSS bridge while the shell prefers revision
   assert.match(displaySource, /stylesheet\.dataset\.motionLevelsGamesRevision = revision/u);
   assert.match(displaySource, /runtimeLoadGeneration/u);
   assert.match(displaySource, /discardStaleRuntimeRevision/u);
+  assert.match(displaySource, /connectionEpochRef/u);
+  assert.match(displaySource, /renderEpochRef/u);
+  assert.match(displaySource, /readyIdentityRef\.current === connectionIdentity/u);
+  assert.match(displaySource, /rememberPendingLegacyStyle/u);
+  assert.match(displaySource, /restorePendingLegacyStyle/u);
+  assert.match(runtimeSource, /motionLevelsGamesPendingRevision/u);
 });

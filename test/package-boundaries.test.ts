@@ -17,7 +17,8 @@ const gamePackages = new Set([
 ]);
 const playgroundPackages = new Set([
   ...gamePackages,
-  "@motion-levels-games/jugar-3d"
+  "@motion-levels-games/jugar-3d",
+  "@motion-levels-games/runtime"
 ]);
 
 test("workspace source imports respect package ownership", async () => {
@@ -42,14 +43,24 @@ test("workspace source imports respect package ownership", async () => {
       ])
     },
     { directory: "packages/character-runtime/src", allowed: new Set<string>() },
-    { directory: "packages/runtime/src", allowed: runtimePackages },
+    { directory: "packages/runtime/src", allowed: new Set(["@motion-levels-games/game-sdk"]) },
+    {
+      directory: "packages/game-catalog/src",
+      allowed: new Set([
+        ...runtimePackages,
+        "@motion-levels-games/display-kit",
+        "@motion-levels-games/game-sdk",
+        "@motion-levels-games/runtime"
+      ])
+    },
     {
       directory: "packages/jugar-3d/src",
       allowed: new Set([
         "@motion-levels-games/character-runtime",
         "@motion-levels-games/display-kit",
         "@motion-levels-games/game-sdk",
-        "@motion-levels-games/replay-runtime"
+        "@motion-levels-games/replay-runtime",
+        "@motion-levels-games/runtime"
       ])
     },
     { directory: "apps/playground/src", allowed: playgroundPackages },
@@ -68,6 +79,7 @@ test("workspace source imports respect package ownership", async () => {
     {
       directory: "apps/venue-runtime/src",
       allowed: new Set([
+        "@motion-levels-games/game-catalog",
         "@motion-levels-games/game-sdk",
         "@motion-levels-games/player-experience",
         "@motion-levels-games/replay-runtime",

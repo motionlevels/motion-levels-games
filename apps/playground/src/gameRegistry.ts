@@ -34,7 +34,7 @@ export type GameModule = {
   createSessionController?: SessionControllerFactory;
 };
 
-const defaultGameId = "ping-pong";
+const defaultGameId = "ping-pong-v2";
 const gameModules = import.meta.glob<GameModule>("../../../games/*/src/index.ts", {
   eager: true
 });

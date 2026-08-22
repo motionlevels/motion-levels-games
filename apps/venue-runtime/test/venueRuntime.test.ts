@@ -1053,7 +1053,7 @@ test("configured degraded recording can be retried without reporting it active b
 test("selection fails closed on bundle revision mismatch", async () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   await assert.rejects(runtime.select({
-    game: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: "2".repeat(40),
     playerCount: 0,
@@ -1064,15 +1064,15 @@ test("selection fails closed on bundle revision mismatch", async () => {
 test("allow-any TypeScript games accept zero players and produce JSON-safe status", async () => {
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   const status = await runtime.select({
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     playerCount: 0,
     allowAnyPlayers: true,
     players: []
   });
-  assert.equal(status.currentGame, "motion-levels-games:ping-pong");
+  assert.equal(status.currentGame, "motion-levels-games:ping-pong-v2");
   assert.equal(status.contractVersion, 1);
   assert.equal(status.lifecycle, "waiting");
   assert.ok(status.allowedControls.includes("pause"));
@@ -1096,8 +1096,8 @@ test("held pressure is applied when a game is selected and restarted", async () 
   const runtime = new VenueRuntime({ sourceRevision: revision, controllerAddress: "127.0.0.1:4201" });
   runtime.applyPressure({ x: 7, y: 3, pressed: true, unixNanos: 1n, sequence: 1n });
   await runtime.select({
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     playerCount: 0,
@@ -1977,8 +1977,8 @@ function deferredRecordingBoundary(initialBoundary?: RecordingBoundary): {
 
 async function selectPingPong(runtime: VenueRuntime): Promise<void> {
   await runtime.select({
-    game: "motion-levels-games:ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    game: "motion-levels-games:ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceKind: "motion_levels_games",
     sourceRevision: revision,
     playerCount: 0,

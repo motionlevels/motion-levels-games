@@ -120,7 +120,7 @@ or an agent resumes work there, rather than after every `main` commit.
 5. Keep all game code inside `games/<game-id>/`.
 6. Do not manually add game imports to `apps/playground/src/App.tsx`.
 7. Register every new game package once in
-   `packages/runtime/src/gameplayRegistry.ts`; validation compares that registry with
+   `packages/game-catalog/src/gameplayRegistry.ts`; validation compares that registry with
    `games/*` so a game cannot pass CI while missing from the production
    runtime, catalog, or player-display bundle.
 8. Keep the stable `manifest.id`; keep `manifest.slug`, package name, README,

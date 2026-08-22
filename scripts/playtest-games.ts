@@ -15,11 +15,11 @@ import {
   targetColor
 } from "@motion-levels-games/hello-world";
 import {
-  PlayerDisplay as PingPongDisplay,
-  createGame as createPingPongGame,
-  manifest as pingPongManifest,
+  PlayerDisplay as PingPongV2Display,
+  createGame as createPingPongV2Game,
+  manifest as pingPongV2Manifest,
   type PingPongSnapshot
-} from "@motion-levels-games/ping-pong";
+} from "@motion-levels-games/ping-pong-v2";
 
 function countColor(frame: Frame, color: string): number {
   return frame.cells.filter((cell) => cell.color === color).length;
@@ -87,8 +87,8 @@ function playtestHelloWorld() {
   };
 }
 
-function playtestPingPong() {
-  const game = createPingPongGame({
+function playtestPingPongV2() {
+  const game = createPingPongV2Game({
     difficulty: "medium",
     options: { points_to_win: 3 },
     playerCount: 2,
@@ -99,7 +99,7 @@ function playtestPingPong() {
   });
 
   let snapshot = engine.state.snapshot as PingPongSnapshot;
-  assert.equal(snapshot.currentGame, pingPongManifest.id);
+  assert.equal(snapshot.currentGame, pingPongV2Manifest.id);
   assert.equal(snapshot.phase, "waiting");
   assert.equal(snapshot.readyPlayers, 0);
 
@@ -125,13 +125,13 @@ function playtestPingPong() {
   assert.ok(snapshot.rounds.every((round) => round.winnerIndex === 0 || round.winnerIndex === 1));
 
   const html = renderToStaticMarkup(
-    React.createElement(PingPongDisplay, {
+    React.createElement(PingPongV2Display, {
       snapshot,
       frame: engine.state.frame
     })
   );
 
-  assert.ok(html.includes(pingPongManifest.label));
+  assert.ok(html.includes(pingPongV2Manifest.label));
   assert.match(html, /2 de 5 rondas jugadas/);
 
   return {
@@ -145,7 +145,7 @@ function playtestPingPong() {
 
 const result = {
   helloWorld: playtestHelloWorld(),
-  pingPong: playtestPingPong()
+  pingPongV2: playtestPingPongV2()
 };
 
 console.log(JSON.stringify(result, null, 2));

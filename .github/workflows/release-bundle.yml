@@ -48,6 +48,8 @@ jobs:
     uses: ./.github/workflows/checks.yml
     with:
       build_release_bundle: true
+    secrets:
+      MOTION_LEVELS_ASSETS_TOKEN: ${{ secrets.MOTION_LEVELS_ASSETS_TOKEN }}
 
   bundle:
     needs:

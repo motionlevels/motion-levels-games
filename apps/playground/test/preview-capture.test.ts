@@ -11,7 +11,7 @@ import {
   type PressEvent,
   type TickEvent
 } from "@motion-levels-games/game-sdk";
-import { gamePackageRegistry } from "../../../packages/runtime/src/gameplayRegistry.ts";
+import { gamePackageRegistry } from "../../../packages/game-catalog/src/gameplayRegistry.ts";
 import { collectPreviewFrames } from "../src/previewCapture.ts";
 
 test("every authored game preview contains visible movement", () => {

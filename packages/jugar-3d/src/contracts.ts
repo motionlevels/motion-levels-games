@@ -14,7 +14,7 @@ import type { Avatar, Point } from "./core/avatar.ts";
 export type SessionControllerAction = Readonly<{
   kind: string;
   target?: Readonly<Point>;
-  /** Product-planned waypoints; GameSession remains the movement authority. */
+  /** Product-planned waypoints; JugarPresentationSession remains the movement adapter. */
   path?: readonly Readonly<Point>[];
   explanation?: string;
 }>;

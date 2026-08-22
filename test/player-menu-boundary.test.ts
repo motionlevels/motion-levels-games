@@ -23,6 +23,8 @@ test("production bundle declares the static menu and adapter protocol", async ()
     /playerMenu:\s*\{[\s\S]*?entry: "menu\/index\.html",[\s\S]*?buildManifest: "menu\/build\.json",[\s\S]*?adapterProtocolVersion: playerMenuAdapterProtocolVersion[\s\S]*?\}/u,
   );
   assert.match(source, /MOTION_LEVELS_GAMES_SOURCE_REVISION: sourceRevision/u);
+  assert.match(source, /MOTION_LEVELS_GAMES_MEDIA_DIR \|\| path\.join\(repoRoot, "assets\/media"\)/u);
+  assert.doesNotMatch(source, /defaultDistMedia/u);
   assert.match(source, /apps\/player-menu\/dist\/build\.json/u);
   assert.match(source, /schema: "motion-levels-games-bundle-v2"/u);
   assert.match(source, /entry: "venue\/runtime\.mjs"/u);

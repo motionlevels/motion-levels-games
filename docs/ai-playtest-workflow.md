@@ -111,7 +111,7 @@ checksum and image. Inspect the selected controller explanation and route;
 never infer decisions from floor colours or animation. Return to Floor mode
 and confirm normal player input and the game-owned display are unchanged.
 
-The surface records exact shared `GameSession` presentation frames in the
+The surface records exact shared `JugarPresentationSession` frames in the
 current page. Batched `step(n)` calls advance authority one fixed tick at a time
 and retain all intermediate frames while presenting only the final frame.
 Replay consumes that trajectory without constructing another engine or
@@ -164,7 +164,7 @@ latched.
 Generate catalog-style media when reviewing a game card or TV display:
 
 ```js
-const media = await ml.media("ping-pong", {
+const media = await ml.media("ping-pong-v2", {
   difficulty: "hard",
   playerCount: 0,
   options: { points_to_win: 7 }

@@ -7,7 +7,6 @@ type ArchitectureConfig = {
   engineAuthority: string;
   coreRoots: string[];
   compositionRoots: string[];
-  allowedConcreteGameConsumers: string[];
   forbiddenEngineRoots: string[];
 };
 
@@ -28,7 +27,6 @@ const repoRoot = process.cwd();
 const config = JSON.parse(
   await readFile(path.join(repoRoot, "architecture-boundaries.json"), "utf8")
 ) as ArchitectureConfig;
-const strict = process.argv.includes("--strict");
 const problems: string[] = [];
 
 if (config.schema !== "motion-levels-games-architecture-v1") {
@@ -36,10 +34,8 @@ if (config.schema !== "motion-levels-games-architecture-v1") {
 }
 
 const packages = await discoverWorkspacePackages();
-const byRoot = new Map(packages.map((workspace) => [workspace.root, workspace] as const));
 const games = packages.filter((workspace) => pathWithin(workspace.root, config.gameRoot));
 const gamePackageNames = new Set(games.map((workspace) => workspace.name));
-const allowedConcreteConsumers = new Set(config.allowedConcreteGameConsumers);
 
 for (const forbiddenRoot of config.forbiddenEngineRoots) {
   if (await exists(path.join(repoRoot, forbiddenRoot))) {
@@ -64,23 +60,10 @@ for (const workspace of packages.filter((candidate) => candidate.root.startsWith
   const concreteDependencies = runtimeDependencies(workspace.manifest)
     .filter((dependency) => gamePackageNames.has(dependency));
   if (concreteDependencies.length === 0) continue;
-  if (!allowedConcreteConsumers.has(workspace.root)) {
+  if (!config.compositionRoots.some((root) => pathWithin(workspace.root, root))) {
     problems.push(
       `${workspace.root}: package-layer code depends on concrete games (${concreteDependencies.join(", ")}); move catalog composition to an application/composition root`
     );
-  }
-}
-
-for (const exceptionRoot of allowedConcreteConsumers) {
-  const workspace = byRoot.get(exceptionRoot);
-  if (!workspace) {
-    problems.push(`${exceptionRoot}: stale allowedConcreteGameConsumers entry does not identify a workspace package`);
-    continue;
-  }
-  const concreteDependencies = runtimeDependencies(workspace.manifest)
-    .filter((dependency) => gamePackageNames.has(dependency));
-  if (concreteDependencies.length === 0) {
-    problems.push(`${exceptionRoot}: stale concrete-game composition exception can now be removed`);
   }
 }
 
@@ -89,12 +72,6 @@ for (const coreRoot of config.coreRoots) {
 }
 
 await validateSingleEngineAuthority(packages, config.engineAuthority, problems);
-
-if (strict && config.allowedConcreteGameConsumers.length > 0) {
-  problems.push(
-    `strict mode: concrete-game package exceptions remain: ${config.allowedConcreteGameConsumers.join(", ")}`
-  );
-}
 
 if (problems.length > 0) {
   console.error([

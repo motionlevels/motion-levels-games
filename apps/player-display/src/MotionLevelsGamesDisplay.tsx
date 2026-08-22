@@ -36,10 +36,14 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
   const floorRotationDegrees = useVenueFloorRotation();
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<GamesDisplayRuntime | null>(null);
+  const connectionEpochRef = useRef(0);
+  const renderEpochRef = useRef(0);
+  const readyIdentityRef = useRef("");
   const [renderState, setRenderState] = useState<GamesDisplayRenderState>(() => renderLoadingState(status.sourceRevision || ""));
   const revision = status.sourceRevision || "";
   const gameId = gameID(status);
   const hasSnapshot = status.gameSnapshot !== undefined;
+  const connectionIdentity = displayConnectionIdentity(revision, gameId, hasSnapshot);
   const latestInput = useRef<GamesDisplayInput>({
     gameId,
     snapshot: status.gameSnapshot ?? {},
@@ -58,30 +62,50 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !revision || !hasSnapshot) return;
+    const connectionEpoch = ++connectionEpochRef.current;
     let cancelled = false;
     let retryHandle: number | null = null;
     let mountedRuntime: GamesDisplayRuntime | null = null;
 
+    const isCurrentConnection = () => (
+      !cancelled && connectionEpochRef.current === connectionEpoch
+    );
     const publish = (next: GamesDisplayRenderState) => {
-      if (cancelled) return;
+      if (!isCurrentConnection()) return;
+      readyIdentityRef.current = next.status === "ready" ? connectionIdentity : "";
       setRenderState(next);
       onStateChange(next);
     };
-    const runtimeInput = (): GamesDisplayInput => ({
+    const failRuntime = (
+      runtime: GamesDisplayRuntime,
+      renderEpoch: number,
+      attempt: number,
+      reason: unknown,
+    ) => {
+      if (
+        !isCurrentConnection()
+        || renderEpochRef.current !== renderEpoch
+        || runtimeRef.current !== runtime
+      ) return;
+      renderEpochRef.current += 1;
+      safelyUnmount(runtime, host);
+      runtimeRef.current = null;
+      if (mountedRuntime === runtime) mountedRuntime = null;
+      publish({
+        status: "error",
+        expectedRevision: revision,
+        loadedRevision: revision,
+        attempt,
+        error: displayErrorMessage(reason),
+      });
+    };
+    const runtimeInput = (
+      runtime: GamesDisplayRuntime,
+      renderEpoch: number,
+      attempt: number,
+    ): GamesDisplayInput => ({
       ...latestInput.current,
-      onError: (reason) => {
-        if (cancelled) return;
-        safelyUnmount(mountedRuntime, host);
-        if (runtimeRef.current === mountedRuntime) runtimeRef.current = null;
-        mountedRuntime = null;
-        publish({
-          status: "error",
-          expectedRevision: revision,
-          loadedRevision: revision,
-          attempt: 0,
-          error: displayErrorMessage(reason),
-        });
-      },
+      onError: (reason) => failRuntime(runtime, renderEpoch, attempt, reason),
     });
     const connect = (attempt: number, error = "") => {
       publish({
@@ -96,15 +120,21 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
         retryHandle = null;
         loadRuntime(revision)
           .then((runtime) => {
-            if (cancelled) return;
+            if (!isCurrentConnection()) return;
             mountedRuntime = runtime;
             runtimeRef.current = runtime;
-            runtime.mount(host, runtimeInput());
-            if (mountedRuntime !== runtime) return;
+            const renderEpoch = ++renderEpochRef.current;
+            runtime.mount(host, runtimeInput(runtime, renderEpoch, attempt));
+            if (
+              !isCurrentConnection()
+              || mountedRuntime !== runtime
+              || renderEpochRef.current !== renderEpoch
+            ) return;
             publish({ status: "ready", expectedRevision: revision, loadedRevision: runtime.revision, attempt, error: "" });
           })
           .catch((reason) => {
-            if (cancelled) return;
+            if (!isCurrentConnection()) return;
+            renderEpochRef.current += 1;
             safelyUnmount(mountedRuntime, host);
             if (runtimeRef.current === mountedRuntime) runtimeRef.current = null;
             mountedRuntime = null;
@@ -117,39 +147,37 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
     return () => {
       cancelled = true;
       if (retryHandle !== null) window.clearTimeout(retryHandle);
-      safelyUnmount(mountedRuntime, host);
-      if (runtimeRef.current === mountedRuntime) runtimeRef.current = null;
+      if (connectionEpochRef.current === connectionEpoch) {
+        connectionEpochRef.current += 1;
+        renderEpochRef.current += 1;
+        readyIdentityRef.current = "";
+        safelyUnmount(mountedRuntime, host);
+        if (runtimeRef.current === mountedRuntime) runtimeRef.current = null;
+      }
     };
-  }, [gameId, hasSnapshot, revision, onStateChange]);
+  }, [connectionIdentity, gameId, hasSnapshot, revision, onStateChange]);
 
   useEffect(() => {
     const host = hostRef.current;
     const runtime = runtimeRef.current;
-    if (!host || renderState.status !== "ready" || runtime?.revision !== revision || !status.gameSnapshot) return;
-    try {
-      runtime.update(host, {
-        gameId,
-        snapshot: status.gameSnapshot,
-        frame: status.frame,
-        paused: status.phase === "paused",
-        floorRotationDegrees,
-        onError: (reason) => {
-          safelyUnmount(runtime, host);
-          if (runtimeRef.current === runtime) runtimeRef.current = null;
-          const next = {
-            status: "error",
-            expectedRevision: revision,
-            loadedRevision: revision,
-            attempt: renderState.attempt,
-            error: displayErrorMessage(reason),
-          } satisfies GamesDisplayRenderState;
-          setRenderState(next);
-          onStateChange(next);
-        },
-      });
-    } catch (reason) {
+    if (
+      !host
+      || renderState.status !== "ready"
+      || readyIdentityRef.current !== connectionIdentity
+      || runtime?.revision !== revision
+      || !status.gameSnapshot
+    ) return;
+    const renderEpoch = ++renderEpochRef.current;
+    const failRuntime = (reason: unknown) => {
+      if (
+        renderEpochRef.current !== renderEpoch
+        || runtimeRef.current !== runtime
+        || readyIdentityRef.current !== connectionIdentity
+      ) return;
+      renderEpochRef.current += 1;
+      readyIdentityRef.current = "";
       safelyUnmount(runtime, host);
-      if (runtimeRef.current === runtime) runtimeRef.current = null;
+      runtimeRef.current = null;
       const next = {
         status: "error",
         expectedRevision: revision,
@@ -159,13 +187,27 @@ export function MotionLevelsGamesDisplay({ status, fallback, onStateChange }: Mo
       } satisfies GamesDisplayRenderState;
       setRenderState(next);
       onStateChange(next);
+    };
+    try {
+      runtime.update(host, {
+        gameId,
+        snapshot: status.gameSnapshot,
+        frame: status.frame,
+        paused: status.phase === "paused",
+        floorRotationDegrees,
+        onError: failRuntime,
+      });
+    } catch (reason) {
+      failRuntime(reason);
     }
-  }, [floorRotationDegrees, gameId, onStateChange, renderState.attempt, renderState.status, revision, status.frame, status.gameSnapshot, status.phase]);
+  }, [connectionIdentity, floorRotationDegrees, gameId, onStateChange, renderState.attempt, renderState.status, revision, status.frame, status.gameSnapshot, status.phase]);
+
+  const isReady = renderState.status === "ready" && readyIdentityRef.current === connectionIdentity;
 
   return (
     <main className="motion-levels-games-display-host">
-      <div ref={hostRef} className={`motion-levels-games-display-root ${renderState.status === "ready" ? "is-ready" : "is-hidden"}`} />
-      {renderState.status === "ready" ? null : <div className="motion-levels-games-display-fallback">{fallback}</div>}
+      <div ref={hostRef} className={`motion-levels-games-display-root ${isReady ? "is-ready" : "is-hidden"}`} />
+      {isReady ? null : <div className="motion-levels-games-display-fallback">{fallback}</div>}
     </main>
   );
 }
@@ -188,6 +230,10 @@ function gameID(status: DisplayStatus) {
     : String(status.gameSnapshot?.currentGame || status.currentGame);
 }
 
+function displayConnectionIdentity(revision: string, gameId: string, hasSnapshot: boolean): string {
+  return JSON.stringify([revision, gameId, hasSnapshot]);
+}
+
 const gamesDisplayLegacyStylesID = "motion-levels-games-display-styles";
 const gamesDisplayExternalStylesID = "motion-levels-games-display-stylesheet";
 
@@ -202,6 +248,9 @@ let pendingRuntime: {
   promise: Promise<GamesDisplayRuntime>;
   script: HTMLScriptElement;
   stylesheet: HTMLLinkElement;
+  legacyStyle: HTMLStyleElement;
+  legacyStyleText: string;
+  legacyStyleRevision: string | null;
   cancel(reason: Error): void;
 } | null = null;
 
@@ -244,7 +293,7 @@ function loadRuntime(revision: string): Promise<GamesDisplayRuntime> {
     stylesheet.onload = () => {
       if (!isCurrentRuntimeLoad(generation)) {
         stylesheet.remove();
-        discardStaleRuntimeRevision(revision);
+        discardStaleRuntimeRevision(revision, generation);
         reject(new Error("La carga de estilos fue reemplazada"));
         return;
       }
@@ -253,7 +302,7 @@ function loadRuntime(revision: string): Promise<GamesDisplayRuntime> {
     stylesheet.onerror = () => {
       if (!isCurrentRuntimeLoad(generation)) {
         stylesheet.remove();
-        discardStaleRuntimeRevision(revision);
+        discardStaleRuntimeRevision(revision, generation);
         reject(new Error("La carga de estilos fue reemplazada"));
         return;
       }
@@ -266,10 +315,11 @@ function loadRuntime(revision: string): Promise<GamesDisplayRuntime> {
     script.onload = () => {
       if (!isCurrentRuntimeLoad(generation)) {
         script.remove();
-        discardStaleRuntimeRevision(revision);
+        discardStaleRuntimeRevision(revision, generation);
         reject(new Error("La carga de la pantalla fue reemplazada"));
         return;
       }
+      rememberPendingLegacyStyle(generation, revision);
       const runtime = runtimeForRevision(revision);
       if (!runtime) {
         reject(new Error("La revisión de la pantalla no coincide con el juego"));
@@ -280,7 +330,7 @@ function loadRuntime(revision: string): Promise<GamesDisplayRuntime> {
     script.onerror = () => {
       if (!isCurrentRuntimeLoad(generation)) {
         script.remove();
-        discardStaleRuntimeRevision(revision);
+        discardStaleRuntimeRevision(revision, generation);
         reject(new Error("La carga de la pantalla fue reemplazada"));
         return;
       }
@@ -304,6 +354,7 @@ function loadRuntime(revision: string): Promise<GamesDisplayRuntime> {
     } else if (legacyStyle.dataset.revision === revision && legacyStyle.textContent?.trim()) {
       stylesheet.remove();
       legacyStyle.media = "all";
+      delete legacyStyle.dataset.motionLevelsGamesPendingRevision;
       if (previousStylesheet !== legacyStyle) previousStylesheet?.remove();
       rememberAcceptedStylesheet(legacyStyle);
     } else {
@@ -334,7 +385,17 @@ function loadRuntime(revision: string): Promise<GamesDisplayRuntime> {
     rejectCancellation(reason);
     cleanupFailedLoad();
   };
-  pendingRuntime = { generation, revision, promise, script, stylesheet, cancel };
+  pendingRuntime = {
+    generation,
+    revision,
+    promise,
+    script,
+    stylesheet,
+    legacyStyle,
+    legacyStyleText: "",
+    legacyStyleRevision: null,
+    cancel,
+  };
   document.head.append(legacyStyle, stylesheet, script);
   void promise.then(() => {
     if (pendingRuntime?.generation === generation) pendingRuntime = null;
@@ -379,19 +440,59 @@ function isCurrentRuntimeLoad(generation: number): boolean {
   return pendingRuntime?.generation === generation;
 }
 
+function rememberPendingLegacyStyle(generation: number, revision: string): void {
+  const pending = pendingRuntime;
+  if (
+    pending?.generation !== generation
+    || pending.legacyStyle.dataset.revision !== revision
+    || !pending.legacyStyle.textContent?.trim()
+  ) return;
+  pending.legacyStyleText = pending.legacyStyle.textContent;
+  pending.legacyStyleRevision = revision;
+}
+
 function restoreAcceptedRuntime(rejectedRevision: string): void {
   if (window.MotionLevelsGamesDisplay?.revision !== rejectedRevision) return;
   if (acceptedRuntime) {
+    window.MotionLevelsGamesDisplays ??= {};
+    window.MotionLevelsGamesDisplays[acceptedRuntime.revision] = acceptedRuntime;
     window.MotionLevelsGamesDisplay = acceptedRuntime;
   } else {
     delete window.MotionLevelsGamesDisplay;
   }
 }
 
-function discardStaleRuntimeRevision(revision: string): void {
-  if (pendingRuntime?.revision === revision) return;
+function restorePendingLegacyStyle(): boolean {
+  const pending = pendingRuntime;
+  if (!pending) return false;
+  const occupyingStyle = document.getElementById(gamesDisplayLegacyStylesID);
+  if (occupyingStyle && occupyingStyle !== pending.legacyStyle) occupyingStyle.remove();
+  if (!pending.legacyStyle.isConnected) {
+    const anchor = pending.stylesheet.isConnected
+      ? pending.stylesheet
+      : pending.script.isConnected ? pending.script : null;
+    if (anchor) {
+      document.head.insertBefore(pending.legacyStyle, anchor);
+    } else {
+      document.head.append(pending.legacyStyle);
+    }
+  }
+  pending.legacyStyle.id = gamesDisplayLegacyStylesID;
+  pending.legacyStyle.media = "not all";
+  pending.legacyStyle.dataset.motionLevelsGamesPendingRevision = pending.revision;
+  pending.legacyStyle.textContent = pending.legacyStyleText;
+  if (pending.legacyStyleRevision) {
+    pending.legacyStyle.dataset.revision = pending.legacyStyleRevision;
+  } else {
+    delete pending.legacyStyle.dataset.revision;
+  }
+  return true;
+}
+
+function discardStaleRuntimeRevision(revision: string, generation: number): void {
+  if (pendingRuntime?.generation === generation) return;
   restoreAcceptedRuntime(revision);
-  if (acceptedRuntime?.revision === revision) return;
+  if (restorePendingLegacyStyle()) return;
   const legacyStyle = document.getElementById(gamesDisplayLegacyStylesID);
   if (
     acceptedStylesheet instanceof HTMLStyleElement

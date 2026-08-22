@@ -343,8 +343,8 @@ test("startup truncates a torn journal and publishes a partial gzip replay", asy
     sessionId: "visit-replay",
     selectionId: "selection-replay",
     runId: "run-crash",
-    gameId: "ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    gameId: "ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceRevision: revision,
     width: floorWidth,
     height: floorHeight,
@@ -826,7 +826,7 @@ test("recovery can terminate a verified continued predecessor after its local pa
   assert.equal(header?.type, "header");
   if (header?.type === "header") {
     assert.equal(header.runFrameOffset, 7);
-    assert.equal(header.gameId, "ping-pong");
+    assert.equal(header.gameId, "ping-pong-v2");
     assert.equal(header.sourceRevision, revision);
   }
 });
@@ -1147,9 +1147,9 @@ function historyStore(
     selections: [{
       id: "selection-replay",
       ordinal: 1,
-      gameId: "ping-pong",
-      engineGame: "motion-levels-games:ping-pong",
-      manifestId: "ping-pong",
+      gameId: "ping-pong-v2",
+      engineGame: "motion-levels-games:ping-pong-v2",
+      manifestId: "ping-pong-v2",
       label: "Ping pong",
       sourceKind: "motion_levels_games",
       sourceRevision: revision,
@@ -1184,8 +1184,8 @@ function startInput(runId: string, firstDesiredSequence: bigint) {
     sessionId: "visit-replay",
     selectionId: "selection-replay",
     runId,
-    gameId: "ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    gameId: "ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceRevision: revision,
     width: floorWidth,
     height: floorHeight,
@@ -1237,8 +1237,8 @@ function multipartHeader(runId: string, partIndex: number, runFrameOffset: numbe
     sessionId: "visit-replay",
     selectionId: "selection-replay",
     runId,
-    gameId: "ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
+    gameId: "ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
     sourceRevision: revision,
     width: floorWidth,
     height: floorHeight,
@@ -1255,12 +1255,12 @@ function multipartHeader(runId: string, partIndex: number, runFrameOffset: numbe
 
 function state(clockMillis: number): GameSessionState {
   return {
-    gameId: "ping-pong",
+    gameId: "ping-pong-v2",
     clockMillis,
     paused: false,
     frame: { width: floorWidth, height: floorHeight, cells: [] },
     snapshot: {
-      currentGame: "ping-pong",
+      currentGame: "ping-pong-v2",
       label: "Ping pong",
       phase: "running",
       score: 0,

@@ -14,12 +14,18 @@
     "apps/*"
   ],
   "scripts": {
+    "prepare": "npm run content:build",
+    "predev": "npm run content:build",
+    "prebuild": "npm run content:build",
+    "pretypecheck": "npm run content:build",
+    "pretest": "npm run content:build",
     "dev": "npm run dev --workspace @motion-levels-games/playground -- --host 127.0.0.1 --port 4104 --strictPort",
     "dev:game": "tsx scripts/dev-game.ts",
     "dev:venue": "tsx scripts/dev-venue.ts",
     "dev:venue:no-controller": "tsx scripts/dev-venue.ts --no-controller",
     "build": "npm run build --workspaces --if-present",
     "content:build": "tsx scripts/build-authored-content.ts",
+    "content:format": "tsx scripts/build-authored-content.ts --format",
     "content:validate": "tsx scripts/build-authored-content.ts --check",
     "content:import": "tsx scripts/import-authored-content.ts",
     "build:bundle": "tsx scripts/build-bundle.ts",

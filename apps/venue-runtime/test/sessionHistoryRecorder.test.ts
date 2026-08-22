@@ -27,12 +27,12 @@ function state(
   events: GameSessionState["events"] = []
 ): GameSessionState {
   return {
-    gameId: "ping-pong",
+    gameId: "ping-pong-v2",
     clockMillis,
     paused: false,
     frame: { width: 16, height: 32, cells: [] },
     snapshot: {
-      currentGame: "ping-pong",
+      currentGame: "ping-pong-v2",
       label: "Ping pong",
       phase: "running",
       playerCount: 1,
@@ -55,9 +55,9 @@ function startSelection(recorder: SessionHistoryRecorder, runId = "run-1") {
   return recorder.startSelection({
     id: "selection-1",
     runId,
-    gameId: "ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
-    manifestId: "ping-pong",
+    gameId: "ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
+    manifestId: "ping-pong-v2",
     label: "Ping pong",
     sourceKind: "motion_levels_games",
     sourceRevision: "1".repeat(40),
@@ -565,9 +565,9 @@ test("run recording exposes a gated handle and retries only on the operator's sa
   const first = recorder.startSelection({
     id: "selection-run-operator-retry",
     runId: "run-operator-retry",
-    gameId: "ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
-    manifestId: "ping-pong",
+    gameId: "ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
+    manifestId: "ping-pong-v2",
     label: "Ping pong",
     sourceKind: "motion_levels_games",
     sourceRevision: "1".repeat(40),
@@ -614,9 +614,9 @@ test("run recording retry reattaches to an in-flight start and reuses a late phy
   const first = recorder.startSelection({
     id: "selection-run-inflight-retry",
     runId: "run-inflight-retry",
-    gameId: "ping-pong",
-    engineGame: "motion-levels-games:ping-pong",
-    manifestId: "ping-pong",
+    gameId: "ping-pong-v2",
+    engineGame: "motion-levels-games:ping-pong-v2",
+    manifestId: "ping-pong-v2",
     label: "Ping pong",
     sourceKind: "motion_levels_games",
     sourceRevision: "1".repeat(40),

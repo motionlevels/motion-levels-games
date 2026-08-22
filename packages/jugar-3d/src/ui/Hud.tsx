@@ -5,10 +5,10 @@ import { Pause, Play, RotateCcw, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
 
 import { soundBank } from "../audio/sfx.ts";
-import type { GameSession } from "../core/session.ts";
+import type { JugarPresentationSession } from "../core/session.ts";
 
 type Props = {
-  session: GameSession;
+  session: JugarPresentationSession;
   onExit: () => void;
 };
 

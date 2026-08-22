@@ -6,7 +6,7 @@ import { Html } from "@react-three/drei";
 import { memo, useEffect, useReducer, useRef } from "react";
 import * as THREE from "three";
 
-import type { GameSession } from "../core/session.ts";
+import type { JugarPresentationSession } from "../core/session.ts";
 import { FLOOR_WORLD_DEPTH } from "../core/tileMath.ts";
 
 const NATIVE_WIDTH = 1920;
@@ -42,7 +42,7 @@ export function TvDisplay({
   session,
   stableCompositing = false
 }: {
-  session: GameSession;
+  session: JugarPresentationSession;
   stableCompositing?: boolean;
 }) {
   return (
@@ -98,7 +98,7 @@ const projectedCorners = [
  * mobile camera is static, so the layer remains aligned without compositor
  * churn while the live player display continues to update.
  */
-function StableTvSurface({ session }: { session: GameSession }) {
+function StableTvSurface({ session }: { session: JugarPresentationSession }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const lastLayoutRef = useRef("");
   const { camera, size } = useThree();
@@ -179,7 +179,7 @@ function NativeTvContent({
   session,
   projected2d = false
 }: {
-  session: GameSession;
+  session: JugarPresentationSession;
   projected2d?: boolean;
 }) {
   return (
@@ -204,7 +204,7 @@ function NativeTvContent({
 }
 
 /** Subscribes to the session so only the TV DOM re-renders at display rate. */
-const TvContent = memo(function TvContent({ session }: { session: GameSession }) {
+const TvContent = memo(function TvContent({ session }: { session: JugarPresentationSession }) {
   const [, bump] = useReducer((count: number) => count + 1, 0);
   useEffect(() => session.subscribe(bump), [session]);
 

@@ -21,9 +21,9 @@ describe("kiosk API requests", () => {
       });
     }) as typeof fetch;
 
-    await selectGame({ game: "motion-levels-games:ping-pong", playerCount: 2, sourceKind: "motion_levels_games" });
+    await selectGame({ game: "motion-levels-games:ping-pong-v2", playerCount: 2, sourceKind: "motion_levels_games" });
     assert.equal(new URL(requestURL).pathname, "/api/select");
-    assert.equal(requestBody.game, "motion-levels-games:ping-pong");
+    assert.equal(requestBody.game, "motion-levels-games:ping-pong-v2");
     assert.match(String(requestBody.commandId), /^[0-9a-f-]{36}$/u);
   });
 
@@ -92,7 +92,7 @@ describe("kiosk API requests", () => {
       });
     }) as typeof fetch;
 
-    const selected = selectGame({ game: "ping-pong", playerCount: 2 });
+    const selected = selectGame({ game: "ping-pong-v2", playerCount: 2 });
     const controlled = controlGame("pause");
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(requests.length, 1);

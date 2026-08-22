@@ -100,7 +100,7 @@ build identity compiled into the player menu and display shell before release.
 `availability.production: true`. Development games remain in the catalog and
 media for inspection, but the production `GameSession` rejects them.
 `npm run validate:games` requires the directories under `games/*` to match
-`packages/runtime/src/gameplayRegistry.ts`; a separate browser display registry
+`packages/game-catalog/src/gameplayRegistry.ts`; a separate browser display registry
 keeps React out of the Node gameplay graph.
 
 Release tags exactly match `games-vMAJOR.MINOR.PATCH`. Contract v2 must be

@@ -7,7 +7,7 @@ import * as THREE from "three";
 
 import { Robot } from "../characters/Robot.tsx";
 import { characterComponent } from "../characters/components.ts";
-import type { GameSession } from "../core/session.ts";
+import type { JugarPresentationSession } from "../core/session.ts";
 import { FLOOR_WORLD_DEPTH, FLOOR_WORLD_WIDTH, TILE_TOP_Y, tileToWorld } from "../core/tileMath.ts";
 import {
   JugarStagePerformanceMonitor,
@@ -23,7 +23,7 @@ import { TileFloor, pointToTile } from "./TileFloor.tsx";
 import { TV_BOUNDS, TvDisplay } from "./TvDisplay.tsx";
 
 export type JugarStageProps = Readonly<{
-  session: GameSession;
+  session: JugarPresentationSession;
   characterId: string;
   sahurModelUrl?: string;
   characterModelBaseUrl?: string;
@@ -294,7 +294,7 @@ function emptyMemoryProxy(): JugarStageMemoryProxy {
 function SessionDebugOverlay({
   debug,
   session
-}: Readonly<{ debug: JugarStageDebugOptions; session: GameSession }>) {
+}: Readonly<{ debug: JugarStageDebugOptions; session: JugarPresentationSession }>) {
   return session.agentDebug
     .filter((entry) => debug.selectedAvatarId === undefined || entry.avatarId === debug.selectedAvatarId)
     .map((entry) => {
@@ -368,7 +368,7 @@ function CameraRig({
   coarsePointer,
   exposeFitDebug,
   session
-}: Readonly<{ coarsePointer: boolean; exposeFitDebug: boolean; session: GameSession }>) {
+}: Readonly<{ coarsePointer: boolean; exposeFitDebug: boolean; session: JugarPresentationSession }>) {
   const { camera, size } = useThree();
   const pointer = useRef({ x: 0, y: 0 });
   // Mutable camera scratch space lives in refs (lazily created): the fit

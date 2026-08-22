@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -7,6 +8,7 @@ import {
   type AuthoredGameRepositoryExport,
   type AuthoredGameSourceManifest
 } from "../packages/published-level-runtime/src/index.ts";
+import { authoredSourceJSON } from "./authored-content.ts";
 
 const args = process.argv.slice(2);
 const gameDir = requiredOption("--game");
@@ -39,12 +41,15 @@ if (exportFile) {
   }
   const levels = uniqueByIdentity(documents.flatMap((document) => arrayValue(document.levels)));
   const resultAnimations = uniqueByIdentity(documents.flatMap((document) => arrayValue(document.resultAnimations)));
-  published = {
+  const source = {
     schema: AUTHORED_GAME_EXPORT_SCHEMA,
-    contentRevision: "migration",
     game,
     levels,
     resultAnimations
+  } as const;
+  published = {
+    ...source,
+    sourceFingerprint: createHash("sha256").update(canonicalJSONString(source)).digest("hex")
   };
 } else {
   throw new Error("Use --file <editor-export.json> or --runtime-url <legacy-platform-url>");
@@ -55,12 +60,32 @@ if (published.game.gameId !== game.gameId || published.game.engineGame !== game.
   throw new Error("Published content identity does not match the target game");
 }
 await replaceIdentityDirectory(path.join(path.dirname(gamePath), "levels"), published.levels, "level");
-await replaceIdentityDirectory(path.join(path.dirname(gamePath), "result-animations"), published.resultAnimations, "result animation");
+const animationIds = await writeIdentityFiles(
+  path.join(root, "content", "result-animations"),
+  published.resultAnimations,
+  "result animation"
+);
+await rm(path.join(path.dirname(gamePath), "result-animations"), { recursive: true, force: true });
+await writeFile(gamePath, authoredSourceJSON({ ...game, resultAnimationIds: animationIds }));
 console.log(`Imported ${published.levels.length} levels and ${published.resultAnimations.length} result animations for ${gameDir}`);
 
 async function replaceIdentityDirectory(directory: string, values: readonly unknown[], label: string): Promise<void> {
+  const expected = new Set(await writeIdentityFiles(directory, values, label).then((ids) => ids.map((id) => `${id}.json`)));
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".json") && !expected.has(entry.name)) {
+      await rm(path.join(directory, entry.name));
+    }
+  }
+}
+
+async function writeIdentityFiles(
+  directory: string,
+  values: readonly unknown[],
+  label: string
+): Promise<string[]> {
   await mkdir(directory, { recursive: true });
   const expected = new Set<string>();
+  const ids: string[] = [];
   for (const raw of values) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`${label} must be an object`);
     const value = sourceRecord(raw as Record<string, unknown>, label);
@@ -71,13 +96,10 @@ async function replaceIdentityDirectory(directory: string, values: readonly unkn
     const name = `${id}.json`;
     if (expected.has(name)) throw new Error(`Duplicate ${label} id ${id}`);
     expected.add(name);
-    await writeFile(path.join(directory, name), `${JSON.stringify(value, null, 2)}\n`);
+    ids.push(id);
+    await writeFile(path.join(directory, name), authoredSourceJSON(value));
   }
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.endsWith(".json") && !expected.has(entry.name)) {
-      await rm(path.join(directory, entry.name));
-    }
-  }
+  return ids.sort();
 }
 
 function sourceRecord(source: Record<string, unknown>, label: string): Record<string, unknown> {
@@ -105,6 +127,18 @@ function uniqueByIdentity(values: readonly unknown[]): unknown[] {
 
 function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function canonicalJSONString(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJSONString).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, child]) => child !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJSONString(child)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function option(name: string): string {

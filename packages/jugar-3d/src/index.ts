@@ -15,7 +15,7 @@ export type {
   SessionControllerStepResult
 } from "./contracts.ts";
 export {
-  GameSession,
+  JugarPresentationSession,
   type SessionAgentDebug,
   type SessionControllerSlots,
   type SessionOptions,

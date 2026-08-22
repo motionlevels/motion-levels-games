@@ -21,7 +21,7 @@ import {
   normalizeGameConfig,
   type GameMediaAssetKind
 } from "../packages/game-sdk/src/index.ts";
-import { gameCatalog } from "../packages/runtime/src/gameplayRegistry.ts";
+import { gameCatalog } from "../packages/game-catalog/src/gameplayRegistry.ts";
 import { deriveGamesBuildIdentity } from "./build-version.ts";
 import { bundleContentDigest, bundleFiles } from "./bundle-files.ts";
 

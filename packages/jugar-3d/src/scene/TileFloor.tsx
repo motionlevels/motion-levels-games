@@ -5,7 +5,7 @@ import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
-import type { GameSession } from "../core/session.ts";
+import type { JugarPresentationSession } from "../core/session.ts";
 import {
   FLOOR_WORLD_DEPTH,
   FLOOR_WORLD_WIDTH,
@@ -27,7 +27,7 @@ const PANEL_SIZE = TILE_SIZE * PANEL_FRACTION;
 const MIN_TILE_CHANNEL = 0.04;
 
 type Props = {
-  session: GameSession;
+  session: JugarPresentationSession;
   onTilePointerDown: (event: ThreeEvent<PointerEvent>) => void;
   onTilePointerMove: (event: ThreeEvent<PointerEvent>) => void;
 };

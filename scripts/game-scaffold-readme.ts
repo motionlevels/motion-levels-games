@@ -31,7 +31,7 @@ npm run typecheck --workspace @motion-levels-games/${options.gameId}
 Keep the generated UUID in \`manifest.id\` forever. The directory/package name
 is the mutable \`manifest.slug\`; retain old names in \`manifest.aliases\` when
 renaming and let validation reject collisions.
-Register the finished package in \`packages/runtime/src/gameplayRegistry.ts\`; the
+Register the finished package in \`packages/game-catalog/src/gameplayRegistry.ts\`; the
 release validator requires every \`games/*\` package to appear in the
 production runtime, catalog, and player-display registry.
 Keep the player-presence gate and pre-start animation when replacing the

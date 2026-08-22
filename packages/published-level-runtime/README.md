@@ -12,7 +12,7 @@ Content uses `motion-levels-published-level-content-v1` and carries:
 
 - `gameId`: immutable canonical UUID or lowercase 32/40/64-character hash;
 - `engineGame`: mutable dispatch/diagnostic slug;
-- `contentRevision`: deterministic SHA-256 of the canonical game manifest,
+- `contentRevision`: compiler-owned deterministic SHA-256 of the canonical game manifest,
   normalized level records, and result-animation records. Selection state is
   excluded, so every difficulty/session points at one authored revision;
 - `selectedLevelId`: immutable level UUID/hash, paired with mutable
@@ -29,6 +29,10 @@ authority.
 The concrete Parkour and Temporada catalogs do not live in this reusable
 package. They are committed as one diffable source file per level under
 `games/parkour/content/` and `games/temporada1-niveles/content/`.
+Identical result animations are stored once under
+`content/result-animations/` and referenced by stable IDs from each authored
+game manifest. The platform publishes only those source JSON files; generated
+locks, TypeScript import modules, and revisions remain compiler-owned.
 
 ## Runtime behavior
 

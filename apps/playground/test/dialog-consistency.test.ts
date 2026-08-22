@@ -96,13 +96,13 @@ test("dialogs and selectors use composable pause locks", () => {
 test("effective pause blocks every player input path", () => {
   assert.match(
     appSource,
-    /const handleTilePress[\s\S]*?if \(pausedRef\.current\) \{\s*return;\s*\}[\s\S]*?engineRef\.current\.press/,
-    "floor and API presses must stop before reaching the engine"
+    /const handleTilePress[\s\S]*?if \(pausedRef\.current\) \{\s*return;\s*\}[\s\S]*?sessionRef\.current\.press/,
+    "floor and API presses must stop before reaching the runtime session"
   );
   assert.match(
     appSource,
-    /const handleTileRelease[\s\S]*?if \(pausedRef\.current\) \{\s*return;\s*\}[\s\S]*?engineRef\.current\.release/,
-    "floor and API releases must stop before reaching the engine"
+    /const handleTileRelease[\s\S]*?if \(pausedRef\.current\) \{\s*return;\s*\}[\s\S]*?sessionRef\.current\.release/,
+    "floor and API releases must stop before reaching the runtime session"
   );
   assert.match(
     appSource,

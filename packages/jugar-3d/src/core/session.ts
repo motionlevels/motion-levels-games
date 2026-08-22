@@ -3,18 +3,20 @@ import {
   DEFAULT_ENGINE_MAX_CATCH_UP_STEPS,
   FLOOR_COLS,
   FLOOR_ROWS,
-  createGameEngine,
   normalizeGameSeed,
   type GameConfig,
   type GameContent,
   type GameConfigOptions,
-  type GameEngine,
   type GameEngineState,
   type GameEvent,
   type GameInstance,
   type GameSnapshot
 } from "@motion-levels-games/game-sdk";
 import { replayChecksum } from "@motion-levels-games/replay-runtime";
+import {
+  GameSession as RuntimeGameSession,
+  buildGameplayRegistry
+} from "@motion-levels-games/runtime";
 
 import type {
   GameContentSelection,
@@ -95,17 +97,15 @@ const NOTIFY_INTERVAL_MILLIS = 80;
 const AVATAR_COLORS = ["#b8ff00", "#23d5ff", "#ff5c8a", "#ffb020", "#8f7bff", "#4dffb8"];
 
 /**
- * Owns the one authoritative game instance used by Jugar 3D. Animation frames
- * only provide elapsed presentation time; authority advances in exact SDK
- * frame-sized ticks, which makes pause, replay and explicit stepping stable.
+ * Presentation/controller adapter around the reusable runtime GameSession.
+ * It schedules fixed steps and avatar motion; the injected runtime remains the
+ * sole owner of the game instance, engine clock, input ordering, and snapshots.
  */
-export class GameSession {
+export class JugarPresentationSession {
   readonly game: RegisteredGame;
   readonly options: SessionOptions;
   readonly avatars: Avatar[];
-  readonly engine: GameEngine;
-  /** Live game instance; some games expose extras such as playerReadyZones(). */
-  instance: GameInstance & ZoneAwareGame;
+  private readonly authority: RuntimeGameSession;
 
   clockMillis = 0;
   paused = false;
@@ -136,16 +136,17 @@ export class GameSession {
     this.options = options;
     this.seedValue = normalizeGameSeed(options.seed ?? randomSeed());
     this.maxCatchUpSteps = normalizeCatchUpSteps(options.maxCatchUpSteps);
-    const instance = game.createGame(this.buildConfig());
-    const initialEvents = instance.init(0);
-    this.instance = instance;
-    this.engine = createGameEngine(instance, {
-      fps: options.fps ?? DEFAULT_ENGINE_FPS,
-      initialEvents,
-      nowMillis: 0
+    this.authority = new RuntimeGameSession(buildGameplayRegistry([game]), {
+      fps: options.fps ?? DEFAULT_ENGINE_FPS
     });
+    const initial = this.authority.select({
+      ...this.buildConfig(),
+      gameId: game.manifest.id,
+      development: true
+    });
+    const initialEvents = initial.events;
 
-    const snapshot = instance.snapshot();
+    const snapshot = this.instance.snapshot();
     const players = snapshot.players ?? [];
     const playerCount = Math.max(1, Math.trunc(options.playerCount));
     const allBots = options.controllerSlots === "all";
@@ -153,7 +154,7 @@ export class GameSession {
     // Which game player each avatar plays. The first local slot gets whichever
     // ready zone sits nearest the camera; automated sessions still retain that
     // stable assignment so replay output matches the regular Jugar surface.
-    const zones = resolveReadyZones(this.instance, this.engine.state.frame, snapshot);
+    const zones = resolveReadyZones(this.instance, this.state.frame, snapshot);
     const assignment = assignPlayers(zones, playerCount);
     const firstZone = humanSpawnZone(zones, assignment[0] ?? 0);
     const occupiedSpawns: Tile[] = [];
@@ -180,7 +181,25 @@ export class GameSession {
   }
 
   get state(): GameEngineState {
-    return this.presentationState ?? this.engine.state;
+    return this.presentationState ?? this.authority.engineState();
+  }
+
+  /** Live game instance; some products expose extras such as playerReadyZones(). */
+  get instance(): GameInstance & ZoneAwareGame {
+    return this.authority.instance as GameInstance & ZoneAwareGame;
+  }
+
+  get fps(): number {
+    return this.authority.fps;
+  }
+
+  get frameMillis(): number {
+    return this.authority.frameMillis;
+  }
+
+  /** Engine clock retained under trajectory playback for diagnostics. */
+  get authorityClockMillis(): number {
+    return this.authority.clockMillis;
   }
 
   get agentDebug(): readonly SessionAgentDebug[] {
@@ -213,7 +232,7 @@ export class GameSession {
     this.assertActive();
     if (this.rafHandle) return;
     if (typeof requestAnimationFrame !== "function") {
-      throw new Error("GameSession.start() requires a browser animation frame scheduler");
+      throw new Error("JugarPresentationSession.start() requires a browser animation frame scheduler");
     }
     this.lastRafAt = null;
     const loop = (nowMillis: number) => {
@@ -240,6 +259,7 @@ export class GameSession {
     this.listeners.clear();
     this.trajectoryListeners.clear();
     this.sounds = null;
+    this.authority.stop();
     this.disposed = true;
   }
 
@@ -260,6 +280,12 @@ export class GameSession {
     this.assertActive();
     if (this.paused === paused) return;
     this.paused = paused;
+    if (paused) {
+      this.authority.pause(this.clockMillis);
+      for (const avatar of this.avatars) avatar.pressedTile = null;
+    } else {
+      this.authority.resume();
+    }
     // Re-anchor rAF on either transition so resume never catches up wall time.
     this.lastRafAt = null;
     this.accumulatedMillis = 0;
@@ -269,7 +295,7 @@ export class GameSession {
   setTimeScale(timeScale: number): void {
     this.assertActive();
     if (!Number.isFinite(timeScale) || timeScale <= 0 || timeScale > 4) {
-      throw new Error("GameSession timeScale must be finite and greater than 0 through 4");
+      throw new Error("JugarPresentationSession timeScale must be finite and greater than 0 through 4");
     }
     this.timeScale = timeScale;
     this.accumulatedMillis = 0;
@@ -290,16 +316,19 @@ export class GameSession {
     this.controllerPaths.clear();
     this.readyZoneDirector.reset();
 
-    const instance = this.game.createGame(this.buildConfig());
-    const initialEvents = instance.init(0);
-    this.instance = instance;
-    this.engine.replaceGame(instance, { initialEvents, nowMillis: 0 });
+    const restarted = this.authority.select({
+      ...this.buildConfig(),
+      gameId: this.game.manifest.id,
+      development: true
+    });
+    const initialEvents = restarted.events;
+    if (this.paused) this.authority.pause(0);
 
     // Player assignment is kept across restarts: moving a person to a
     // different corner between rounds would be disorienting.
-    const zones = resolveReadyZones(this.instance, this.engine.state.frame, instance.snapshot());
+    const zones = resolveReadyZones(this.instance, this.state.frame, this.instance.snapshot());
     const firstZone = humanSpawnZone(zones, this.avatars[0]?.playerIndex ?? 0);
-    const snapshot = instance.snapshot();
+    const snapshot = this.instance.snapshot();
     const occupiedSpawns: Tile[] = [];
 
     for (const [index, avatar] of this.avatars.entries()) {
@@ -339,7 +368,7 @@ export class GameSession {
   advanceTo(nowMillis: number): void {
     this.assertActive();
     if (!Number.isFinite(nowMillis)) {
-      throw new Error("GameSession.advanceTo() requires a finite timestamp");
+      throw new Error("JugarPresentationSession.advanceTo() requires a finite timestamp");
     }
     if (this.lastRafAt === null || nowMillis < this.lastRafAt) {
       this.lastRafAt = nowMillis;
@@ -350,7 +379,7 @@ export class GameSession {
     this.lastRafAt = nowMillis;
     if (this.paused) return;
 
-    const frameMillis = this.engine.frameMillis;
+    const frameMillis = this.frameMillis;
     const maxElapsed = frameMillis * this.maxCatchUpSteps;
     this.accumulatedMillis += Math.min(elapsed * this.timeScale, maxElapsed);
 
@@ -373,10 +402,10 @@ export class GameSession {
       throw new Error("Exit trajectory playback before advancing live authority");
     }
     if (!Number.isInteger(ticks) || ticks < 1) {
-      throw new Error("GameSession.stepTicks() requires a positive integer");
+      throw new Error("JugarPresentationSession.stepTicks() requires a positive integer");
     }
     for (let index = 0; index < ticks; index += 1) {
-      this.stepAuthority(this.engine.frameMillis);
+      this.stepAuthority(this.frameMillis);
     }
     this.notify(true);
     return this.state;
@@ -384,13 +413,13 @@ export class GameSession {
 
   captureTrajectoryFrame(): SessionTrajectoryFrame {
     this.assertActive();
-    const state = cloneState(this.presentationState ?? this.engine.state);
+    const state = cloneState(this.presentationState ?? this.authority.engineState());
     const avatars = this.avatars.map(cloneAvatar);
     const agentDebug = (this.presentationDebug ?? [...this.controllerDebug.values()]).map(cloneDebug);
     const payload = {
       gameId: this.game.manifest.id,
       seed: this.seedValue,
-      tick: this.presentationState ? trajectoryTickFromState(state, this.engine.frameMillis) : this.tickValue,
+      tick: this.presentationState ? trajectoryTickFromState(state, this.frameMillis) : this.tickValue,
       atMillis: state.clockMillis,
       state,
       avatars,
@@ -426,6 +455,11 @@ export class GameSession {
     this.clockMillis += deltaMillis;
     this.tickValue += 1;
 
+    // Explicit developer steps are allowed while presentation is paused. The
+    // runtime is resumed only for this atomic simulation step, then restored
+    // to paused so it remains the single input/pause gate.
+    if (this.paused) this.authority.resume();
+
     this.updateControllers(deltaMillis);
     this.readyZoneDirector.update(this);
     const result = sessionResult(this.state.snapshot);
@@ -447,8 +481,12 @@ export class GameSession {
     }
     if (humanStepped) this.sounds?.step();
 
-    const state = this.engine.tickTo(this.clockMillis);
+    const state = this.authority.tick(this.clockMillis);
     this.emitEvents(state.events);
+    if (this.paused) {
+      this.authority.pause(this.clockMillis);
+      for (const avatar of this.avatars) avatar.pressedTile = null;
+    }
     if (this.trajectoryListeners.size > 0) {
       const frame = this.captureTrajectoryFrame();
       for (const listener of this.trajectoryListeners) listener(frame);
@@ -596,8 +634,8 @@ export class GameSession {
   private applyOps(ops: PressOp[]): void {
     for (const op of ops) {
       const state = op.kind === "press"
-        ? this.engine.press(op.x, op.y, this.clockMillis)
-        : this.engine.release(op.x, op.y, this.clockMillis);
+        ? this.authority.press(op.x, op.y, this.clockMillis)
+        : this.authority.release(op.x, op.y, this.clockMillis);
       this.emitEvents(state.events);
     }
   }
@@ -633,7 +671,7 @@ export class GameSession {
   }
 
   private assertActive(): void {
-    if (this.disposed) throw new Error("GameSession has been disposed");
+    if (this.disposed) throw new Error("JugarPresentationSession has been disposed");
   }
 }
 
@@ -763,7 +801,7 @@ function feedbackFromCue(cue: string): Avatar["feedback"] {
 function normalizeCatchUpSteps(value: number | undefined): number {
   if (value === undefined) return DEFAULT_ENGINE_MAX_CATCH_UP_STEPS;
   if (!Number.isInteger(value) || value < 1) {
-    throw new Error("GameSession maxCatchUpSteps must be a positive integer");
+    throw new Error("JugarPresentationSession maxCatchUpSteps must be a positive integer");
   }
   return value;
 }
