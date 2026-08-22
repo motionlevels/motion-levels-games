@@ -235,7 +235,7 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
       score: 0,
       hits: 0,
       lastPoints: 0,
-      lastHitAtMillis: Number.NEGATIVE_INFINITY
+      lastHitAtMillis: 0
     }));
     this.targets = []; this.startingTargets = []; this.lastPositions = []; this.catchUp = []; this.hitFlash = [];
     this.phase = "waiting"; this.nowMillis = nowMillis; this.countdownStartedAtMillis = 0; this.startedAtMillis = nowMillis; this.finishAtMillis = 0; this.winnerIndex = -1; this.motionEventId = 0;
@@ -323,7 +323,8 @@ class WhackAMoleGame implements WhackAMoleGameInstance {
     let recentIndex = -1;
     let recentAt = Number.NEGATIVE_INFINITY;
     for (const player of this.players) {
-      if (this.nowMillis - player.lastHitAtMillis >= recentHitMillis || player.lastHitAtMillis <= recentAt) continue;
+      if (player.hits === 0 || this.nowMillis - player.lastHitAtMillis >= recentHitMillis
+        || player.lastHitAtMillis <= recentAt) continue;
       recentAt = player.lastHitAtMillis;
       recentIndex = player.index;
     }

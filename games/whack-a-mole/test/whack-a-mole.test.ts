@@ -78,6 +78,12 @@ test("all configured players must be ready before targets spawn", () => {
   assert.equal(game.snapshot().targets.length, 8);
 });
 
+test("waiting snapshots contain only finite player timing values", () => {
+  const snapshot = createGame({ playerCount: 8 }).snapshot();
+  assert.ok(snapshot.playerProgress.every((player) => Number.isFinite(player.lastHitAtMillis)));
+  assert.equal(snapshot.recentHitPlayerIndex, -1);
+});
+
 test("waiting platforms pulse homogeneously and become calmer when occupied", () => {
   const game = createGame({ playerCount: 2, seed: 404 });
   game.init(0);
